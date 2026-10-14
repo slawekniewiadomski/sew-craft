@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sewcraft.local/schemas/command-spec-0.1.json",
+  "title": "SewCraft Command Spec",
+  "schema": "sewcraft.command-spec/0.1",
+  "spec_version": "0.1.0",
+  "units": "mm",
+  "envelope": {
+    "id": "ULID string, client-generated, unique",
+    "type": "command name (see commands)",
+    "params": "object, shape defined per command",
+    "issuedAt": "ISO-8601 timestamp (optional)"
+  },
+  "commands": {
+    "add_point": {
+      "description": "Create a free or construction point.",
+      "params": { "x": "number", "y": "number", "construction": "bool?" },
+      "inverse": "delete_entity"
+    },
+    "add_line": {
+      "description": "Create a straight segment between two points.",
+      "params": {
+        "start": "entity_id",
+        "end": "entity_id",
+        "construction": "bool?"
+      },
+      "inverse": "delete_entity"
+    },
+    "add_curve": {
+      "description": "Create a cubic Bézier curve through four control points.",
+      "params": {
+        "p0": "entity_id",
+        "p1": "entity_id",
+        "p2": "entity_id",
+        "p3": "entity_id",
+        "construction": "bool?"
+      },
+      "inverse": "delete_entity"
+    },
+    "add_construction_line": {
+      "description": "Create a reference-only line that never becomes a cut edge.",
+      "params": { "start": "entity_id", "end": "entity_id" },
+      "inverse": "delete_entity"
+    },
+    "delete_entity": {
+      "description": "Remove an entity and any constraints referencing it.",
+      "params": { "id": "entity_id" }
+    },
+    "add_constraint": {
+      "description": "Attach a geometric constraint to one or more entities.",
+      "params": {
+        "type": "coincident|horizontal|vertical|point_on_line|distance|angle|equal",
+        "entities": "entity_id[]",
+        "value": "number?"
+      },
+      "inverse": "remove_constraint"
+    },
+    "remove_constraint": {
+      "description": "Detach a constraint from the sketch.",
+      "params": { "id": "entity_id" }
+    },
+    "add_seam_allowance": {
+      "description": "Set a seam allowance width (mm) on a piece edge.",
+      "params": { "piece": "entity_id", "edge": "entity_id", "width": "number" }
+    },
+    "solve": {
+      "description": "Rebuild the sketch by running the constraint solver.",
+      "params": {}
+    }
+  }
+}

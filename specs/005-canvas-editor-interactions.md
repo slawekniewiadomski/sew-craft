@@ -1,0 +1,46 @@
+# 005 — Canvas editor interactions
+
+Status: todo
+Depends on: 004
+
+## Goal
+
+A user can create and edit points, lines and curves on an interactive SVG canvas
+with pan/zoom and selection, and changes are parametric (solver rebuilds).
+
+## Context
+
+Read `docs/architecture/constraint-solver.md` and `command-core.md`. The
+`EditorView` currently renders a static demo; this makes it real.
+
+## Inputs
+
+Geometry package, command bus, `PatternDocument`.
+
+## Deliverables
+
+- `PatternCanvas.vue`: SVG renderer for entities (cut vs construction styling),
+  selection handles, drag to move points, grid + rulers (mm).
+- Viewport: pan (space/drag) and zoom (wheel), fit-to-bounds.
+- Snap (grid + to points) as a frontend concern.
+- Tools: select, add point, add line, add curve.
+- Emits commands via the bus; renders solver output.
+
+## Acceptance criteria
+
+- [ ] Dragging a point emits a move command and re-solves.
+- [ ] Constraints visibly hold (e.g. horizontal stays horizontal).
+- [ ] Selection + deletion via keyboard work.
+- [ ] No geometry math in the component (delegates to the package).
+
+## Out of scope
+
+- Multi-select box, copy/paste, layers, undo UI (see 004).
+
+## Checks
+
+```bash
+npm test
+npm run lint
+npm run build
+```

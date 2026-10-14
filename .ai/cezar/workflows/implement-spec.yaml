@@ -1,0 +1,32 @@
+name: implement-spec
+description: Implement one SewCraft spec, then verify with typecheck, tests, lint and build.
+steps:
+  - id: deps
+    name: Install
+    command: "npm ci"
+
+  - id: implement
+    name: Implement
+    prompt: "{{task}}"
+    skill: sewcraft-conventions
+    runner: opencode
+
+  - id: typecheck
+    name: Typecheck
+    command: "npm run typecheck"
+    onFail: { retry: implement, max: 2 }
+
+  - id: test
+    name: Tests
+    command: "npm test"
+    onFail: { retry: implement, max: 2 }
+
+  - id: lint
+    name: Lint
+    command: "npm run lint"
+    onFail: { retry: implement, max: 2 }
+
+  - id: build
+    name: Build
+    command: "npm run build"
+    onFail: { retry: implement, max: 2 }

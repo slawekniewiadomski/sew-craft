@@ -1,0 +1,66 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: sewcraft-app
+    working_dir: /app
+    volumes:
+      - ./:/app
+      - /app/vendor
+    ports:
+      - '8000:8000'
+    environment:
+      DB_CONNECTION: pgsql
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_DATABASE: sewcraft
+      DB_USERNAME: sewcraft
+      DB_PASSWORD: secret
+      CACHE_STORE: database
+      SESSION_DRIVER: database
+      QUEUE_CONNECTION: database
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "composer install --no-interaction &&
+             php artisan migrate --force &&
+             cd public &&
+             php -S 0.0.0.0:8000 ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php"
+
+  db:
+    image: postgres:16-alpine
+    container_name: sewcraft-db
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_DB: sewcraft
+      POSTGRES_USER: sewcraft
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U sewcraft -d sewcraft']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  node:
+    image: node:22-alpine
+    container_name: sewcraft-node
+    working_dir: /app
+    volumes:
+      - ./:/app
+      - /app/node_modules
+    ports:
+      - '${FRONTEND_PORT:-5173}:5173'
+    environment:
+      VITE_API_PROXY_TARGET: http://app:8000
+    command: sh -c "npm install && npm run dev -w @sewcraft/frontend"
+    depends_on:
+      app:
+        condition: service_started
+
+volumes:
+  pgdata:
