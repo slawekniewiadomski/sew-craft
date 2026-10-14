@@ -7,6 +7,7 @@ import {
   type LineEntity,
   type PatternDocument,
   type PointEntity,
+  type Seam,
 } from './types.js';
 import type { Vec2 } from './vector.js';
 
@@ -31,6 +32,15 @@ export function getEntity(document: PatternDocument, id: EntityId): Entity | und
 
 export function getConstraint(document: PatternDocument, id: EntityId): Constraint | undefined {
   return document.constraints.find((constraint) => constraint.id === id);
+}
+
+export function getSeam(document: PatternDocument, id: EntityId): Seam | undefined {
+  return document.seams.find((seam) => seam.id === id);
+}
+
+/** The seam allowance attached to an edge, or `undefined` when it has none. */
+export function seamForEdge(document: PatternDocument, edge: EntityId): Seam | undefined {
+  return document.seams.find((seam) => seam.edge === edge);
 }
 
 export function allPoints(document: PatternDocument): PointEntity[] {

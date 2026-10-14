@@ -5,9 +5,12 @@ import {
   CommandExecutionError,
   CommandValidationError,
   createEmptyDocument,
+  DEFAULT_SEAM_ALLOWANCE,
   executeCommand,
   getConstraint,
   getEntity,
+  getSeam,
+  seamForEdge,
   solveDocument,
   type Command,
   type Constraint,
@@ -15,6 +18,7 @@ import {
   type LineEntity,
   type PatternDocument,
   type PointEntity,
+  type Seam,
 } from '../src/index.js';
 
 const point = (
@@ -31,10 +35,15 @@ const point = (
   fixed: options.fixed ?? false,
 });
 
-const documentOf = (entities: Entity[], constraints: Constraint[] = []): PatternDocument => ({
+const documentOf = (
+  entities: Entity[],
+  constraints: Constraint[] = [],
+  seams: Seam[] = [],
+): PatternDocument => ({
   ...createEmptyDocument(),
   entities,
   constraints,
+  seams,
 });
 
 const addPointCommand = (id: string, x: number, y: number, construction = false): Command => ({
@@ -85,10 +94,15 @@ const removeConstraintCommand = (id: string): Command => ({
   params: { id },
 });
 
-const seamCommand = (id: string, piece: string, edge: string, width: number): Command => ({
+const seamCommand = (id: string, edge: string, width?: number): Command =>
+  width === undefined
+    ? { id, type: 'add_seam_allowance', params: { edge } }
+    : { id, type: 'add_seam_allowance', params: { edge, width } };
+
+const removeSeamCommand = (id: string): Command => ({
   id,
-  type: 'add_seam_allowance',
-  params: { piece, edge, width },
+  type: 'remove_seam_allowance',
+  params: { id },
 });
 
 const solveCommand = (id: string): Command => ({ id, type: 'solve', params: {} });
@@ -393,6 +407,23 @@ describe('delete_entity', () => {
     expect(applied.document.constraints).toEqual([]);
   });
 
+  it('cascades to a seam allowance attached to the deleted edge', () => {
+    const document = documentOf(
+      [
+        point('a', 0, 0),
+        point('b', 10, 0),
+        { id: 'l1', kind: 'line', start: 'a', end: 'b', construction: false },
+      ],
+      [],
+      [{ id: 's', edge: 'l1', width: 10 }],
+    );
+
+    const applied = applyCommand(document, deleteCommand('l1'));
+
+    expect(applied.document.seams).toEqual([]);
+    expect(getEntity(applied.document, 'l1')).toBeUndefined();
+  });
+
   it('is idempotent for an unknown id', () => {
     const document = createEmptyDocument();
     const applied = applyCommand(document, deleteCommand('missing'));
@@ -627,22 +658,73 @@ describe('remove_constraint', () => {
 });
 
 describe('add_seam_allowance', () => {
-  const document = documentOf([point('a', 0, 0), point('b', 10, 0)], []);
   const withLine = documentOf([
     point('a', 0, 0),
     point('b', 10, 0),
     { id: 'l1', kind: 'line', start: 'a', end: 'b', construction: false },
   ]);
 
-  it('rejects because the model has no pieces yet', () => {
-    unchanged(withLine, seamCommand('s', 'l1', 'l1', 10));
-    unchanged(withLine, seamCommand('s', 'missing-piece', 'l1', 10));
+  it('attaches a seam to an edge with the default width', () => {
+    const applied = applyCommand(withLine, seamCommand('s', 'l1'));
+
+    expect(getSeam(applied.document, 's')).toEqual({
+      id: 's',
+      edge: 'l1',
+      width: DEFAULT_SEAM_ALLOWANCE,
+    });
+    expect(seamForEdge(applied.document, 'l1')).toEqual(getSeam(applied.document, 's'));
+    expect(applied.inverse).toEqual(removeSeamCommand('s'));
   });
 
-  it('rejects invalid width and edge references without mutating', () => {
-    unchanged(document, seamCommand('s', 'p', 'missing-edge', 10));
-    unchanged(document, seamCommand('s', 'p', 'a', 10));
-    unchanged(document, seamCommand('s', 'p', 'a', Number.NaN));
+  it('honours an explicit width', () => {
+    const applied = applyCommand(withLine, seamCommand('s', 'l1', 15));
+
+    expect(getSeam(applied.document, 's')).toMatchObject({ width: 15 });
+  });
+
+  it('is idempotent', () => {
+    const first = applyCommand(withLine, seamCommand('s', 'l1'));
+    const second = applyCommand(first.document, seamCommand('s', 'l1'));
+
+    expect(second.document).toBe(first.document);
+    expect(second.inverse).toBeNull();
+  });
+
+  it('rejects invalid width, missing edges, point edges and duplicate edges', () => {
+    unchanged(withLine, seamCommand('s', 'l1', Number.NaN));
+    unchanged(withLine, seamCommand('s', 'l1', 0));
+    unchanged(withLine, seamCommand('s', 'l1', -5));
+    unchanged(withLine, seamCommand('s', 'missing-edge', 10));
+    unchanged(withLine, seamCommand('s', 'a', 10));
+
+    const withSeam = applyCommand(withLine, seamCommand('s', 'l1')).document;
+    unchanged(withSeam, seamCommand('other', 'l1', 10));
+  });
+});
+
+describe('remove_seam_allowance', () => {
+  const withSeam = documentOf(
+    [
+      point('a', 0, 0),
+      point('b', 10, 0),
+      { id: 'l1', kind: 'line', start: 'a', end: 'b', construction: false },
+    ],
+    [],
+    [{ id: 's', edge: 'l1', width: 8 }],
+  );
+
+  it('detaches a seam and is reversible', () => {
+    const applied = applyCommand(withSeam, removeSeamCommand('s'));
+
+    expect(applied.document.seams).toEqual([]);
+    expect(applied.inverse).toEqual(seamCommand('s', 'l1', 8));
+  });
+
+  it('is a no-op for an unknown seam', () => {
+    const applied = applyCommand(withSeam, removeSeamCommand('missing'));
+
+    expect(applied.document).toBe(withSeam);
+    expect(applied.inverse).toBeNull();
   });
 });
 
