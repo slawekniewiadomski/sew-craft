@@ -1,6 +1,6 @@
 # 004 — Command core & undo/redo
 
-Status: todo
+Status: done (client command core & undo/redo; batched persistence remains under 009)
 Depends on: 002, 003
 
 ## Goal
@@ -28,10 +28,10 @@ Geometry model (002), solver (003), command spec (`config/geometry.php`).
 
 ## Acceptance criteria
 
-- [ ] No UI code mutates the document directly.
-- [ ] Undo restores the exact prior document; redo reapplies.
-- [ ] Replaying the journal on the initial document reproduces the current one.
-- [ ] Non-converged solves roll the command back.
+- [x] No UI code mutates the document directly.
+- [x] Undo restores the exact prior document; redo reapplies.
+- [x] Replaying the journal on the initial document reproduces the current one.
+- [x] Non-converged solves roll the command back.
 
 ## Out of scope
 

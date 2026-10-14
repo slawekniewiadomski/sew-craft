@@ -1,3 +1,4 @@
+import { constraintEntityIds } from './document.js';
 import type { Constraint, EntityId, PointEntity } from './types.js';
 import { cross, dot, sub, type Vec2 } from './vector.js';
 
@@ -47,7 +48,7 @@ export function solve(
   }
 
   for (const constraint of constraints) {
-    for (const id of referencedIds(constraint)) {
+    for (const id of constraintEntityIds(constraint)) {
       if (!pointById.has(id)) {
         throw new Error(`Constraint "${constraint.id}" references unknown point: ${id}`);
       }
@@ -186,22 +187,6 @@ function residuals(constraints: Constraint[], point: (id: EntityId) => Vec2): Fl
   }
 
   return Float64Array.from(values);
-}
-
-function referencedIds(constraint: Constraint): EntityId[] {
-  switch (constraint.type) {
-    case 'coincident':
-    case 'horizontal':
-    case 'vertical':
-    case 'distance':
-      return [constraint.a, constraint.b];
-    case 'point_on_line':
-      return [constraint.point, constraint.a, constraint.b];
-    case 'angle':
-      return [constraint.a, constraint.b, constraint.c];
-    case 'equal':
-      return [constraint.a1, constraint.a2, constraint.b1, constraint.b2];
-  }
 }
 
 function numericalJacobian(
