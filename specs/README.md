@@ -2,7 +2,8 @@
 
 Each spec is a self-contained unit of work for one agent session. Pick **one**,
 implement it, run the checks it lists, and update the docs it points to. Do not
-bundle unrelated specs.
+bundle unrelated specs. Follow the conventions in
+[`docs/architecture/standards.md`](../docs/architecture/standards.md).
 
 ## Template
 

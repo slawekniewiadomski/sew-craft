@@ -8,8 +8,10 @@ description: How to implement a SewCraft spec in this monorepo — project conve
 Read these before writing code, in order:
 
 1. `AGENTS.md` — the operating guide (stack, layout, architecture rules).
-2. The **one** target spec in `.ai/specs/` referenced by the task.
-3. The architecture docs it links, e.g. `docs/architecture/geometry-core.md`,
+2. `docs/architecture/standards.md` — naming, style, frontend and testing
+   conventions.
+3. The **one** target spec in `.ai/specs/` referenced by the task.
+4. The architecture docs it links, e.g. `docs/architecture/geometry-core.md`,
    `constraint-solver.md`, `command-core.md`, `api.md`, `export.md`, and
    `docs/domain/command-spec.md`.
 
@@ -36,12 +38,10 @@ Read these before writing code, in order:
 
 ## Code style
 
-- TypeScript: `strict`, `noUncheckedIndexedAccess`, **no `any`**; prefer pure
-  functions and `import type`. `exactOptionalPropertyTypes` is on — do not assign
-  `undefined` to optional properties explicitly.
-- Vue: `<script setup lang="ts">`; formatting is owned by Prettier, not ESLint.
-- PHP: PSR-12 via Pint; Pest tests use `it(...)` / `expect()`.
-- Do **not** add comments that restate the code. Comment only non-obvious intent.
+Naming, style, frontend structure and testing conventions live in
+`docs/architecture/standards.md` — read it, and do not restate it here. In short:
+TypeScript strict, no `any`, `import type`; Vue `<script setup lang="ts">`;
+PHP PSR-12 via Pint; comments only for non-obvious intent.
 
 ## Checks (the workflow runs these)
 

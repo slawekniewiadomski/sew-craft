@@ -3,7 +3,7 @@ import type { Command, LineEntity, PointEntity } from '@sewcraft/geometry';
 import { computed, onMounted, ref } from 'vue';
 
 import { Button } from '@/components/ui/button';
-import { useCommandBus } from '@/composables/useCommandBus';
+import { useCommandBus } from '@/composables/use-command-bus';
 
 const props = defineProps<{ id: string }>();
 

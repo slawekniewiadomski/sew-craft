@@ -39,7 +39,7 @@ config/geometry.php       Command spec exposed at GET /api/commands
 database/migrations/      projects, patterns, pattern_versions, exports
 frontend/                 Vue 3 SPA (@sewcraft/frontend)
 packages/geometry/        @sewcraft/geometry — model, solver, (later) export
-docs/architecture/        System design + contracts
+docs/architecture/        System design, contracts + engineering standards
 docs/domain/              Glossary + command spec (+ JSON schema)
 docs/decisions/           Architecture Decision Records (ADRs)
 specs/                    Per-feature task specs — the unit of work for agents
@@ -94,21 +94,22 @@ is `FRONTEND_PORT` (default `5173`); inside the network Vite proxies `/api` to
    logic lives in the geometry package or dedicated service classes.
 4. **Units are millimetres**, floating point, throughout. Display units are a
    frontend concern.
-5. **Components use `documented conventions`** — see `docs/architecture/*` before
-   inventing new patterns. Update the relevant doc when a contract changes.
+5. **Follow documented conventions** — naming, style and structure are defined in
+   `docs/architecture/standards.md`; read it before inventing new patterns. Update
+   the relevant doc when a contract changes.
 6. **shadcn-vue components** live under `frontend/src/components/ui`. Add new ones
    with `npx shadcn-vue@latest add <component>` and keep `cn()` for class merging.
 
 ## Code conventions
 
-- TypeScript: `strict`, `noUncheckedIndexedAccess`, no `any`. Prefer pure
-  functions and `type` imports (`import type`). The geometry package compiles with
-  `tsc`; the frontend with `vue-tsc`.
-- Vue: `<script setup lang="ts">`, single-word component names allowed. Formatting
-  is owned by Prettier, not ESLint.
-- PHP: PSR-12 via Pint. Pest tests use `it(...)`/`expect()`.
-- Do **not** add comments that restate the code. Comment only non-obvious intent.
-- Do **not** commit secrets, `.env`, `vendor/`, or `node_modules/`.
+The full standards — naming (commands, TypeScript, Vue, API, database), frontend
+structure, testing, and style — live in
+[`docs/architecture/standards.md`](docs/architecture/standards.md). Read it before
+writing code. In short: TypeScript is strict, no `any`, `import type`; Vue uses
+`<script setup lang="ts">`; PHP is PSR-12 via Pint; comments explain non-obvious
+intent only.
+
+Do **not** commit secrets, `.env`, `vendor/`, or `node_modules/`.
 
 ## Agent workflow
 

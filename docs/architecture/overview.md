@@ -63,3 +63,4 @@ which is what makes undo/redo, collaboration and agent control cheap.
 - `command-core.md` — command envelope and lifecycle
 - `api.md` — HTTP contract
 - `export.md` — SVG/PDF/DXF strategy
+- `standards.md` — naming, style, frontend and testing conventions
