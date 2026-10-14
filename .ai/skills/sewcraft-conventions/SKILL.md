@@ -1,6 +1,6 @@
 ---
 name: sewcraft-conventions
-description: How to implement a SewCraft spec in this monorepo — project conventions, the command-core rule, geometry-package purity, TypeScript/PHP style, the checks to run, and git/scope discipline. Use for any task in the sew-craft repository, especially implementing a spec from specs/.
+description: How to implement a SewCraft spec in this monorepo — project conventions, the command-core rule, geometry-package purity, TypeScript/PHP style, the checks to run, and git/scope discipline. Use for any task in the sew-craft repository, especially implementing a spec from .ai/specs/.
 ---
 
 # SewCraft implementation conventions
@@ -8,7 +8,7 @@ description: How to implement a SewCraft spec in this monorepo — project conve
 Read these before writing code, in order:
 
 1. `AGENTS.md` — the operating guide (stack, layout, architecture rules).
-2. The **one** target spec in `specs/` referenced by the task.
+2. The **one** target spec in `.ai/specs/` referenced by the task.
 3. The architecture docs it links, e.g. `docs/architecture/geometry-core.md`,
    `constraint-solver.md`, `command-core.md`, `api.md`, `export.md`, and
    `docs/domain/command-spec.md`.
