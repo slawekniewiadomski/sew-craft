@@ -1,5 +1,9 @@
 export type EntityId = string;
 
+export const PATTERN_SCHEMA = 'sewcraft.pattern/0.1';
+
+export type PatternSchema = typeof PATTERN_SCHEMA;
+
 /**
  * A single drafting point. Points are the only solver variables in v0.1;
  * lines and curves reference points by id.
@@ -55,3 +59,21 @@ export type Constraint =
   | { id: EntityId; type: 'distance'; a: EntityId; b: EntityId; value: number }
   | { id: EntityId; type: 'angle'; a: EntityId; b: EntityId; c: EntityId; value: number }
   | { id: EntityId; type: 'equal'; a1: EntityId; a2: EntityId; b1: EntityId; b2: EntityId };
+
+export interface Seam {
+  id: EntityId;
+  edge: EntityId;
+  width: number;
+}
+
+/**
+ * The canonical, versioned geometry document stored in `patterns.geometry`.
+ * Its schema version is explicit so migrations can be written when it changes.
+ */
+export interface PatternDocument {
+  schema: PatternSchema;
+  units: 'mm';
+  entities: Entity[];
+  constraints: Constraint[];
+  seams: Seam[];
+}

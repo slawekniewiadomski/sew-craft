@@ -49,10 +49,34 @@ non-translating solution.
 - `dart` — first-class construction element.
 - `grainline`, `notch`, `label` — annotations attached to pieces.
 
+## Document
+
+A `PatternDocument` is the versioned JSON container persisted in
+`patterns.geometry` (see `data-model.md`). It carries the schema tag
+(`PATTERN_SCHEMA`), `units: 'mm'`, and the `entities`, `constraints` and `seams`
+arrays. Document helpers in `document.ts`:
+
+- `createEmptyDocument()` — a valid empty document.
+- `getEntity(document, id)` — entity by id, or `undefined`.
+- `allPoints(document)` — every `point` entity, construction included.
+- `entityPoints(document, entity)` — the point entities an entity references, in
+  order; throws when a reference is missing or is not a point.
+- `bounds(document)` — axis-aligned `{ min, max }` over all points (construction
+  included), or `null` for a point-less document.
+
 ## Public API
 
 ```ts
-import { solve, distance, type PointEntity, type Constraint } from '@sewcraft/geometry';
+import {
+  solve,
+  distance,
+  createEmptyDocument,
+  getEntity,
+  entityPoints,
+  bounds,
+  type PointEntity,
+  type Constraint,
+} from '@sewcraft/geometry';
 
 const result = solve(points, constraints);
 result.converged; // boolean

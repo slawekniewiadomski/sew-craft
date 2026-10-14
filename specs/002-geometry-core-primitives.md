@@ -1,6 +1,6 @@
 # 002 — Geometry core primitives
 
-Status: partial (points + types exist; lines/curves helpers pending)
+Status: done
 Depends on: —
 
 ## Goal
@@ -30,9 +30,9 @@ solver, rendering and export.
 
 ## Acceptance criteria
 
-- [ ] All helpers are pure and typed under `strict` + `noUncheckedIndexedAccess`.
-- [ ] `bounds` handles empty documents and construction entities.
-- [ ] `npm test -w @sewcraft/geometry` passes.
+- [x] All helpers are pure and typed under `strict` + `noUncheckedIndexedAccess`.
+- [x] `bounds` handles empty documents and construction entities.
+- [x] `npm test -w @sewcraft/geometry` passes.
 
 ## Out of scope
 
