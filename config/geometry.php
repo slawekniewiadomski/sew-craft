@@ -44,6 +44,15 @@ return [
             ],
             'inverse' => 'delete_entity',
         ],
+        'move_point' => [
+            'description' => 'Move an existing point to new coordinates.',
+            'params' => [
+                'id' => 'entity_id',
+                'x' => 'number',
+                'y' => 'number',
+            ],
+            'inverse' => 'move_point',
+        ],
         'add_line' => [
             'description' => 'Create a straight segment between two points.',
             'params' => [

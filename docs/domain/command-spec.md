@@ -25,6 +25,14 @@ Create a point. `construction` defaults to `false`. Points may later be marked
 - params: `x: number`, `y: number`, `construction?: bool`
 - inverse: `delete_entity`
 
+### `move_point`
+
+Move an existing point to new coordinates (the drag primitive). Re-solving after
+this command is what makes a dragged point keep its constraints.
+
+- params: `id: entity_id`, `x: number`, `y: number`
+- inverse: `move_point` (back to the previous coordinates, keeping the command id)
+
 ### `add_line`
 
 Segment between two existing points.

@@ -1,13 +1,34 @@
-import { createEmptyDocument, type PatternDocument } from '@sewcraft/geometry';
-import { flushPromises, mount } from '@vue/test-utils';
+import { createEmptyDocument, type EntityId, type PatternDocument } from '@sewcraft/geometry';
+import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { createPinia, setActivePinia, type Pinia } from 'pinia';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { nextTick } from 'vue';
 
+import PatternCanvas from '@/components/PatternCanvas.vue';
 import { useEditorStore } from '@/stores/editor';
 
 import EditorView from './EditorView.vue';
 
-async function mountEditor(pinia: Pinia) {
+const RECT = {
+  x: 0,
+  y: 0,
+  top: 0,
+  left: 0,
+  width: 800,
+  height: 600,
+  right: 800,
+  bottom: 600,
+  toJSON: () => ({}),
+} as DOMRect;
+
+enableAutoUnmount(afterEach);
+
+beforeEach(() => {
+  setActivePinia(createPinia());
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(RECT);
+});
+
+async function mountEditor(pinia: Pinia): Promise<VueWrapper> {
   const wrapper = mount(EditorView, {
     props: { id: '1' },
     global: { plugins: [pinia] },
@@ -16,43 +37,164 @@ async function mountEditor(pinia: Pinia) {
   return wrapper;
 }
 
+function canvasDown(wrapper: VueWrapper, x: number, y: number, button = 0): void {
+  wrapper
+    .find('[data-testid="grid"]')
+    .element.dispatchEvent(
+      new MouseEvent('pointerdown', { bubbles: true, clientX: x, clientY: y, button }),
+    );
+}
+
+function pointDown(wrapper: VueWrapper, id: EntityId): void {
+  wrapper
+    .find(`[data-kind="point"][data-entity-id="${id}"]`)
+    .element.dispatchEvent(
+      new MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100, button: 0 }),
+    );
+}
+
+function keydown(key: string): void {
+  window.dispatchEvent(new KeyboardEvent('keydown', { key, cancelable: true }));
+}
+
+function points(wrapper: VueWrapper) {
+  return wrapper.findAll('[data-kind="point"]');
+}
+
+const simpleDoc: PatternDocument = {
+  ...createEmptyDocument(),
+  entities: [
+    { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+    { id: 'q', kind: 'point', x: 50, y: 0, construction: false, fixed: false },
+    { id: 'r', kind: 'point', x: 50, y: 50, construction: false, fixed: false },
+    { id: 's', kind: 'point', x: 0, y: 50, construction: false, fixed: false },
+  ],
+};
+
 describe('EditorView', () => {
-  beforeEach(() => {
-    setActivePinia(createPinia());
-  });
-
   it('seeds a starter sketch on first mount', async () => {
-    const pinia = createPinia();
-    const wrapper = await mountEditor(pinia);
+    const wrapper = await mountEditor(createPinia());
 
-    expect(wrapper.findAll('circle')).toHaveLength(4);
-    expect(wrapper.findAll('line')).toHaveLength(4);
-    expect(wrapper.text()).toContain('command(s)');
+    expect(points(wrapper)).toHaveLength(4);
+    expect(wrapper.findAll('[data-kind="line"]')).toHaveLength(8);
+    expect(wrapper.text()).toContain('14 command(s)');
   });
 
-  it('adds a point, then undoes and redoes it', async () => {
-    const pinia = createPinia();
-    const wrapper = await mountEditor(pinia);
+  it('switches the active tool and reflects it on the canvas', async () => {
+    const wrapper = await mountEditor(createPinia());
+    const canvas = wrapper.findComponent(PatternCanvas);
 
-    const before = wrapper.findAll('circle').length;
+    expect(canvas.classes()).toContain('cursor-default');
 
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === 'Add point')!
-      .trigger('click');
-    expect(wrapper.findAll('circle')).toHaveLength(before + 1);
+    await wrapper.find('[data-testid="tool-add_point"]').trigger('click');
+    await nextTick();
+
+    expect(canvas.classes()).toContain('cursor-crosshair');
+  });
+
+  it('adds a point through the canvas, then undoes and redoes it', async () => {
+    const wrapper = await mountEditor(createPinia());
+
+    await wrapper.find('[data-testid="tool-add_point"]').trigger('click');
+    canvasDown(wrapper, 400, 300);
+    await flushPromises();
+    expect(points(wrapper)).toHaveLength(5);
+    expect(wrapper.text()).toContain('15 command(s)');
 
     await wrapper
       .findAll('button')
       .find((button) => button.text() === 'Undo')!
       .trigger('click');
-    expect(wrapper.findAll('circle')).toHaveLength(before);
+    expect(points(wrapper)).toHaveLength(4);
 
     await wrapper
       .findAll('button')
       .find((button) => button.text() === 'Redo')!
       .trigger('click');
-    expect(wrapper.findAll('circle')).toHaveLength(before + 1);
+    expect(points(wrapper)).toHaveLength(5);
+  });
+
+  it('enables delete only with a selection and removes the point on Delete', async () => {
+    const wrapper = await mountEditor(createPinia());
+
+    expect(wrapper.find('[data-testid="delete"]').attributes('disabled')).toBeDefined();
+
+    keydown('Delete');
+    expect(points(wrapper)).toHaveLength(4);
+
+    pointDown(wrapper, 'a');
+    await nextTick();
+    expect(wrapper.find('[data-testid="delete"]').attributes('disabled')).toBeUndefined();
+
+    keydown('Delete');
+    await nextTick();
+    expect(points(wrapper)).toHaveLength(3);
+
+    keydown('a');
+    expect(points(wrapper)).toHaveLength(3);
+  });
+
+  it('removes the selected point with Backspace and the delete button', async () => {
+    const wrapper = await mountEditor(createPinia());
+
+    pointDown(wrapper, 'a');
+    await nextTick();
+    keydown('Backspace');
+    await nextTick();
+    expect(points(wrapper)).toHaveLength(3);
+
+    pointDown(wrapper, 'b');
+    await nextTick();
+    await wrapper.find('[data-testid="delete"]').trigger('click');
+    await nextTick();
+    expect(points(wrapper)).toHaveLength(2);
+  });
+
+  it('re-fits the canvas when Fit is pressed', async () => {
+    const wrapper = await mountEditor(createPinia());
+
+    await wrapper.find('[data-testid="fit"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.findComponent(PatternCanvas).props('fitToken')).toBe(1);
+  });
+
+  it('draws a line and a curve through the canvas tools', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useEditorStore().load(simpleDoc);
+
+    const wrapper = await mountEditor(pinia);
+
+    await wrapper.find('[data-testid="tool-add_line"]').trigger('click');
+    pointDown(wrapper, 'p');
+    pointDown(wrapper, 'q');
+    await flushPromises();
+    expect(wrapper.findAll('[data-kind="line"]')).toHaveLength(2);
+
+    await wrapper.find('[data-testid="tool-add_curve"]').trigger('click');
+    pointDown(wrapper, 'p');
+    pointDown(wrapper, 'q');
+    pointDown(wrapper, 'r');
+    pointDown(wrapper, 's');
+    await flushPromises();
+    expect(wrapper.findAll('[data-kind="curve"]')).toHaveLength(1);
+  });
+
+  it('moves a point through the canvas drag', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useEditorStore().load(simpleDoc);
+
+    const wrapper = await mountEditor(pinia);
+
+    pointDown(wrapper, 'p');
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 200, clientY: 200 }));
+    await nextTick();
+    window.dispatchEvent(new MouseEvent('pointerup'));
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('1 command(s)');
   });
 
   it('does not seed when a document is already loaded', async () => {
@@ -72,9 +214,9 @@ describe('EditorView', () => {
 
     const wrapper = await mountEditor(pinia);
 
-    expect(wrapper.findAll('circle')).toHaveLength(2);
-    expect(wrapper.findAll('line')).toHaveLength(1);
-    expect(wrapper.find('line').attributes('stroke-dasharray')).toBe('4 4');
+    expect(points(wrapper)).toHaveLength(2);
+    expect(wrapper.findAll('[data-kind="line"]')).toHaveLength(2);
+    expect(wrapper.find('[data-entity-id="c"]').attributes('stroke-dasharray')).toBe('4 4');
   });
 
   it('does not seed when the journal already has entries', async () => {
@@ -86,7 +228,7 @@ describe('EditorView', () => {
 
     const wrapper = await mountEditor(pinia);
 
-    expect(wrapper.findAll('circle')).toHaveLength(0);
+    expect(points(wrapper)).toHaveLength(0);
   });
 
   it('renders construction points as muted outlines', async () => {
@@ -102,13 +244,11 @@ describe('EditorView', () => {
     });
 
     const wrapper = await mountEditor(pinia);
-    const circles = wrapper.findAll('circle');
+    const rendered = points(wrapper);
 
-    expect(circles).toHaveLength(2);
-    expect(circles[0]!.attributes('fill')).toBe('none');
-    expect(circles[0]!.attributes('stroke')).toBe('currentColor');
-    expect(circles[1]!.attributes('fill')).toBe('currentColor');
-    expect(circles[1]!.attributes('stroke')).toBe('none');
+    expect(rendered).toHaveLength(2);
+    expect(rendered[0]!.classes()).toContain('fill-muted-foreground');
+    expect(rendered[1]!.classes()).toContain('fill-foreground');
   });
 
   it('hides construction geometry without changing the document', async () => {
@@ -126,11 +266,11 @@ describe('EditorView', () => {
     });
 
     const wrapper = await mountEditor(pinia);
-    expect(wrapper.findAll('line')).toHaveLength(2);
+    expect(wrapper.findAll('[data-kind="line"]')).toHaveLength(4);
 
     await wrapper.find('input[type="checkbox"]').setValue(false);
 
-    expect(wrapper.findAll('line')).toHaveLength(1);
+    expect(wrapper.findAll('[data-kind="line"]')).toHaveLength(2);
     expect(wrapper.find('line').attributes('stroke-dasharray')).toBeUndefined();
     expect(store.journal).toHaveLength(0);
   });
