@@ -492,8 +492,11 @@ function applyAddSeamAllowance(
   }
 
   const edgeEntity = getEntity(document, edge);
-  if (edgeEntity === undefined || edgeEntity.kind === 'point') {
-    throw new CommandValidationError('add_seam_allowance', `edge ${edge} is not a line or curve`);
+  if (edgeEntity === undefined || edgeEntity.kind === 'point' || edgeEntity.construction) {
+    throw new CommandValidationError(
+      'add_seam_allowance',
+      `edge ${edge} is not a cut line or curve`,
+    );
   }
 
   if (getSeam(document, command.id) !== undefined) {

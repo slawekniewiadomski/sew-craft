@@ -700,6 +700,16 @@ describe('add_seam_allowance', () => {
     const withSeam = applyCommand(withLine, seamCommand('s', 'l1')).document;
     unchanged(withSeam, seamCommand('other', 'l1', 10));
   });
+
+  it('rejects construction edges', () => {
+    const withGuide = documentOf([
+      point('a', 0, 0),
+      point('b', 10, 0),
+      { id: 'g1', kind: 'line', start: 'a', end: 'b', construction: true },
+    ]);
+
+    unchanged(withGuide, seamCommand('s', 'g1', 10));
+  });
 });
 
 describe('remove_seam_allowance', () => {

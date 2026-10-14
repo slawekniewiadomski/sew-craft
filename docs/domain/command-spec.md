@@ -93,10 +93,11 @@ Constraint param mapping:
 
 ### `add_seam_allowance`
 
-Attach a seam allowance to a line or curve edge. The allowance is stored per edge
+Attach a seam allowance to a cut line or curve edge. The allowance is stored per edge
 and generated as a true offset of that edge (see `@sewcraft/geometry`'s
 `seamAllowancePath` / `offsetPolyline`). At most one allowance may be attached to
-an edge.
+an edge. Construction guides (`add_construction_line`) are not cut edges and are
+rejected.
 
 - params: `edge: entity_id`, `width?: number` (mm; defaults to `10`)
 - `width` must be finite and greater than `0`.

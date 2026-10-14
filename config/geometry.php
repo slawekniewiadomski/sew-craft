@@ -112,7 +112,7 @@ return [
             'inverse' => 'add_constraint',
         ],
         'add_seam_allowance' => [
-            'description' => 'Attach a seam allowance (mm) to a line or curve edge.',
+            'description' => 'Attach a seam allowance (mm) to a cut line or curve edge.',
             'params' => [
                 'edge' => 'entity_id',
                 'width' => 'number?',
