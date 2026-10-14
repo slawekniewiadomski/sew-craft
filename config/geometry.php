@@ -72,6 +72,14 @@ return [
             ],
             'inverse' => 'delete_entity',
         ],
+        'set_construction' => [
+            'description' => 'Mark an entity as construction geometry or convert it back to a cut edge.',
+            'params' => [
+                'id' => 'entity_id',
+                'construction' => 'bool',
+            ],
+            'inverse' => 'set_construction',
+        ],
         'delete_entity' => [
             'description' => 'Remove an entity and any constraints referencing it.',
             'params' => [

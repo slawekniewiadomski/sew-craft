@@ -13,3 +13,11 @@ it('exposes the command spec', function () {
             ],
         ]);
 });
+
+it('exposes the construction commands', function () {
+    $this->getJson('/api/commands')
+        ->assertOk()
+        ->assertJsonPath('commands.add_construction_line.params.start', 'entity_id')
+        ->assertJsonPath('commands.set_construction.params.construction', 'bool')
+        ->assertJsonPath('commands.set_construction.inverse', 'set_construction');
+});

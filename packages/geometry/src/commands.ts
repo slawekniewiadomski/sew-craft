@@ -37,6 +37,11 @@ export interface AddConstructionLineParams {
   end: EntityId;
 }
 
+export interface SetConstructionParams {
+  id: EntityId;
+  construction: boolean;
+}
+
 export interface DeleteEntityParams {
   id: EntityId;
 }
@@ -72,6 +77,12 @@ export type Command =
       id: EntityId;
       type: 'add_construction_line';
       params: AddConstructionLineParams;
+      issuedAt?: string;
+    }
+  | {
+      id: EntityId;
+      type: 'set_construction';
+      params: SetConstructionParams;
       issuedAt?: string;
     }
   | { id: EntityId; type: 'delete_entity'; params: DeleteEntityParams; issuedAt?: string }
@@ -150,6 +161,8 @@ export function applyCommand(document: PatternDocument, command: Command): Comma
       return applyAddLine(document, command, command.params.construction ?? false, 'add_line');
     case 'add_construction_line':
       return applyAddLine(document, command, true, 'add_construction_line');
+    case 'set_construction':
+      return applySetConstruction(document, command);
     case 'add_curve':
       return applyAddCurve(document, command);
     case 'delete_entity':
@@ -271,6 +284,33 @@ function applyAddLine(
   return {
     document: { ...document, entities: [...document.entities, line] },
     inverse: deleteEntityCommand(command.id),
+  };
+}
+
+function applySetConstruction(
+  document: PatternDocument,
+  command: CommandOf<'set_construction'>,
+): CommandApplication {
+  const { id, construction } = command.params;
+  const entity = getEntity(document, id);
+  if (entity === undefined) {
+    throw new CommandValidationError('set_construction', `unknown entity: ${id}`);
+  }
+  if (entity.construction === construction) {
+    return noOp(document);
+  }
+
+  const entities = document.entities.map((candidate): typeof candidate =>
+    candidate.id === id ? { ...candidate, construction } : candidate,
+  );
+
+  return {
+    document: { ...document, entities },
+    inverse: {
+      id: command.id,
+      type: 'set_construction',
+      params: { id, construction: entity.construction },
+    },
   };
 }
 

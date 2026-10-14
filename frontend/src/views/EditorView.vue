@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { Command, LineEntity, PointEntity } from '@sewcraft/geometry';
+import type { Command, CurveEntity, LineEntity, PointEntity } from '@sewcraft/geometry';
+import { cutEdges } from '@sewcraft/geometry';
 import { computed, onMounted, ref } from 'vue';
 
 import { Button } from '@/components/ui/button';
@@ -10,22 +11,51 @@ const props = defineProps<{ id: string }>();
 const { document: pattern, journal, canUndo, canRedo, dispatch, undo, redo } = useCommandBus();
 
 const error = ref<string | null>(null);
+const showConstruction = ref(true);
 let nextPointId = 0;
+let nextCommandId = 0;
 
-const points = computed(() =>
-  pattern.value.entities.filter((entity): entity is PointEntity => entity.kind === 'point'),
+/**
+ * Construction geometry is presentation only: hiding it filters what is drawn
+ * without touching the document, so the toggle never changes the model.
+ */
+const visible = computed(() =>
+  showConstruction.value
+    ? pattern.value.entities
+    : pattern.value.entities.filter((entity) => !entity.construction),
 );
 
-const segments = computed(() => {
-  const byId = new Map(points.value.map((point) => [point.id, point]));
-  return pattern.value.entities
+const points = computed(() =>
+  visible.value.filter((entity): entity is PointEntity => entity.kind === 'point'),
+);
+
+const pointById = computed(
+  () =>
+    new Map(
+      pattern.value.entities
+        .filter((entity): entity is PointEntity => entity.kind === 'point')
+        .map((point) => [point.id, point]),
+    ),
+);
+
+const segments = computed(() =>
+  visible.value
     .filter((entity): entity is LineEntity => entity.kind === 'line')
     .flatMap((line) => {
-      const start = byId.get(line.start);
-      const end = byId.get(line.end);
+      const start = pointById.value.get(line.start);
+      const end = pointById.value.get(line.end);
       return start && end ? [{ id: line.id, start, end, construction: line.construction }] : [];
-    });
-});
+    }),
+);
+
+/** Every line and curve, so any edge can be converted between guide and cut. */
+const edges = computed(() =>
+  pattern.value.entities
+    .filter((entity): entity is LineEntity | CurveEntity => entity.kind !== 'point')
+    .map((entity) => ({ id: entity.id, construction: entity.construction })),
+);
+
+const cutEdgeCount = computed(() => cutEdges(pattern.value).length);
 
 function run(action: () => void): void {
   try {
@@ -40,6 +70,16 @@ function addPoint(): void {
   const id = `point-${nextPointId++}`;
   run(() =>
     dispatch({ id, type: 'add_point', params: { x: 40 + (nextPointId % 8) * 16, y: 300 } }),
+  );
+}
+
+function convert(id: string, construction: boolean): void {
+  run(() =>
+    dispatch({
+      id: `construction-${nextCommandId++}`,
+      type: 'set_construction',
+      params: { id, construction },
+    }),
   );
 }
 
@@ -94,7 +134,12 @@ onMounted(() => {
       <Button variant="outline" size="sm" :disabled="!canUndo" @click="run(undo)">Undo</Button>
       <Button variant="outline" size="sm" :disabled="!canRedo" @click="run(redo)">Redo</Button>
       <Button size="sm" @click="addPoint">Add point</Button>
+      <label class="flex items-center gap-1 text-sm">
+        <input v-model="showConstruction" type="checkbox" />
+        Show construction
+      </label>
       <span class="text-sm text-muted-foreground">{{ journal.length }} command(s)</span>
+      <span class="text-sm text-muted-foreground">{{ cutEdgeCount }} cut edge(s)</span>
     </div>
 
     <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
@@ -113,6 +158,7 @@ onMounted(() => {
         :x2="segment.end.x"
         :y2="segment.end.y"
         :stroke-dasharray="segment.construction ? '4 4' : undefined"
+        :class="segment.construction ? 'text-muted-foreground' : 'text-foreground'"
         stroke="currentColor"
         stroke-width="2"
       />
@@ -122,8 +168,27 @@ onMounted(() => {
         :cx="point.x"
         :cy="point.y"
         r="3"
-        fill="currentColor"
+        :class="point.construction ? 'text-muted-foreground' : 'text-foreground'"
+        :fill="point.construction ? 'none' : 'currentColor'"
+        :stroke="point.construction ? 'currentColor' : 'none'"
+        stroke-width="1.5"
       />
     </svg>
+
+    <div v-if="edges.length > 0" class="space-y-2">
+      <h2 class="text-sm font-medium">Edges</h2>
+      <ul class="space-y-1" aria-label="Edges">
+        <li
+          v-for="edge in edges"
+          :key="edge.id"
+          class="flex items-center justify-between gap-2 text-sm"
+        >
+          <span class="font-mono text-muted-foreground">{{ edge.id }}</span>
+          <Button variant="outline" size="sm" @click="convert(edge.id, !edge.construction)">
+            {{ edge.construction ? 'Make cut edge' : 'Make construction' }}
+          </Button>
+        </li>
+      </ul>
+    </div>
   </section>
 </template>

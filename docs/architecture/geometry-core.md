@@ -60,6 +60,8 @@ arrays. Document helpers in `document.ts`:
 - `getEntity(document, id)` — entity by id, or `undefined`.
 - `getConstraint(document, id)` — constraint by id, or `undefined`.
 - `allPoints(document)` — every `point` entity, construction included.
+- `cutEdges(document)` — every line/curve that is part of the cut pattern (i.e.
+  not construction geometry); the source for cut-edge layers and exports.
 - `entityPoints(document, entity)` — the point entities an entity references, in
   order; throws when a reference is missing or is not a point.
 - `constraintEntityIds(constraint)` — the point ids a constraint references, in
