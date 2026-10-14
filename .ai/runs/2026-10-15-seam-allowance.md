@@ -75,25 +75,25 @@ Source doc: .ai/specs/007-seam-allowance.md
 
 ### Phase 1: Geometry offset core
 
-- [ ] 1.1 `offsetPolyline` — signed polyline offset with miter joins (miter-limit bevel fallback) and round joins, open and closed.
-- [ ] 1.2 `findSelfIntersections` — report non-adjacent crossings instead of silently emitting a folded path.
-- [ ] 1.3 `edgePolyline`, `cubicPoint`, `curvePoints`, `seamAllowancePath(s)` and export the module from `index.ts`.
+- [x] 1.1 `offsetPolyline` — signed polyline offset with miter joins (miter-limit bevel fallback) and round joins, open and closed. — 3fe83e0
+- [x] 1.2 `findSelfIntersections` — report non-adjacent crossings instead of silently emitting a folded path. — 3fe83e0
+- [x] 1.3 `edgePolyline`, `cubicPoint`, `curvePoints`, `seamAllowancePath(s)` and export the module from `index.ts`. — 3fe83e0
 
 ### Phase 2: Command and document core
 
-- [ ] 2.1 `getSeam` / `seamForEdge` document helpers.
-- [ ] 2.2 `add_seam_allowance` attaches to a line/curve edge with a default width of 10 mm; idempotent, rejects duplicate edges, threads the inverse.
-- [ ] 2.3 `remove_seam_allowance` detaches by seam id; inverse re-attaches with the stored edge and width.
-- [ ] 2.4 `delete_entity` cascades to a seam attached to the deleted edge.
+- [x] 2.1 `getSeam` / `seamForEdge` document helpers. — ae79899
+- [x] 2.2 `add_seam_allowance` attaches to a line/curve edge with a default width of 10 mm; idempotent, rejects duplicate edges, threads the inverse. — ae79899
+- [x] 2.3 `remove_seam_allowance` detaches by seam id; inverse re-attaches with the stored edge and width. — ae79899
+- [x] 2.4 `delete_entity` cascades to a seam attached to the deleted edge. — ae79899
 
 ### Phase 3: Contract sync
 
-- [ ] 3.1 Three-way spec sync (`config/geometry.php`, `docs/domain/command-spec.{json,md}`) and `spec_version` 0.1.0 → 0.2.0.
-- [ ] 3.2 Bump `packages/geometry/package.json` to 0.2.0, update `docs/architecture/geometry-core.md`, tick spec 007 deliverables.
+- [x] 3.1 Three-way spec sync (`config/geometry.php`, `docs/domain/command-spec.{json,md}`) and `spec_version` 0.1.0 → 0.2.0. — 8bc7164
+- [x] 3.2 Bump `packages/geometry/package.json` to 0.2.0, update `docs/architecture/geometry-core.md`, tick spec 007 deliverables. — 8bc7164
 
 ### Phase 4: Integration with updated develop
 
-- [ ] 4.1 Re-apply the work onto the current `origin/develop` (now carrying the merged construction-geometry and canvas work) and resolve command-file conflicts.
+- [x] 4.1 Re-apply the work onto the current `origin/develop` (now carrying the merged construction-geometry and canvas work) and resolve command-file conflicts. — integrated into 3fe83e0/ae79899/8bc7164 (clean auto-merge, no conflicts)
 
 ### Phase 5: Verification and handoff
 
