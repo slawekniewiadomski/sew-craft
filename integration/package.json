@@ -1,0 +1,24 @@
+{
+  "name": "@sewcraft/integration",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cross-stack integration tests: real Laravel API + Postgres (Testcontainers) and the built SPA driven by Playwright.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test:integration": "playwright test",
+    "test:api": "playwright test tests/api.spec.ts",
+    "test:ui": "playwright test tests/ui.spec.ts",
+    "harness": "tsx support/serve.ts",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@testcontainers/postgresql": "^12.2.1",
+    "@types/node": "^22.10.0",
+    "agent-browser": "^0.39.1",
+    "testcontainers": "^12.2.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0"
+  }
+}

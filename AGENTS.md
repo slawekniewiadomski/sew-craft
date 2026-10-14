@@ -68,9 +68,18 @@ docker compose run --rm app php artisan test
 npm install                          # installs all workspaces
 npm run dev                          # Vite dev server on :5173
 npm test                             # Vitest for every workspace
+npm run test:coverage                # Vitest + v8 coverage (100% gate)
 npm run lint                         # ESLint for every workspace
 npm run build                        # typecheck + production build
 npm run format                       # Prettier
+```
+
+Backend coverage (runs against SQLite in-memory; the `--min=100` flag fails the
+run if any metric drops below 100%):
+
+```bash
+docker compose run --rm --no-deps -e DB_CONNECTION=sqlite -e DB_DATABASE=:memory: \
+  app sh -c "composer install --no-interaction && php artisan test --coverage --min=100"
 ```
 
 `docker compose up` starts the API, db **and** the Vite dev server. The host port
@@ -111,12 +120,31 @@ intent only.
 
 Do **not** commit secrets, `.env`, `vendor/`, or `node_modules/`.
 
+## Testing & coverage
+
+**Every new feature must ship with tests that keep coverage at 100%.** This is a
+hard gate, not a target:
+
+- **Scope:** all application code — `packages/geometry/src/**`, `frontend/src/**`
+  (excluding `main.ts` and `*.d.ts`) and backend `app/**`.
+- **Metrics:** statements, branches, functions and lines must all be **100%**.
+- **Enforced:** CI fails if any metric drops below 100%. Locally, `npm run
+test:coverage` (Vitest, v8) and the backend `--coverage --min=100` command above
+  do the same.
+- **Rules:** every new branch needs a test that exercises it. Unreachable
+  defensive code must not be added; if it is genuinely impossible to hit, mark it
+  with an explicit ignore comment (`/* v8 ignore ... */`, `@codeCoverageIgnore`)
+  and a short justification — never lower a threshold to make a build pass.
+- **Integration tests do not count toward unit coverage.** They live in
+  [`integration/`](integration/README.md) and cover cross-stack behaviour through
+  the real HTTP API and browser.
+
 ## Agent workflow
 
 1. Pick **one** spec from `specs/`. Do not bundle unrelated features.
 2. Read the spec's _Context_ and any linked architecture docs.
 3. Implement, then run the checks the spec lists (at minimum `php artisan test`,
-   `npm test`, `npm run lint`, `npm run typecheck`).
+   `npm test`, `npm run test:coverage`, `npm run lint`, `npm run typecheck`).
 4. Update the relevant docs (`docs/architecture/*`, `docs/domain/command-spec.md`,
    `AGENTS.md`) if you changed a contract.
 5. Report what changed and which commands passed. Do not commit unless asked.
@@ -125,6 +153,8 @@ Do **not** commit secrets, `.env`, `vendor/`, or `node_modules/`.
 
 - [ ] Feature matches the spec's acceptance criteria.
 - [ ] Pest and Vitest suites pass; new behavior has tests.
+- [ ] Coverage is **100%** for statements, branches, functions and lines across
+      `packages/geometry/src`, `frontend/src` and backend `app/`.
 - [ ] `npm run lint` and typecheck pass.
 - [ ] Command/API contracts documented if changed.
 

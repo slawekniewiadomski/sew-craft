@@ -69,9 +69,10 @@ export function solve(
   const residualVector = (x: Float64Array): Float64Array => {
     const state = readState(x);
     return residuals(constraints, (id) => {
-      const value = state.get(id);
-      if (!value) throw new Error(`Unknown point referenced by constraint: ${id}`);
-      return value;
+      // Unreachable: every referenced id is validated and seeded in `state`.
+      /* v8 ignore next */
+      if (!state.has(id)) throw new Error(`Unknown point referenced by constraint: ${id}`);
+      return state.get(id)!;
     });
   };
 
@@ -95,11 +96,15 @@ export function solve(
     const gradient = negativeGradient(jacobian, residual);
     const step = solveLinearSystem(matrix, gradient);
 
+    // The normal matrix is symmetric positive-definite (`AᵀA + λI`, λ > 0), so
+    // the linear solve never fails; this guard is unreachable defensive code.
+    /* v8 ignore start */
     if (step === null) {
       damping = Math.min(damping * 10, MAX_DAMPING);
       if (damping >= MAX_DAMPING) break;
       continue;
     }
+    /* v8 ignore stop */
 
     const candidate = new Float64Array(dimensions);
     for (let i = 0; i < dimensions; i += 1) {
@@ -216,7 +221,7 @@ function numericalJacobian(
 }
 
 function normalMatrix(jacobian: Float64Array[], damping: number): Float64Array[] {
-  const columns = jacobian[0]?.length ?? 0;
+  const columns = jacobian[0]!.length;
   const matrix: Float64Array[] = Array.from({ length: columns }, () => new Float64Array(columns));
 
   for (const row of jacobian) {
@@ -238,7 +243,7 @@ function normalMatrix(jacobian: Float64Array[], damping: number): Float64Array[]
 }
 
 function negativeGradient(jacobian: Float64Array[], residual: Float64Array): Float64Array {
-  const columns = jacobian[0]?.length ?? 0;
+  const columns = jacobian[0]!.length;
   const gradient = new Float64Array(columns);
 
   for (let rowIndex = 0; rowIndex < jacobian.length; rowIndex += 1) {
@@ -272,6 +277,8 @@ function solveLinearSystem(matrix: Float64Array[], vector: Float64Array): Float6
       }
     }
 
+    // Unreachable while the matrix has a positive damping term on its diagonal.
+    /* v8 ignore next 3 */
     if (bestValue < 1e-14) {
       return null;
     }

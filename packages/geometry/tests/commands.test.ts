@@ -124,6 +124,13 @@ describe('add_point', () => {
   it('rejects non-finite coordinates without mutating', () => {
     unchanged(createEmptyDocument(), addPointCommand('p1', Number.NaN, 0));
   });
+
+  it('defaults construction to false when omitted', () => {
+    const command = { id: 'p1', type: 'add_point', params: { x: 1, y: 2 } } as Command;
+    const applied = applyCommand(createEmptyDocument(), command);
+
+    expect(getEntity(applied.document, 'p1')).toMatchObject({ construction: false });
+  });
 });
 
 describe('add_line', () => {
@@ -185,6 +192,13 @@ describe('add_line', () => {
 
     expect(applyCommand(applied.document, applied.inverse!).document).toEqual(document);
   });
+
+  it('defaults construction to false when omitted', () => {
+    const command = { id: 'l1', type: 'add_line', params: { start: 'a', end: 'b' } } as Command;
+    const applied = applyCommand(document, command);
+
+    expect(getEntity(applied.document, 'l1')).toMatchObject({ construction: false });
+  });
 });
 
 describe('add_curve', () => {
@@ -216,6 +230,13 @@ describe('add_curve', () => {
 
   it('rejects an unknown control point without mutating', () => {
     unchanged(document, addCurveCommand('c1', 'p0', 'p1', 'p2', 'missing'));
+  });
+
+  it('is idempotent', () => {
+    const command = addCurveCommand('c1', 'p0', 'p1', 'p2', 'p3');
+    const first = applyCommand(document, command);
+
+    expect(applyCommand(first.document, command).document).toBe(first.document);
   });
 });
 
@@ -390,6 +411,16 @@ describe('add_constraint', () => {
     );
     unchanged(document, addConstraintCommand('g', 'angle', ['a', 'b', 'c']));
   });
+
+  it('rejects an unknown constraint type without mutating', () => {
+    const command = {
+      id: 'x',
+      type: 'add_constraint',
+      params: { type: 'bogus', entities: ['a', 'b'] },
+    } as unknown as Command;
+
+    unchanged(document, command);
+  });
 });
 
 describe('remove_constraint', () => {
@@ -424,6 +455,49 @@ describe('remove_constraint', () => {
 
     const reAdded = applyCommand(removed.document, removed.inverse!);
     expect(reAdded.document).toEqual(added.document);
+  });
+
+  it('reconstructs a point_on_line inverse in semantic order', () => {
+    const document = documentOf(
+      [point('p', 0, 0), point('a', 1, 0), point('b', 2, 0)],
+      [{ id: 'k', type: 'point_on_line', point: 'p', a: 'a', b: 'b' }],
+    );
+
+    const applied = applyCommand(document, removeConstraintCommand('k'));
+
+    expect(applied.inverse).toEqual(addConstraintCommand('k', 'point_on_line', ['p', 'a', 'b']));
+  });
+
+  it('reconstructs an equal inverse in semantic order', () => {
+    const document = documentOf(
+      [point('a', 0, 0), point('b', 1, 0), point('c', 0, 1), point('d', 1, 1)],
+      [{ id: 'k', type: 'equal', a1: 'a', a2: 'b', b1: 'c', b2: 'd' }],
+    );
+
+    const applied = applyCommand(document, removeConstraintCommand('k'));
+
+    expect(applied.inverse).toEqual(addConstraintCommand('k', 'equal', ['a', 'b', 'c', 'd']));
+  });
+
+  it('reconstructs coincident/horizontal/vertical inverses', () => {
+    const document = documentOf(
+      [point('a', 0, 0), point('b', 1, 0), point('c', 0, 1)],
+      [
+        { id: 'co', type: 'coincident', a: 'a', b: 'b' },
+        { id: 'h', type: 'horizontal', a: 'a', b: 'b' },
+        { id: 'v', type: 'vertical', a: 'b', b: 'c' },
+      ],
+    );
+
+    expect(applyCommand(document, removeConstraintCommand('co')).inverse).toEqual(
+      addConstraintCommand('co', 'coincident', ['a', 'b']),
+    );
+    expect(applyCommand(document, removeConstraintCommand('h')).inverse).toEqual(
+      addConstraintCommand('h', 'horizontal', ['a', 'b']),
+    );
+    expect(applyCommand(document, removeConstraintCommand('v')).inverse).toEqual(
+      addConstraintCommand('v', 'vertical', ['b', 'c']),
+    );
   });
 });
 

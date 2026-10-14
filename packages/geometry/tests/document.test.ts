@@ -103,14 +103,26 @@ describe('entityPoints', () => {
   });
 
   it('throws when a referenced point is missing', () => {
-    const line: LineEntity = { id: 'l', kind: 'line', start: 'a', end: 'missing', construction: false };
+    const line: LineEntity = {
+      id: 'l',
+      kind: 'line',
+      start: 'a',
+      end: 'missing',
+      construction: false,
+    };
 
     expect(() => entityPoints(documentOf([line]), line)).toThrow(/unknown point/i);
   });
 
   it('throws when a reference points at a non-point entity', () => {
     const inner: LineEntity = { id: 'l0', kind: 'line', start: 'a', end: 'a', construction: false };
-    const outer: LineEntity = { id: 'l1', kind: 'line', start: 'l0', end: 'a', construction: false };
+    const outer: LineEntity = {
+      id: 'l1',
+      kind: 'line',
+      start: 'l0',
+      end: 'a',
+      construction: false,
+    };
     const a = point('a', 0, 0);
 
     expect(() => entityPoints(documentOf([a, inner, outer]), outer)).toThrow(/unknown point/i);

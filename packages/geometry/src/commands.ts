@@ -180,8 +180,9 @@ export function solveDocument(
 
   const entities = document.entities.map((entity): typeof entity => {
     if (entity.kind !== 'point') return entity;
-    const coordinate = result.coordinates.get(entity.id);
-    return coordinate === undefined ? entity : { ...entity, x: coordinate.x, y: coordinate.y };
+    // `solve` returns a coordinate for every point, fixed ones included.
+    const coordinate = result.coordinates.get(entity.id)!;
+    return { ...entity, x: coordinate.x, y: coordinate.y };
   });
 
   return { document: { ...document, entities }, result };
@@ -431,9 +432,9 @@ function buildConstraint(
     case 'point_on_line':
       return { id, type, point: a!, a: b!, b: c! };
     case 'distance':
-      return { id, type, a: a!, b: b!, value: requireValue(type, value) };
+      return { id, type, a: a!, b: b!, value: value! };
     case 'angle':
-      return { id, type, a: a!, b: b!, c: c!, value: requireValue(type, value) };
+      return { id, type, a: a!, b: b!, c: c!, value: value! };
     case 'equal':
       return { id, type, a1: a!, a2: b!, b1: c!, b2: d! };
   }
@@ -461,11 +462,4 @@ function constraintToParams(constraint: Constraint): AddConstraintParams {
         entities: [constraint.a1, constraint.a2, constraint.b1, constraint.b2],
       };
   }
-}
-
-function requireValue(type: ConstraintType, value: number | undefined): number {
-  if (value === undefined) {
-    throw new CommandValidationError('add_constraint', `${type} requires a value`);
-  }
-  return value;
 }

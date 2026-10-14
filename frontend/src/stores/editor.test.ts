@@ -189,4 +189,26 @@ describe('editor store', () => {
     expect(store.canUndo).toBe(false);
     expect(store.canRedo).toBe(false);
   });
+
+  it('undo is a no-op with no history', () => {
+    const store = useEditorStore();
+    const document = store.document;
+
+    store.undo();
+
+    expect(store.document).toBe(document);
+    expect(store.canUndo).toBe(false);
+    expect(store.canRedo).toBe(false);
+  });
+
+  it('redo is a no-op with no future', () => {
+    const store = useEditorStore();
+    const document = store.document;
+
+    store.redo();
+
+    expect(store.document).toBe(document);
+    expect(store.canRedo).toBe(false);
+    expect(store.canUndo).toBe(false);
+  });
 });

@@ -142,7 +142,16 @@ Laravel-idiomatic, matching `docs/architecture/data-model.md`:
   degenerate input), not just the happy path.
 - Frontend: test composables, stores and `lib/` logic. Component tests are
   optional; do not add snapshot tests unless the spec asks.
-- No coverage gate for now.
+- **Coverage is a hard gate at 100%** (statements, branches, functions and lines)
+  for `packages/geometry/src`, `frontend/src` (minus `main.ts` / `*.d.ts`) and
+  backend `app/`. Run `npm run test:coverage` and the backend
+  `--coverage --min=100` command. Every branch needs a test; do not lower a
+  threshold. Prefer removing unreachable code over ignoring it — if a branch is
+  genuinely impossible, use an explicit ignore comment with a justification
+  (`/* v8 ignore ... */`, `@codeCoverageIgnore`).
+- Integration tests live in [`integration/`](../../integration/README.md) and run
+  against real containers (Testcontainers) via the Playwright suite. They are not
+  part of unit coverage.
 
 ---
 

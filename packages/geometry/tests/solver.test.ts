@@ -74,6 +74,17 @@ describe('solve', () => {
     expect(result.coordinates.get('p')!.y).toBeCloseTo(0, 6);
   });
 
+  it('treats a degenerate reference line as a unit normal', () => {
+    const points = [point('a', 0, 0), point('b', 0, 0), point('p', 2, 5)];
+    const constraints: Constraint[] = [
+      { id: 'on', type: 'point_on_line', point: 'p', a: 'a', b: 'b' },
+    ];
+
+    const result = solve(points, constraints);
+
+    expect(result.coordinates.get('p')).toEqual({ x: 2, y: 5 });
+  });
+
   it('makes two segment lengths equal', () => {
     const points = [
       point('a', 0, 0, true),
@@ -126,5 +137,64 @@ describe('solve', () => {
     ];
 
     expect(() => solve([point('a', 0, 0, true)], constraints)).toThrow(/unknown point/i);
+  });
+
+  it('reports non-convergence for contradictory constraints', () => {
+    const points = [point('a', 0, 0), point('b', 5, 0)];
+    const constraints: Constraint[] = [
+      { id: 'd1', type: 'distance', a: 'a', b: 'b', value: 10 },
+      { id: 'd2', type: 'distance', a: 'a', b: 'b', value: 20 },
+    ];
+
+    const result = solve(points, constraints);
+
+    expect(result.converged).toBe(false);
+    expect(result.residualNorm).toBeGreaterThan(TOLERANCE);
+  });
+
+  it('stops early when the damping factor saturates', () => {
+    const points = [point('a', 0, 0), point('b', 5, 0)];
+    const constraints: Constraint[] = [
+      { id: 'd1', type: 'distance', a: 'a', b: 'b', value: 10 },
+      { id: 'd2', type: 'distance', a: 'a', b: 'b', value: 20 },
+    ];
+
+    const result = solve(points, constraints, { maxIterations: 1000 });
+
+    expect(result.converged).toBe(false);
+    expect(result.iterations).toBeLessThan(1000);
+  });
+
+  it('requires partial pivoting for an ill-conditioned axis', () => {
+    const points = [point('a', 0, 0, true), point('b', 0.05, 1)];
+    const constraints: Constraint[] = [{ id: 'd', type: 'distance', a: 'a', b: 'b', value: 2 }];
+
+    const result = solve(points, constraints);
+
+    expect(result.converged).toBe(true);
+    expect(distance(result.coordinates.get('a')!, result.coordinates.get('b')!)).toBeCloseTo(2, 6);
+  });
+
+  it('solves a coupled rectangle system', () => {
+    const points = [
+      point('a', 0, 0, true),
+      point('b', 90, 5),
+      point('c', 95, 70),
+      point('d', 5, 65),
+    ];
+    const constraints: Constraint[] = [
+      { id: 'ab-h', type: 'horizontal', a: 'a', b: 'b' },
+      { id: 'bc-v', type: 'vertical', a: 'b', b: 'c' },
+      { id: 'cd-h', type: 'horizontal', a: 'c', b: 'd' },
+      { id: 'da-v', type: 'vertical', a: 'd', b: 'a' },
+      { id: 'width', type: 'distance', a: 'a', b: 'b', value: 100 },
+      { id: 'height', type: 'distance', a: 'b', b: 'c', value: 60 },
+    ];
+
+    const result = solve(points, constraints);
+
+    expect(result.converged).toBe(true);
+    expect(result.coordinates.get('b')!.y).toBeCloseTo(0, 6);
+    expect(result.coordinates.get('c')!.x).toBeCloseTo(100, 6);
   });
 });

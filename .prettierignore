@@ -6,3 +6,10 @@ storage/
 bootstrap/cache/
 composer.lock
 package-lock.json
+.ai/
+.agents/
+coverage/
+integration/.tmp/
+integration/test-results/
+integration/playwright-report/
+integration/blob-report/
