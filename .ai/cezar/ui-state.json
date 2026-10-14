@@ -1,0 +1,15 @@
+{
+  "lastTask": {
+    "source": "skill",
+    "ref": "sewcraft-conventions"
+  },
+  "recentSources": [
+    {
+      "source": "skill",
+      "ref": "sewcraft-conventions"
+    }
+  ],
+  "skillUsage": {
+    "sewcraft-conventions": 1
+  }
+}
