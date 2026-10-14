@@ -230,4 +230,105 @@ describe('EditorView', () => {
 
     expect(points(wrapper)).toHaveLength(0);
   });
+
+  it('renders construction points as muted outlines', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const store = useEditorStore();
+    store.load({
+      ...createEmptyDocument(),
+      entities: [
+        { id: 'guide', kind: 'point', x: 1, y: 2, construction: true, fixed: false },
+        { id: 'cut', kind: 'point', x: 3, y: 4, construction: false, fixed: false },
+      ],
+    });
+
+    const wrapper = await mountEditor(pinia);
+    const rendered = points(wrapper);
+
+    expect(rendered).toHaveLength(2);
+    expect(rendered[0]!.classes()).toContain('fill-muted-foreground');
+    expect(rendered[1]!.classes()).toContain('fill-foreground');
+  });
+
+  it('hides construction geometry without changing the document', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const store = useEditorStore();
+    store.load({
+      ...createEmptyDocument(),
+      entities: [
+        { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+        { id: 'q', kind: 'point', x: 10, y: 0, construction: false, fixed: false },
+        { id: 'cut', kind: 'line', start: 'p', end: 'q', construction: false },
+        { id: 'guide', kind: 'line', start: 'p', end: 'q', construction: true },
+      ],
+    });
+
+    const wrapper = await mountEditor(pinia);
+    expect(wrapper.findAll('[data-kind="line"]')).toHaveLength(4);
+
+    await wrapper.find('input[type="checkbox"]').setValue(false);
+
+    expect(wrapper.findAll('[data-kind="line"]')).toHaveLength(2);
+    expect(wrapper.find('line').attributes('stroke-dasharray')).toBeUndefined();
+    expect(store.journal).toHaveLength(0);
+  });
+
+  it('converts a cut edge to construction and undoes it', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const store = useEditorStore();
+    store.load({
+      ...createEmptyDocument(),
+      entities: [
+        { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+        { id: 'q', kind: 'point', x: 10, y: 0, construction: false, fixed: false },
+        { id: 'l1', kind: 'line', start: 'p', end: 'q', construction: false },
+      ],
+    });
+
+    const wrapper = await mountEditor(pinia);
+    expect(wrapper.text()).toContain('1 cut edge(s)');
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Make construction')!
+      .trigger('click');
+
+    expect(wrapper.find('line').attributes('stroke-dasharray')).toBe('4 4');
+    expect(wrapper.text()).toContain('0 cut edge(s)');
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Undo')!
+      .trigger('click');
+
+    expect(wrapper.find('line').attributes('stroke-dasharray')).toBeUndefined();
+    expect(wrapper.text()).toContain('1 cut edge(s)');
+  });
+
+  it('converts a construction edge back to a cut edge', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const store = useEditorStore();
+    store.load({
+      ...createEmptyDocument(),
+      entities: [
+        { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+        { id: 'q', kind: 'point', x: 10, y: 0, construction: false, fixed: false },
+        { id: 'l1', kind: 'line', start: 'p', end: 'q', construction: true },
+      ],
+    });
+
+    const wrapper = await mountEditor(pinia);
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Make cut edge')!
+      .trigger('click');
+
+    expect(wrapper.find('line').attributes('stroke-dasharray')).toBeUndefined();
+    expect(wrapper.text()).toContain('1 cut edge(s)');
+  });
 });

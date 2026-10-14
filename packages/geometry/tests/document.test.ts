@@ -4,6 +4,7 @@ import {
   allPoints,
   bounds,
   createEmptyDocument,
+  cutEdges,
   entityPoints,
   getEntity,
   PATTERN_SCHEMA,
@@ -66,6 +67,50 @@ describe('allPoints', () => {
     const line: LineEntity = { id: 'l', kind: 'line', start: 'a', end: 'b', construction: false };
 
     expect(allPoints(documentOf([a, line, b]))).toEqual([a, b]);
+  });
+});
+
+describe('cutEdges', () => {
+  const curve: CurveEntity = {
+    id: 'c1',
+    kind: 'curve',
+    p0: 'a',
+    p1: 'b',
+    p2: 'c',
+    p3: 'd',
+    construction: false,
+  };
+
+  it('returns only non-construction lines and curves', () => {
+    const cut: LineEntity = {
+      id: 'l1',
+      kind: 'line',
+      start: 'a',
+      end: 'b',
+      construction: false,
+    };
+    const guide: LineEntity = {
+      id: 'l2',
+      kind: 'line',
+      start: 'a',
+      end: 'b',
+      construction: true,
+    };
+    const document = documentOf([
+      point('a', 0, 0),
+      point('b', 1, 0),
+      point('c', 1, 1),
+      point('d', 0, 1),
+      cut,
+      guide,
+      curve,
+    ]);
+
+    expect(cutEdges(document)).toEqual([cut, curve]);
+  });
+
+  it('returns an empty list for a document without edges', () => {
+    expect(cutEdges(documentOf([point('a', 0, 0)]))).toEqual([]);
   });
 });
 

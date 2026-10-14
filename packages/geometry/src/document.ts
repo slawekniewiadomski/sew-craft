@@ -1,8 +1,10 @@
 import {
   PATTERN_SCHEMA,
   type Constraint,
+  type CurveEntity,
   type Entity,
   type EntityId,
+  type LineEntity,
   type PatternDocument,
   type PointEntity,
 } from './types.js';
@@ -33,6 +35,17 @@ export function getConstraint(document: PatternDocument, id: EntityId): Constrai
 
 export function allPoints(document: PatternDocument): PointEntity[] {
   return document.entities.filter((entity): entity is PointEntity => entity.kind === 'point');
+}
+
+/**
+ * Every line or curve that is part of the cut pattern, in document order.
+ * Construction entities are guides and are never cut or exported, so exports
+ * and the cut-edge layer both derive their contents from this selector.
+ */
+export function cutEdges(document: PatternDocument): (LineEntity | CurveEntity)[] {
+  return document.entities.filter(
+    (entity): entity is LineEntity | CurveEntity => entity.kind !== 'point' && !entity.construction,
+  );
 }
 
 /**

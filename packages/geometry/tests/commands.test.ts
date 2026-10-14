@@ -63,6 +63,12 @@ const addCurveCommand = (id: string, p0: string, p1: string, p2: string, p3: str
 
 const deleteCommand = (id: string): Command => ({ id, type: 'delete_entity', params: { id } });
 
+const setConstructionCommand = (id: string, target: string, construction: boolean): Command => ({
+  id,
+  type: 'set_construction',
+  params: { id: target, construction },
+});
+
 const addConstraintCommand = (
   id: string,
   type: Constraint['type'],
@@ -270,6 +276,53 @@ describe('add_line', () => {
     const applied = applyCommand(document, command);
 
     expect(getEntity(applied.document, 'l1')).toMatchObject({ construction: false });
+  });
+});
+
+describe('set_construction', () => {
+  const document = documentOf([
+    point('a', 0, 0),
+    point('b', 10, 0),
+    { id: 'l1', kind: 'line', start: 'a', end: 'b', construction: false },
+  ]);
+
+  it('converts a cut edge to construction and back via its inverse', () => {
+    const applied = applyCommand(document, setConstructionCommand('cmd', 'l1', true));
+
+    expect(getEntity(applied.document, 'l1')).toMatchObject({ construction: true });
+    expect(applied.inverse).toEqual(setConstructionCommand('cmd', 'l1', false));
+    expect(applyCommand(applied.document, applied.inverse!).document).toEqual(document);
+  });
+
+  it('converts construction geometry back into a cut edge', () => {
+    const withConstruction = documentOf([
+      point('a', 0, 0),
+      point('b', 10, 0),
+      { id: 'l1', kind: 'line', start: 'a', end: 'b', construction: true },
+    ]);
+
+    const applied = applyCommand(withConstruction, setConstructionCommand('cmd', 'l1', false));
+
+    expect(getEntity(applied.document, 'l1')).toMatchObject({ construction: false });
+    expect(applied.inverse).toEqual(setConstructionCommand('cmd', 'l1', true));
+  });
+
+  it('toggles points as well as edges', () => {
+    const applied = applyCommand(document, setConstructionCommand('cmd', 'a', true));
+
+    expect(getEntity(applied.document, 'a')).toMatchObject({ construction: true });
+    expect(applyCommand(applied.document, applied.inverse!).document).toEqual(document);
+  });
+
+  it('is a no-op when the entity already has the requested value', () => {
+    const applied = applyCommand(document, setConstructionCommand('cmd', 'l1', false));
+
+    expect(applied.document).toBe(document);
+    expect(applied.inverse).toBeNull();
+  });
+
+  it('rejects an unknown entity without mutating', () => {
+    unchanged(document, setConstructionCommand('cmd', 'missing', true));
   });
 });
 

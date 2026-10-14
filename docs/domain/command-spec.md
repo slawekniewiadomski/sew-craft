@@ -54,6 +54,14 @@ Reference-only segment that is never a cut edge.
 - params: `start: entity_id`, `end: entity_id`
 - inverse: `delete_entity`
 
+### `set_construction`
+
+Convert an entity between construction geometry (a guide) and a cut edge. A
+no-op when the entity already has the requested value, so it is idempotent.
+
+- params: `id: entity_id`, `construction: bool`
+- inverse: `set_construction` (restores the entity's previous value)
+
 ### `delete_entity`
 
 Remove an entity and cascade-remove constraints that reference it.
