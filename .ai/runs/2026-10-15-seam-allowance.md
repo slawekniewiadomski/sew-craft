@@ -97,6 +97,6 @@ Source doc: .ai/specs/007-seam-allowance.md
 
 ### Phase 5: Verification and handoff
 
-- [ ] 5.1 Geometry tests green at 100% statements/branches/functions/lines.
-- [ ] 5.2 Backend `CommandSpecTest` green; full validation gate green.
+- [x] 5.1 Geometry tests green at 100% statements/branches/functions/lines.
+- [x] 5.2 Backend `CommandSpecTest` green; full validation gate green.
 - [ ] 5.3 PR opened with labels and the automated review pass.
