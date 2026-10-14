@@ -196,9 +196,8 @@ describe('PatternCanvas', () => {
     down(a, 600, 400);
     expect(wrapper.emitted('update:selectedId')).toEqual([['a']]);
     await nextTick();
-    expect(pointCircle(wrapper, 'a').attributes('cx')).toBe(
-      String(snapToGrid(screenToWorld(vp, { x: 600, y: 400 })).x),
-    );
+    expect(pointCircle(wrapper, 'a').attributes('cx')).toBe('0');
+    expect(pointCircle(wrapper, 'a').attributes('cy')).toBe('0');
 
     move(700, 500);
     await nextTick();
@@ -208,6 +207,31 @@ describe('PatternCanvas', () => {
 
     up();
     expect(wrapper.emitted('move-point')).toEqual([['a', target.x, target.y]]);
+  });
+
+  it('does not move a point on a plain click without movement', () => {
+    const wrapper = mountCanvas();
+
+    down(pointCircle(wrapper, 'a').element, 600, 400);
+    up();
+
+    expect(wrapper.emitted('update:selectedId')).toEqual([['a']]);
+    expect(wrapper.emitted('move-point')).toBeUndefined();
+  });
+
+  it('emits a move-point when only one axis changes', async () => {
+    const wrapper = mountCanvas();
+    const vp = fittedViewport(baseDoc);
+
+    down(pointCircle(wrapper, 'a').element, 600, 400);
+    move(140, 200);
+    await nextTick();
+
+    const target = snapToGrid(screenToWorld(vp, { x: 140, y: 200 }));
+    expect(target.x).toBe(0);
+    up();
+
+    expect(wrapper.emitted('move-point')).toEqual([['a', 0, target.y]]);
   });
 
   it('selects a line and clears the selection on empty space', () => {
@@ -282,6 +306,24 @@ describe('PatternCanvas', () => {
     down(pointCircle(wrapper, 'd').element, 400, 300);
 
     expect(wrapper.emitted('add-curve')).toEqual([[['a', 'b', 'c', 'd']]]);
+  });
+
+  it('clears a pending selection when the tool changes', async () => {
+    const wrapper = mountCanvas({ tool: 'add_line' });
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    expect(wrapper.emitted('add-line')).toBeUndefined();
+
+    wrapper.setProps({ tool: 'add_curve' });
+    await nextTick();
+
+    down(pointCircle(wrapper, 'b').element, 400, 300);
+    down(pointCircle(wrapper, 'c').element, 400, 300);
+    down(pointCircle(wrapper, 'd').element, 400, 300);
+    expect(wrapper.emitted('add-curve')).toBeUndefined();
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    expect(wrapper.emitted('add-curve')).toEqual([[['b', 'c', 'd', 'a']]]);
   });
 
   it('pans with the middle mouse button without selecting', async () => {

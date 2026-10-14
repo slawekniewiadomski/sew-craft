@@ -65,7 +65,7 @@ const emit = defineEmits<{
 const svg = ref<SVGSVGElement | null>(null);
 const viewport = ref<Viewport>({ x: -40, y: -40, scale: 1 });
 const size = ref<Size>({ width: 800, height: 600 });
-const dragState = ref<{ id: EntityId; x: number; y: number } | null>(null);
+const dragState = ref<{ id: EntityId; x: number; y: number; origin: Vec2 } | null>(null);
 const panState = ref<{ start: Vec2; origin: Viewport } | null>(null);
 const pending = ref<EntityId[]>([]);
 const spaceHeld = ref(false);
@@ -176,7 +176,7 @@ function onPointerDown(event: PointerEvent): void {
     case 'select':
       if (hit && hit.kind === 'point') {
         emit('update:selectedId', hit.id);
-        beginDrag(hit.id, snapToGrid(screenToWorld(viewport.value, screen)));
+        beginDrag(hit.id, pointById.value.get(hit.id)!);
       } else {
         emit('update:selectedId', hit ? hit.id : null);
         beginPan(screen);
@@ -203,15 +203,17 @@ function onPointerMove(event: PointerEvent): void {
     viewport.value = panBy(panState.value.origin, dx, dy);
   } else if (dragState.value) {
     const world = snapToGrid(screenToWorld(viewport.value, screen));
-    dragState.value = { id: dragState.value.id, x: world.x, y: world.y };
+    dragState.value = { ...dragState.value, x: world.x, y: world.y };
   }
 }
 
 function onPointerUp(): void {
   if (dragState.value) {
-    const { id, x, y } = dragState.value;
+    const { id, x, y, origin } = dragState.value;
     dragState.value = null;
-    emit('move-point', id, x, y);
+    if (x !== origin.x || y !== origin.y) {
+      emit('move-point', id, x, y);
+    }
   }
 
   panState.value = null;
@@ -269,8 +271,8 @@ function beginPan(screen: Vec2): void {
   addPointerListeners();
 }
 
-function beginDrag(id: EntityId, world: Vec2): void {
-  dragState.value = { id, x: world.x, y: world.y };
+function beginDrag(id: EntityId, origin: Vec2): void {
+  dragState.value = { id, x: origin.x, y: origin.y, origin };
   addPointerListeners();
 }
 
@@ -310,6 +312,13 @@ onBeforeUnmount(() => {
 watch(
   () => props.fitToken,
   () => fit(),
+);
+
+watch(
+  () => props.tool,
+  () => {
+    pending.value = [];
+  },
 );
 </script>
 
