@@ -13,7 +13,7 @@
       "npm run test:coverage",
       "npm run build",
       "docker compose run --rm --no-deps -e DB_CONNECTION=sqlite -e DB_DATABASE=:memory: app sh -c \"composer install --no-interaction && php artisan test --coverage --min=100\"",
-      "docker compose run --rm --no-deps app sh -c \"composer install --no-interaction && vendor/bin/pint --test\""
+      "docker compose run --rm --no-deps app sh -c \"composer install --no-interaction && vendor/bin/pint --fix\""
     ]
   },
   "labels": {
