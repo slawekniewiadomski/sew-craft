@@ -1,4 +1,11 @@
-import { PATTERN_SCHEMA, type Entity, type EntityId, type PatternDocument, type PointEntity } from './types.js';
+import {
+  PATTERN_SCHEMA,
+  type Constraint,
+  type Entity,
+  type EntityId,
+  type PatternDocument,
+  type PointEntity,
+} from './types.js';
 import type { Vec2 } from './vector.js';
 
 export interface Bounds {
@@ -20,8 +27,32 @@ export function getEntity(document: PatternDocument, id: EntityId): Entity | und
   return document.entities.find((entity) => entity.id === id);
 }
 
+export function getConstraint(document: PatternDocument, id: EntityId): Constraint | undefined {
+  return document.constraints.find((constraint) => constraint.id === id);
+}
+
 export function allPoints(document: PatternDocument): PointEntity[] {
   return document.entities.filter((entity): entity is PointEntity => entity.kind === 'point');
+}
+
+/**
+ * The point ids a constraint references, in their semantic order. The solver and
+ * the command core share this mapping so a constraint's references stay in sync.
+ */
+export function constraintEntityIds(constraint: Constraint): EntityId[] {
+  switch (constraint.type) {
+    case 'coincident':
+    case 'horizontal':
+    case 'vertical':
+    case 'distance':
+      return [constraint.a, constraint.b];
+    case 'point_on_line':
+      return [constraint.point, constraint.a, constraint.b];
+    case 'angle':
+      return [constraint.a, constraint.b, constraint.c];
+    case 'equal':
+      return [constraint.a1, constraint.a2, constraint.b1, constraint.b2];
+  }
 }
 
 /**

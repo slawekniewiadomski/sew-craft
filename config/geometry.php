@@ -92,6 +92,7 @@ return [
             'params' => [
                 'id' => 'entity_id',
             ],
+            'inverse' => 'add_constraint',
         ],
         'add_seam_allowance' => [
             'description' => 'Set a seam allowance width (mm) on a piece edge.',

@@ -58,9 +58,12 @@ arrays. Document helpers in `document.ts`:
 
 - `createEmptyDocument()` — a valid empty document.
 - `getEntity(document, id)` — entity by id, or `undefined`.
+- `getConstraint(document, id)` — constraint by id, or `undefined`.
 - `allPoints(document)` — every `point` entity, construction included.
 - `entityPoints(document, entity)` — the point entities an entity references, in
   order; throws when a reference is missing or is not a point.
+- `constraintEntityIds(constraint)` — the point ids a constraint references, in
+  semantic order (shared by the solver and the command core).
 - `bounds(document)` — axis-aligned `{ min, max }` over all points (construction
   included), or `null` for a point-less document.
 
@@ -74,6 +77,10 @@ import {
   getEntity,
   entityPoints,
   bounds,
+  applyCommand,
+  executeCommand,
+  solveDocument,
+  type Command,
   type PointEntity,
   type Constraint,
 } from '@sewcraft/geometry';
@@ -81,6 +88,10 @@ import {
 const result = solve(points, constraints);
 result.converged; // boolean
 result.coordinates; // Map<EntityId, Vec2>
+
+// Commands are the only mutation path (see command-core.md).
+const { document, inverse } = applyCommand(document, command);
+const executed = executeCommand(document, command); // applies + solves, or throws
 ```
 
 Keep the public surface small and typed. New exports go through `src/index.ts`.

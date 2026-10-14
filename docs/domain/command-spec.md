@@ -73,6 +73,7 @@ Constraint param mapping:
 ### `remove_constraint`
 
 - params: `id: entity_id`
+- inverse: `add_constraint` (params rebuilt from the removed constraint, keeping its id)
 
 ### `add_seam_allowance`
 
@@ -86,6 +87,13 @@ Set seam allowance width on a piece edge.
 Request a solver rebuild. Typically emitted after a batch of geometry commands.
 
 - params: `{}`
+
+## Derived ids and idempotency
+
+- An `add_*` command creates the entity/constraint with **id = the command's
+  `id`**. Re-applying a command whose product already exists is a no-op.
+- `delete_entity` / `remove_constraint` are no-ops when the target is already
+  gone, so an at-least-once retry can never fail or double-apply.
 
 ## Validation rules
 

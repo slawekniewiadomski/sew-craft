@@ -1,50 +1,80 @@
 <script setup lang="ts">
-import { distance, solve, type Constraint, type PointEntity } from '@sewcraft/geometry';
-import { computed } from 'vue';
-import { ref } from 'vue';
+import type { Command, LineEntity, PointEntity } from '@sewcraft/geometry';
+import { computed, onMounted, ref } from 'vue';
+
+import { Button } from '@/components/ui/button';
+import { useCommandBus } from '@/composables/useCommandBus';
 
 const props = defineProps<{ id: string }>();
 
-const width = ref(160);
-const height = ref(90);
+const { document: pattern, journal, canUndo, canRedo, dispatch, undo, redo } = useCommandBus();
 
-const points = computed<PointEntity[]>(() => [
-  { id: 'a', kind: 'point', x: 60, y: 260, construction: false, fixed: true },
-  { id: 'b', kind: 'point', x: 60 + width.value, y: 260, construction: false, fixed: false },
-  {
-    id: 'c',
-    kind: 'point',
-    x: 60 + width.value,
-    y: 260 - height.value,
-    construction: false,
-    fixed: false,
-  },
-  { id: 'd', kind: 'point', x: 60, y: 260 - height.value, construction: false, fixed: false },
-]);
+const error = ref<string | null>(null);
+let nextPointId = 0;
 
-const constraints = computed<Constraint[]>(() => [
-  { id: 'bottom', type: 'horizontal', a: 'a', b: 'b' },
-  { id: 'right', type: 'vertical', a: 'b', b: 'c' },
-  { id: 'top', type: 'horizontal', a: 'c', b: 'd' },
-  { id: 'left', type: 'vertical', a: 'd', b: 'a' },
-  { id: 'bottom-width', type: 'distance', a: 'a', b: 'b', value: width.value },
-  { id: 'right-height', type: 'distance', a: 'b', b: 'c', value: height.value },
-]);
+const points = computed(() =>
+  pattern.value.entities.filter((entity): entity is PointEntity => entity.kind === 'point'),
+);
 
-const solution = computed(() => solve(points.value, constraints.value));
-
-const corners = computed(() => {
-  const coordinates = solution.value.coordinates;
-  return ['a', 'b', 'c', 'd']
-    .map((id) => coordinates.get(id))
-    .filter((point): point is { x: number; y: number } => point !== undefined);
+const segments = computed(() => {
+  const byId = new Map(points.value.map((point) => [point.id, point]));
+  return pattern.value.entities
+    .filter((entity): entity is LineEntity => entity.kind === 'line')
+    .flatMap((line) => {
+      const start = byId.get(line.start);
+      const end = byId.get(line.end);
+      return start && end ? [{ id: line.id, start, end, construction: line.construction }] : [];
+    });
 });
 
-const outline = computed(() => corners.value.map((point) => `${point.x},${point.y}`).join(' '));
+function run(action: () => void): void {
+  try {
+    error.value = null;
+    action();
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : 'Command failed';
+  }
+}
 
-const diagonal = computed(() => {
-  const [a, , c] = corners.value;
-  return a && c ? distance(a, c) : 0;
+function addPoint(): void {
+  const id = `point-${nextPointId++}`;
+  run(() =>
+    dispatch({ id, type: 'add_point', params: { x: 40 + (nextPointId % 8) * 16, y: 300 } }),
+  );
+}
+
+function seed(): void {
+  const commands: Command[] = [
+    { id: 'a', type: 'add_point', params: { x: 60, y: 260 } },
+    { id: 'b', type: 'add_point', params: { x: 220, y: 260 } },
+    { id: 'c', type: 'add_point', params: { x: 220, y: 170 } },
+    { id: 'd', type: 'add_point', params: { x: 60, y: 170 } },
+    { id: 'ab', type: 'add_line', params: { start: 'a', end: 'b' } },
+    { id: 'bc', type: 'add_line', params: { start: 'b', end: 'c' } },
+    { id: 'cd', type: 'add_line', params: { start: 'c', end: 'd' } },
+    { id: 'da', type: 'add_line', params: { start: 'd', end: 'a' } },
+    { id: 'bottom', type: 'add_constraint', params: { type: 'horizontal', entities: ['a', 'b'] } },
+    { id: 'right', type: 'add_constraint', params: { type: 'vertical', entities: ['b', 'c'] } },
+    { id: 'top', type: 'add_constraint', params: { type: 'horizontal', entities: ['c', 'd'] } },
+    { id: 'left', type: 'add_constraint', params: { type: 'vertical', entities: ['d', 'a'] } },
+    {
+      id: 'width',
+      type: 'add_constraint',
+      params: { type: 'distance', entities: ['a', 'b'], value: 160 },
+    },
+    {
+      id: 'height',
+      type: 'add_constraint',
+      params: { type: 'distance', entities: ['b', 'c'], value: 90 },
+    },
+  ];
+  run(() => commands.forEach((command) => dispatch(command)));
+}
+
+onMounted(() => {
+  if (pattern.value.entities.length === 0 && journal.value.length === 0) {
+    seed();
+  }
 });
 </script>
 
@@ -56,51 +86,44 @@ const diagonal = computed(() => {
     </div>
 
     <p class="text-sm text-muted-foreground">
-      Scaffold preview. A rectangle is driven purely by constraints — change a dimension and the
-      solver rebuilds it.
+      Every edit is a command: the document below is only ever changed through the command bus, so
+      undo and redo replay the journal.
     </p>
 
-    <div class="grid gap-4 sm:grid-cols-2">
-      <label class="space-y-1 text-sm">
-        <span class="font-medium">Width (mm)</span>
-        <input v-model.number="width" type="range" min="40" max="320" class="w-full" />
-      </label>
-      <label class="space-y-1 text-sm">
-        <span class="font-medium">Height (mm)</span>
-        <input v-model.number="height" type="range" min="40" max="240" class="w-full" />
-      </label>
+    <div class="flex flex-wrap items-center gap-2">
+      <Button variant="outline" size="sm" :disabled="!canUndo" @click="run(undo)">Undo</Button>
+      <Button variant="outline" size="sm" :disabled="!canRedo" @click="run(redo)">Redo</Button>
+      <Button size="sm" @click="addPoint">Add point</Button>
+      <span class="text-sm text-muted-foreground">{{ journal.length }} command(s)</span>
     </div>
+
+    <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
 
     <svg
       viewBox="0 0 400 320"
       class="h-80 w-full rounded-md border bg-muted/30"
       role="img"
-      aria-label="Solved pattern preview"
+      aria-label="Command-driven pattern preview"
     >
-      <polygon :points="outline" fill="none" stroke="currentColor" stroke-width="2" />
+      <line
+        v-for="segment in segments"
+        :key="segment.id"
+        :x1="segment.start.x"
+        :y1="segment.start.y"
+        :x2="segment.end.x"
+        :y2="segment.end.y"
+        :stroke-dasharray="segment.construction ? '4 4' : undefined"
+        stroke="currentColor"
+        stroke-width="2"
+      />
       <circle
-        v-for="(point, index) in corners"
-        :key="index"
+        v-for="point in points"
+        :key="point.id"
         :cx="point.x"
         :cy="point.y"
         r="3"
         fill="currentColor"
       />
     </svg>
-
-    <dl class="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
-      <div>
-        <dt class="text-muted-foreground">Converged</dt>
-        <dd class="font-medium">{{ solution.converged ? 'yes' : 'no' }}</dd>
-      </div>
-      <div>
-        <dt class="text-muted-foreground">Iterations</dt>
-        <dd class="font-medium">{{ solution.iterations }}</dd>
-      </div>
-      <div>
-        <dt class="text-muted-foreground">Diagonal (mm)</dt>
-        <dd class="font-medium">{{ diagonal.toFixed(2) }}</dd>
-      </div>
-    </dl>
   </section>
 </template>
