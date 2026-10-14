@@ -44,8 +44,9 @@ non-translating solution.
 
 ## Later entities (specced, not built)
 
-- `piece` — a closed profile referencing an ordered list of edges, with
-  direction and seam allowance.
+- `piece` — a closed profile referencing an ordered list of edges. Seam
+  allowance is already modelled per edge (see above); `piece` will group those
+  edges. Not built yet.
 - `dart` — first-class construction element.
 - `grainline`, `notch`, `label` — annotations attached to pieces.
 
@@ -68,6 +69,34 @@ arrays. Document helpers in `document.ts`:
   semantic order (shared by the solver and the command core).
 - `bounds(document)` — axis-aligned `{ min, max }` over all points (construction
   included), or `null` for a point-less document.
+- `getSeam(document, id)` / `seamForEdge(document, edge)` — look up a seam
+  allowance by its own id or by the edge it is attached to.
+
+## Seam allowance (`offset.ts`)
+
+A seam allowance is a per-edge offset stored on the document as
+`Seam { id, edge, width }`. `width` is millimetres; the default when a command
+omits it is `10` (`DEFAULT_SEAM_ALLOWANCE`). Only line and curve edges can carry
+one, and at most one seam per edge.
+
+The offset is produced by pure functions:
+
+- `offsetPolyline(points, distance, options?)` — offset a polyline by a signed
+  distance (positive = left of travel). `options.join` is `'miter'` (default,
+  with a `miterLimit` bevel fallback) or `'round'`; `options.closed` joins the
+  last vertex back to the first.
+- `findSelfIntersections(path, options?)` — non-adjacent segment crossings of an
+  offset path, reported (not hidden) so a folded allowance can be flagged.
+- `edgePolyline(document, edge, segments?)` — flatten a line (two points) or
+  cubic Bézier (sampled) edge to a polyline.
+- `seamAllowancePath(document, seam, options?)` / `seamAllowancePaths(document, options?)`
+  — the offset `path` plus its `selfIntersections`, or `null` for an edge that is
+  missing or is a point.
+- `cubicPoint` / `curvePoints` — cubic Bézier evaluation and flattening.
+
+Seam allowance offsetting depends on the entity model only (edges), not on
+`piece`. When pieces are modelled (see below), `piece` becomes a grouping for the
+edges and their allowances.
 
 ## Public API
 
@@ -75,6 +104,8 @@ arrays. Document helpers in `document.ts`:
 import {
   solve,
   distance,
+  offsetPolyline,
+  seamAllowancePaths,
   createEmptyDocument,
   getEntity,
   entityPoints,
@@ -86,6 +117,9 @@ import {
   type PointEntity,
   type Constraint,
 } from '@sewcraft/geometry';
+
+// Seam allowance: offset each seam edge and report any self-crossings.
+const allowances = seamAllowancePaths(document, { join: 'miter' });
 
 const result = solve(points, constraints);
 result.converged; // boolean

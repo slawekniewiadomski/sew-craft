@@ -1,7 +1,7 @@
 # 007 — Seam allowance
 
-Status: todo
-Depends on: 006 (pieces needed for real allowance), 008
+Status: in progress (geometry core done; renderer/export pending 005, 008)
+Depends on: 006 (pieces), 008
 
 ## Goal
 
@@ -19,17 +19,31 @@ Entity model, `add_seam_allowance` command, SVG renderer.
 
 ## Deliverables
 
-- Offset algorithm for lines and curves (miter/round joins at corners) in
-  `@sewcraft/geometry`, with tests for convex/concave corners.
-- Per-edge width (default 10 mm), attachable/detachable.
-- Rendering as its own layer/style.
-- Included in SVG export as a separate group.
+- [x] Offset algorithm for lines and curves (miter/round joins at corners) in
+      `@sewcraft/geometry`, with tests for convex/concave corners.
+- [x] Per-edge width (default 10 mm), attachable/detachable.
+- [ ] Rendering as its own layer/style. (needs the 005 canvas)
+- [ ] Included in SVG export as a separate group. (needs 008)
 
 ## Acceptance criteria
 
-- [ ] Offset path is correct at corners and for small widths.
-- [ ] Self-intersections are detected and reported, not silently wrong.
-- [ ] Toggle allowance on/off in UI and export.
+- [x] Offset path is correct at corners and for small widths.
+- [x] Self-intersections are detected and reported, not silently wrong.
+- [ ] Toggle allowance on/off in UI and export. (UI needs 005; export needs 008)
+
+## Implementation notes
+
+- `@sewcraft/geometry` `offset.ts`: `offsetPolyline` (signed offset, miter with
+  `miterLimit` bevel fallback, round joins), `findSelfIntersections`,
+  `edgePolyline`, `seamAllowancePath(s)`, `cubicPoint`, `curvePoints`.
+- Command core: `add_seam_allowance` now attaches to a `line`/`curve` edge
+  (`{ edge, width? }`, width defaults to 10 mm); `remove_seam_allowance` detaches
+  it; `delete_entity` cascades to seams on the deleted edge. Command spec bumped
+  to `0.2.0` (`piece` param removed — the v0.1 model had no `piece`).
+- The document stores `seams: Seam[]` per edge; pieces are not modelled yet, so
+  the allowance is per edge rather than per piece. When pieces land (spec 006), a
+  `piece` param can be added back additively.
+- The 100% coverage gate is met for the new geometry code.
 
 ## Out of scope
 

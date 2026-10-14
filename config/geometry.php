@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.1.0',
+    'spec_version' => '0.2.0',
 
     /*
     |--------------------------------------------------------------------------
@@ -112,12 +112,19 @@ return [
             'inverse' => 'add_constraint',
         ],
         'add_seam_allowance' => [
-            'description' => 'Set a seam allowance width (mm) on a piece edge.',
+            'description' => 'Attach a seam allowance (mm) to a line or curve edge.',
             'params' => [
-                'piece' => 'entity_id',
                 'edge' => 'entity_id',
-                'width' => 'number',
+                'width' => 'number?',
             ],
+            'inverse' => 'remove_seam_allowance',
+        ],
+        'remove_seam_allowance' => [
+            'description' => 'Detach the seam allowance from an edge.',
+            'params' => [
+                'id' => 'entity_id',
+            ],
+            'inverse' => 'add_seam_allowance',
         ],
         'solve' => [
             'description' => 'Rebuild the sketch by running the constraint solver.',
