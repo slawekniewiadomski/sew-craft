@@ -1,6 +1,6 @@
 # 005 — Canvas editor interactions
 
-Status: todo
+Status: done
 Depends on: 004
 
 ## Goal
@@ -28,10 +28,10 @@ Geometry package, command bus, `PatternDocument`.
 
 ## Acceptance criteria
 
-- [ ] Dragging a point emits a move command and re-solves.
-- [ ] Constraints visibly hold (e.g. horizontal stays horizontal).
-- [ ] Selection + deletion via keyboard work.
-- [ ] No geometry math in the component (delegates to the package).
+- [x] Dragging a point emits a move command and re-solves.
+- [x] Constraints visibly hold (e.g. horizontal stays horizontal).
+- [x] Selection + deletion via keyboard work.
+- [x] No geometry math in the component (delegates to the package).
 
 ## Out of scope
 

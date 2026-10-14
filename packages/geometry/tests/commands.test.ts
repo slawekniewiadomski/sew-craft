@@ -43,6 +43,12 @@ const addPointCommand = (id: string, x: number, y: number, construction = false)
   params: { x, y, construction },
 });
 
+const movePointCommand = (id: string, point: string, x: number, y: number): Command => ({
+  id,
+  type: 'move_point',
+  params: { id: point, x, y },
+});
+
 const addLineCommand = (id: string, start: string, end: string, construction = false): Command => ({
   id,
   type: 'add_line',
@@ -130,6 +136,71 @@ describe('add_point', () => {
     const applied = applyCommand(createEmptyDocument(), command);
 
     expect(getEntity(applied.document, 'p1')).toMatchObject({ construction: false });
+  });
+});
+
+describe('move_point', () => {
+  const document = documentOf([point('a', 0, 0), point('b', 10, 0)]);
+
+  it('moves the point and returns an inverse that restores it', () => {
+    const applied = applyCommand(document, movePointCommand('m', 'a', 5, 7));
+
+    expect(getEntity(applied.document, 'a')).toMatchObject({ x: 5, y: 7 });
+    expect(getEntity(applied.document, 'b')).toMatchObject({ x: 10, y: 0 });
+    expect(applied.inverse).toEqual(movePointCommand('m', 'a', 0, 0));
+    expect(applyCommand(applied.document, applied.inverse!).document).toEqual(document);
+  });
+
+  it('does not mutate the input document', () => {
+    const snapshot = structuredClone(document);
+    applyCommand(document, movePointCommand('m', 'a', 5, 7));
+
+    expect(document).toEqual(snapshot);
+  });
+
+  it('is idempotent when the point is already at the target', () => {
+    const applied = applyCommand(document, movePointCommand('m', 'a', 0, 0));
+
+    expect(applied.document).toBe(document);
+    expect(applied.inverse).toBeNull();
+  });
+
+  it('rejects an unknown point without mutating', () => {
+    unchanged(document, movePointCommand('m', 'missing', 1, 1));
+  });
+
+  it('rejects a non-point entity without mutating', () => {
+    const withLine = documentOf([
+      point('a', 0, 0),
+      point('b', 1, 0),
+      {
+        id: 'l1',
+        kind: 'line',
+        start: 'a',
+        end: 'b',
+        construction: false,
+      } satisfies LineEntity,
+    ]);
+
+    unchanged(withLine, movePointCommand('m', 'l1', 1, 1));
+  });
+
+  it('rejects non-finite coordinates without mutating', () => {
+    unchanged(document, movePointCommand('m', 'a', Number.NaN, 0));
+    unchanged(document, movePointCommand('m', 'a', 0, Number.POSITIVE_INFINITY));
+  });
+
+  it('re-solves constrained points after a move', () => {
+    const constrained = documentOf([point('a', 0, 0, { fixed: true }), point('b', 10, 0)], [
+      { id: 'd', type: 'distance', a: 'a', b: 'b', value: 40 },
+    ]);
+
+    const result = executeCommand(constrained, movePointCommand('m', 'b', 30, 25));
+
+    expect(result.solveResult.converged).toBe(true);
+    const solved = getEntity(result.document, 'b');
+    if (solved?.kind !== 'point') throw new Error('expected a point');
+    expect(Math.hypot(solved.x, solved.y)).toBeCloseTo(40, 6);
   });
 });
 
