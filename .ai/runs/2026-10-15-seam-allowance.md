@@ -99,4 +99,4 @@ Source doc: .ai/specs/007-seam-allowance.md
 
 - [x] 5.1 Geometry tests green at 100% statements/branches/functions/lines.
 - [x] 5.2 Backend `CommandSpecTest` green; full validation gate green.
-- [ ] 5.3 PR opened with labels and the automated review pass.
+- [x] 5.3 PR opened with labels and the automated review pass. — review posted; one major finding fixed in 10d154b (construction-edge guard); gate re-run green. Formal GitHub approve/request-changes is blocked on a self-authored PR, so the verdict lives on the PR conversation.
