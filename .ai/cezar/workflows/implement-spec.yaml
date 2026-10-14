@@ -21,9 +21,18 @@ steps:
     command: "npm test"
     onFail: { retry: implement, max: 2 }
 
+  - id: format
+    name: Format (Prettier --write)
+    command: "npm run format"
+
   - id: lint
     name: Lint
     command: "npm run lint"
+    onFail: { retry: implement, max: 2 }
+
+  - id: format-check
+    name: Format check
+    command: "npm run format:check"
     onFail: { retry: implement, max: 2 }
 
   - id: build

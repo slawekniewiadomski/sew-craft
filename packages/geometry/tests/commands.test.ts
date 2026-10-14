@@ -191,9 +191,10 @@ describe('move_point', () => {
   });
 
   it('re-solves constrained points after a move', () => {
-    const constrained = documentOf([point('a', 0, 0, { fixed: true }), point('b', 10, 0)], [
-      { id: 'd', type: 'distance', a: 'a', b: 'b', value: 40 },
-    ]);
+    const constrained = documentOf(
+      [point('a', 0, 0, { fixed: true }), point('b', 10, 0)],
+      [{ id: 'd', type: 'distance', a: 'a', b: 'b', value: 40 }],
+    );
 
     const result = executeCommand(constrained, movePointCommand('m', 'b', 30, 25));
 

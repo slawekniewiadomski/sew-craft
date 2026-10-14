@@ -113,7 +113,9 @@ function pointCircle(wrapper: VueWrapper, id: EntityId): DOMWrapper<Element> {
 }
 
 function down(el: Element, x: number, y: number, button = 0): void {
-  el.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: x, clientY: y, button }));
+  el.dispatchEvent(
+    new MouseEvent('pointerdown', { bubbles: true, clientX: x, clientY: y, button }),
+  );
 }
 
 function move(x: number, y: number): void {

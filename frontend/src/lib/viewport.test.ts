@@ -78,28 +78,37 @@ describe('fitToBounds', () => {
   });
 
   it('fits a vertical line (zero width) by its height', () => {
-    const fitted = fitToBounds({ min: { x: 10, y: 0 }, max: { x: 10, y: 50 } }, {
-      width: 800,
-      height: 600,
-    });
+    const fitted = fitToBounds(
+      { min: { x: 10, y: 0 }, max: { x: 10, y: 50 } },
+      {
+        width: 800,
+        height: 600,
+      },
+    );
 
     expect(fitted.scale).toBeCloseTo(11.04, 6);
   });
 
   it('fits a horizontal line (zero height) by its width', () => {
-    const fitted = fitToBounds({ min: { x: 0, y: 0 }, max: { x: 100, y: 0 } }, {
-      width: 800,
-      height: 600,
-    });
+    const fitted = fitToBounds(
+      { min: { x: 0, y: 0 }, max: { x: 100, y: 0 } },
+      {
+        width: 800,
+        height: 600,
+      },
+    );
 
     expect(fitted.scale).toBeCloseTo(7.52, 6);
   });
 
   it('zooms fully in for a single point', () => {
-    const fitted = fitToBounds({ min: { x: 5, y: 5 }, max: { x: 5, y: 5 } }, {
-      width: 800,
-      height: 600,
-    });
+    const fitted = fitToBounds(
+      { min: { x: 5, y: 5 }, max: { x: 5, y: 5 } },
+      {
+        width: 800,
+        height: 600,
+      },
+    );
 
     expect(fitted.scale).toBe(MAX_SCALE);
   });
