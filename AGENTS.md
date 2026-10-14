@@ -144,10 +144,14 @@ test:coverage` (Vitest, v8) and the backend `--coverage --min=100` command above
 1. Pick **one** spec from `specs/`. Do not bundle unrelated features.
 2. Read the spec's _Context_ and any linked architecture docs.
 3. Implement, then run the checks the spec lists (at minimum `php artisan test`,
-   `npm test`, `npm run test:coverage`, `npm run lint`, `npm run typecheck`).
-4. Update the relevant docs (`docs/architecture/*`, `docs/domain/command-spec.md`,
+   `npm test`, `npm run test:coverage`, `npm run lint`, `npm run format:check`,
+   `npm run typecheck`).
+4. **Format before committing.** Always run `npm run format` (Prettier with
+   `--write`) so `npm run format:check` — and the CI lint job — stays green.
+   Never open a PR with unformatted files.
+5. Update the relevant docs (`docs/architecture/*`, `docs/domain/command-spec.md`,
    `AGENTS.md`) if you changed a contract.
-5. Report what changed and which commands passed. Do not commit unless asked.
+6. Report what changed and which commands passed. Do not commit unless asked.
 
 ### Definition of done
 
@@ -155,7 +159,7 @@ test:coverage` (Vitest, v8) and the backend `--coverage --min=100` command above
 - [ ] Pest and Vitest suites pass; new behavior has tests.
 - [ ] Coverage is **100%** for statements, branches, functions and lines across
       `packages/geometry/src`, `frontend/src` and backend `app/`.
-- [ ] `npm run lint` and typecheck pass.
+- [ ] `npm run lint`, `npm run format:check` and typecheck pass.
 - [ ] Command/API contracts documented if changed.
 
 ## Do / Don't

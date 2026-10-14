@@ -1,5 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
+import { nextTick } from 'vue';
+
+import PatternCanvas from '@/components/PatternCanvas.vue';
 
 // Force the command bus to throw so the view's error handling is exercised.
 const state = vi.hoisted(() => ({ thrown: new Error('command exploded') as unknown }));
@@ -45,14 +48,18 @@ describe('EditorView error handling', () => {
     expect(wrapper.text()).toContain('Command failed');
   });
 
-  it('keeps the add-point action wired to the error handler', async () => {
+  it('routes canvas intents through the error handler', async () => {
     state.thrown = new Error('command exploded');
     const { default: EditorView } = await import('./EditorView.vue');
     const wrapper = mount(EditorView, { props: { id: '2' } });
     await flushPromises();
 
-    const add = wrapper.findAll('button').find((button) => button.text() === 'Add point')!;
-    await add.trigger('click');
+    const canvas = wrapper.findComponent(PatternCanvas);
+    canvas.vm.$emit('add-point', 1, 2);
+    canvas.vm.$emit('move-point', 'p', 1, 2);
+    canvas.vm.$emit('add-line', 'p', 'q');
+    canvas.vm.$emit('add-curve', ['p', 'q', 'r', 's']);
+    await nextTick();
 
     expect(wrapper.text()).toContain('command exploded');
   });

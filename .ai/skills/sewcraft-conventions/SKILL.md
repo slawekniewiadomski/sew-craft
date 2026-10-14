@@ -46,11 +46,16 @@ PHP PSR-12 via Pint; comments only for non-obvious intent.
 ## Checks (the workflow runs these)
 
 ```bash
+npm run format        # Prettier --write — run this first, before committing
 npm run typecheck    # tsc / vue-tsc for every workspace
 npm test             # Vitest for every workspace
 npm run lint          # ESLint for every workspace
+npm run format:check  # Prettier check — must be green before a PR/commit
 npm run build         # frontend typecheck + production build
 ```
+
+Always run `npm run format` (Prettier with `--write`) before finishing: CI's lint
+job runs `npm run format:check` and fails on any unformatted file.
 
 Run the geometry package directly while iterating:
 

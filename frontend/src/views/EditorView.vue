@@ -1,31 +1,21 @@
 <script setup lang="ts">
-import type { Command, LineEntity, PointEntity } from '@sewcraft/geometry';
-import { computed, onMounted, ref } from 'vue';
+import type { Command, EntityId } from '@sewcraft/geometry';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 
+import PatternCanvas from '@/components/PatternCanvas.vue';
 import { Button } from '@/components/ui/button';
 import { useCommandBus } from '@/composables/use-command-bus';
+import { nextCommandId } from '@/lib/command-ids';
+import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 
 const props = defineProps<{ id: string }>();
 
 const { document: pattern, journal, canUndo, canRedo, dispatch, undo, redo } = useCommandBus();
 
 const error = ref<string | null>(null);
-let nextPointId = 0;
-
-const points = computed(() =>
-  pattern.value.entities.filter((entity): entity is PointEntity => entity.kind === 'point'),
-);
-
-const segments = computed(() => {
-  const byId = new Map(points.value.map((point) => [point.id, point]));
-  return pattern.value.entities
-    .filter((entity): entity is LineEntity => entity.kind === 'line')
-    .flatMap((line) => {
-      const start = byId.get(line.start);
-      const end = byId.get(line.end);
-      return start && end ? [{ id: line.id, start, end, construction: line.construction }] : [];
-    });
-});
+const activeTool = ref<EditorTool>('select');
+const selectedId = ref<EntityId | null>(null);
+const fitToken = ref(0);
 
 function run(action: () => void): void {
   try {
@@ -36,11 +26,49 @@ function run(action: () => void): void {
   }
 }
 
-function addPoint(): void {
-  const id = `point-${nextPointId++}`;
+function selectTool(tool: EditorTool): void {
+  activeTool.value = tool;
+}
+
+function fit(): void {
+  fitToken.value += 1;
+}
+
+function deleteSelected(): void {
+  const id = selectedId.value;
+  if (id === null) return;
+
+  run(() => dispatch({ id: nextCommandId('delete'), type: 'delete_entity', params: { id } }));
+  selectedId.value = null;
+}
+
+function onMovePoint(id: EntityId, x: number, y: number): void {
+  run(() => dispatch({ id: nextCommandId('move'), type: 'move_point', params: { id, x, y } }));
+}
+
+function onAddPoint(x: number, y: number): void {
+  run(() => dispatch({ id: nextCommandId('point'), type: 'add_point', params: { x, y } }));
+}
+
+function onAddLine(start: EntityId, end: EntityId): void {
+  run(() => dispatch({ id: nextCommandId('line'), type: 'add_line', params: { start, end } }));
+}
+
+function onAddCurve(points: [EntityId, EntityId, EntityId, EntityId]): void {
   run(() =>
-    dispatch({ id, type: 'add_point', params: { x: 40 + (nextPointId % 8) * 16, y: 300 } }),
+    dispatch({
+      id: nextCommandId('curve'),
+      type: 'add_curve',
+      params: { p0: points[0], p1: points[1], p2: points[2], p3: points[3] },
+    }),
   );
+}
+
+function onKeyDown(event: KeyboardEvent): void {
+  if (event.key === 'Delete' || event.key === 'Backspace') {
+    event.preventDefault();
+    deleteSelected();
+  }
 }
 
 function seed(): void {
@@ -72,9 +100,15 @@ function seed(): void {
 }
 
 onMounted(() => {
+  window.addEventListener('keydown', onKeyDown);
+
   if (pattern.value.entities.length === 0 && journal.value.length === 0) {
     seed();
   }
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeyDown);
 });
 </script>
 
@@ -86,44 +120,51 @@ onMounted(() => {
     </div>
 
     <p class="text-sm text-muted-foreground">
-      Every edit is a command: the document below is only ever changed through the command bus, so
-      undo and redo replay the journal.
+      Every edit is a command: dragging, drawing and deleting all go through the command bus, so
+      undo and redo replay the journal. The solver rebuilds after each change and constraints hold.
     </p>
 
     <div class="flex flex-wrap items-center gap-2">
+      <div class="flex items-center gap-1 rounded-md border p-1">
+        <Button
+          v-for="tool in EDITOR_TOOLS"
+          :key="tool.id"
+          :variant="activeTool === tool.id ? 'default' : 'ghost'"
+          size="sm"
+          :data-testid="`tool-${tool.id}`"
+          @click="selectTool(tool.id)"
+        >
+          {{ tool.label }}
+        </Button>
+      </div>
+
       <Button variant="outline" size="sm" :disabled="!canUndo" @click="run(undo)">Undo</Button>
       <Button variant="outline" size="sm" :disabled="!canRedo" @click="run(redo)">Redo</Button>
-      <Button size="sm" @click="addPoint">Add point</Button>
+      <Button
+        variant="outline"
+        size="sm"
+        :disabled="selectedId === null"
+        data-testid="delete"
+        @click="deleteSelected"
+      >
+        Delete
+      </Button>
+      <Button variant="outline" size="sm" data-testid="fit" @click="fit">Fit</Button>
+
       <span class="text-sm text-muted-foreground">{{ journal.length }} command(s)</span>
     </div>
 
     <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
 
-    <svg
-      viewBox="0 0 400 320"
-      class="h-80 w-full rounded-md border bg-muted/30"
-      role="img"
-      aria-label="Command-driven pattern preview"
-    >
-      <line
-        v-for="segment in segments"
-        :key="segment.id"
-        :x1="segment.start.x"
-        :y1="segment.start.y"
-        :x2="segment.end.x"
-        :y2="segment.end.y"
-        :stroke-dasharray="segment.construction ? '4 4' : undefined"
-        stroke="currentColor"
-        stroke-width="2"
-      />
-      <circle
-        v-for="point in points"
-        :key="point.id"
-        :cx="point.x"
-        :cy="point.y"
-        r="3"
-        fill="currentColor"
-      />
-    </svg>
+    <PatternCanvas
+      v-model:selected-id="selectedId"
+      :document="pattern"
+      :tool="activeTool"
+      :fit-token="fitToken"
+      @move-point="onMovePoint"
+      @add-point="onAddPoint"
+      @add-line="onAddLine"
+      @add-curve="onAddCurve"
+    />
   </section>
 </template>

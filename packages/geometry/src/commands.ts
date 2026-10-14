@@ -6,6 +6,7 @@ import {
   type Constraint,
   type ConstraintType,
   type CurveEntity,
+  type Entity,
   type EntityId,
   type LineEntity,
   type PatternDocument,
@@ -16,6 +17,12 @@ export interface AddPointParams {
   x: number;
   y: number;
   construction?: boolean;
+}
+
+export interface MovePointParams {
+  id: EntityId;
+  x: number;
+  y: number;
 }
 
 export interface AddLineParams {
@@ -66,6 +73,7 @@ export type SolveParams = Record<string, never>;
  */
 export type Command =
   | { id: EntityId; type: 'add_point'; params: AddPointParams; issuedAt?: string }
+  | { id: EntityId; type: 'move_point'; params: MovePointParams; issuedAt?: string }
   | { id: EntityId; type: 'add_line'; params: AddLineParams; issuedAt?: string }
   | { id: EntityId; type: 'add_curve'; params: AddCurveParams; issuedAt?: string }
   | {
@@ -146,6 +154,8 @@ export function applyCommand(document: PatternDocument, command: Command): Comma
   switch (command.type) {
     case 'add_point':
       return applyAddPoint(document, command);
+    case 'move_point':
+      return applyMovePoint(document, command);
     case 'add_line':
       return applyAddLine(document, command, command.params.construction ?? false, 'add_line');
     case 'add_construction_line':
@@ -250,6 +260,29 @@ function applyAddPoint(
   return {
     document: { ...document, entities: [...document.entities, point] },
     inverse: deleteEntityCommand(command.id),
+  };
+}
+
+function applyMovePoint(
+  document: PatternDocument,
+  command: CommandOf<'move_point'>,
+): CommandApplication {
+  const { id, x, y } = command.params;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    throw new CommandValidationError('move_point', 'x and y must be finite numbers');
+  }
+
+  const point = requirePoint(document, id, 'move_point');
+  if (point.x === x && point.y === y) {
+    return noOp(document);
+  }
+
+  const moved: PointEntity = { ...point, x, y };
+  const entities: Entity[] = document.entities.map((entity) => (entity.id === id ? moved : entity));
+
+  return {
+    document: { ...document, entities },
+    inverse: { id: command.id, type: 'move_point', params: { id, x: point.x, y: point.y } },
   };
 }
 
