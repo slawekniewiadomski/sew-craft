@@ -2,7 +2,7 @@
 
 Issue: #3
 Source doc: .ai/specs/2026-10-14-full-screen-width-frontend-views.md
-Status: in-progress
+Status: complete
 
 ## 🎯 Goal
 
@@ -42,9 +42,11 @@ Low. Reversible class-string change confined to one shell file; rollback is a
 
 > Convention: `- [ ]` pending, `- [x]` done. Append ` — <commit sha>` when a step lands. Do not rename step titles.
 
+PR: #5
+
 ### Phase 1: Widen the app shell
 
-- [ ] 1.1 Remove the cap from the header `<nav>` (`frontend/src/App.vue:8`).
-- [ ] 1.2 Remove the cap from `<main>` (`frontend/src/App.vue:16`).
-- [ ] 1.3 Remove the cap from the footer `<div>` (`frontend/src/App.vue:21`).
-- [ ] 1.4 Run the full validation gate and confirm it stays green.
+- [x] 1.1 Remove the cap from the header `<nav>` (`frontend/src/App.vue:8`). — 6e7e49d
+- [x] 1.2 Remove the cap from `<main>` (`frontend/src/App.vue:16`). — 6e7e49d
+- [x] 1.3 Remove the cap from the footer `<div>` (`frontend/src/App.vue:21`). — 6e7e49d
+- [x] 1.4 Run the full validation gate and confirm it stays green. — gate green
