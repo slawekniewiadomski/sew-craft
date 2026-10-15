@@ -153,6 +153,23 @@ test:coverage` (Vitest, v8) and the backend `--coverage --min=100` command above
    `AGENTS.md`) if you changed a contract.
 6. Report what changed and which commands passed. Do not commit unless asked.
 
+### Issue-driven work
+
+When the task comes from a GitHub issue, route it by label — the same way whether
+you started it by hand or through the committed `feature-issue` cezar workflow
+(`.ai/cezar/workflows/feature-issue.yaml`):
+
+- **`feature`** — deliver it end to end on **one combined PR**: plan (author the
+  spec), implement, verify, open the PR, review, fix, then leave a **ready,
+  labeled** PR and stop. The spec and the implementation ship on the same branch;
+  there is no separate spec-only PR. Use `om-auto-create-pr` (the workflow's
+  engine) so the spec lands as the first commit.
+- **`bug`** — take the bug chain: `om-verify-in-repo` → `om-root-cause` →
+  `om-fix` → `om-open-pr` → `om-auto-review-pr`.
+
+**Never merge.** Merging is the maintainer's step (`om-approve-merge-pr`); leave
+the PR ready for a human to review and merge.
+
 ### Definition of done
 
 - [ ] Feature matches the spec's acceptance criteria.

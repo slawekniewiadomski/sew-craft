@@ -1,0 +1,27 @@
+name: feature-issue
+description: Deliver a feature-labeled issue end to end in one combined, ready pull request — author the design spec, implement it, run the gate, review and fix — then stop for a human to review and merge.
+steps:
+  - id: deliver
+    name: Plan (spec) → implement → verify → PR → review → fix
+    skill: om-auto-create-pr
+    prompt: |
+      Implement the feature issue below end to end as ONE combined pull request
+      against the base branch, following the repository's agent instructions
+      (AGENTS.md) throughout.
+
+      This is a feature request, so the run differs from a plain task in one way:
+      start by authoring a design spec and commit it as the first commit on the
+      run's branch. Write it to `specs/<NNN>-<kebab-slug>.md` using the next free
+      number and the existing spec template, and keep the
+      `.ai/specs/<NNN>-<kebab-slug>.md` mirror identical — this repository keeps
+      both directories in sync.
+
+      The spec, the execution plan and the implementation all ship together on
+      the same branch and the same pull request: there is no separate spec-only
+      PR, and the spec is not the only deliverable.
+
+      Finish with a ready (non-draft) PR and STOP — leave it for a human to
+      review and merge. Never merge it yourself.
+
+      {{task}}
+    runner: opencode
