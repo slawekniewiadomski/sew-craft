@@ -75,6 +75,15 @@ const simpleDoc: PatternDocument = {
   ],
 };
 
+const edgeDoc: PatternDocument = {
+  ...createEmptyDocument(),
+  entities: [
+    { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+    { id: 'q', kind: 'point', x: 50, y: 0, construction: false, fixed: false },
+    { id: 'l1', kind: 'line', start: 'p', end: 'q', construction: false },
+  ],
+};
+
 describe('EditorView', () => {
   it('seeds a starter sketch on first mount', async () => {
     const wrapper = await mountEditor(createPinia());
@@ -306,7 +315,7 @@ describe('EditorView', () => {
     const wrapper = await mountEditor(pinia);
     expect(wrapper.findAll('[data-kind="line"]')).toHaveLength(4);
 
-    await wrapper.find('[data-testid="toggle-show-construction"]').setValue(false);
+    await wrapper.find('[data-testid="show-construction"]').setValue(false);
 
     expect(wrapper.findAll('[data-kind="line"]')).toHaveLength(2);
     expect(wrapper.find('line').attributes('stroke-dasharray')).toBeUndefined();
@@ -368,5 +377,59 @@ describe('EditorView', () => {
 
     expect(wrapper.find('line').attributes('stroke-dasharray')).toBeUndefined();
     expect(wrapper.text()).toContain('1 cut edge(s)');
+  });
+
+  it('attaches and detaches a seam allowance on an edge', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useEditorStore().load(edgeDoc);
+
+    const wrapper = await mountEditor(pinia);
+
+    await wrapper.find('[data-testid="seam-width-l1"]').setValue('12');
+    await wrapper.find('[data-testid="add-seam-l1"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="seam-label-l1"]').text()).toContain('12');
+    expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="remove-seam-l1"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="seam-label-l1"]').exists()).toBe(false);
+    expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(false);
+  });
+
+  it('ignores a non-positive seam width', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const store = useEditorStore();
+    store.load(edgeDoc);
+
+    const wrapper = await mountEditor(pinia);
+
+    await wrapper.find('[data-testid="seam-width-l1"]').setValue('0');
+    await wrapper.find('[data-testid="add-seam-l1"]').trigger('click');
+    await nextTick();
+
+    expect(store.document.seams).toHaveLength(0);
+    expect(wrapper.find('[data-testid="seam-label-l1"]').exists()).toBe(false);
+  });
+
+  it('hides seam allowances without changing the document', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const store = useEditorStore();
+    store.load({ ...edgeDoc, seams: [{ id: 's1', edge: 'l1', width: 10 }] });
+
+    const wrapper = await mountEditor(pinia);
+    expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="show-seam-allowance"]').setValue(false);
+    await nextTick();
+
+    expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(false);
+    expect(store.document.seams).toHaveLength(1);
+    expect(store.journal).toHaveLength(0);
   });
 });

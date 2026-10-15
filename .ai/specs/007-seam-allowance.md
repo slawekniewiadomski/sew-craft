@@ -1,6 +1,6 @@
 # 007 — Seam allowance
 
-Status: in progress (geometry core done; renderer/export pending 005, 008)
+Status: in progress (geometry core + editor rendering/UI done; export pending 008)
 Depends on: 006 (pieces), 008
 
 ## Goal
@@ -22,14 +22,15 @@ Entity model, `add_seam_allowance` command, SVG renderer.
 - [x] Offset algorithm for lines and curves (miter/round joins at corners) in
       `@sewcraft/geometry`, with tests for convex/concave corners.
 - [x] Per-edge width (default 10 mm), attachable/detachable.
-- [ ] Rendering as its own layer/style. (needs the 005 canvas)
+- [x] Rendering as its own layer/style. (dashed offset layer on the canvas)
 - [ ] Included in SVG export as a separate group. (needs 008)
 
 ## Acceptance criteria
 
 - [x] Offset path is correct at corners and for small widths.
 - [x] Self-intersections are detected and reported, not silently wrong.
-- [ ] Toggle allowance on/off in UI and export. (UI needs 005; export needs 008)
+- [x] Toggle allowance on/off in the UI.
+- [ ] Toggle allowance on/off in the export. (export needs 008)
 
 ## Implementation notes
 
@@ -43,7 +44,12 @@ Entity model, `add_seam_allowance` command, SVG renderer.
 - The document stores `seams: Seam[]` per edge; pieces are not modelled yet, so
   the allowance is per edge rather than per piece. When pieces land (spec 006), a
   `piece` param can be added back additively.
-- The 100% coverage gate is met for the new geometry code.
+- Editor: `PatternCanvas.vue` renders `seamAllowancePaths(document)` as a dashed,
+  pointer-transparent layer (self-intersecting offsets in the destructive style)
+  with a `showSeamAllowance` presentation toggle; `EditorView.vue` exposes a
+  per-edge width input (default 10 mm) plus attach/detach buttons that dispatch
+  `add_seam_allowance` / `remove_seam_allowance` through the command bus.
+- The 100% coverage gate is met for the new geometry and frontend code.
 
 ## Out of scope
 

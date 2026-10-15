@@ -7,11 +7,12 @@ import {
   type LineEntity,
   type PatternDocument,
   type PointEntity,
+  seamAllowancePaths,
   type Vec2,
 } from '@sewcraft/geometry';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
-import { curvePath } from '@/lib/canvas-render';
+import { curvePath, polylinePath } from '@/lib/canvas-render';
 import type { EditorTool } from '@/lib/editor-tools';
 import { snapPoint, snapToGrid } from '@/lib/snap';
 import {
@@ -44,14 +45,21 @@ interface Hit {
   kind: string;
 }
 
+interface SeamView {
+  edge: EntityId;
+  d: string;
+  selfIntersects: boolean;
+}
+
 const props = withDefaults(
   defineProps<{
     document: PatternDocument;
     tool: EditorTool;
     selectedId?: EntityId | null;
     fitToken?: number;
+    showSeamAllowance?: boolean;
   }>(),
-  { selectedId: null, fitToken: 0 },
+  { selectedId: null, fitToken: 0, showSeamAllowance: true },
 );
 
 const emit = defineEmits<{
@@ -103,6 +111,19 @@ const curves = computed(() =>
       return [{ curve, d: curvePath([p0!, p1!, p2!, p3!]) }];
     }),
 );
+
+/**
+ * Seam allowances are a render-only offset layer: hidden entirely when the
+ * presentation toggle is off, and never part of the document the UI mutates.
+ */
+const seams = computed<SeamView[]>(() => {
+  if (!props.showSeamAllowance) return [];
+  return seamAllowancePaths(props.document).map((allowance) => ({
+    edge: allowance.edge,
+    d: polylinePath(allowance.path),
+    selfIntersects: allowance.selfIntersections.length > 0,
+  }));
+});
 
 const pendingIds = computed(() => new Set(pending.value));
 const gridStep = computed(() => niceStep(viewport.value.scale));
@@ -358,6 +379,21 @@ watch(
           fill="url(#sewcraft-grid)"
           data-testid="grid"
         />
+
+        <g class="pointer-events-none" data-testid="seam-layer">
+          <path
+            v-for="seam in seams"
+            :key="seam.edge"
+            :d="seam.d"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-dasharray="6 3"
+            vector-effect="non-scaling-stroke"
+            :class="seam.selfIntersects ? 'text-destructive' : 'text-muted-foreground'"
+            :data-seam-edge="seam.edge"
+          />
+        </g>
 
         <g>
           <template v-for="entry in lines" :key="entry.line.id">
