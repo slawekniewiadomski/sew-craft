@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Command, CurveEntity, EntityId, LineEntity } from '@sewcraft/geometry';
-import { cutEdges } from '@sewcraft/geometry';
+import { cutEdges, DEFAULT_SEAM_ALLOWANCE, seamForEdge } from '@sewcraft/geometry';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import PatternCanvas from '@/components/PatternCanvas.vue';
@@ -18,6 +18,8 @@ const activeTool = ref<EditorTool>('select');
 const selectedId = ref<EntityId | null>(null);
 const fitToken = ref(0);
 const showConstruction = ref(true);
+const showSeamAllowance = ref(true);
+const seamWidths = ref<Record<string, number>>({});
 
 /**
  * Construction geometry is presentation only: hiding it filters what is drawn
@@ -36,7 +38,15 @@ const visibleDocument = computed(() =>
 const edges = computed(() =>
   pattern.value.entities
     .filter((entity): entity is LineEntity | CurveEntity => entity.kind !== 'point')
-    .map((entity) => ({ id: entity.id, construction: entity.construction })),
+    .map((entity) => {
+      const seam = seamForEdge(pattern.value, entity.id);
+      return {
+        id: entity.id,
+        construction: entity.construction,
+        seamId: seam?.id ?? null,
+        seamWidth: seam?.width ?? null,
+      };
+    }),
 );
 
 const cutEdgeCount = computed(() => cutEdges(pattern.value).length);
@@ -96,6 +106,31 @@ function convert(id: string, construction: boolean): void {
       params: { id, construction },
     }),
   );
+}
+
+function seamWidthFor(id: EntityId): number {
+  return seamWidths.value[id] ?? DEFAULT_SEAM_ALLOWANCE;
+}
+
+function isValidSeamWidth(width: number): boolean {
+  return width > 0;
+}
+
+function setSeamWidth(id: EntityId, value: string): void {
+  seamWidths.value = { ...seamWidths.value, [id]: Number(value) };
+}
+
+function addSeam(edge: EntityId): void {
+  const width = seamWidthFor(edge);
+  if (!isValidSeamWidth(width)) return;
+
+  run(() =>
+    dispatch({ id: nextCommandId('seam'), type: 'add_seam_allowance', params: { edge, width } }),
+  );
+}
+
+function removeSeam(id: EntityId): void {
+  run(() => dispatch({ id: nextCommandId('seam'), type: 'remove_seam_allowance', params: { id } }));
 }
 
 function onKeyDown(event: KeyboardEvent): void {
@@ -186,8 +221,13 @@ onBeforeUnmount(() => {
       <Button variant="outline" size="sm" data-testid="fit" @click="fit">Fit</Button>
 
       <label class="flex items-center gap-1 text-sm">
-        <input v-model="showConstruction" type="checkbox" />
+        <input v-model="showConstruction" type="checkbox" data-testid="show-construction" />
         Show construction
+      </label>
+
+      <label class="flex items-center gap-1 text-sm">
+        <input v-model="showSeamAllowance" type="checkbox" data-testid="show-seam-allowance" />
+        Show seam allowance
       </label>
 
       <span class="text-sm text-muted-foreground">{{ journal.length }} command(s)</span>
@@ -201,6 +241,7 @@ onBeforeUnmount(() => {
       :document="visibleDocument"
       :tool="activeTool"
       :fit-token="fitToken"
+      :show-seam-allowance="showSeamAllowance"
       @move-point="onMovePoint"
       @add-point="onAddPoint"
       @add-line="onAddLine"
@@ -213,12 +254,49 @@ onBeforeUnmount(() => {
         <li
           v-for="edge in edges"
           :key="edge.id"
-          class="flex items-center justify-between gap-2 text-sm"
+          class="flex flex-wrap items-center justify-between gap-2 text-sm"
         >
           <span class="font-mono text-muted-foreground">{{ edge.id }}</span>
-          <Button variant="outline" size="sm" @click="convert(edge.id, !edge.construction)">
-            {{ edge.construction ? 'Make cut edge' : 'Make construction' }}
-          </Button>
+
+          <div class="flex items-center gap-2">
+            <template v-if="edge.seamId !== null">
+              <span class="text-muted-foreground" :data-testid="`seam-label-${edge.id}`">
+                Allowance {{ edge.seamWidth }} mm
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                :data-testid="`remove-seam-${edge.id}`"
+                @click="removeSeam(edge.seamId!)"
+              >
+                Remove allowance
+              </Button>
+            </template>
+            <template v-else>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                class="w-16 rounded-md border px-2 py-1 text-sm"
+                :value="seamWidthFor(edge.id)"
+                :aria-label="`Seam width for ${edge.id}`"
+                :data-testid="`seam-width-${edge.id}`"
+                @input="setSeamWidth(edge.id, ($event.target as HTMLInputElement).value)"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                :data-testid="`add-seam-${edge.id}`"
+                @click="addSeam(edge.id)"
+              >
+                Add allowance
+              </Button>
+            </template>
+
+            <Button variant="outline" size="sm" @click="convert(edge.id, !edge.construction)">
+              {{ edge.construction ? 'Make cut edge' : 'Make construction' }}
+            </Button>
+          </div>
         </li>
       </ul>
     </div>

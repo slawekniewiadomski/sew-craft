@@ -94,6 +94,11 @@ The offset is produced by pure functions:
   missing or is a point.
 - `cubicPoint` / `curvePoints` — cubic Bézier evaluation and flattening.
 
+The editor renders `seamAllowancePaths(document)` as a dashed, pointer-transparent
+layer (self-intersecting offsets use the destructive style) and exposes a per-edge
+width input (default 10 mm) plus a show/hide presentation toggle; neither changes
+the document.
+
 Seam allowance offsetting depends on the entity model only (edges), not on
 `piece`. When pieces are modelled (see below), `piece` becomes a grouping for the
 edges and their allowances.
