@@ -118,6 +118,7 @@ import {
   applyCommand,
   executeCommand,
   solveDocument,
+  toSvg,
   type Command,
   type PointEntity,
   type Constraint,
@@ -133,12 +134,16 @@ result.coordinates; // Map<EntityId, Vec2>
 // Commands are the only mutation path (see command-core.md).
 const { document, inverse } = applyCommand(document, command);
 const executed = executeCommand(document, command); // applies + solves, or throws
+
+// Export is a pure serializer; see export.md.
+const svg = toSvg(document, { construction: false });
 ```
 
 Keep the public surface small and typed. New exports go through `src/index.ts`.
 
 ## Rendering
 
-The geometry package does **not** render. The frontend maps entities to SVG
-(`path`, `line`, `polygon`) and controls styling, hit-testing and viewport.
-Exports (SVG/PDF/DXF) will be serializers that consume the same document.
+The geometry package does **not** render to screen. The frontend maps entities to
+SVG (`path`, `line`, `polygon`) and controls styling, hit-testing and viewport.
+Exports (SVG/PDF/DXF) are serializers that consume the same document; the SVG
+serializer (`toSvg`, see `export.md`) is the first of these.

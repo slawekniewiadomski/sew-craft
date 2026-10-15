@@ -1,6 +1,6 @@
 # 008 — SVG export
 
-Status: todo
+Status: done
 Depends on: 005
 
 ## Goal
@@ -28,9 +28,9 @@ export target.
 
 ## Acceptance criteria
 
-- [ ] Output opens in a browser and measures correctly at 100%.
-- [ ] Construction omitted by default; cut edges always present.
-- [ ] Structural tests (bounds, layer separation) pass.
+- [x] Output opens in a browser and measures correctly at 100%.
+- [x] Construction omitted by default; cut edges always present.
+- [x] Structural tests (bounds, layer separation) pass.
 
 ## Out of scope
 

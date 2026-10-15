@@ -25,6 +25,32 @@ The editor already renders SVG, so SVG export reuses the same mapping:
 
 No third-party dependency needed; build the string from the model.
 
+### Serializer interface
+
+`toSvg(document, options)` lives in `@sewcraft/geometry` and returns the SVG as a
+string. It is pure (no DOM, no network) and uses one user unit per millimetre, so
+the result measures 1:1 at 100%.
+
+```ts
+import { toSvg } from '@sewcraft/geometry';
+
+toSvg(document, {
+  construction: false, // include the construction layer (default off)
+  seamAllowance: [], // precomputed offset outlines (see below)
+  padding: 10, // whitespace in mm around the drawing
+});
+```
+
+The output has a `viewBox` in pattern coordinates plus `width`/`height` in `mm`,
+and an XML comment carrying the pattern `schema` and a generation timestamp.
+Layers are emitted as `<g data-layer="...">` groups: `cut` always (every
+non-construction line/curve), `construction` when requested and non-empty, and
+`seam-allowance` when outlines are supplied.
+
+Seam-allowance geometry is **not** computed here: the offset algorithm is spec
+007's, and 008 defines the layer as an extension point. Callers pass precomputed
+outlines as `{ edge, path }`, which the serializer draws in the allowance layer.
+
 ## PDF (later)
 
 Target: printable, tiled pattern sheets for A4/Letter.

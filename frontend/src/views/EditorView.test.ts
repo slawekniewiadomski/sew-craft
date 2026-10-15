@@ -5,9 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 
 import PatternCanvas from '@/components/PatternCanvas.vue';
+import { downloadSvgFile } from '@/lib/download';
 import { useEditorStore } from '@/stores/editor';
 
 import EditorView from './EditorView.vue';
+
+vi.mock('@/lib/download', () => ({ downloadSvgFile: vi.fn() }));
 
 const RECT = {
   x: 0,
@@ -25,6 +28,7 @@ enableAutoUnmount(afterEach);
 
 beforeEach(() => {
   setActivePinia(createPinia());
+  vi.mocked(downloadSvgFile).mockClear();
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(RECT);
 });
 
@@ -240,6 +244,18 @@ describe('EditorView', () => {
     expect(points(wrapper)).toHaveLength(0);
   });
 
+  it('downloads the pattern as an SVG with construction hidden by default', async () => {
+    const wrapper = await mountEditor(createPinia());
+
+    await wrapper.find('[data-testid="download-svg"]').trigger('click');
+
+    expect(downloadSvgFile).toHaveBeenCalledTimes(1);
+    const [filename, svg] = vi.mocked(downloadSvgFile).mock.calls[0]!;
+    expect(filename).toBe('pattern-1.svg');
+    expect(svg).toContain('data-layer="cut"');
+    expect(svg).not.toContain('data-layer="construction"');
+  });
+
   it('renders construction points as muted outlines', async () => {
     const pinia = createPinia();
     setActivePinia(pinia);
@@ -258,6 +274,28 @@ describe('EditorView', () => {
     expect(rendered).toHaveLength(2);
     expect(rendered[0]!.classes()).toContain('fill-muted-foreground');
     expect(rendered[1]!.classes()).toContain('fill-foreground');
+  });
+
+  it('includes construction geometry in the download when toggled on', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useEditorStore().load({
+      ...createEmptyDocument(),
+      entities: [
+        { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+        { id: 'q', kind: 'point', x: 10, y: 0, construction: false, fixed: false },
+        { id: 'guide', kind: 'line', start: 'p', end: 'q', construction: true },
+      ],
+    });
+
+    const wrapper = await mountEditor(pinia);
+
+    await wrapper.find('[data-testid="toggle-construction"]').setValue(true);
+    await wrapper.find('[data-testid="download-svg"]').trigger('click');
+
+    const [, svg] = vi.mocked(downloadSvgFile).mock.calls[0]!;
+    expect(svg).toContain('data-layer="construction"');
+    expect(svg).toContain('data-entity-id="guide"');
   });
 
   it('hides construction geometry without changing the document', async () => {

@@ -1,12 +1,13 @@
 <script setup lang="ts">
+import { cutEdges, DEFAULT_SEAM_ALLOWANCE, seamForEdge, toSvg } from '@sewcraft/geometry';
 import type { Command, CurveEntity, EntityId, LineEntity } from '@sewcraft/geometry';
-import { cutEdges, DEFAULT_SEAM_ALLOWANCE, seamForEdge } from '@sewcraft/geometry';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import PatternCanvas from '@/components/PatternCanvas.vue';
 import { Button } from '@/components/ui/button';
 import { useCommandBus } from '@/composables/use-command-bus';
 import { nextCommandId } from '@/lib/command-ids';
+import { downloadSvgFile } from '@/lib/download';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 
 const props = defineProps<{ id: string }>();
@@ -18,6 +19,7 @@ const activeTool = ref<EditorTool>('select');
 const selectedId = ref<EntityId | null>(null);
 const fitToken = ref(0);
 const showConstruction = ref(true);
+const includeConstruction = ref(false);
 const showSeamAllowance = ref(true);
 const seamWidths = ref<Record<string, number>>({});
 
@@ -66,6 +68,13 @@ function selectTool(tool: EditorTool): void {
 
 function fit(): void {
   fitToken.value += 1;
+}
+
+function downloadSvg(): void {
+  downloadSvgFile(
+    `pattern-${props.id}.svg`,
+    toSvg(pattern.value, { construction: includeConstruction.value }),
+  );
 }
 
 function deleteSelected(): void {
@@ -219,6 +228,13 @@ onBeforeUnmount(() => {
         Delete
       </Button>
       <Button variant="outline" size="sm" data-testid="fit" @click="fit">Fit</Button>
+      <Button variant="outline" size="sm" data-testid="download-svg" @click="downloadSvg">
+        Download SVG
+      </Button>
+      <label class="flex items-center gap-1 text-sm text-muted-foreground">
+        <input v-model="includeConstruction" type="checkbox" data-testid="toggle-construction" />
+        Include construction
+      </label>
 
       <label class="flex items-center gap-1 text-sm">
         <input v-model="showConstruction" type="checkbox" data-testid="show-construction" />
