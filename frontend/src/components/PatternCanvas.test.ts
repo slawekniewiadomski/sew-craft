@@ -1,3 +1,4 @@
+import type * as Geometry from '@sewcraft/geometry';
 import {
   bounds,
   createEmptyDocument,
@@ -7,10 +8,16 @@ import {
   type LineEntity,
   type PatternDocument,
   type PointEntity,
+  seamAllowancePaths,
 } from '@sewcraft/geometry';
 import { enableAutoUnmount, mount, type DOMWrapper, type VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { nextTick } from 'vue';
+
+vi.mock('@sewcraft/geometry', async (importOriginal) => {
+  const actual = await importOriginal<typeof Geometry>();
+  return { ...actual, seamAllowancePaths: vi.fn(actual.seamAllowancePaths) };
+});
 
 import { snapPoint, snapToGrid } from '@/lib/snap';
 import {
@@ -87,6 +94,7 @@ function mountCanvas(
     tool: 'select' | 'add_point' | 'add_line' | 'add_curve';
     selectedId: EntityId | null;
     fitToken: number;
+    showSeamAllowance: boolean;
   }> = {},
 ): VueWrapper {
   return mount(PatternCanvas, {
@@ -144,6 +152,48 @@ describe('PatternCanvas', () => {
     expect(wrapper.find('[data-testid="grid"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="ruler-x"]').attributes('width')).toBe('800');
     expect(wrapper.find('[data-testid="ruler-y"]').attributes('height')).toBe('600');
+  });
+
+  it('renders a dashed seam-allowance offset for a seam', () => {
+    const seamDoc: PatternDocument = {
+      ...baseDoc,
+      seams: [{ id: 's1', edge: 'ab', width: 10 }],
+    };
+    const wrapper = mountCanvas({ document: seamDoc });
+
+    const path = wrapper.find('[data-seam-edge="ab"]');
+    expect(path.exists()).toBe(true);
+    expect(path.attributes('d')).toContain('M ');
+    expect(path.attributes('stroke-dasharray')).toBe('6 3');
+    expect(path.classes()).toContain('text-muted-foreground');
+  });
+
+  it('hides the seam-allowance layer when the toggle is off', () => {
+    const seamDoc: PatternDocument = {
+      ...baseDoc,
+      seams: [{ id: 's1', edge: 'ab', width: 10 }],
+    };
+    const wrapper = mountCanvas({ document: seamDoc, showSeamAllowance: false });
+
+    expect(wrapper.findAll('[data-seam-edge]')).toHaveLength(0);
+  });
+
+  it('flags a self-intersecting allowance as invalid', () => {
+    vi.mocked(seamAllowancePaths).mockReturnValueOnce([
+      {
+        edge: 'ab',
+        width: 10,
+        join: 'miter',
+        path: [
+          { x: 0, y: 0 },
+          { x: 10, y: 0 },
+        ],
+        selfIntersections: [{ first: 0, second: 1, point: { x: 5, y: 0 } }],
+      },
+    ]);
+    const wrapper = mountCanvas();
+
+    expect(wrapper.find('[data-seam-edge="ab"]').classes()).toContain('text-destructive');
   });
 
   it('fits the pattern on mount and again when fitToken changes', async () => {
