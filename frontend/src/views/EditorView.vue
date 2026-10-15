@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { toSvg, type Command, type EntityId } from '@sewcraft/geometry';
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { cutEdges, toSvg } from '@sewcraft/geometry';
+import type { Command, CurveEntity, EntityId, LineEntity } from '@sewcraft/geometry';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import PatternCanvas from '@/components/PatternCanvas.vue';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,30 @@ const error = ref<string | null>(null);
 const activeTool = ref<EditorTool>('select');
 const selectedId = ref<EntityId | null>(null);
 const fitToken = ref(0);
+const showConstruction = ref(true);
 const includeConstruction = ref(false);
+
+/**
+ * Construction geometry is presentation only: hiding it filters what is drawn
+ * without touching the document, so the toggle never changes the model.
+ */
+const visibleDocument = computed(() =>
+  showConstruction.value
+    ? pattern.value
+    : {
+        ...pattern.value,
+        entities: pattern.value.entities.filter((entity) => !entity.construction),
+      },
+);
+
+/** Every line and curve, so any edge can be converted between guide and cut. */
+const edges = computed(() =>
+  pattern.value.entities
+    .filter((entity): entity is LineEntity | CurveEntity => entity.kind !== 'point')
+    .map((entity) => ({ id: entity.id, construction: entity.construction })),
+);
+
+const cutEdgeCount = computed(() => cutEdges(pattern.value).length);
 
 function run(action: () => void): void {
   try {
@@ -69,6 +93,16 @@ function onAddCurve(points: [EntityId, EntityId, EntityId, EntityId]): void {
       id: nextCommandId('curve'),
       type: 'add_curve',
       params: { p0: points[0], p1: points[1], p2: points[2], p3: points[3] },
+    }),
+  );
+}
+
+function convert(id: string, construction: boolean): void {
+  run(() =>
+    dispatch({
+      id: nextCommandId('construction'),
+      type: 'set_construction',
+      params: { id, construction },
     }),
   );
 }
@@ -167,14 +201,20 @@ onBeforeUnmount(() => {
         Include construction
       </label>
 
+      <label class="flex items-center gap-1 text-sm">
+        <input v-model="showConstruction" type="checkbox" data-testid="toggle-show-construction" />
+        Show construction
+      </label>
+
       <span class="text-sm text-muted-foreground">{{ journal.length }} command(s)</span>
+      <span class="text-sm text-muted-foreground">{{ cutEdgeCount }} cut edge(s)</span>
     </div>
 
     <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
 
     <PatternCanvas
       v-model:selected-id="selectedId"
-      :document="pattern"
+      :document="visibleDocument"
       :tool="activeTool"
       :fit-token="fitToken"
       @move-point="onMovePoint"
@@ -182,5 +222,21 @@ onBeforeUnmount(() => {
       @add-line="onAddLine"
       @add-curve="onAddCurve"
     />
+
+    <div v-if="edges.length > 0" class="space-y-2">
+      <h2 class="text-sm font-medium">Edges</h2>
+      <ul class="space-y-1" aria-label="Edges">
+        <li
+          v-for="edge in edges"
+          :key="edge.id"
+          class="flex items-center justify-between gap-2 text-sm"
+        >
+          <span class="font-mono text-muted-foreground">{{ edge.id }}</span>
+          <Button variant="outline" size="sm" @click="convert(edge.id, !edge.construction)">
+            {{ edge.construction ? 'Make cut edge' : 'Make construction' }}
+          </Button>
+        </li>
+      </ul>
+    </div>
   </section>
 </template>

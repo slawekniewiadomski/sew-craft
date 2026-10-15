@@ -1,10 +1,13 @@
 import {
   PATTERN_SCHEMA,
   type Constraint,
+  type CurveEntity,
   type Entity,
   type EntityId,
+  type LineEntity,
   type PatternDocument,
   type PointEntity,
+  type Seam,
 } from './types.js';
 import type { Vec2 } from './vector.js';
 
@@ -31,8 +34,28 @@ export function getConstraint(document: PatternDocument, id: EntityId): Constrai
   return document.constraints.find((constraint) => constraint.id === id);
 }
 
+export function getSeam(document: PatternDocument, id: EntityId): Seam | undefined {
+  return document.seams.find((seam) => seam.id === id);
+}
+
+/** The seam allowance attached to an edge, or `undefined` when it has none. */
+export function seamForEdge(document: PatternDocument, edge: EntityId): Seam | undefined {
+  return document.seams.find((seam) => seam.edge === edge);
+}
+
 export function allPoints(document: PatternDocument): PointEntity[] {
   return document.entities.filter((entity): entity is PointEntity => entity.kind === 'point');
+}
+
+/**
+ * Every line or curve that is part of the cut pattern, in document order.
+ * Construction entities are guides and are never cut or exported, so exports
+ * and the cut-edge layer both derive their contents from this selector.
+ */
+export function cutEdges(document: PatternDocument): (LineEntity | CurveEntity)[] {
+  return document.entities.filter(
+    (entity): entity is LineEntity | CurveEntity => entity.kind !== 'point' && !entity.construction,
+  );
 }
 
 /**

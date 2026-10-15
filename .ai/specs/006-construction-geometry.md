@@ -1,6 +1,6 @@
 # 006 — Construction geometry
 
-Status: todo
+Status: done
 Depends on: 005
 
 ## Goal
@@ -27,9 +27,9 @@ canvas (005).
 
 ## Acceptance criteria
 
-- [ ] Construction entities excluded from cut-edge/export sets.
-- [ ] Toggle does not alter geometry, only presentation.
-- [ ] Commands are reversible.
+- [x] Construction entities excluded from cut-edge/export sets.
+- [x] Toggle does not alter geometry, only presentation.
+- [x] Commands are reversible.
 
 ## Out of scope
 

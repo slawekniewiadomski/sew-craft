@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://sewcraft.local/schemas/command-spec-0.1.json",
+  "$id": "https://sewcraft.local/schemas/command-spec-0.2.json",
   "title": "SewCraft Command Spec",
-  "schema": "sewcraft.command-spec/0.1",
-  "spec_version": "0.1.0",
+  "schema": "sewcraft.command-spec/0.2",
+  "spec_version": "0.2.0",
   "units": "mm",
   "envelope": {
     "id": "ULID string, client-generated, unique",
@@ -47,6 +47,11 @@
       "params": { "start": "entity_id", "end": "entity_id" },
       "inverse": "delete_entity"
     },
+    "set_construction": {
+      "description": "Mark an entity as construction geometry or convert it back to a cut edge.",
+      "params": { "id": "entity_id", "construction": "bool" },
+      "inverse": "set_construction"
+    },
     "delete_entity": {
       "description": "Remove an entity and any constraints referencing it.",
       "params": { "id": "entity_id" }
@@ -66,8 +71,14 @@
       "inverse": "add_constraint"
     },
     "add_seam_allowance": {
-      "description": "Set a seam allowance width (mm) on a piece edge.",
-      "params": { "piece": "entity_id", "edge": "entity_id", "width": "number" }
+      "description": "Attach a seam allowance (mm) to a cut line or curve edge.",
+      "params": { "edge": "entity_id", "width": "number?" },
+      "inverse": "remove_seam_allowance"
+    },
+    "remove_seam_allowance": {
+      "description": "Detach the seam allowance from an edge.",
+      "params": { "id": "entity_id" },
+      "inverse": "add_seam_allowance"
     },
     "solve": {
       "description": "Rebuild the sketch by running the constraint solver.",

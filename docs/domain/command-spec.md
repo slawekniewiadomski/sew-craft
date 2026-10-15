@@ -54,6 +54,14 @@ Reference-only segment that is never a cut edge.
 - params: `start: entity_id`, `end: entity_id`
 - inverse: `delete_entity`
 
+### `set_construction`
+
+Convert an entity between construction geometry (a guide) and a cut edge. A
+no-op when the entity already has the requested value, so it is idempotent.
+
+- params: `id: entity_id`, `construction: bool`
+- inverse: `set_construction` (restores the entity's previous value)
+
 ### `delete_entity`
 
 Remove an entity and cascade-remove constraints that reference it.
@@ -85,10 +93,31 @@ Constraint param mapping:
 
 ### `add_seam_allowance`
 
-Set seam allowance width on a piece edge.
+Attach a seam allowance to a cut line or curve edge. The allowance is stored per edge
+and generated as a true offset of that edge (see `@sewcraft/geometry`'s
+`seamAllowancePath` / `offsetPolyline`). At most one allowance may be attached to
+an edge. Construction guides (`add_construction_line`) are not cut edges and are
+rejected.
 
-- params: `piece: entity_id`, `edge: entity_id`, `width: number` (mm)
-- Not yet reversible in v0.1; use a snapshot checkpoint for undo.
+- params: `edge: entity_id`, `width?: number` (mm; defaults to `10`)
+- `width` must be finite and greater than `0`.
+- inverse: `remove_seam_allowance` (targets the created seam id)
+
+### `remove_seam_allowance`
+
+Detach the seam allowance from an edge.
+
+- params: `id: entity_id` (the seam id, i.e. the `add_seam_allowance` command id)
+- inverse: `add_seam_allowance` (params rebuilt from the removed seam, keeping its id)
+
+### Migration from spec 0.1.0
+
+`add_seam_allowance` previously required `piece` and `width`. The v0.1 model has
+no `piece` entity, so the command always rejected; the allowance is now stored per
+edge. The new params are `edge` + optional `width`; a legacy `piece` param is
+ignored, so existing payloads still apply. The response shape is unchanged.
+`spec_version` is bumped to `0.2.0`; a `piece` param can be reintroduced
+additively once pieces are modelled (spec 006).
 
 ### `solve`
 
