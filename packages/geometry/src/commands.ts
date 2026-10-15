@@ -1,4 +1,11 @@
-import { allPoints, constraintEntityIds, getConstraint, getEntity } from './document.js';
+import {
+  allPoints,
+  constraintEntityIds,
+  getConstraint,
+  getEntity,
+  getSeam,
+  seamForEdge,
+} from './document.js';
 import { solve } from './solver.js';
 import type { SolveOptions, SolveResult } from './solver.js';
 import {
@@ -11,7 +18,11 @@ import {
   type LineEntity,
   type PatternDocument,
   type PointEntity,
+  type Seam,
 } from './types.js';
+
+/** Seam allowance applied to an edge when the command omits an explicit width. */
+export const DEFAULT_SEAM_ALLOWANCE = 10;
 
 export interface AddPointParams {
   x: number;
@@ -64,9 +75,12 @@ export interface RemoveConstraintParams {
 }
 
 export interface AddSeamAllowanceParams {
-  piece: EntityId;
   edge: EntityId;
-  width: number;
+  width?: number;
+}
+
+export interface RemoveSeamAllowanceParams {
+  id: EntityId;
 }
 
 export type SolveParams = Record<string, never>;
@@ -97,6 +111,12 @@ export type Command =
   | { id: EntityId; type: 'add_constraint'; params: AddConstraintParams; issuedAt?: string }
   | { id: EntityId; type: 'remove_constraint'; params: RemoveConstraintParams; issuedAt?: string }
   | { id: EntityId; type: 'add_seam_allowance'; params: AddSeamAllowanceParams; issuedAt?: string }
+  | {
+      id: EntityId;
+      type: 'remove_seam_allowance';
+      params: RemoveSeamAllowanceParams;
+      issuedAt?: string;
+    }
   | { id: EntityId; type: 'solve'; params: SolveParams; issuedAt?: string };
 
 export type CommandType = Command['type'];
@@ -183,6 +203,8 @@ export function applyCommand(document: PatternDocument, command: Command): Comma
       return applyRemoveConstraint(document, command);
     case 'add_seam_allowance':
       return applyAddSeamAllowance(document, command);
+    case 'remove_seam_allowance':
+      return applyRemoveSeamAllowance(document, command);
     case 'solve':
       return noOp(document);
   }
@@ -392,10 +414,11 @@ function applyDeleteEntity(
   const constraints = document.constraints.filter(
     (constraint) => !constraintEntityIds(constraint).includes(id),
   );
+  const seams = document.seams.filter((seam) => seam.edge !== id);
 
-  // Restoring the entity plus its cascade-removed constraints is not a single
-  // command, so undo relies on the journal's snapshot.
-  return { document: { ...document, entities, constraints }, inverse: null };
+  // Restoring the entity plus its cascade-removed constraints and seams is not a
+  // single command, so undo relies on the journal's snapshot.
+  return { document: { ...document, entities, constraints, seams }, inverse: null };
 }
 
 function applyAddConstraint(
@@ -459,32 +482,61 @@ function applyAddSeamAllowance(
   document: PatternDocument,
   command: CommandOf<'add_seam_allowance'>,
 ): CommandApplication {
-  const { piece, edge, width } = command.params;
-  if (!Number.isFinite(width)) {
-    throw new CommandValidationError('add_seam_allowance', 'width must be a finite number');
-  }
-
-  const edgeEntity = getEntity(document, edge);
-  if (edgeEntity === undefined) {
-    throw new CommandValidationError('add_seam_allowance', `unknown edge: ${edge}`);
-  }
-  if (edgeEntity.kind === 'point') {
+  const { edge } = command.params;
+  const width = command.params.width ?? DEFAULT_SEAM_ALLOWANCE;
+  if (!Number.isFinite(width) || width <= 0) {
     throw new CommandValidationError(
       'add_seam_allowance',
-      `edge ${edge} is a point, expected a line or curve`,
+      'width must be a finite number greater than 0',
     );
   }
 
-  if (getEntity(document, piece) === undefined) {
-    throw new CommandValidationError('add_seam_allowance', `unknown piece: ${piece}`);
+  const edgeEntity = getEntity(document, edge);
+  if (edgeEntity === undefined || edgeEntity.kind === 'point' || edgeEntity.construction) {
+    throw new CommandValidationError(
+      'add_seam_allowance',
+      `edge ${edge} is not a cut line or curve`,
+    );
   }
 
-  // The v0.1 entity model has no `piece` kind, so this command cannot be applied
-  // until pieces exist (spec 007).
-  throw new CommandValidationError(
-    'add_seam_allowance',
-    `entity ${piece} is not a piece; seam allowance needs pieces, which are not modelled yet`,
-  );
+  if (getSeam(document, command.id) !== undefined) {
+    return noOp(document);
+  }
+  if (seamForEdge(document, edge) !== undefined) {
+    throw new CommandValidationError(
+      'add_seam_allowance',
+      `edge ${edge} already has a seam allowance`,
+    );
+  }
+
+  const seam: Seam = { id: command.id, edge, width };
+
+  return {
+    document: { ...document, seams: [...document.seams, seam] },
+    inverse: { id: command.id, type: 'remove_seam_allowance', params: { id: command.id } },
+  };
+}
+
+function applyRemoveSeamAllowance(
+  document: PatternDocument,
+  command: CommandOf<'remove_seam_allowance'>,
+): CommandApplication {
+  const { id } = command.params;
+  const seam = getSeam(document, id);
+  if (seam === undefined) {
+    return noOp(document);
+  }
+
+  const seams = document.seams.filter((candidate) => candidate.id !== id);
+
+  return {
+    document: { ...document, seams },
+    inverse: {
+      id: seam.id,
+      type: 'add_seam_allowance',
+      params: { edge: seam.edge, width: seam.width },
+    },
+  };
 }
 
 function buildConstraint(

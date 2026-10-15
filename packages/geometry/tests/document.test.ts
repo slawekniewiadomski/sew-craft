@@ -7,12 +7,15 @@ import {
   cutEdges,
   entityPoints,
   getEntity,
+  getSeam,
   PATTERN_SCHEMA,
+  seamForEdge,
   type CurveEntity,
   type Entity,
   type LineEntity,
   type PatternDocument,
   type PointEntity,
+  type Seam,
 } from '../src/index.js';
 
 const point = (
@@ -57,6 +60,21 @@ describe('getEntity', () => {
 
   it('returns undefined for an unknown id', () => {
     expect(getEntity(createEmptyDocument(), 'missing')).toBeUndefined();
+  });
+});
+
+describe('seam helpers', () => {
+  const seam: Seam = { id: 's', edge: 'l', width: 10 };
+  const document: PatternDocument = { ...createEmptyDocument(), seams: [seam] };
+
+  it('finds a seam by id', () => {
+    expect(getSeam(document, 's')).toBe(seam);
+    expect(getSeam(document, 'missing')).toBeUndefined();
+  });
+
+  it('finds a seam by its edge', () => {
+    expect(seamForEdge(document, 'l')).toBe(seam);
+    expect(seamForEdge(document, 'missing')).toBeUndefined();
   });
 });
 
