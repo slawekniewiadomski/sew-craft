@@ -7,7 +7,7 @@
 
 The pattern editor is where all drafting happens, but its controls were rendered
 as a single wrapping row above a fixed-height canvas, with per-edge parameters
-stacked *below* the canvas inside a scrolling page. As tools and parameters grow
+stacked _below_ the canvas inside a scrolling page. As tools and parameters grow
 this neither scales nor keeps parameters near the tool that owns them, and the
 canvas never fills the window. Spec `013-editor-workspace-shell.md` restructures
 the editor into a full-height workspace.

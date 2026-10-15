@@ -23,7 +23,7 @@ no home near their tool.
   `min-h-screen` and pads the `<main>` region (`px-4 py-8`), so the editor is a
   scrolling page rather than a workspace. `frontend/src/views/EditorView.vue`
   renders every control in one `flex flex-wrap` row (lines 205–251), a fixed
-  `h-80` canvas (`PatternCanvas.vue:347`) and a parameters block *below* the
+  `h-80` canvas (`PatternCanvas.vue:347`) and a parameters block _below_ the
   canvas (lines 267–318).
 - **Evidence it matters:** the canvas never fills the viewport, and as tools are
   added the ribbon row only grows wider — there is no home for per-tool
@@ -35,14 +35,14 @@ no home near their tool.
 
 Restructure the frontend shell into a fixed-height, full-width workspace:
 
-| Region                   | Today                                                                   | Proposed                                                 |
-| ------------------------ | ----------------------------------------------------------------------- | -------------------------------------------------------- |
-| App shell (`App.vue`)    | `flex min-h-screen flex-col`                                            | `flex h-screen flex-col overflow-hidden`                 |
-| `<main>` (`App.vue`)     | `w-full flex-1 px-4 py-8`                                               | `flex min-h-0 w-full flex-1 flex-col`                    |
-| Footer (`App.vue`)       | always rendered                                                         | rendered only on non-editor routes                       |
-| `ProjectsView.vue`       | `space-y-6`                                                             | `h-full space-y-6 overflow-y-auto px-4 py-8`             |
-| `EditorView.vue`         | padded page, wrapping control row, `h-80` canvas, params below          | ribbon row + `flex-1` canvas + right sidebar drawers     |
-| `PatternCanvas.vue` box  | `h-80 w-full`                                                           | `h-full w-full` (re-measured with a `ResizeObserver`)    |
+| Region                  | Today                                                          | Proposed                                              |
+| ----------------------- | -------------------------------------------------------------- | ----------------------------------------------------- |
+| App shell (`App.vue`)   | `flex min-h-screen flex-col`                                   | `flex h-screen flex-col overflow-hidden`              |
+| `<main>` (`App.vue`)    | `w-full flex-1 px-4 py-8`                                      | `flex min-h-0 w-full flex-1 flex-col`                 |
+| Footer (`App.vue`)      | always rendered                                                | rendered only on non-editor routes                    |
+| `ProjectsView.vue`      | `space-y-6`                                                    | `h-full space-y-6 overflow-y-auto px-4 py-8`          |
+| `EditorView.vue`        | padded page, wrapping control row, `h-80` canvas, params below | ribbon row + `flex-1` canvas + right sidebar drawers  |
+| `PatternCanvas.vue` box | `h-80 w-full`                                                  | `h-full w-full` (re-measured with a `ResizeObserver`) |
 
 **Ribbon** (`EditorRibbon.vue`, data from `lib/editor-ribbon.ts`): groups —
 **Tools** (Select/Point/Line/Curve), **History** (Undo/Redo), **Edit** (Delete),
@@ -181,12 +181,12 @@ flowchart TD
 
 ## 📝 Resolved assumptions
 
-| #   | Question | Applied default | Why | Confirm? |
-| --- | --- | --- | --- | --- |
-| Q1 | Which shadcn primitives? | Collapsible/Separator/Tooltip/ScrollArea via the CLI | Issue's resolved default; the CLI ran cleanly under Tailwind v4. | Reversible |
-| Q2 | Default-open drawers | Properties + Outline open, View collapsed | Issue's resolved default. | Reversible |
-| Q3 | Where does the per-edge seam-width input live? | Outline edge rows | Keeps the existing `seam-width-*`/`add-seam-*`/`remove-seam-*` testids reachable without a selection, as today. | Reversible |
-| Q4 | Responsive behaviour | Desktop-first, basic collapse | Issue's non-goal set; no mobile redesign. | Reversible |
+| #   | Question                                       | Applied default                                      | Why                                                                                                             | Confirm?   |
+| --- | ---------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ---------- |
+| Q1  | Which shadcn primitives?                       | Collapsible/Separator/Tooltip/ScrollArea via the CLI | Issue's resolved default; the CLI ran cleanly under Tailwind v4.                                                | Reversible |
+| Q2  | Default-open drawers                           | Properties + Outline open, View collapsed            | Issue's resolved default.                                                                                       | Reversible |
+| Q3  | Where does the per-edge seam-width input live? | Outline edge rows                                    | Keeps the existing `seam-width-*`/`add-seam-*`/`remove-seam-*` testids reachable without a selection, as today. | Reversible |
+| Q4  | Responsive behaviour                           | Desktop-first, basic collapse                        | Issue's non-goal set; no mobile redesign.                                                                       | Reversible |
 
 ## Checks
 

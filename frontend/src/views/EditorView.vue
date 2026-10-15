@@ -3,16 +3,21 @@ import { cutEdges, DEFAULT_SEAM_ALLOWANCE, seamForEdge, toSvg } from '@sewcraft/
 import type { Command, CurveEntity, EntityId, LineEntity } from '@sewcraft/geometry';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
+import EditorRibbon from '@/components/EditorRibbon.vue';
+import EditorSidebar from '@/components/EditorSidebar.vue';
 import PatternCanvas from '@/components/PatternCanvas.vue';
 import { Button } from '@/components/ui/button';
 import { useCommandBus } from '@/composables/use-command-bus';
+import { useSidebarLayout } from '@/composables/use-sidebar-layout';
 import { nextCommandId } from '@/lib/command-ids';
 import { downloadSvgFile } from '@/lib/download';
+import type { RibbonAction } from '@/lib/editor-ribbon';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 
 const props = defineProps<{ id: string }>();
 
 const { document: pattern, journal, canUndo, canRedo, dispatch, undo, redo } = useCommandBus();
+const { width, collapsed, setWidth } = useSidebarLayout(window.localStorage);
 
 const error = ref<string | null>(null);
 const activeTool = ref<EditorTool>('select');
@@ -52,6 +57,9 @@ const edges = computed(() =>
 );
 
 const cutEdgeCount = computed(() => cutEdges(pattern.value).length);
+const activeToolLabel = computed(
+  () => EDITOR_TOOLS.find((tool) => tool.id === activeTool.value)!.label,
+);
 
 function run(action: () => void): void {
   try {
@@ -83,6 +91,26 @@ function deleteSelected(): void {
 
   run(() => dispatch({ id: nextCommandId('delete'), type: 'delete_entity', params: { id } }));
   selectedId.value = null;
+}
+
+function onRibbonAction(action: RibbonAction): void {
+  switch (action) {
+    case 'undo':
+      run(undo);
+      break;
+    case 'redo':
+      run(redo);
+      break;
+    case 'delete':
+      deleteSelected();
+      break;
+    case 'fit':
+      fit();
+      break;
+    case 'download_svg':
+      downloadSvg();
+      break;
+  }
 }
 
 function onMovePoint(id: EntityId, x: number, y: number): void {
@@ -191,130 +219,136 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="space-y-6">
-    <div class="flex items-baseline justify-between">
-      <h1 class="text-2xl font-semibold">Editor</h1>
-      <p class="text-sm text-muted-foreground">Project #{{ props.id }}</p>
-    </div>
-
-    <p class="text-sm text-muted-foreground">
-      Every edit is a command: dragging, drawing and deleting all go through the command bus, so
-      undo and redo replay the journal. The solver rebuilds after each change and constraints hold.
-    </p>
-
-    <div class="flex flex-wrap items-center gap-2">
-      <div class="flex items-center gap-1 rounded-md border p-1">
-        <Button
-          v-for="tool in EDITOR_TOOLS"
-          :key="tool.id"
-          :variant="activeTool === tool.id ? 'default' : 'ghost'"
-          size="sm"
-          :data-testid="`tool-${tool.id}`"
-          @click="selectTool(tool.id)"
-        >
-          {{ tool.label }}
-        </Button>
-      </div>
-
-      <Button variant="outline" size="sm" :disabled="!canUndo" @click="run(undo)">Undo</Button>
-      <Button variant="outline" size="sm" :disabled="!canRedo" @click="run(redo)">Redo</Button>
-      <Button
-        variant="outline"
-        size="sm"
-        :disabled="selectedId === null"
-        data-testid="delete"
-        @click="deleteSelected"
-      >
-        Delete
-      </Button>
-      <Button variant="outline" size="sm" data-testid="fit" @click="fit">Fit</Button>
-      <Button variant="outline" size="sm" data-testid="download-svg" @click="downloadSvg">
-        Download SVG
-      </Button>
-      <label class="flex items-center gap-1 text-sm text-muted-foreground">
-        <input v-model="includeConstruction" type="checkbox" data-testid="toggle-construction" />
-        Include construction
-      </label>
-
-      <label class="flex items-center gap-1 text-sm">
-        <input v-model="showConstruction" type="checkbox" data-testid="show-construction" />
-        Show construction
-      </label>
-
-      <label class="flex items-center gap-1 text-sm">
-        <input v-model="showSeamAllowance" type="checkbox" data-testid="show-seam-allowance" />
-        Show seam allowance
-      </label>
-
-      <span class="text-sm text-muted-foreground">{{ journal.length }} command(s)</span>
-      <span class="text-sm text-muted-foreground">{{ cutEdgeCount }} cut edge(s)</span>
-    </div>
-
-    <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
-
-    <PatternCanvas
-      v-model:selected-id="selectedId"
-      :document="visibleDocument"
-      :tool="activeTool"
-      :fit-token="fitToken"
-      :show-seam-allowance="showSeamAllowance"
-      @move-point="onMovePoint"
-      @add-point="onAddPoint"
-      @add-line="onAddLine"
-      @add-curve="onAddCurve"
+  <section class="flex h-full min-h-0 flex-col">
+    <EditorRibbon
+      :active-tool="activeTool"
+      :can-undo="canUndo"
+      :can-redo="canRedo"
+      :can-delete="selectedId !== null"
+      @select-tool="selectTool"
+      @action="onRibbonAction"
     />
 
-    <div v-if="edges.length > 0" class="space-y-2">
-      <h2 class="text-sm font-medium">Edges</h2>
-      <ul class="space-y-1" aria-label="Edges">
-        <li
-          v-for="edge in edges"
-          :key="edge.id"
-          class="flex flex-wrap items-center justify-between gap-2 text-sm"
-        >
-          <span class="font-mono text-muted-foreground">{{ edge.id }}</span>
+    <p v-if="error" class="border-b px-3 py-1 text-sm text-destructive">{{ error }}</p>
 
-          <div class="flex items-center gap-2">
-            <template v-if="edge.seamId !== null">
-              <span class="text-muted-foreground" :data-testid="`seam-label-${edge.id}`">
-                Allowance {{ edge.seamWidth }} mm
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                :data-testid="`remove-seam-${edge.id}`"
-                @click="removeSeam(edge.seamId!)"
-              >
-                Remove allowance
-              </Button>
-            </template>
-            <template v-else>
+    <div class="flex min-h-0 flex-1">
+      <div class="min-h-0 flex-1 p-2">
+        <PatternCanvas
+          v-model:selected-id="selectedId"
+          :document="visibleDocument"
+          :tool="activeTool"
+          :fit-token="fitToken"
+          :show-seam-allowance="showSeamAllowance"
+          @move-point="onMovePoint"
+          @add-point="onAddPoint"
+          @add-line="onAddLine"
+          @add-curve="onAddCurve"
+        />
+      </div>
+
+      <EditorSidebar
+        :width="width"
+        :collapsed="collapsed"
+        @update:width="setWidth"
+        @update:collapsed="collapsed = $event"
+      >
+        <template #properties>
+          <dl class="space-y-1 text-sm">
+            <div class="flex items-center justify-between gap-2">
+              <dt class="text-muted-foreground">Tool</dt>
+              <dd data-testid="active-tool">{{ activeToolLabel }}</dd>
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <dt class="text-muted-foreground">Selection</dt>
+              <dd data-testid="active-selection">{{ selectedId ?? 'None' }}</dd>
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <dt class="text-muted-foreground">Project</dt>
+              <dd>#{{ props.id }}</dd>
+            </div>
+          </dl>
+          <p class="mt-2 text-xs text-muted-foreground">{{ journal.length }} command(s)</p>
+          <p class="text-xs text-muted-foreground">{{ cutEdgeCount }} cut edge(s)</p>
+        </template>
+
+        <template #outline>
+          <ul v-if="edges.length > 0" class="space-y-2" aria-label="Edges">
+            <li
+              v-for="edge in edges"
+              :key="edge.id"
+              class="flex flex-wrap items-center justify-between gap-2 text-sm"
+            >
+              <span class="font-mono text-muted-foreground">{{ edge.id }}</span>
+
+              <div class="flex items-center gap-2">
+                <template v-if="edge.seamId !== null">
+                  <span class="text-muted-foreground" :data-testid="`seam-label-${edge.id}`">
+                    Allowance {{ edge.seamWidth }} mm
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    :data-testid="`remove-seam-${edge.id}`"
+                    @click="removeSeam(edge.seamId!)"
+                  >
+                    Remove allowance
+                  </Button>
+                </template>
+                <template v-else>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    class="w-16 rounded-md border px-2 py-1 text-sm"
+                    :value="seamWidthFor(edge.id)"
+                    :aria-label="`Seam width for ${edge.id}`"
+                    :data-testid="`seam-width-${edge.id}`"
+                    @input="setSeamWidth(edge.id, ($event.target as HTMLInputElement).value)"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    :data-testid="`add-seam-${edge.id}`"
+                    @click="addSeam(edge.id)"
+                  >
+                    Add allowance
+                  </Button>
+                </template>
+
+                <Button variant="outline" size="sm" @click="convert(edge.id, !edge.construction)">
+                  {{ edge.construction ? 'Make cut edge' : 'Make construction' }}
+                </Button>
+              </div>
+            </li>
+          </ul>
+          <p v-else class="text-sm text-muted-foreground">No edges yet.</p>
+        </template>
+
+        <template #view>
+          <div class="space-y-2">
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="showConstruction" type="checkbox" data-testid="show-construction" />
+              Show construction
+            </label>
+            <label class="flex items-center gap-2 text-sm">
               <input
-                type="number"
-                min="1"
-                step="1"
-                class="w-16 rounded-md border px-2 py-1 text-sm"
-                :value="seamWidthFor(edge.id)"
-                :aria-label="`Seam width for ${edge.id}`"
-                :data-testid="`seam-width-${edge.id}`"
-                @input="setSeamWidth(edge.id, ($event.target as HTMLInputElement).value)"
+                v-model="showSeamAllowance"
+                type="checkbox"
+                data-testid="show-seam-allowance"
               />
-              <Button
-                variant="outline"
-                size="sm"
-                :data-testid="`add-seam-${edge.id}`"
-                @click="addSeam(edge.id)"
-              >
-                Add allowance
-              </Button>
-            </template>
-
-            <Button variant="outline" size="sm" @click="convert(edge.id, !edge.construction)">
-              {{ edge.construction ? 'Make cut edge' : 'Make construction' }}
-            </Button>
+              Show seam allowance
+            </label>
+            <label class="flex items-center gap-2 text-sm">
+              <input
+                v-model="includeConstruction"
+                type="checkbox"
+                data-testid="toggle-construction"
+              />
+              Include construction
+            </label>
           </div>
-        </li>
-      </ul>
+        </template>
+      </EditorSidebar>
     </div>
   </section>
 </template>

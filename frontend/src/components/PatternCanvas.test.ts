@@ -462,4 +462,34 @@ describe('PatternCanvas', () => {
 
     expect(() => move(540, 360)).not.toThrow();
   });
+
+  it('observes its box for resizes and disconnects on unmount', async () => {
+    const callbacks: ResizeObserverCallback[] = [];
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    class FakeResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        callbacks.push(callback);
+      }
+      observe = observe;
+      disconnect = disconnect;
+    }
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+
+    try {
+      const wrapper = mountCanvas();
+      expect(observe).toHaveBeenCalled();
+
+      rectSpy.mockReturnValue({ ...RECT, width: 321, height: 210 } as DOMRect);
+      callbacks.forEach((callback) => callback([], {} as ResizeObserver));
+      await nextTick();
+
+      expect(wrapper.find('[data-testid="ruler-x"]').attributes('width')).toBe('321');
+
+      wrapper.unmount();
+      expect(disconnect).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

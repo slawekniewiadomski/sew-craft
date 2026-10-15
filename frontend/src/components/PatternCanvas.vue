@@ -73,6 +73,7 @@ const emit = defineEmits<{
 const svg = ref<SVGSVGElement | null>(null);
 const viewport = ref<Viewport>({ x: -40, y: -40, scale: 1 });
 const size = ref<Size>({ width: 800, height: 600 });
+let resizeObserver: ResizeObserver | null = null;
 const dragState = ref<{ id: EntityId; x: number; y: number; origin: Vec2 } | null>(null);
 const panState = ref<{ start: Vec2; origin: Viewport } | null>(null);
 const pending = ref<EntityId[]>([]);
@@ -320,6 +321,10 @@ onMounted(() => {
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('resize', updateSize);
+  if (typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(updateSize);
+    resizeObserver.observe(svg.value!);
+  }
   fit();
 });
 
@@ -327,6 +332,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown);
   window.removeEventListener('keyup', onKeyUp);
   window.removeEventListener('resize', updateSize);
+  resizeObserver?.disconnect();
+  resizeObserver = null;
   removePointerListeners();
 });
 
@@ -344,7 +351,10 @@ watch(
 </script>
 
 <template>
-  <div class="h-80 w-full overflow-hidden rounded-md border bg-muted/30" :class="cursorClass">
+  <div
+    class="h-full min-h-0 w-full overflow-hidden rounded-md border bg-muted/30"
+    :class="cursorClass"
+  >
     <svg
       ref="svg"
       class="block h-full w-full touch-none select-none"

@@ -22,7 +22,7 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <section class="space-y-6">
+  <section class="h-full space-y-6 overflow-y-auto px-4 py-8">
     <div class="flex items-center justify-between">
       <h1 class="text-2xl font-semibold">Projects</h1>
     </div>
