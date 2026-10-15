@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button } from '@/components/ui/button';
+import { Button, type ButtonVariant } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { RIBBON_GROUPS, type RibbonAction, type RibbonItem } from '@/lib/editor-ribbon';
 import type { EditorTool } from '@/lib/editor-tools';
@@ -18,6 +18,13 @@ const emit = defineEmits<{
 
 function isActive(item: RibbonItem): boolean {
   return item.kind === 'tool' && props.activeTool === item.tool;
+}
+
+function variantFor(item: RibbonItem): ButtonVariant {
+  if (item.kind === 'tool') {
+    return isActive(item) ? 'default' : 'ghost';
+  }
+  return 'outline';
 }
 
 function isDisabled(item: RibbonItem): boolean {
@@ -60,7 +67,7 @@ function activate(item: RibbonItem): void {
         <Button
           v-for="item in group.items"
           :key="item.id"
-          variant="ghost"
+          :variant="variantFor(item)"
           size="sm"
           :data-testid="item.id"
           :disabled="isDisabled(item)"
