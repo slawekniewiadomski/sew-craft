@@ -33,6 +33,14 @@ describe('EditorRibbon', () => {
     expect(wrapper.find('[data-testid="download-svg"]').exists()).toBe(true);
   });
 
+  it('styles the active tool distinctly and outlines action buttons', () => {
+    const wrapper = mountRibbon({ activeTool: 'add_line' });
+
+    expect(wrapper.find('[data-testid="tool-add_line"]').classes()).toContain('bg-primary');
+    expect(wrapper.find('[data-testid="tool-select"]').classes()).not.toContain('bg-primary');
+    expect(wrapper.find('[data-testid="undo"]').classes()).toContain('border-input');
+  });
+
   it('marks the active tool pressed and emits select-tool on click', async () => {
     const wrapper = mountRibbon({ activeTool: 'add_line' });
 
