@@ -62,3 +62,4 @@ Likely files to touch.
 | [010 PDF tiled export](./010-pdf-tiled-export.md)                     | stub    |
 | [011 DXF export](./011-dxf-export.md)                                 | stub    |
 | [012 Measurements & sizing](./012-measurements-sizing.md)             | stub    |
+| [013 Editor workspace shell](./013-editor-workspace-shell.md)         | in progress |
