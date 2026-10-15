@@ -29,6 +29,7 @@ enableAutoUnmount(afterEach);
 beforeEach(() => {
   setActivePinia(createPinia());
   vi.mocked(downloadSvgFile).mockClear();
+  window.localStorage.clear();
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(RECT);
 });
 
@@ -39,6 +40,12 @@ async function mountEditor(pinia: Pinia): Promise<VueWrapper> {
   });
   await flushPromises();
   return wrapper;
+}
+
+/** The View drawer is collapsed by default; open it before driving its inputs. */
+async function openViewDrawer(wrapper: VueWrapper): Promise<void> {
+  await wrapper.find('[data-testid="drawer-toggle-view"]').trigger('click');
+  await nextTick();
 }
 
 function canvasDown(wrapper: VueWrapper, x: number, y: number, button = 0): void {
@@ -290,6 +297,7 @@ describe('EditorView', () => {
 
     const wrapper = await mountEditor(pinia);
 
+    await openViewDrawer(wrapper);
     await wrapper.find('[data-testid="toggle-construction"]').setValue(true);
     await wrapper.find('[data-testid="download-svg"]').trigger('click');
 
@@ -315,6 +323,7 @@ describe('EditorView', () => {
     const wrapper = await mountEditor(pinia);
     expect(wrapper.findAll('[data-kind="line"]')).toHaveLength(4);
 
+    await openViewDrawer(wrapper);
     await wrapper.find('[data-testid="show-construction"]').setValue(false);
 
     expect(wrapper.findAll('[data-kind="line"]')).toHaveLength(2);
@@ -425,11 +434,59 @@ describe('EditorView', () => {
     const wrapper = await mountEditor(pinia);
     expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(true);
 
+    await openViewDrawer(wrapper);
     await wrapper.find('[data-testid="show-seam-allowance"]').setValue(false);
     await nextTick();
 
     expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(false);
     expect(store.document.seams).toHaveLength(1);
     expect(store.journal).toHaveLength(0);
+  });
+
+  it('reports the active tool and selection in the properties drawer', async () => {
+    const wrapper = await mountEditor(createPinia());
+
+    expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Select');
+    expect(wrapper.find('[data-testid="active-selection"]').text()).toBe('None');
+
+    pointDown(wrapper, 'a');
+    await nextTick();
+    expect(wrapper.find('[data-testid="active-selection"]').text()).toBe('a');
+
+    await wrapper.find('[data-testid="tool-add_line"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Line');
+  });
+
+  it('resizes the sidebar with the drag handle', async () => {
+    const wrapper = await mountEditor(createPinia());
+    const handle = wrapper.find('[data-testid="sidebar-resize"]');
+
+    handle.element.dispatchEvent(
+      new MouseEvent('pointerdown', { clientX: 600, bubbles: true, cancelable: true }),
+    );
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 560 }));
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="sidebar"]').attributes('style')).toContain('width: 360px');
+
+    window.dispatchEvent(new MouseEvent('pointerup'));
+  });
+
+  it('persists sidebar width and collapsed state across remounts', async () => {
+    const first = await mountEditor(createPinia());
+
+    await first.find('[data-testid="sidebar-collapse"]').trigger('click');
+    await nextTick();
+
+    expect(JSON.parse(window.localStorage.getItem('sewcraft.editor.sidebar')!)).toEqual({
+      width: 320,
+      collapsed: true,
+    });
+
+    first.unmount();
+    const second = await mountEditor(createPinia());
+
+    expect(second.find('[data-testid="sidebar-expand"]').exists()).toBe(true);
   });
 });
