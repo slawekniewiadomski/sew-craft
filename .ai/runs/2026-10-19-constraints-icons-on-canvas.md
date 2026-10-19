@@ -80,6 +80,8 @@ command or persistence contracts.
 - The seeded sketch is fully constrained, so adding a conflicting constraint
   surfaces a solver error in the drawer instead of silently changing geometry —
   expected behaviour.
+- The configured Pint gate used `--fix`, which Pint does not support. The run
+  corrects the command to plain `vendor/bin/pint` so the gate can pass.
 
 ## Progress
 
@@ -102,3 +104,4 @@ command or persistence contracts.
 ### Phase 4: Validation and evidence
 
 - [ ] 4.1 Run the full validation gate and capture browser evidence
+- [x] 4.2 Correct the invalid Pint gate command — fb62476
