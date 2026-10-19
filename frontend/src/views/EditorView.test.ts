@@ -159,16 +159,10 @@ describe('EditorView', () => {
     expect(points(wrapper)).toHaveLength(5);
     expect(wrapper.text()).toContain('15 command(s)');
 
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === 'Undo')!
-      .trigger('click');
+    await wrapper.find('[data-testid="undo"]').trigger('click');
     expect(points(wrapper)).toHaveLength(4);
 
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === 'Redo')!
-      .trigger('click');
+    await wrapper.find('[data-testid="redo"]').trigger('click');
     expect(points(wrapper)).toHaveLength(5);
   });
 
@@ -393,10 +387,7 @@ describe('EditorView', () => {
     expect(wrapper.find('line').attributes('stroke-dasharray')).toBe('4 4');
     expect(wrapper.text()).toContain('0 cut edge(s)');
 
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === 'Undo')!
-      .trigger('click');
+    await wrapper.find('[data-testid="undo"]').trigger('click');
 
     expect(wrapper.find('line').attributes('stroke-dasharray')).toBeUndefined();
     expect(wrapper.text()).toContain('1 cut edge(s)');
