@@ -19,6 +19,7 @@ vi.mock('@sewcraft/geometry', async (importOriginal) => {
   return { ...actual, seamAllowancePaths: vi.fn(actual.seamAllowancePaths) };
 });
 
+import type { ConstraintPick } from '@/lib/constraint-tools';
 import { snapPoint, snapToGrid } from '@/lib/snap';
 import {
   fitToBounds,
@@ -96,6 +97,8 @@ function mountCanvas(
     fitToken: number;
     showSeamAllowance: boolean;
     showConstraints: boolean;
+    constraintActive: boolean;
+    constraintPicks: ConstraintPick[];
   }> = {},
 ): VueWrapper {
   return mount(PatternCanvas, {
@@ -354,6 +357,54 @@ describe('PatternCanvas', () => {
     down(wrapper.find('[data-testid="grid"]').element, 500, 300);
     expect(wrapper.emitted('update:selectedId')).toEqual([['ab'], [null]]);
     up();
+  });
+
+  it('emits constraint picks for points, lines and curves without selecting', () => {
+    const wrapper = mountCanvas({ constraintActive: true });
+
+    down(pointCircle(wrapper, 'a').element, 500, 300);
+    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, 500, 300);
+    down(wrapper.find('[data-kind="curve"]').element, 500, 300);
+
+    expect(wrapper.emitted('constraint-pick')).toEqual([
+      [{ id: 'a', kind: 'point' }],
+      [{ id: 'ab', kind: 'line' }],
+      [{ id: 'curve', kind: 'curve' }],
+    ]);
+    expect(wrapper.emitted('update:selectedId')).toBeUndefined();
+  });
+
+  it('ignores an empty canvas click while a constraint is active', () => {
+    const wrapper = mountCanvas({ constraintActive: true });
+
+    down(wrapper.find('[data-testid="grid"]').element, 500, 300);
+
+    expect(wrapper.emitted('constraint-pick')).toBeUndefined();
+  });
+
+  it('highlights picked points and lines and uses a crosshair cursor', async () => {
+    const wrapper = mountCanvas({
+      constraintActive: true,
+      constraintPicks: [
+        { id: 'a', kind: 'point' },
+        { id: 'ab', kind: 'line' },
+      ],
+    });
+
+    expect(pointCircle(wrapper, 'a').classes()).toContain('fill-primary');
+    expect(pointCircle(wrapper, 'b').classes()).toContain('fill-foreground');
+    expect(wrapper.find('[data-kind="line"][data-entity-id="ab"]').classes()).toContain(
+      'text-primary',
+    );
+    expect(wrapper.find('[data-kind="line"][data-entity-id="ab"]').attributes('stroke-width')).toBe(
+      '3',
+    );
+    expect(wrapper.classes()).toContain('cursor-crosshair');
+
+    wrapper.setProps({ constraintActive: false });
+    await nextTick();
+
+    expect(wrapper.classes()).toContain('cursor-default');
   });
 
   it('pans the viewport when dragging the background', async () => {

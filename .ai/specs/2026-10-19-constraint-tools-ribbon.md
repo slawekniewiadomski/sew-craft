@@ -1,6 +1,6 @@
 # Constraint tools in the ribbon
 
-Status: proposed
+Status: done
 Depends on: **PR #20** (constraints overlay and drawer) merging first. This spec
 reuses `frontend/src/lib/constraint-view.ts` and the drawer's list/remove
 controls, and removes that drawer's add form. No geometry, command, API or
@@ -280,28 +280,28 @@ only in the input bar and are converted before dispatch.
 
 ## 📋 Acceptance criteria
 
-- [ ] The ribbon shows a Constraints group with seven buttons:
+- [x] The ribbon shows a Constraints group with seven buttons:
       `constraint-coincident`, `constraint-horizontal`, `constraint-vertical`,
       `constraint-point_on_line`, `constraint-distance`, `constraint-angle`,
       `constraint-equal`.
-- [ ] Clicking a constraint button arms it (`aria-pressed="true"`), clears the
+- [x] Clicking a constraint button arms it (`aria-pressed="true"`), clears the
       active tool/selection, and shows the next-pick prompt.
-- [ ] Horizontal, Vertical, Distance and Equal length accept one line or two
+- [x] Horizontal, Vertical, Distance and Equal length accept one line or two
       points; Point on line accepts a point plus a line or two points; Coincident
       and Angle accept points only.
-- [ ] Distance and Angle open a prefilled value bar; angle input in degrees is
+- [x] Distance and Angle open a prefilled value bar; angle input in degrees is
       converted to radians; Apply dispatches and Cancel/Esc exits.
-- [ ] Picked points and lines are highlighted; curves and degenerate tuples are
+- [x] Picked points and lines are highlighted; curves and degenerate tuples are
       rejected without changing the picks.
-- [ ] A successful application stays armed and clears picks; a solver failure
+- [x] A successful application stays armed and clears picks; a solver failure
       leaves the document unchanged and keeps the picks/value for retry.
-- [ ] Undo/redo while picking prunes vanished entities instead of dispatching
+- [x] Undo/redo while picking prunes vanished entities instead of dispatching
       stale ids.
-- [ ] PR #20's drawer keeps its list and Remove controls and loses its add form,
+- [x] PR #20's drawer keeps its list and Remove controls and loses its add form,
       so the ribbon is the single creation path.
-- [ ] No change to `@sewcraft/geometry`, the command spec, the API or the
+- [x] No change to `@sewcraft/geometry`, the command spec, the API or the
       database.
-- [ ] `npm run test:coverage` stays at **100 %** for statements, branches,
+- [x] `npm run test:coverage` stays at **100 %** for statements, branches,
       functions and lines; `format`, `typecheck`, `lint`, `format:check` and
       `build` are green, and the unchanged backend gate still passes.
 

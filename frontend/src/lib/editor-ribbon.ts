@@ -1,6 +1,14 @@
+import { CONSTRAINT_TOOLS } from './constraint-tools';
 import { EDITOR_TOOLS, type EditorTool } from './editor-tools';
 
 export type RibbonAction = 'undo' | 'redo' | 'delete' | 'fit' | 'download_svg';
+
+export interface RibbonConstraintItem {
+  kind: 'constraint';
+  id: string;
+  label: string;
+  constraint: (typeof CONSTRAINT_TOOLS)[number]['type'];
+}
 
 export interface RibbonToolItem {
   kind: 'tool';
@@ -16,7 +24,7 @@ export interface RibbonActionItem {
   action: RibbonAction;
 }
 
-export type RibbonItem = RibbonToolItem | RibbonActionItem;
+export type RibbonItem = RibbonToolItem | RibbonConstraintItem | RibbonActionItem;
 
 export interface RibbonGroup {
   id: string;
@@ -37,6 +45,16 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
       id: `tool-${tool.id}`,
       label: tool.label,
       tool: tool.id,
+    })),
+  },
+  {
+    id: 'constraints',
+    label: 'Constraints',
+    items: CONSTRAINT_TOOLS.map((tool) => ({
+      kind: 'constraint',
+      id: tool.id,
+      label: tool.label,
+      constraint: tool.type,
     })),
   },
   {

@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import {
-  allPoints,
   constraintEntityIds,
-  CONSTRAINT_TYPES,
   cutEdges,
   DEFAULT_SEAM_ALLOWANCE,
   seamForEdge,
@@ -16,8 +14,9 @@ import type {
   EntityId,
   LineEntity,
 } from '@sewcraft/geometry';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
+import ConstraintPromptBar from '@/components/ConstraintPromptBar.vue';
 import EditorRibbon from '@/components/EditorRibbon.vue';
 import EditorSidebar from '@/components/EditorSidebar.vue';
 import PatternCanvas from '@/components/PatternCanvas.vue';
@@ -25,14 +24,17 @@ import { Button } from '@/components/ui/button';
 import { useCommandBus } from '@/composables/use-command-bus';
 import { useSidebarLayout } from '@/composables/use-sidebar-layout';
 import { nextCommandId } from '@/lib/command-ids';
-import { downloadSvgFile } from '@/lib/download';
 import {
-  CONSTRAINT_LABELS,
-  CONSTRAINT_ROLES,
-  constraintLabel,
-  constraintValueUnit,
-  isValidConstraintValue,
-} from '@/lib/constraint-view';
+  applyConstraintPick,
+  constraintInitialValue,
+  constraintPrompt,
+  constraintRejection,
+  constraintValueSpec,
+  prunePicks,
+  type ConstraintPick,
+} from '@/lib/constraint-tools';
+import { constraintLabel } from '@/lib/constraint-view';
+import { downloadSvgFile } from '@/lib/download';
 import type { RibbonAction } from '@/lib/editor-ribbon';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 
@@ -50,9 +52,10 @@ const includeConstruction = ref(false);
 const showSeamAllowance = ref(true);
 const showConstraints = ref(true);
 const seamWidths = ref<Record<string, number>>({});
-const constraintType = ref<ConstraintType>('horizontal');
-const constraintEntities = ref<EntityId[]>([]);
-const constraintValue = ref('');
+const activeConstraint = ref<ConstraintType | null>(null);
+const constraintPicks = ref<ConstraintPick[]>([]);
+const pendingConstraint = ref<AddConstraintParams | null>(null);
+const constraintRejectionMessage = ref<string | null>(null);
 
 /**
  * Construction geometry is presentation only: hiding it filters what is drawn
@@ -87,21 +90,53 @@ const activeToolLabel = computed(
   () => EDITOR_TOOLS.find((tool) => tool.id === activeTool.value)!.label,
 );
 
-const constraintRoles = computed(() => CONSTRAINT_ROLES[constraintType.value]);
-const valueUnit = computed(() => constraintValueUnit(constraintType.value));
-const pointOptions = computed(() => allPoints(pattern.value));
+const constraintPromptText = computed(() =>
+  constraintPrompt(activeConstraint.value!, constraintPicks.value),
+);
+const constraintValueReady = computed(
+  () => activeConstraint.value !== null && pendingConstraint.value !== null,
+);
+const constraintInitial = computed(() =>
+  activeConstraint.value === null || pendingConstraint.value === null
+    ? ''
+    : constraintInitialValue(activeConstraint.value, constraintPicks.value, pattern.value),
+);
 
-function run(action: () => void): void {
+function run(action: () => void): boolean {
   try {
     error.value = null;
     action();
+    return true;
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : 'Command failed';
+    return false;
   }
 }
 
 function selectTool(tool: EditorTool): void {
+  exitConstraint();
   activeTool.value = tool;
+}
+
+function exitConstraint(): void {
+  activeConstraint.value = null;
+  constraintPicks.value = [];
+  pendingConstraint.value = null;
+  constraintRejectionMessage.value = null;
+}
+
+function selectConstraint(type: ConstraintType): void {
+  if (activeConstraint.value === type) {
+    exitConstraint();
+    return;
+  }
+
+  activeConstraint.value = type;
+  activeTool.value = 'select';
+  selectedId.value = null;
+  constraintPicks.value = [];
+  pendingConstraint.value = null;
+  constraintRejectionMessage.value = null;
 }
 
 function fit(): void {
@@ -200,31 +235,43 @@ function removeSeam(id: EntityId): void {
   run(() => dispatch({ id: nextCommandId('seam'), type: 'remove_seam_allowance', params: { id } }));
 }
 
-function entityAt(index: number): EntityId {
-  return constraintEntities.value[index] ?? '';
+function dispatchConstraint(params: AddConstraintParams): boolean {
+  return run(() => dispatch({ id: nextCommandId('constraint'), type: 'add_constraint', params }));
 }
 
-function setEntity(index: number, id: EntityId): void {
-  const next = [...constraintEntities.value];
-  next[index] = id;
-  constraintEntities.value = next;
-}
+function onConstraintPick(pick: ConstraintPick): void {
+  const type = activeConstraint.value!;
+  if (pendingConstraint.value !== null) return;
 
-function addConstraint(): void {
-  const type = constraintType.value;
-  const entities = constraintRoles.value.map((_, index) => entityAt(index));
-  if (entities.some((id) => id === '')) return;
-
-  const params: AddConstraintParams = { type, entities };
-  if (valueUnit.value !== null) {
-    const raw = constraintValue.value.trim();
-    const value = Number(raw);
-    if (raw === '' || !isValidConstraintValue(type, value)) return;
-    params.value = value;
+  const result = applyConstraintPick({ type, picks: constraintPicks.value }, pick, pattern.value);
+  if (result.status === 'rejected') {
+    constraintRejectionMessage.value = constraintRejection(result.reason);
+    return;
   }
 
-  run(() => dispatch({ id: nextCommandId('constraint'), type: 'add_constraint', params }));
-  constraintValue.value = '';
+  constraintRejectionMessage.value = null;
+  constraintPicks.value = result.picks;
+
+  if (result.status === 'picking') return;
+
+  if (constraintValueSpec(type) !== null) {
+    pendingConstraint.value = result.params;
+    return;
+  }
+
+  if (dispatchConstraint(result.params)) {
+    constraintPicks.value = [];
+  }
+}
+
+function applyConstraintValue(value: number): void {
+  const params = pendingConstraint.value!;
+
+  if (dispatchConstraint({ ...params, value })) {
+    pendingConstraint.value = null;
+    constraintPicks.value = [];
+    constraintRejectionMessage.value = null;
+  }
 }
 
 function removeConstraint(id: EntityId): void {
@@ -233,12 +280,37 @@ function removeConstraint(id: EntityId): void {
   );
 }
 
+function isEditing(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement && target.matches('input, textarea, [contenteditable="true"]')
+  );
+}
+
 function onKeyDown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && activeConstraint.value !== null) {
+    event.preventDefault();
+    exitConstraint();
+    return;
+  }
+
+  if (isEditing(event.target)) return;
+
   if (event.key === 'Delete' || event.key === 'Backspace') {
     event.preventDefault();
     deleteSelected();
   }
 }
+
+watch(pattern, (next) => {
+  if (activeConstraint.value === null) return;
+
+  const pruned = prunePicks(constraintPicks.value, next);
+  if (pruned.length === constraintPicks.value.length) return;
+
+  constraintPicks.value = pruned;
+  pendingConstraint.value = null;
+  constraintRejectionMessage.value = null;
+});
 
 function seed(): void {
   const commands: Command[] = [
@@ -285,11 +357,24 @@ onBeforeUnmount(() => {
   <section class="flex h-full min-h-0 flex-col">
     <EditorRibbon
       :active-tool="activeTool"
+      :active-constraint="activeConstraint"
       :can-undo="canUndo"
       :can-redo="canRedo"
       :can-delete="selectedId !== null"
       @select-tool="selectTool"
+      @select-constraint="selectConstraint"
       @action="onRibbonAction"
+    />
+
+    <ConstraintPromptBar
+      v-if="activeConstraint"
+      :type="activeConstraint"
+      :prompt="constraintPromptText"
+      :rejection="constraintRejectionMessage"
+      :value-ready="constraintValueReady"
+      :initial-value="constraintInitial"
+      @apply="applyConstraintValue"
+      @cancel="exitConstraint"
     />
 
     <p v-if="error" class="border-b px-3 py-1 text-sm text-destructive">{{ error }}</p>
@@ -303,10 +388,13 @@ onBeforeUnmount(() => {
           :fit-token="fitToken"
           :show-seam-allowance="showSeamAllowance"
           :show-constraints="showConstraints"
+          :constraint-active="activeConstraint !== null"
+          :constraint-picks="constraintPicks"
           @move-point="onMovePoint"
           @add-point="onAddPoint"
           @add-line="onAddLine"
           @add-curve="onAddCurve"
+          @constraint-pick="onConstraintPick"
         />
       </div>
 
@@ -413,54 +501,6 @@ onBeforeUnmount(() => {
             </li>
           </ul>
           <p v-else class="text-sm text-muted-foreground">No constraints yet.</p>
-
-          <form class="mt-3 space-y-2" @submit.prevent="addConstraint">
-            <label class="block text-sm">
-              Type
-              <select
-                v-model="constraintType"
-                class="mt-1 w-full rounded-md border px-2 py-1 text-sm"
-                data-testid="constraint-type"
-              >
-                <option v-for="type in CONSTRAINT_TYPES" :key="type" :value="type">
-                  {{ CONSTRAINT_LABELS[type] }}
-                </option>
-              </select>
-            </label>
-
-            <label
-              v-for="(role, index) in constraintRoles"
-              :key="`${constraintType}-${role}`"
-              class="block text-sm"
-            >
-              {{ role }}
-              <select
-                class="mt-1 w-full rounded-md border px-2 py-1 text-sm"
-                :data-testid="`constraint-entity-${index}`"
-                :value="entityAt(index)"
-                @change="setEntity(index, ($event.target as HTMLSelectElement).value)"
-              >
-                <option value="">Select a point…</option>
-                <option v-for="point in pointOptions" :key="point.id" :value="point.id">
-                  {{ point.id }} ({{ point.x }}, {{ point.y }})
-                </option>
-              </select>
-            </label>
-
-            <label v-if="valueUnit !== null" class="block text-sm">
-              Value ({{ valueUnit }})
-              <input
-                type="number"
-                step="any"
-                class="mt-1 w-full rounded-md border px-2 py-1 text-sm"
-                data-testid="constraint-value"
-                :value="constraintValue"
-                @input="constraintValue = ($event.target as HTMLInputElement).value"
-              />
-            </label>
-
-            <Button type="submit" size="sm" data-testid="add-constraint">Add constraint</Button>
-          </form>
         </template>
 
         <template #view>
