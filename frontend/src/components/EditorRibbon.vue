@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { Button, type ButtonVariant } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { ConstraintType } from '@sewcraft/geometry';
 
 import { RIBBON_GROUPS, type RibbonAction, type RibbonItem } from '@/lib/editor-ribbon';
 import type { EditorTool } from '@/lib/editor-tools';
+import { ribbonIcon } from '@/lib/ribbon-icons';
+import RibbonIcon from './RibbonIcon.vue';
 
 const props = defineProps<{
   activeTool: EditorTool;
@@ -65,28 +68,43 @@ function activate(item: RibbonItem): void {
 </script>
 
 <template>
-  <div
-    class="flex flex-wrap items-center gap-1 border-b bg-background px-2 py-1"
-    role="toolbar"
-    aria-label="Editor tools"
-    data-testid="editor-ribbon"
-  >
-    <template v-for="(group, index) in RIBBON_GROUPS" :key="group.id">
-      <Separator v-if="index > 0" orientation="vertical" class="mx-1 h-6" />
-      <div class="flex items-center gap-1" :aria-label="group.label" role="group">
-        <Button
-          v-for="item in group.items"
-          :key="item.id"
-          :variant="variantFor(item)"
-          size="sm"
-          :data-testid="item.id"
-          :disabled="isDisabled(item)"
-          :aria-pressed="pressed(item)"
-          @click="activate(item)"
-        >
-          {{ item.label }}
-        </Button>
-      </div>
-    </template>
-  </div>
+  <TooltipProvider :delay-duration="300">
+    <div
+      class="flex flex-wrap items-stretch gap-1 border-b bg-background px-2 py-1"
+      role="toolbar"
+      aria-label="Editor tools"
+      data-testid="editor-ribbon"
+    >
+      <template v-for="(group, index) in RIBBON_GROUPS" :key="group.id">
+        <Separator v-if="index > 0" orientation="vertical" class="mx-1" />
+        <div class="flex flex-col gap-1" :aria-label="group.label" role="group">
+          <span
+            class="pl-0.5 text-[10px] font-semibold uppercase leading-none tracking-wider text-muted-foreground"
+            aria-hidden="true"
+            data-testid="ribbon-group-label"
+          >
+            {{ group.label }}
+          </span>
+          <div class="flex items-center gap-1">
+            <Tooltip v-for="item in group.items" :key="item.id">
+              <TooltipTrigger as-child>
+                <Button
+                  :variant="variantFor(item)"
+                  size="icon"
+                  :data-testid="item.id"
+                  :disabled="isDisabled(item)"
+                  :aria-label="item.label"
+                  :aria-pressed="pressed(item)"
+                  @click="activate(item)"
+                >
+                  <RibbonIcon :icon="ribbonIcon(item.icon)" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{{ item.label }}</TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
+      </template>
+    </div>
+  </TooltipProvider>
 </template>
