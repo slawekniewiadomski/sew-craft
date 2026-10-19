@@ -11,6 +11,7 @@ export type RibbonIconName =
   | 'point'
   | 'line'
   | 'curve'
+  | 'dimension'
   | 'undo'
   | 'redo'
   | 'delete'
@@ -26,6 +27,15 @@ const ACTION_ICONS: Record<ActionIconName, RibbonIcon> = {
   point: { paths: [], dots: [{ cx: 6, cy: 6, r: 1.9 }] },
   line: { paths: ['M2.5 9.5 L9.5 2.5'] },
   curve: { paths: ['M1.8 9.4 C4 3, 8 9, 10.2 2.6'] },
+  dimension: {
+    paths: [
+      'M2.5 2 V10',
+      'M9.5 2 V10',
+      'M2.5 6 H9.5',
+      'M4.5 4.2 L2.5 6 L4.5 7.8',
+      'M7.5 4.2 L9.5 6 L7.5 7.8',
+    ],
+  },
   undo: { paths: ['M4.4 3.6 L1.8 6 L4.4 8.4', 'M1.8 6 H7.3 A2.5 2.5 0 0 1 7.3 11 H6'] },
   redo: { paths: ['M7.6 3.6 L10.2 6 L7.6 8.4', 'M10.2 6 H4.7 A2.5 2.5 0 0 0 4.7 11 H6'] },
   delete: { paths: ['M2.5 3.5 H9.5', 'M4.5 3.5 V10 H7.5 V3.5', 'M5 3.5 V2.2 H7 V3.5'] },

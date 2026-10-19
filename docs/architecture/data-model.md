@@ -69,7 +69,15 @@ can be written when it changes.
   ],
   "constraints": [
     { "id": "c1", "type": "horizontal", "a": "p1", "b": "p2" },
-    { "id": "c2", "type": "distance", "a": "p1", "b": "p2", "value": 120 },
+    {
+      "id": "c2",
+      "type": "distance",
+      "a": "p1",
+      "b": "p2",
+      "value": 120,
+      "orientation": "horizontal", // aligned (default) | horizontal | vertical
+      "offset": 12, // dimension line offset in mm; presentation only
+    },
   ],
   "seams": [{ "id": "s1", "edge": "l1", "width": 10 }],
 }

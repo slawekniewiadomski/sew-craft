@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.2.0',
+    'spec_version' => '0.3.0',
 
     /*
     |--------------------------------------------------------------------------
@@ -101,8 +101,20 @@ return [
                 'type' => 'coincident|horizontal|vertical|point_on_line|distance|angle|equal',
                 'entities' => 'entity_id[]',
                 'value' => 'number?',
+                'orientation' => 'aligned|horizontal|vertical?',
+                'offset' => 'number?',
             ],
             'inverse' => 'remove_constraint',
+        ],
+        'update_constraint' => [
+            'description' => 'Change a dimensional constraint value or its dimension presentation.',
+            'params' => [
+                'id' => 'entity_id',
+                'value' => 'number?',
+                'orientation' => 'aligned|horizontal|vertical?',
+                'offset' => 'number?',
+            ],
+            'inverse' => 'update_constraint',
         ],
         'remove_constraint' => [
             'description' => 'Detach a constraint from the sketch.',

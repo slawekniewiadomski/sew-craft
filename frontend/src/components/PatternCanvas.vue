@@ -2,19 +2,39 @@
 import {
   allPoints,
   bounds,
+  constraintOffset,
+  constraintOrientation,
   type CurveEntity,
+  DEFAULT_DIMENSION_OFFSET,
+  type DimensionOrientation,
+  dimensionGeometry,
+  dimensionOffsetForPointer,
+  type DimensionLayout,
+  type DistanceConstraint,
   type EntityId,
+  inferDimensionOrientation,
   type LineEntity,
+  measureLinearDimension,
   type PatternDocument,
   type PointEntity,
   seamAllowancePaths,
   type Vec2,
 } from '@sewcraft/geometry';
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import { curvePath, polylinePath } from '@/lib/canvas-render';
 import type { ConstraintPick } from '@/lib/constraint-tools';
 import { CONSTRAINT_ICONS, constraintMarkers, type ConstraintMarker } from '@/lib/constraint-view';
+import {
+  dimensionLabelWidth,
+  dimensionSegments,
+  formatDimensionValue,
+  isValidDimensionValue,
+  parseDimensionValue,
+  type DimensionPatch,
+  type DimensionPlacement,
+  type DimensionSegment,
+} from '@/lib/dimensions';
 import type { EditorTool } from '@/lib/editor-tools';
 import { snapPoint, snapToGrid } from '@/lib/snap';
 import {
@@ -53,6 +73,31 @@ interface SeamView {
   selfIntersects: boolean;
 }
 
+/** A fully resolved dimension, ready to render in world and screen space. */
+interface DimensionDrawing {
+  id: EntityId;
+  constraint: DistanceConstraint;
+  layout: DimensionLayout;
+  segments: DimensionSegment[];
+  value: string;
+  preview: boolean;
+  draggable: boolean;
+  dragging: boolean;
+}
+
+/** A dimension value positioned and oriented in screen space. */
+interface DimensionLabelView {
+  id: EntityId;
+  constraint: DistanceConstraint;
+  value: string;
+  width: number;
+  x: number;
+  y: number;
+  angle: number;
+  preview: boolean;
+  draggable: boolean;
+}
+
 const props = withDefaults(
   defineProps<{
     document: PatternDocument;
@@ -61,6 +106,7 @@ const props = withDefaults(
     fitToken?: number;
     showSeamAllowance?: boolean;
     showConstraints?: boolean;
+    showDimensions?: boolean;
     constraintActive?: boolean;
     constraintPicks?: ConstraintPick[];
   }>(),
@@ -69,6 +115,7 @@ const props = withDefaults(
     fitToken: 0,
     showSeamAllowance: true,
     showConstraints: false,
+    showDimensions: true,
     constraintActive: false,
     constraintPicks: () => [],
   },
@@ -81,6 +128,8 @@ const emit = defineEmits<{
   'add-line': [start: EntityId, end: EntityId];
   'add-curve': [points: [EntityId, EntityId, EntityId, EntityId]];
   'constraint-pick': [pick: ConstraintPick];
+  'add-dimension': [placement: DimensionPlacement];
+  'update-dimension': [id: EntityId, patch: DimensionPatch];
 }>();
 
 const svg = ref<SVGSVGElement | null>(null);
@@ -91,6 +140,23 @@ const dragState = ref<{ id: EntityId; x: number; y: number; origin: Vec2 } | nul
 const panState = ref<{ start: Vec2; origin: Viewport } | null>(null);
 const pending = ref<EntityId[]>([]);
 const spaceHeld = ref(false);
+
+/** Points picked for a dimension that has not yet been placed. */
+const dimensionPending = ref<EntityId[]>([]);
+/** The dimension being placed; its orientation/offset follow the pointer. */
+const dimensionPlacement = ref<DimensionPlacement | null>(null);
+/** Live drag of an existing dimension line, in world space. */
+const dimensionDrag = ref<{
+  id: EntityId;
+  a: EntityId;
+  b: EntityId;
+  orientation: DimensionOrientation;
+  startOffset: number;
+  offset: number;
+} | null>(null);
+/** The inline value editor, keyed to the dimension being edited. */
+const editingDimension = ref<{ id: EntityId; value: string } | null>(null);
+const dimensionInput = ref<HTMLInputElement | null>(null);
 
 const points = computed(() =>
   allPoints(props.document).map((point) =>
@@ -191,6 +257,106 @@ const pickedLineIds = computed(
     new Set(props.constraintPicks.filter((pick) => pick.kind === 'line').map((pick) => pick.id)),
 );
 
+const distanceConstraints = computed(() =>
+  props.document.constraints.filter(
+    (constraint): constraint is DistanceConstraint => constraint.type === 'distance',
+  ),
+);
+
+function drawingFor(constraint: DistanceConstraint, preview: boolean): DimensionDrawing | null {
+  const drag = dimensionDrag.value;
+  const placed =
+    drag !== null && drag.id === constraint.id
+      ? { ...constraint, offset: drag.offset }
+      : constraint;
+  const layout = dimensionGeometry(props.document, placed);
+  if (layout === null) return null;
+
+  return {
+    id: constraint.id,
+    constraint,
+    layout,
+    segments: dimensionSegments(layout),
+    value: formatDimensionValue(constraint.value),
+    preview,
+    draggable: !preview,
+    dragging: drag !== null && drag.id === constraint.id,
+  };
+}
+
+/** The dimension currently being placed, or `null` when no placement is active. */
+const dimensionPreviewConstraint = computed<DistanceConstraint | null>(() => {
+  const placement = dimensionPlacement.value;
+  if (placement === null) return null;
+
+  const value = measureLinearDimension(
+    props.document,
+    placement.a,
+    placement.b,
+    placement.orientation,
+  )!;
+  if (value <= 0) return null;
+
+  return {
+    id: 'dimension-preview',
+    type: 'distance',
+    a: placement.a,
+    b: placement.b,
+    value,
+    orientation: placement.orientation,
+    offset: placement.offset,
+  };
+});
+
+/**
+ * Every dimension stroke, plus the in-progress placement. Dimensions are a
+ * render-only view of distance constraints: hiding them never changes the
+ * document, and the preview only appears while the dimension tool is placing.
+ */
+const dimensionDrawings = computed<DimensionDrawing[]>(() => {
+  const committed = props.showDimensions
+    ? distanceConstraints.value.flatMap((constraint) => {
+        const drawing = drawingFor(constraint, false);
+        return drawing === null ? [] : [drawing];
+      })
+    : [];
+
+  const previewConstraint = dimensionPreviewConstraint.value;
+  const preview = previewConstraint === null ? null : drawingFor(previewConstraint, true);
+  return preview === null ? committed : [...committed, preview];
+});
+
+const dimensionLabels = computed<DimensionLabelView[]>(() =>
+  dimensionDrawings.value.map((drawing) => {
+    const screen = worldToScreen(viewport.value, drawing.layout.label.position);
+    return {
+      id: drawing.id,
+      constraint: drawing.constraint,
+      value: drawing.value,
+      width: dimensionLabelWidth(drawing.value),
+      x: screen.x,
+      y: screen.y,
+      angle: drawing.layout.label.angleDegrees,
+      preview: drawing.preview,
+      draggable: drawing.draggable,
+    };
+  }),
+);
+
+/** Where the inline editor sits, in canvas pixels. */
+const dimensionEditor = computed(() => {
+  const editing = editingDimension.value;
+  if (editing === null) return null;
+
+  const label = dimensionLabels.value.find((entry) => entry.id === editing.id)!;
+  return {
+    id: editing.id,
+    value: editing.value,
+    x: label.x,
+    y: label.y,
+  };
+});
+
 function xTickPosition(value: number): number {
   return worldToScreen(viewport.value, { x: value, y: 0 }).x;
 }
@@ -243,6 +409,134 @@ function snappedPoint(world: Vec2): Vec2 {
   return snapPoint(world, candidates);
 }
 
+/**
+ * Dimension placement: a line picks its own endpoints, points are collected in
+ * pairs, and the next click after a complete pair drops the dimension line.
+ */
+function onDimensionPointer(hit: Hit | null): void {
+  if (dimensionPlacement.value !== null) {
+    commitDimensionPlacement();
+    return;
+  }
+
+  if (hit === null || hit.kind === 'curve') {
+    dimensionPending.value = [];
+    return;
+  }
+
+  if (hit.kind === 'line') {
+    const line = props.document.entities.find(
+      (entity): entity is LineEntity => entity.id === hit.id && entity.kind === 'line',
+    )!;
+    dimensionPending.value = [];
+    startDimensionPlacement(line.start, line.end);
+    return;
+  }
+
+  const ids = dimensionPending.value.includes(hit.id)
+    ? dimensionPending.value
+    : [...dimensionPending.value, hit.id];
+  if (ids.length < 2) {
+    dimensionPending.value = ids;
+    return;
+  }
+
+  dimensionPending.value = [];
+  startDimensionPlacement(ids[0]!, ids[1]!);
+}
+
+function startDimensionPlacement(a: EntityId, b: EntityId): void {
+  dimensionPlacement.value = {
+    a,
+    b,
+    orientation: 'aligned',
+    offset: DEFAULT_DIMENSION_OFFSET,
+  };
+}
+
+function commitDimensionPlacement(): void {
+  const placement = dimensionPlacement.value!;
+  dimensionPlacement.value = null;
+  emit('add-dimension', placement);
+}
+
+/** Follow the pointer while placing, choosing the axis and offset live. */
+function updateDimensionPlacement(screen: Vec2): void {
+  const placement = dimensionPlacement.value!;
+
+  const world = screenToWorld(viewport.value, screen);
+  const orientation = inferDimensionOrientation(props.document, placement.a, placement.b, world);
+  dimensionPlacement.value = {
+    ...placement,
+    orientation,
+    offset: dimensionOffsetForPointer(props.document, placement.a, placement.b, orientation, world),
+  };
+}
+
+function beginDimensionDrag(constraint: DistanceConstraint, event: PointerEvent): void {
+  if (props.tool !== 'select' || props.constraintActive) return;
+
+  event.stopPropagation();
+  event.preventDefault();
+  const offset = constraintOffset(constraint);
+  dimensionDrag.value = {
+    id: constraint.id,
+    a: constraint.a,
+    b: constraint.b,
+    orientation: constraintOrientation(constraint),
+    startOffset: offset,
+    offset,
+  };
+  addPointerListeners();
+}
+
+function onDimensionDoubleClick(label: DimensionLabelView): void {
+  if (!label.draggable) return;
+  void beginDimensionEdit(label.constraint);
+}
+
+async function beginDimensionEdit(constraint: DistanceConstraint): Promise<void> {
+  editingDimension.value = {
+    id: constraint.id,
+    value: formatDimensionValue(constraint.value),
+  };
+  await nextTick();
+  dimensionInput.value!.focus();
+  dimensionInput.value!.select();
+}
+
+function onDimensionEditInput(event: Event): void {
+  const editing = editingDimension.value!;
+  editingDimension.value = {
+    id: editing.id,
+    value: (event.target as HTMLInputElement).value,
+  };
+}
+
+/** Enter: apply a valid value, otherwise keep editing so the typo can be fixed. */
+function applyDimensionEdit(): void {
+  const editing = editingDimension.value!;
+  const value = parseDimensionValue(editing.value);
+  if (!isValidDimensionValue(value)) return;
+
+  editingDimension.value = null;
+  emit('update-dimension', editing.id, { value });
+}
+
+/** Blur: commit a valid value and discard an invalid one. */
+function finishDimensionEdit(): void {
+  const editing = editingDimension.value!;
+  const value = parseDimensionValue(editing.value);
+  editingDimension.value = null;
+  if (isValidDimensionValue(value)) {
+    emit('update-dimension', editing.id, { value });
+  }
+}
+
+function cancelDimensionEdit(): void {
+  editingDimension.value = null;
+}
+
 function onPointerDown(event: PointerEvent): void {
   updateSize();
   const screen = screenPoint(event);
@@ -279,13 +573,28 @@ function onPointerDown(event: PointerEvent): void {
     case 'add_curve':
       selectPendingPoint(hit, 4);
       break;
+    case 'dimension':
+      onDimensionPointer(hit);
+      break;
   }
 }
 
 function onPointerMove(event: PointerEvent): void {
   const screen = screenPoint(event);
 
-  if (panState.value) {
+  if (dimensionDrag.value) {
+    const drag = dimensionDrag.value;
+    dimensionDrag.value = {
+      ...drag,
+      offset: dimensionOffsetForPointer(
+        props.document,
+        drag.a,
+        drag.b,
+        drag.orientation,
+        screenToWorld(viewport.value, screen),
+      ),
+    };
+  } else if (panState.value) {
     const dx = screen.x - panState.value.start.x;
     const dy = screen.y - panState.value.start.y;
     viewport.value = panBy(panState.value.origin, dx, dy);
@@ -295,7 +604,22 @@ function onPointerMove(event: PointerEvent): void {
   }
 }
 
+/** Live dimension preview while placing; the canvas-level pointer move. */
+function onCanvasPointerMove(event: PointerEvent): void {
+  if (dimensionPlacement.value !== null && dimensionDrag.value === null) {
+    updateDimensionPlacement(screenPoint(event));
+  }
+}
+
 function onPointerUp(): void {
+  if (dimensionDrag.value) {
+    const { id, offset, startOffset } = dimensionDrag.value;
+    dimensionDrag.value = null;
+    if (offset !== startOffset) {
+      emit('update-dimension', id, { offset });
+    }
+  }
+
   if (dragState.value) {
     const { id, x, y, origin } = dragState.value;
     dragState.value = null;
@@ -412,13 +736,33 @@ watch(
   () => props.tool,
   () => {
     pending.value = [];
+    dimensionPending.value = [];
+    dimensionPlacement.value = null;
+    editingDimension.value = null;
+    dimensionDrag.value = null;
+  },
+);
+
+// Any document edit invalidates the inline editor: the constraint may have
+// moved, been removed, or been undone underneath it.
+watch(
+  () => props.document,
+  () => {
+    editingDimension.value = null;
+  },
+);
+
+watch(
+  () => props.showDimensions,
+  (visible) => {
+    if (!visible) editingDimension.value = null;
   },
 );
 </script>
 
 <template>
   <div
-    class="h-full min-h-0 w-full overflow-hidden rounded-md border bg-muted/30"
+    class="relative h-full min-h-0 w-full overflow-hidden rounded-md border bg-muted/30"
     :class="cursorClass"
   >
     <svg
@@ -427,6 +771,7 @@ watch(
       role="img"
       aria-label="Pattern canvas"
       @pointerdown="onPointerDown"
+      @pointermove="onCanvasPointerMove"
       @wheel.prevent="onWheel"
     >
       <defs>
@@ -535,6 +880,75 @@ watch(
             data-testid="selection-handle"
           />
         </g>
+
+        <g
+          v-for="drawing in dimensionDrawings"
+          :key="drawing.id"
+          class="pointer-events-none"
+          :data-testid="`dimension-lines-${drawing.id}`"
+          :data-dimension-id="drawing.id"
+        >
+          <line
+            v-for="segment in drawing.segments"
+            :key="segment.key"
+            :x1="segment.x1"
+            :y1="segment.y1"
+            :x2="segment.x2"
+            :y2="segment.y2"
+            :class="
+              drawing.preview
+                ? 'stroke-primary'
+                : segment.main
+                  ? 'stroke-foreground'
+                  : 'stroke-muted-foreground'
+            "
+            stroke-width="1"
+            vector-effect="non-scaling-stroke"
+          />
+          <line
+            v-if="drawing.draggable"
+            :x1="drawing.layout.dimensionStart.x"
+            :y1="drawing.layout.dimensionStart.y"
+            :x2="drawing.layout.dimensionEnd.x"
+            :y2="drawing.layout.dimensionEnd.y"
+            stroke="transparent"
+            stroke-width="14"
+            vector-effect="non-scaling-stroke"
+            class="pointer-events-auto cursor-move"
+            :data-testid="`dimension-drag-${drawing.id}`"
+            @pointerdown.stop="beginDimensionDrag(drawing.constraint, $event)"
+          />
+        </g>
+      </g>
+
+      <g class="pointer-events-none" data-testid="dimension-labels-layer">
+        <g
+          v-for="label in dimensionLabels"
+          :key="label.id"
+          :class="label.draggable ? 'pointer-events-auto cursor-text' : 'pointer-events-none'"
+          :data-dimension-id="label.id"
+          :data-testid="`dimension-label-${label.id}`"
+          :transform="`translate(${label.x} ${label.y}) rotate(${label.angle})`"
+          role="img"
+          :aria-label="`Dimension ${label.value} millimetres`"
+          @pointerdown.stop="
+            label.draggable ? beginDimensionDrag(label.constraint, $event) : undefined
+          "
+          @dblclick.stop.prevent="onDimensionDoubleClick(label)"
+        >
+          <title>{{ label.draggable ? 'Double-click to edit' : 'Dimension preview' }}</title>
+          <rect
+            :x="-label.width / 2"
+            y="-8"
+            :width="label.width"
+            height="16"
+            rx="2"
+            class="fill-background"
+          />
+          <text text-anchor="middle" dominant-baseline="middle" class="fill-foreground text-[11px]">
+            {{ label.value }}
+          </text>
+        </g>
       </g>
 
       <g class="pointer-events-none" data-testid="constraints-layer">
@@ -618,5 +1032,21 @@ watch(
         </g>
       </g>
     </svg>
+
+    <input
+      v-if="dimensionEditor !== null"
+      ref="dimensionInput"
+      :value="dimensionEditor.value"
+      type="text"
+      inputmode="decimal"
+      class="absolute z-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-md border bg-background px-1 py-0.5 text-center text-xs shadow-sm"
+      :style="{ left: `${dimensionEditor.x}px`, top: `${dimensionEditor.y}px` }"
+      data-testid="dimension-editor"
+      :aria-label="`Dimension ${dimensionEditor.id} value`"
+      @input="onDimensionEditInput"
+      @keydown.enter.prevent.stop="applyDimensionEdit"
+      @keydown.esc.prevent.stop="cancelDimensionEdit"
+      @blur="finishDimensionEdit"
+    />
   </div>
 </template>

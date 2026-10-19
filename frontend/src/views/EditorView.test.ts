@@ -497,24 +497,85 @@ describe('EditorView', () => {
     expect(store.journal).toHaveLength(0);
   });
 
-  it('lists seeded constraints and removes one through the constraints drawer', async () => {
+  it('lists seeded non-distance constraints and removes one through the constraints drawer', async () => {
     const wrapper = await mountEditor(createPinia());
 
     await wrapper.find('[data-testid="drawer-toggle-constraints"]').trigger('click');
     await nextTick();
 
-    expect(wrapper.findAll('[aria-label="Constraints"] li')).toHaveLength(6);
-    expect(wrapper.text()).toContain('Distance 160 mm');
-    expect(wrapper.text()).toContain('(a, b)');
+    expect(wrapper.findAll('[aria-label="Constraints"] li')).toHaveLength(4);
 
     await wrapper.find('[data-testid="remove-constraint-bottom"]').trigger('click');
     await nextTick();
 
-    expect(wrapper.findAll('[aria-label="Constraints"] li')).toHaveLength(5);
+    expect(wrapper.findAll('[aria-label="Constraints"] li')).toHaveLength(3);
     expect(wrapper.text()).toContain('15 command(s)');
   });
 
-  it('shows an empty state when the document has no constraints', async () => {
+  it('lists seeded dimensions with editable value, orientation and offset', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const store = useEditorStore();
+    const wrapper = await mountEditor(pinia);
+
+    expect(wrapper.find('[aria-label="Dimensions"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.findAll('[aria-label="Dimensions"] li')).toHaveLength(2);
+    expect(
+      (wrapper.find('[data-testid="dimension-value-width"]').element as HTMLInputElement).value,
+    ).toBe('160');
+    expect(
+      (wrapper.find('[data-testid="dimension-orientation-width"]').element as HTMLSelectElement)
+        .value,
+    ).toBe('aligned');
+    expect(
+      (wrapper.find('[data-testid="dimension-offset-width"]').element as HTMLInputElement).value,
+    ).toBe('12');
+
+    await wrapper.find('[data-testid="dimension-value-width"]').setValue('200');
+    await wrapper.find('[data-testid="dimension-value-width"]').trigger('change');
+    await flushPromises();
+
+    expect(
+      store.document.constraints.find((constraint) => constraint.id === 'width'),
+    ).toMatchObject({ value: 200 });
+
+    await wrapper.find('[data-testid="dimension-orientation-width"]').setValue('horizontal');
+    await wrapper.find('[data-testid="dimension-orientation-width"]').trigger('change');
+    await flushPromises();
+
+    expect(
+      store.document.constraints.find((constraint) => constraint.id === 'width'),
+    ).toMatchObject({ orientation: 'horizontal' });
+
+    await wrapper.find('[data-testid="dimension-offset-width"]').setValue('25');
+    await wrapper.find('[data-testid="dimension-offset-width"]').trigger('change');
+    await flushPromises();
+
+    expect(
+      store.document.constraints.find((constraint) => constraint.id === 'width'),
+    ).toMatchObject({ offset: 25 });
+
+    const commands = store.journal.length;
+
+    await wrapper.find('[data-testid="dimension-value-height"]').setValue('0');
+    await wrapper.find('[data-testid="dimension-value-height"]').trigger('change');
+    await wrapper.find('[data-testid="dimension-offset-height"]').setValue('');
+    await wrapper.find('[data-testid="dimension-offset-height"]').trigger('change');
+
+    expect(store.journal).toHaveLength(commands);
+
+    await wrapper.find('[data-testid="remove-dimension-height"]').trigger('click');
+    await nextTick();
+
+    expect(store.document.constraints.some((constraint) => constraint.id === 'height')).toBe(false);
+    expect(wrapper.findAll('[aria-label="Dimensions"] li')).toHaveLength(1);
+  });
+
+  it('shows empty states when the document has no constraints or dimensions', async () => {
     const pinia = createPinia();
     setActivePinia(pinia);
     useEditorStore().load({
@@ -523,9 +584,11 @@ describe('EditorView', () => {
     });
 
     const wrapper = await mountEditor(pinia);
+    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
     await wrapper.find('[data-testid="drawer-toggle-constraints"]').trigger('click');
     await nextTick();
 
+    expect(wrapper.text()).toContain('No dimensions yet.');
     expect(wrapper.text()).toContain('No constraints yet.');
   });
 
@@ -775,7 +838,7 @@ describe('EditorView', () => {
     await wrapper.find('[data-testid="drawer-toggle-constraints"]').trigger('click');
     await nextTick();
 
-    expect(wrapper.findAll('[aria-label="Constraints"] li')).toHaveLength(6);
+    expect(wrapper.findAll('[aria-label="Constraints"] li')).toHaveLength(4);
     expect(wrapper.find('[data-testid="constraint-type"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="constraint-entity-0"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="add-constraint"]').exists()).toBe(false);
@@ -826,5 +889,177 @@ describe('EditorView', () => {
     const second = await mountEditor(createPinia());
 
     expect(second.find('[data-testid="sidebar-expand"]').exists()).toBe(true);
+  });
+
+  it('creates a dimension from a line with the dimension tool', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    await wrapper.find('[data-testid="tool-dimension"]').trigger('click');
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+
+    expect(store.document.constraints).toHaveLength(0);
+    expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(true);
+    expect(
+      wrapper.find('[data-testid="dimension-label-dimension-preview"]').find('text').text(),
+    ).toBe('100');
+
+    canvasDown(wrapper, 400, 300);
+    await flushPromises();
+
+    expect(store.document.constraints).toEqual([
+      {
+        id: expect.any(String),
+        type: 'distance',
+        a: 'a',
+        b: 'b',
+        value: 100,
+        orientation: 'aligned',
+        offset: 12,
+      },
+    ]);
+    expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(false);
+  });
+
+  it('creates a dimension from two points', async () => {
+    const { wrapper, store } = await mountLoaded(simpleDoc);
+
+    await wrapper.find('[data-testid="tool-dimension"]').trigger('click');
+    pointDown(wrapper, 'p');
+    pointDown(wrapper, 'q');
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(true);
+
+    canvasDown(wrapper, 400, 300);
+    await flushPromises();
+
+    expect(store.document.constraints).toEqual([
+      expect.objectContaining({ type: 'distance', a: 'p', b: 'q', value: 50 }),
+    ]);
+  });
+
+  it('updates an existing distance instead of duplicating it', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      constraints: [{ id: 'w', type: 'distance', a: 'a', b: 'b', value: 100, offset: 3 }],
+    });
+
+    await wrapper.find('[data-testid="tool-dimension"]').trigger('click');
+    entityDown(wrapper, 'line', 'ab');
+    canvasDown(wrapper, 400, 300);
+    await flushPromises();
+
+    expect(store.document.constraints).toHaveLength(1);
+    expect(store.document.constraints[0]).toMatchObject({ id: 'w', value: 100, offset: 12 });
+  });
+
+  it('ignores a zero-length dimension placement', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...createEmptyDocument(),
+      entities: [
+        { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+        { id: 'q', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+      ],
+    });
+
+    await wrapper.find('[data-testid="tool-dimension"]').trigger('click');
+    pointDown(wrapper, 'p');
+    pointDown(wrapper, 'q');
+    canvasDown(wrapper, 400, 300);
+    await flushPromises();
+
+    expect(store.document.constraints).toHaveLength(0);
+    expect(store.journal).toHaveLength(0);
+  });
+
+  it('hides dimensions without changing the document', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      constraints: [{ id: 'w', type: 'distance', a: 'a', b: 'b', value: 100 }],
+    });
+
+    expect(wrapper.find('[data-testid="dimension-lines-w"]').exists()).toBe(true);
+
+    await openViewDrawer(wrapper);
+    await wrapper.find('[data-testid="show-dimensions"]').setValue(false);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="dimension-lines-w"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-labels-layer"]').text()).not.toContain('100');
+    expect(store.document.constraints).toHaveLength(1);
+    expect(store.journal).toHaveLength(0);
+
+    await wrapper.find('[data-testid="show-dimensions"]').setValue(true);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="dimension-lines-w"]').exists()).toBe(true);
+  });
+
+  it('edits a dimension value inline on the canvas', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      constraints: [{ id: 'w', type: 'distance', a: 'a', b: 'b', value: 100 }],
+    });
+
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await nextTick();
+
+    const editor = wrapper.find('[data-testid="dimension-editor"]');
+    expect(editor.exists()).toBe(true);
+    expect((editor.element as HTMLInputElement).value).toBe('100');
+
+    await editor.setValue('150');
+    await editor.trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+
+    expect(store.document.constraints[0]).toMatchObject({ id: 'w', value: 150 });
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(false);
+  });
+
+  it('keeps the inline editor open for invalid values and cancels on Escape', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      constraints: [{ id: 'w', type: 'distance', a: 'a', b: 'b', value: 100 }],
+    });
+
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await nextTick();
+
+    await wrapper.find('[data-testid="dimension-editor"]').setValue('0');
+    await wrapper.find('[data-testid="dimension-editor"]').trigger('keydown', { key: 'Enter' });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(true);
+    expect(store.journal).toHaveLength(0);
+
+    await wrapper.find('[data-testid="dimension-editor"]').trigger('keydown', { key: 'Escape' });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(false);
+    expect(store.journal).toHaveLength(0);
+  });
+
+  it('commits a valid inline edit on blur and closes on a document change', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      constraints: [{ id: 'w', type: 'distance', a: 'a', b: 'b', value: 100 }],
+    });
+
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await nextTick();
+    await wrapper.find('[data-testid="dimension-editor"]').setValue('120');
+    await wrapper.find('[data-testid="dimension-editor"]').trigger('blur');
+    await flushPromises();
+
+    expect(store.document.constraints[0]).toMatchObject({ value: 120 });
+
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(true);
+
+    store.dispatch({ id: 'move-a', type: 'move_point', params: { id: 'a', x: 1, y: 1 } });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(false);
   });
 });

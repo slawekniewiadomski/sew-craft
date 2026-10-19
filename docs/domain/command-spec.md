@@ -15,7 +15,7 @@ runtime source of truth is `config/geometry.php`, exposed at `GET /api/commands`
 }
 ```
 
-## Commands (v0.1)
+## Commands (v0.3)
 
 ### `add_point`
 
@@ -70,8 +70,12 @@ Remove an entity and cascade-remove constraints that reference it.
 
 ### `add_constraint`
 
-- params: `type` (§ solver), `entities: entity_id[]`, `value?: number`
+- params: `type` (§ solver), `entities: entity_id[]`, `value?: number`,
+  `orientation?: 'aligned' | 'horizontal' | 'vertical'`, `offset?: number`
 - `value` is required for `distance` (mm) and `angle` (radians).
+- `orientation` and `offset` apply only to `distance`; they are presentation for
+  the linear dimension that renders the constraint. `orientation` defaults to
+  `aligned`, `offset` to `12` mm (signed, measured from the span).
 - inverse: `remove_constraint`
 
 Constraint param mapping:
@@ -85,6 +89,20 @@ Constraint param mapping:
 | `distance`      | `[a, b]`                   | mm      |
 | `angle`         | `[a, b, c]` (angle at `b`) | radians |
 | `equal`         | `[a1, a2, b1, b2]`         | —       |
+
+### `update_constraint`
+
+Change the driving value of a dimensional constraint, or a distance constraint's
+dimension presentation. At least one of `value`, `orientation` or `offset` is
+required. A value edit re-solves the sketch and moves the measured geometry; an
+orientation/offset-only edit changes presentation and is a no-op for the solver.
+
+- params: `id: entity_id`, `value?: number`, `orientation?: aligned|horizontal|vertical`,
+  `offset?: number`
+- `value` keeps the `add_constraint` rules (`distance > 0`, `angle` finite).
+- `orientation`/`offset` are rejected for non-distance constraints.
+- inverse: `update_constraint` (restores the previous effective values, keeping
+  the command id)
 
 ### `remove_constraint`
 
@@ -109,6 +127,12 @@ Detach the seam allowance from an edge.
 
 - params: `id: entity_id` (the seam id, i.e. the `add_seam_allowance` command id)
 - inverse: `add_seam_allowance` (params rebuilt from the removed seam, keeping its id)
+
+### Migration from spec 0.2.0
+
+`add_constraint` gained optional `orientation` and `offset` params for `distance`.
+They are additive, so v0.2 payloads still apply unchanged. `update_constraint`
+is new; `spec_version` is bumped to `0.3.0`.
 
 ### Migration from spec 0.1.0
 

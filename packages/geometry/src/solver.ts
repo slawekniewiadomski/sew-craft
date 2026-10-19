@@ -168,7 +168,19 @@ function residuals(constraints: Constraint[], point: (id: EntityId) => Vec2): Fl
       case 'distance': {
         const a = point(constraint.a);
         const b = point(constraint.b);
-        values.push(Math.hypot(b.x - a.x, b.y - a.y) - constraint.value);
+        // A dimension measures along `orientation`; the default preserves the
+        // original Euclidean distance constraint exactly.
+        switch (constraint.orientation ?? 'aligned') {
+          case 'horizontal':
+            values.push(Math.abs(b.x - a.x) - constraint.value);
+            break;
+          case 'vertical':
+            values.push(Math.abs(b.y - a.y) - constraint.value);
+            break;
+          case 'aligned':
+            values.push(Math.hypot(b.x - a.x, b.y - a.y) - constraint.value);
+            break;
+        }
         break;
       }
       case 'angle': {

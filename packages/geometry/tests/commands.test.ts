@@ -5,6 +5,7 @@ import {
   CommandExecutionError,
   CommandValidationError,
   createEmptyDocument,
+  DEFAULT_DIMENSION_OFFSET,
   DEFAULT_SEAM_ALLOWANCE,
   executeCommand,
   getConstraint,
@@ -14,6 +15,7 @@ import {
   solveDocument,
   type Command,
   type Constraint,
+  type DimensionOrientation,
   type Entity,
   type LineEntity,
   type PatternDocument,
@@ -93,6 +95,11 @@ const removeConstraintCommand = (id: string): Command => ({
   type: 'remove_constraint',
   params: { id },
 });
+
+const updateConstraintCommand = (
+  id: string,
+  params: { value?: number; orientation?: DimensionOrientation; offset?: number },
+): Command => ({ id: 'update', type: 'update_constraint', params: { id, ...params } });
 
 const seamCommand = (id: string, edge: string, width?: number): Command =>
   width === undefined
@@ -577,6 +584,190 @@ describe('add_constraint', () => {
 
     unchanged(document, command);
   });
+
+  it('maps distance orientation and offset', () => {
+    const command: Command = {
+      id: 'd',
+      type: 'add_constraint',
+      params: {
+        type: 'distance',
+        entities: ['a', 'b'],
+        value: 25,
+        orientation: 'horizontal',
+        offset: -4,
+      },
+    };
+
+    const applied = applyCommand(document, command);
+
+    expect(getConstraint(applied.document, 'd')).toEqual({
+      id: 'd',
+      type: 'distance',
+      a: 'a',
+      b: 'b',
+      value: 25,
+      orientation: 'horizontal',
+      offset: -4,
+    });
+    expect(applied.inverse).toEqual(removeConstraintCommand('d'));
+  });
+
+  it('rejects presentation fields on non-distance constraints', () => {
+    unchanged(document, {
+      id: 'k',
+      type: 'add_constraint',
+      params: { type: 'coincident', entities: ['a', 'b'], orientation: 'horizontal' },
+    } as Command);
+    unchanged(document, {
+      id: 'k',
+      type: 'add_constraint',
+      params: { type: 'coincident', entities: ['a', 'b'], offset: 5 },
+    } as Command);
+  });
+
+  it('rejects an invalid orientation or offset without mutating', () => {
+    unchanged(document, {
+      id: 'd',
+      type: 'add_constraint',
+      params: {
+        type: 'distance',
+        entities: ['a', 'b'],
+        value: 25,
+        orientation: 'diagonal',
+      },
+    } as unknown as Command);
+    unchanged(document, {
+      id: 'd',
+      type: 'add_constraint',
+      params: { type: 'distance', entities: ['a', 'b'], value: 25, offset: Number.NaN },
+    } as Command);
+  });
+});
+
+describe('update_constraint', () => {
+  const constraints: Constraint[] = [
+    { id: 'd', type: 'distance', a: 'a', b: 'b', value: 25, orientation: 'aligned', offset: 10 },
+    { id: 'g', type: 'angle', a: 'a', b: 'b', c: 'c', value: Math.PI / 4 },
+    { id: 'h', type: 'horizontal', a: 'a', b: 'b' },
+  ];
+  const document = documentOf(
+    [point('a', 0, 0), point('b', 10, 0), point('c', 10, 10)],
+    constraints,
+  );
+
+  it('updates a value, orientation and offset together', () => {
+    const applied = applyCommand(
+      document,
+      updateConstraintCommand('d', { value: 40, orientation: 'horizontal', offset: -6 }),
+    );
+
+    expect(getConstraint(applied.document, 'd')).toEqual({
+      id: 'd',
+      type: 'distance',
+      a: 'a',
+      b: 'b',
+      value: 40,
+      orientation: 'horizontal',
+      offset: -6,
+    });
+    expect(applied.inverse).toEqual(
+      updateConstraintCommand('d', { value: 25, orientation: 'aligned', offset: 10 }),
+    );
+  });
+
+  it('materialises default presentation fields when restoring them', () => {
+    const bare = documentOf(
+      [point('a', 0, 0), point('b', 10, 0)],
+      [{ id: 'd', type: 'distance', a: 'a', b: 'b', value: 25 }],
+    );
+
+    const applied = applyCommand(bare, updateConstraintCommand('d', { value: 40 }));
+
+    expect(getConstraint(applied.document, 'd')).toEqual({
+      id: 'd',
+      type: 'distance',
+      a: 'a',
+      b: 'b',
+      value: 40,
+      orientation: 'aligned',
+      offset: DEFAULT_DIMENSION_OFFSET,
+    });
+    expect(applied.inverse).toEqual(
+      updateConstraintCommand('d', {
+        value: 25,
+        orientation: 'aligned',
+        offset: DEFAULT_DIMENSION_OFFSET,
+      }),
+    );
+  });
+
+  it('updates presentation without changing the value', () => {
+    const applied = applyCommand(
+      document,
+      updateConstraintCommand('d', { orientation: 'vertical', offset: 4 }),
+    );
+
+    expect(getConstraint(applied.document, 'd')).toEqual({
+      id: 'd',
+      type: 'distance',
+      a: 'a',
+      b: 'b',
+      value: 25,
+      orientation: 'vertical',
+      offset: 4,
+    });
+  });
+
+  it('updates an angle value and restores the previous value', () => {
+    const applied = applyCommand(document, updateConstraintCommand('g', { value: Math.PI / 3 }));
+
+    expect(getConstraint(applied.document, 'g')).toEqual({
+      id: 'g',
+      type: 'angle',
+      a: 'a',
+      b: 'b',
+      c: 'c',
+      value: Math.PI / 3,
+    });
+    expect(applied.inverse).toEqual(updateConstraintCommand('g', { value: Math.PI / 4 }));
+  });
+
+  it('is a no-op when the requested values already hold', () => {
+    const applied = applyCommand(
+      document,
+      updateConstraintCommand('d', { value: 25, orientation: 'aligned', offset: 10 }),
+    );
+
+    expect(applied.document).toBe(document);
+    expect(applied.inverse).toBeNull();
+  });
+
+  it('is a no-op for an unchanged angle', () => {
+    const applied = applyCommand(document, updateConstraintCommand('g', { value: Math.PI / 4 }));
+
+    expect(applied.document).toBe(document);
+    expect(applied.inverse).toBeNull();
+  });
+
+  it('rejects unknown, non-dimensional and paramless commands without mutating', () => {
+    unchanged(document, updateConstraintCommand('missing', { value: 30 }));
+    unchanged(document, updateConstraintCommand('h', { value: 30 }));
+    unchanged(document, updateConstraintCommand('d', {}));
+  });
+
+  it('rejects invalid values and presentation fields on angles', () => {
+    unchanged(document, updateConstraintCommand('d', { value: 0 }));
+    unchanged(document, updateConstraintCommand('d', { value: Number.NaN }));
+    unchanged(document, updateConstraintCommand('g', { value: Number.POSITIVE_INFINITY }));
+    unchanged(document, updateConstraintCommand('g', { orientation: 'horizontal' }));
+    unchanged(document, updateConstraintCommand('g', { offset: 4 }));
+    unchanged(document, updateConstraintCommand('d', { offset: Number.NaN }));
+    unchanged(document, {
+      id: 'update',
+      type: 'update_constraint',
+      params: { id: 'd', orientation: 'diagonal' },
+    } as unknown as Command);
+  });
 });
 
 describe('remove_constraint', () => {
@@ -588,6 +779,33 @@ describe('remove_constraint', () => {
 
     expect(applied.document.constraints).toEqual([]);
     expect(applied.inverse).toEqual(addConstraintCommand('d', 'distance', ['a', 'b'], 25));
+  });
+
+  it('reconstructs a dimension inverse with its presentation fields', () => {
+    const constraint: Constraint = {
+      id: 'd',
+      type: 'distance',
+      a: 'a',
+      b: 'b',
+      value: 25,
+      orientation: 'vertical',
+      offset: -3,
+    };
+    const document = documentOf([point('a', 0, 0), point('b', 10, 0)], [constraint]);
+
+    const applied = applyCommand(document, removeConstraintCommand('d'));
+
+    expect(applied.inverse).toEqual({
+      id: 'd',
+      type: 'add_constraint',
+      params: {
+        type: 'distance',
+        entities: ['a', 'b'],
+        value: 25,
+        orientation: 'vertical',
+        offset: -3,
+      },
+    });
   });
 
   it('is idempotent for an unknown id', () => {
