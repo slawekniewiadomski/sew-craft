@@ -92,7 +92,7 @@ command or persistence contracts.
 
 ### Phase 2: Canvas icon overlay
 
-- [ ] 2.1 Render fixed-size screen-space icons with staggering and a toggle
+- [x] 2.1 Render fixed-size screen-space icons with staggering and a toggle — a98f0ad
 
 ### Phase 3: Constraints drawer
 
