@@ -10,6 +10,7 @@
     }
   ],
   "skillUsage": {
-    "sewcraft-conventions": 2
+    "sewcraft-conventions": 2,
+    "om-auto-create-pr": 2
   }
 }
