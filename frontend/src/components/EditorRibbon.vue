@@ -81,7 +81,7 @@ function activate(item: RibbonItem): void {
           <span
             class="pl-0.5 text-[10px] font-semibold uppercase leading-none tracking-wider text-muted-foreground"
             aria-hidden="true"
-            data-testid="ribbon-group-label"
+            :data-testid="`ribbon-group-${group.id}-label`"
           >
             {{ group.label }}
           </span>

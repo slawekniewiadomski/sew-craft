@@ -63,7 +63,7 @@ describe('EditorRibbon', () => {
   it('labels each named group with a small uppercase caption', () => {
     const wrapper = mountRibbon();
 
-    const captions = wrapper.findAll('[data-testid="ribbon-group-label"]');
+    const captions = wrapper.findAll('[data-testid$="-label"]');
     expect(captions.map((caption) => caption.text())).toEqual([
       'Tools',
       'Sketching',
