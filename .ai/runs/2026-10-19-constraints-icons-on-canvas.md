@@ -87,8 +87,8 @@ command or persistence contracts.
 
 ### Phase 1: Constraint presentation helpers
 
-- [ ] 1.1 Add constraint labels, roles, value helpers and icon geometry
-- [ ] 1.2 Resolve constraint markers to point centroids
+- [x] 1.1 Add constraint labels, roles, value helpers and icon geometry — 434285a
+- [x] 1.2 Resolve constraint markers to point centroids — 434285a
 
 ### Phase 2: Canvas icon overlay
 
