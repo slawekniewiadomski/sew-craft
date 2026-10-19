@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>SewCraft ribbon — proposed icons + named groups</title>
+    <style>
+      /* Theme tokens copied from frontend/src/assets/main.css so the mockup
+         matches the app's light theme. Illustrative only. */
+      :root {
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.145 0 0);
+        --primary: oklch(0.627 0.194 149.214);
+        --primary-foreground: oklch(0.985 0 0);
+        --muted: oklch(0.97 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --border: oklch(0.922 0 0);
+        --input: oklch(0.922 0 0);
+        --radius: 0.5rem;
+      }
+      * {
+        box-sizing: border-box;
+        border-color: var(--border);
+      }
+      body {
+        margin: 0;
+        background: var(--background);
+        color: var(--foreground);
+        font-family:
+          ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        font-size: 14px;
+      }
+      .header {
+        border-bottom: 1px solid var(--border);
+      }
+      .nav {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        padding: 12px 16px;
+      }
+      .brand {
+        font-size: 18px;
+        font-weight: 600;
+      }
+      .nav a {
+        color: var(--muted-foreground);
+        text-decoration: none;
+      }
+      .ribbon {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: stretch;
+        gap: 6px;
+        border-bottom: 1px solid var(--border);
+        padding: 6px 8px;
+      }
+      .group {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        padding: 2px 6px;
+      }
+      .group-label {
+        font-size: 10px;
+        line-height: 1;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted-foreground);
+      }
+      .group-items {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+      }
+      .sep {
+        width: 1px;
+        align-self: stretch;
+        margin: 2px 4px;
+        background: var(--border);
+      }
+      .btn {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 32px;
+        width: 32px;
+        padding: 0;
+        border-radius: var(--radius);
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--foreground);
+        cursor: default;
+      }
+      .btn.outline {
+        border-color: var(--input);
+      }
+      .btn.active {
+        background: var(--primary);
+        color: var(--primary-foreground);
+        border-color: var(--primary);
+      }
+      .btn.disabled {
+        color: color-mix(in oklab, var(--muted-foreground) 50%, transparent);
+      }
+      .btn svg {
+        width: 16px;
+        height: 16px;
+      }
+      .tooltip {
+        position: absolute;
+        top: 38px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--foreground);
+        color: var(--background);
+        border-radius: calc(var(--radius) - 2px);
+        padding: 3px 8px;
+        font-size: 12px;
+        white-space: nowrap;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+        z-index: 5;
+      }
+      .tooltip::before {
+        content: '';
+        position: absolute;
+        top: -4px;
+        left: 50%;
+        margin-left: -4px;
+        border-left: 4px solid transparent;
+        border-right: 4px solid transparent;
+        border-bottom: 4px solid var(--foreground);
+      }
+      .canvas {
+        height: 360px;
+        background-image:
+          linear-gradient(to right, var(--border) 1px, transparent 1px),
+          linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+        background-size: 40px 40px;
+      }
+      .caption {
+        padding: 10px 16px 4px;
+        font-size: 12px;
+        color: var(--muted-foreground);
+      }
+    </style>
+  </head>
+  <body>
+    <header class="header">
+      <nav class="nav"><span class="brand">SewCraft</span><a>Projects</a></nav>
+    </header>
+
+    <div class="ribbon" role="toolbar" aria-label="Editor tools">
+      <div class="group" role="group" aria-label="Tools">
+        <span class="group-label" aria-hidden="true">Tools</span>
+        <div class="group-items">
+          <button class="btn active" aria-label="Select" aria-pressed="true">
+            <svg viewBox="0 0 12 12" fill="currentColor"><path d="M3 1.5 L3 10.5 L5.4 8 L7.1 11 L8.4 10.3 L6.7 7.4 L9.6 7.2 Z"/></svg>
+          </button>
+          <button class="btn disabled" aria-label="Undo">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.4 3.6 L1.8 6 L4.4 8.4"/><path d="M1.8 6 H7.3 A2.5 2.5 0 0 1 7.3 11 H6"/></svg>
+          </button>
+          <button class="btn disabled" aria-label="Redo">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.6 3.6 L10.2 6 L7.6 8.4"/><path d="M10.2 6 H4.7 A2.5 2.5 0 0 0 4.7 11 H6"/></svg>
+          </button>
+          <button class="btn disabled" aria-label="Delete">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 3.5 H9.5"/><path d="M4.5 3.5 V10 H7.5 V3.5"/><path d="M5 3.5 V2.2 H7 V3.5"/></svg>
+          </button>
+          <button class="btn outline" aria-label="Fit">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 1.5 H1.5 V3"/><path d="M9 1.5 H10.5 V3"/><path d="M1.5 9 V10.5 H3"/><path d="M10.5 9 V10.5 H9"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="group" role="group" aria-label="Sketching">
+        <span class="group-label" aria-hidden="true">Sketching</span>
+        <div class="group-items">
+          <button class="btn" aria-label="Point">
+            <svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="1.9" fill="currentColor"/></svg>
+          </button>
+          <button class="btn" aria-label="Line">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M2.5 9.5 L9.5 2.5"/></svg>
+          </button>
+          <button class="btn" aria-label="Curve">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M1.8 9.4 C4 3, 8 9, 10.2 2.6"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="group" role="group" aria-label="Constraints">
+        <span class="group-label" aria-hidden="true">Constraints</span>
+        <div class="group-items">
+          <button class="btn" aria-label="Coincident">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.1"><circle cx="4.2" cy="6" r="2"/><circle cx="7.8" cy="6" r="2"/></svg>
+          </button>
+          <button class="btn" aria-label="Horizontal">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"><path d="M3 4 V8"/><path d="M9 4 V8"/><path d="M3 6 H9"/></svg>
+            <span class="tooltip">Horizontal</span>
+          </button>
+          <button class="btn" aria-label="Vertical">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"><path d="M4 3 H8"/><path d="M4 9 H8"/><path d="M6 3 V9"/></svg>
+          </button>
+          <button class="btn" aria-label="Point on line">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"><path d="M2 9.5 L10 2.5"/><circle cx="6" cy="6" r="1.4" fill="currentColor" stroke="none"/></svg>
+          </button>
+          <button class="btn" aria-label="Distance">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6 H10"/><path d="M4 3.8 L2 6 L4 8.2"/><path d="M8 3.8 L10 6 L8 8.2"/></svg>
+          </button>
+          <button class="btn" aria-label="Angle">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"><path d="M3 9 H10.5"/><path d="M3 9 L10 3"/><path d="M6.5 9 A3.5 3.5 0 0 0 5.35 6.36"/></svg>
+          </button>
+          <button class="btn" aria-label="Equal length">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"><path d="M3 4.5 H9"/><path d="M3 7.5 H9"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="group" role="group" aria-label="Export">
+        <span class="group-label" aria-hidden="true">Export</span>
+        <div class="group-items">
+          <button class="btn outline" aria-label="Download SVG">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 1.6 V7.6"/><path d="M3.6 5.2 L6 7.6 L8.4 5.2"/><path d="M2 10.4 H10"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <p class="caption">Proposed ribbon: icon-only controls in four named groups; hover tooltip shown on “Horizontal”.</p>
+    <div class="canvas"></div>
+  </body>
+</html>

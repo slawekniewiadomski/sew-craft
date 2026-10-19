@@ -175,6 +175,12 @@ Proposed ribbon layout (each group is a column; label top-left, icons below):
   text ribbon wrapped.
 - **Empty/disabled states:** no new states. A disabled action's tooltip is
   best-effort (see Edge Cases).
+- **Visual evidence:** the current text-labelled ribbon and the proposed
+  icon-grouped ribbon.
+
+  ![Current editor ribbon — text-labelled buttons, no visible group captions](assets/ribbon-icon-groups/current-01-editor-ribbon.png)
+
+  ![Proposed ribbon — icon-only buttons in Tools, Sketching, Constraints and Export, with the "Horizontal" tooltip shown](assets/ribbon-icon-groups/mockup-01-ribbon.png)
 
 ## 📝 Edge Cases & Failure Scenarios
 
