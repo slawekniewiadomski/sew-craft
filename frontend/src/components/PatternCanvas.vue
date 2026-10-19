@@ -13,6 +13,7 @@ import {
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import { curvePath, polylinePath } from '@/lib/canvas-render';
+import { CONSTRAINT_ICONS, constraintMarkers, type ConstraintMarker } from '@/lib/constraint-view';
 import type { EditorTool } from '@/lib/editor-tools';
 import { snapPoint, snapToGrid } from '@/lib/snap';
 import {
@@ -58,8 +59,9 @@ const props = withDefaults(
     selectedId?: EntityId | null;
     fitToken?: number;
     showSeamAllowance?: boolean;
+    showConstraints?: boolean;
   }>(),
-  { selectedId: null, fitToken: 0, showSeamAllowance: true },
+  { selectedId: null, fitToken: 0, showSeamAllowance: true, showConstraints: false },
 );
 
 const emit = defineEmits<{
@@ -124,6 +126,39 @@ const seams = computed<SeamView[]>(() => {
     d: polylinePath(allowance.path),
     selfIntersects: allowance.selfIntersections.length > 0,
   }));
+});
+
+/** Screen-space diameter of a constraint icon, in pixels. */
+const CONSTRAINT_ICON_SIZE = 18;
+/** Distance between stacked icons when several constraints share an anchor. */
+const CONSTRAINT_ICON_STEP = 20;
+
+/**
+ * Constraint icons are a render-only overlay, like the seam layer: driven by
+ * the presentation toggle and never part of the document the UI mutates.
+ *
+ * Markers are laid out in screen space so they stay the same small size at any
+ * zoom, and constraints that share a midpoint are staggered instead of drawn
+ * on top of each other.
+ */
+const constraintLayer = computed<ConstraintMarker[]>(() => {
+  if (!props.showConstraints) return [];
+
+  const stacks = new Map<string, number>();
+  return constraintMarkers(props.document).map((marker) => {
+    const screen = worldToScreen(viewport.value, marker);
+    // Group by the shared world anchor, not screen proximity, so icons do not
+    // jump between stacks as the viewport pans or zooms.
+    const anchor = `${Math.round(marker.x * 1000)}:${Math.round(marker.y * 1000)}`;
+    const index = stacks.get(anchor) ?? 0;
+    stacks.set(anchor, index + 1);
+
+    return {
+      ...marker,
+      x: screen.x + CONSTRAINT_ICON_SIZE / 2 + index * CONSTRAINT_ICON_STEP,
+      y: screen.y - CONSTRAINT_ICON_SIZE / 2,
+    };
+  });
 });
 
 const pendingIds = computed(() => new Set(pending.value));
@@ -468,6 +503,43 @@ watch(
             stroke-width="1.5"
             data-testid="selection-handle"
           />
+        </g>
+      </g>
+
+      <g class="pointer-events-none" data-testid="constraints-layer">
+        <g
+          v-for="marker in constraintLayer"
+          :key="marker.id"
+          class="pointer-events-auto"
+          :data-constraint-id="marker.id"
+          :data-constraint-type="marker.type"
+          :transform="`translate(${marker.x} ${marker.y})`"
+          role="img"
+          :aria-label="marker.label"
+        >
+          <title>{{ marker.label }}</title>
+          <circle r="9" class="fill-background stroke-muted-foreground" stroke-width="1" />
+          <g transform="translate(-6 -6)">
+            <path
+              v-for="(d, index) in CONSTRAINT_ICONS[marker.type].paths"
+              :key="index"
+              :d="d"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="text-foreground"
+            />
+            <circle
+              v-for="(dot, index) in CONSTRAINT_ICONS[marker.type].dots"
+              :key="`dot-${index}`"
+              :cx="dot.cx"
+              :cy="dot.cy"
+              :r="dot.r"
+              class="fill-foreground"
+            />
+          </g>
         </g>
       </g>
 

@@ -95,6 +95,7 @@ function mountCanvas(
     selectedId: EntityId | null;
     fitToken: number;
     showSeamAllowance: boolean;
+    showConstraints: boolean;
   }> = {},
 ): VueWrapper {
   return mount(PatternCanvas, {
@@ -194,6 +195,63 @@ describe('PatternCanvas', () => {
     const wrapper = mountCanvas();
 
     expect(wrapper.find('[data-seam-edge="ab"]').classes()).toContain('text-destructive');
+  });
+
+  const constrainedDoc: PatternDocument = {
+    ...baseDoc,
+    constraints: [
+      { id: 'h', type: 'horizontal', a: 'a', b: 'b' },
+      { id: 'w', type: 'distance', a: 'a', b: 'b', value: 100 },
+      { id: 'ghost', type: 'vertical', a: 'a', b: 'missing' },
+    ],
+  };
+
+  it('renders an icon per resolvable constraint when the toggle is on', () => {
+    const wrapper = mountCanvas({ document: constrainedDoc, showConstraints: true });
+
+    expect(wrapper.find('[data-testid="constraints-layer"]').exists()).toBe(true);
+    expect(wrapper.findAll('[data-constraint-id]')).toHaveLength(2);
+    expect(wrapper.find('[data-constraint-id="h"]').attributes('data-constraint-type')).toBe(
+      'horizontal',
+    );
+    expect(wrapper.find('[data-constraint-id="h"]').attributes('aria-label')).toBe('Horizontal');
+    expect(wrapper.find('[data-constraint-id="w"]').attributes('data-constraint-type')).toBe(
+      'distance',
+    );
+    expect(wrapper.find('[data-constraint-id="w"]').attributes('aria-label')).toBe(
+      'Distance 100 mm',
+    );
+    expect(wrapper.find('[data-constraint-id="h"]').findAll('path').length).toBeGreaterThan(0);
+    expect(wrapper.find('[data-constraint-id="ghost"]').exists()).toBe(false);
+  });
+
+  it('keeps icons in screen space so their size does not follow the zoom', () => {
+    const wrapper = mountCanvas({ document: constrainedDoc, showConstraints: true });
+
+    expect(wrapper.find('svg > [data-testid="constraints-layer"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="constraints-layer"]').find('circle').attributes('r')).toBe(
+      '9',
+    );
+  });
+
+  it('staggers icons for constraints that share a midpoint', () => {
+    const wrapper = mountCanvas({ document: constrainedDoc, showConstraints: true });
+
+    const transforms = wrapper
+      .findAll('[data-constraint-id]')
+      .map((marker) => marker.attributes('transform'));
+    expect(new Set(transforms).size).toBe(2);
+  });
+
+  it('hides constraint icons when the toggle is off or absent', () => {
+    expect(
+      mountCanvas({ document: constrainedDoc, showConstraints: false }).findAll(
+        '[data-constraint-id]',
+      ),
+    ).toHaveLength(0);
+    expect(mountCanvas({ document: constrainedDoc }).findAll('[data-constraint-id]')).toHaveLength(
+      0,
+    );
   });
 
   it('fits the pattern on mount and again when fitToken changes', async () => {

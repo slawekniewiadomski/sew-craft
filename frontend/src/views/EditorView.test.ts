@@ -48,6 +48,15 @@ async function openViewDrawer(wrapper: VueWrapper): Promise<void> {
   await nextTick();
 }
 
+/**
+ * jsdom does not fire `submit` when a submit button is clicked, so drive the
+ * form's submit event the way the browser would after a real click.
+ */
+async function submitConstraintForm(wrapper: VueWrapper): Promise<void> {
+  await wrapper.find('form').trigger('submit');
+  await nextTick();
+}
+
 function canvasDown(wrapper: VueWrapper, x: number, y: number, button = 0): void {
   wrapper
     .find('[data-testid="grid"]')
@@ -441,6 +450,138 @@ describe('EditorView', () => {
     expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(false);
     expect(store.document.seams).toHaveLength(1);
     expect(store.journal).toHaveLength(0);
+  });
+
+  it('shows constraint badges by default and hides them without changing the document', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const store = useEditorStore();
+    store.load({
+      ...createEmptyDocument(),
+      entities: [
+        { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+        { id: 'q', kind: 'point', x: 50, y: 0, construction: false, fixed: false },
+      ],
+      constraints: [{ id: 'h', type: 'horizontal', a: 'p', b: 'q' }],
+    });
+
+    const wrapper = await mountEditor(pinia);
+    expect(wrapper.find('[data-constraint-id="h"]').exists()).toBe(true);
+
+    await openViewDrawer(wrapper);
+    await wrapper.find('[data-testid="show-constraints"]').setValue(false);
+    await nextTick();
+
+    expect(wrapper.find('[data-constraint-id="h"]').exists()).toBe(false);
+    expect(store.document.constraints).toHaveLength(1);
+    expect(store.journal).toHaveLength(0);
+  });
+
+  it('lists seeded constraints and removes one through the constraints drawer', async () => {
+    const wrapper = await mountEditor(createPinia());
+
+    await wrapper.find('[data-testid="drawer-toggle-constraints"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.findAll('[aria-label="Constraints"] li')).toHaveLength(6);
+    expect(wrapper.text()).toContain('Distance 160 mm');
+    expect(wrapper.text()).toContain('(a, b)');
+
+    await wrapper.find('[data-testid="remove-constraint-bottom"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.findAll('[aria-label="Constraints"] li')).toHaveLength(5);
+    expect(wrapper.text()).toContain('15 command(s)');
+  });
+
+  it('shows an empty state when the document has no constraints', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useEditorStore().load({
+      ...createEmptyDocument(),
+      entities: [{ id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false }],
+    });
+
+    const wrapper = await mountEditor(pinia);
+    await wrapper.find('[data-testid="drawer-toggle-constraints"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.text()).toContain('No constraints yet.');
+  });
+
+  it('adds a parameterless constraint from the drawer form', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const store = useEditorStore();
+    store.load({
+      ...createEmptyDocument(),
+      entities: [
+        { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+        { id: 'q', kind: 'point', x: 100, y: 0, construction: false, fixed: false },
+      ],
+    });
+
+    const wrapper = await mountEditor(pinia);
+    await wrapper.find('[data-testid="drawer-toggle-constraints"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="constraint-value"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-testid^="constraint-entity-"]')).toHaveLength(2);
+
+    await wrapper.find('[data-testid="constraint-entity-0"]').setValue('p');
+    await wrapper.find('[data-testid="constraint-entity-1"]').setValue('q');
+    await submitConstraintForm(wrapper);
+    await nextTick();
+
+    expect(store.document.constraints).toEqual([
+      { id: expect.any(String), type: 'horizontal', a: 'p', b: 'q' },
+    ]);
+    expect(store.journal).toHaveLength(1);
+  });
+
+  it('ignores the add action until every point is picked and the value is valid', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const store = useEditorStore();
+    store.load({
+      ...createEmptyDocument(),
+      entities: [
+        { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+        { id: 'q', kind: 'point', x: 100, y: 0, construction: false, fixed: false },
+      ],
+    });
+
+    const wrapper = await mountEditor(pinia);
+    await wrapper.find('[data-testid="drawer-toggle-constraints"]').trigger('click');
+    await nextTick();
+
+    await submitConstraintForm(wrapper);
+    expect(store.document.constraints).toHaveLength(0);
+
+    await wrapper.find('[data-testid="constraint-type"]').setValue('distance');
+    await nextTick();
+    expect(wrapper.find('[data-testid="constraint-value"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain('Value (mm)');
+
+    await wrapper.find('[data-testid="constraint-entity-0"]').setValue('p');
+    await wrapper.find('[data-testid="constraint-entity-1"]').setValue('q');
+    await submitConstraintForm(wrapper);
+    expect(store.document.constraints).toHaveLength(0);
+
+    await wrapper.find('[data-testid="constraint-value"]').setValue('0');
+    await submitConstraintForm(wrapper);
+    expect(store.document.constraints).toHaveLength(0);
+
+    await wrapper.find('[data-testid="constraint-value"]').setValue('50');
+    await submitConstraintForm(wrapper);
+    await nextTick();
+
+    expect(store.document.constraints).toEqual([
+      { id: expect.any(String), type: 'distance', a: 'p', b: 'q', value: 50 },
+    ]);
+    expect(
+      (wrapper.find('[data-testid="constraint-value"]').element as HTMLInputElement).value,
+    ).toBe('');
   });
 
   it('reports the active tool and selection in the properties drawer', async () => {
