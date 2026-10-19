@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import {
   constraintEntityIds,
+  constraintOffset,
+  constraintOrientation,
   cutEdges,
   DEFAULT_SEAM_ALLOWANCE,
+  findDistanceConstraint,
+  measureLinearDimension,
   seamForEdge,
   toSvg,
 } from '@sewcraft/geometry';
@@ -11,6 +15,7 @@ import type {
   Command,
   ConstraintType,
   CurveEntity,
+  DimensionOrientation,
   EntityId,
   LineEntity,
 } from '@sewcraft/geometry';
@@ -34,6 +39,14 @@ import {
   type ConstraintPick,
 } from '@/lib/constraint-tools';
 import { constraintLabel } from '@/lib/constraint-view';
+import {
+  DIMENSION_ORIENTATION_OPTIONS,
+  formatDimensionValue,
+  isValidDimensionValue,
+  parseDimensionValue,
+  type DimensionPatch,
+  type DimensionPlacement,
+} from '@/lib/dimensions';
 import { downloadSvgFile } from '@/lib/download';
 import type { RibbonAction } from '@/lib/editor-ribbon';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
@@ -51,6 +64,7 @@ const showConstruction = ref(true);
 const includeConstruction = ref(false);
 const showSeamAllowance = ref(true);
 const showConstraints = ref(true);
+const showDimensions = ref(true);
 const seamWidths = ref<Record<string, number>>({});
 const activeConstraint = ref<ConstraintType | null>(null);
 const constraintPicks = ref<ConstraintPick[]>([]);
@@ -86,6 +100,31 @@ const edges = computed(() =>
 );
 
 const cutEdgeCount = computed(() => cutEdges(pattern.value).length);
+
+/**
+ * Distance constraints are the driving dimensions; the sidebar edits their
+ * value and measurement axis, while the canvas renders them. Every other
+ * constraint stays in the generic constraints list.
+ */
+const dimensions = computed(() =>
+  pattern.value.constraints.flatMap((constraint) => {
+    if (constraint.type !== 'distance') return [];
+    return [
+      {
+        id: constraint.id,
+        entities: [constraint.a, constraint.b],
+        value: formatDimensionValue(constraint.value),
+        orientation: constraintOrientation(constraint),
+        offset: formatDimensionValue(constraintOffset(constraint)),
+      },
+    ];
+  }),
+);
+
+const otherConstraints = computed(() =>
+  pattern.value.constraints.filter((constraint) => constraint.type !== 'distance'),
+);
+
 const activeToolLabel = computed(
   () => EDITOR_TOOLS.find((tool) => tool.id === activeTool.value)!.label,
 );
@@ -198,6 +237,74 @@ function onAddCurve(points: [EntityId, EntityId, EntityId, EntityId]): void {
       params: { p0: points[0], p1: points[1], p2: points[2], p3: points[3] },
     }),
   );
+}
+
+/**
+ * Place a dimension as a driving distance constraint. Reusing an existing
+ * distance between the same two points avoids duplicate equations; the
+ * placement then only updates the dimension's presentation.
+ */
+function onAddDimension(placement: DimensionPlacement): void {
+  const existing = findDistanceConstraint(pattern.value, placement.a, placement.b);
+  if (existing !== undefined) {
+    run(() =>
+      dispatch({
+        id: nextCommandId('dimension'),
+        type: 'update_constraint',
+        params: { id: existing.id, orientation: placement.orientation, offset: placement.offset },
+      }),
+    );
+    return;
+  }
+
+  const value = measureLinearDimension(
+    pattern.value,
+    placement.a,
+    placement.b,
+    placement.orientation,
+  )!;
+  if (value <= 0) return;
+
+  run(() =>
+    dispatch({
+      id: nextCommandId('dimension'),
+      type: 'add_constraint',
+      params: {
+        type: 'distance',
+        entities: [placement.a, placement.b],
+        value,
+        orientation: placement.orientation,
+        offset: placement.offset,
+      },
+    }),
+  );
+}
+
+function onUpdateDimension(id: EntityId, patch: DimensionPatch): void {
+  run(() =>
+    dispatch({
+      id: nextCommandId('dimension'),
+      type: 'update_constraint',
+      params: { id, ...patch },
+    }),
+  );
+}
+
+function onDimensionValueEdit(id: EntityId, event: Event): void {
+  const value = parseDimensionValue((event.target as HTMLInputElement).value);
+  if (!isValidDimensionValue(value)) return;
+  onUpdateDimension(id, { value });
+}
+
+function onDimensionOrientationEdit(id: EntityId, event: Event): void {
+  const orientation = (event.target as HTMLSelectElement).value as DimensionOrientation;
+  onUpdateDimension(id, { orientation });
+}
+
+function onDimensionOffsetEdit(id: EntityId, event: Event): void {
+  const offset = parseDimensionValue((event.target as HTMLInputElement).value);
+  if (offset === null) return;
+  onUpdateDimension(id, { offset });
 }
 
 function convert(id: string, construction: boolean): void {
@@ -388,6 +495,7 @@ onBeforeUnmount(() => {
           :fit-token="fitToken"
           :show-seam-allowance="showSeamAllowance"
           :show-constraints="showConstraints"
+          :show-dimensions="showDimensions"
           :constraint-active="activeConstraint !== null"
           :constraint-picks="constraintPicks"
           @move-point="onMovePoint"
@@ -395,6 +503,8 @@ onBeforeUnmount(() => {
           @add-line="onAddLine"
           @add-curve="onAddCurve"
           @constraint-pick="onConstraintPick"
+          @add-dimension="onAddDimension"
+          @update-dimension="onUpdateDimension"
         />
       </div>
 
@@ -476,10 +586,82 @@ onBeforeUnmount(() => {
           <p v-else class="text-sm text-muted-foreground">No edges yet.</p>
         </template>
 
-        <template #constraints>
-          <ul v-if="pattern.constraints.length > 0" class="space-y-2" aria-label="Constraints">
+        <template #dimensions>
+          <ul v-if="dimensions.length > 0" class="space-y-3" aria-label="Dimensions">
             <li
-              v-for="constraint in pattern.constraints"
+              v-for="dimension in dimensions"
+              :key="dimension.id"
+              class="space-y-1 text-sm"
+              :data-testid="`dimension-${dimension.id}`"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <div class="min-w-0">
+                  <span class="font-mono text-muted-foreground">{{ dimension.id }}</span>
+                  <span class="ml-2 text-xs text-muted-foreground">
+                    ({{ dimension.entities.join(', ') }})
+                  </span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :data-testid="`remove-dimension-${dimension.id}`"
+                  @click="removeConstraint(dimension.id)"
+                >
+                  Remove
+                </Button>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2">
+                <input
+                  type="number"
+                  min="0.001"
+                  step="0.1"
+                  class="w-20 rounded-md border px-2 py-1 text-sm"
+                  :value="dimension.value"
+                  :aria-label="`Value for ${dimension.id}`"
+                  :data-testid="`dimension-value-${dimension.id}`"
+                  @change="onDimensionValueEdit(dimension.id, $event)"
+                />
+                <span class="text-xs text-muted-foreground">mm</span>
+
+                <select
+                  class="rounded-md border px-2 py-1 text-sm"
+                  :value="dimension.orientation"
+                  :aria-label="`Orientation for ${dimension.id}`"
+                  :data-testid="`dimension-orientation-${dimension.id}`"
+                  @change="onDimensionOrientationEdit(dimension.id, $event)"
+                >
+                  <option
+                    v-for="option in DIMENSION_ORIENTATION_OPTIONS"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </option>
+                </select>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2">
+                <input
+                  type="number"
+                  step="1"
+                  class="w-20 rounded-md border px-2 py-1 text-sm"
+                  :value="dimension.offset"
+                  :aria-label="`Offset for ${dimension.id}`"
+                  :data-testid="`dimension-offset-${dimension.id}`"
+                  @change="onDimensionOffsetEdit(dimension.id, $event)"
+                />
+                <span class="text-xs text-muted-foreground">offset (mm)</span>
+              </div>
+            </li>
+          </ul>
+          <p v-else class="text-sm text-muted-foreground">No dimensions yet.</p>
+        </template>
+
+        <template #constraints>
+          <ul v-if="otherConstraints.length > 0" class="space-y-2" aria-label="Constraints">
+            <li
+              v-for="constraint in otherConstraints"
               :key="constraint.id"
               class="flex flex-wrap items-center justify-between gap-2 text-sm"
             >
@@ -528,6 +710,10 @@ onBeforeUnmount(() => {
             <label class="flex items-center gap-2 text-sm">
               <input v-model="showConstraints" type="checkbox" data-testid="show-constraints" />
               Show constraints
+            </label>
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="showDimensions" type="checkbox" data-testid="show-dimensions" />
+              Show dimensions
             </label>
           </div>
         </template>

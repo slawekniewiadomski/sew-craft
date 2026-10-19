@@ -10,7 +10,13 @@ import {
   type PointEntity,
   seamAllowancePaths,
 } from '@sewcraft/geometry';
-import { enableAutoUnmount, mount, type DOMWrapper, type VueWrapper } from '@vue/test-utils';
+import {
+  enableAutoUnmount,
+  flushPromises,
+  mount,
+  type DOMWrapper,
+  type VueWrapper,
+} from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { nextTick } from 'vue';
 
@@ -26,6 +32,7 @@ import {
   panBy,
   screenToWorld,
   viewportTransform,
+  worldToScreen,
   type Viewport,
 } from '@/lib/viewport';
 
@@ -92,11 +99,12 @@ beforeEach(() => {
 function mountCanvas(
   overrides: Partial<{
     document: PatternDocument;
-    tool: 'select' | 'add_point' | 'add_line' | 'add_curve';
+    tool: 'select' | 'add_point' | 'add_line' | 'add_curve' | 'dimension';
     selectedId: EntityId | null;
     fitToken: number;
     showSeamAllowance: boolean;
     showConstraints: boolean;
+    showDimensions: boolean;
     constraintActive: boolean;
     constraintPicks: ConstraintPick[];
   }> = {},
@@ -206,6 +214,23 @@ describe('PatternCanvas', () => {
       { id: 'h', type: 'horizontal', a: 'a', b: 'b' },
       { id: 'w', type: 'distance', a: 'a', b: 'b', value: 100 },
       { id: 'ghost', type: 'vertical', a: 'a', b: 'missing' },
+    ],
+  };
+
+  const dimensionDoc: PatternDocument = {
+    ...baseDoc,
+    constraints: [
+      { id: 'w', type: 'distance', a: 'a', b: 'b', value: 100 },
+      {
+        id: 'h',
+        type: 'distance',
+        a: 'b',
+        b: 'c',
+        value: 100,
+        orientation: 'vertical',
+        offset: 20,
+      },
+      { id: 'ghost', type: 'distance', a: 'a', b: 'missing', value: 10 },
     ],
   };
 
@@ -600,5 +625,248 @@ describe('PatternCanvas', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it('renders dimension lines and labels for every resolvable distance constraint', () => {
+    const wrapper = mountCanvas({ document: dimensionDoc });
+
+    expect(wrapper.find('[data-testid="dimension-lines-w"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="dimension-lines-h"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="dimension-lines-ghost"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-label-w"]').find('text').text()).toBe('100');
+    expect(wrapper.find('[data-testid="dimension-label-h"]').find('text').text()).toBe('100');
+    expect(wrapper.find('[data-testid="dimension-label-h"]').attributes('transform')).toContain(
+      'rotate(90)',
+    );
+
+    const lines = wrapper.find('[data-testid="dimension-lines-w"]').findAll('line');
+    expect(lines[0]!.classes()).toContain('stroke-muted-foreground');
+    expect(lines[2]!.classes()).toContain('stroke-foreground');
+    expect(wrapper.find('[data-testid="dimension-drag-w"]').exists()).toBe(true);
+  });
+
+  it('hides dimension lines and labels when the toggle is off', () => {
+    const wrapper = mountCanvas({ document: dimensionDoc, showDimensions: false });
+
+    expect(wrapper.find('[data-testid="dimension-lines-w"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-labels-layer"]').text()).not.toContain('100');
+  });
+
+  it('previews a dimension from a line, follows the pointer and emits the placement', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc, tool: 'dimension' });
+    const vp = fittedViewport(dimensionDoc);
+
+    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(true);
+    expect(
+      wrapper.find('[data-testid="dimension-label-dimension-preview"]').find('text').text(),
+    ).toBe('100');
+
+    const target = worldToScreen(vp, { x: 50, y: 40 });
+    wrapper
+      .find('svg')
+      .element.dispatchEvent(
+        new MouseEvent('pointermove', { bubbles: true, clientX: target.x, clientY: target.y }),
+      );
+    await nextTick();
+
+    down(wrapper.find('[data-testid="grid"]').element, 400, 300);
+    await nextTick();
+
+    expect(wrapper.emitted('add-dimension')).toEqual([
+      [{ a: 'a', b: 'b', orientation: 'horizontal', offset: 40 }],
+    ]);
+    expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(false);
+
+    const idle = worldToScreen(vp, { x: 10, y: 10 });
+    wrapper
+      .find('svg')
+      .element.dispatchEvent(
+        new MouseEvent('pointermove', { bubbles: true, clientX: idle.x, clientY: idle.y }),
+      );
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(false);
+  });
+
+  it('does not preview a zero-length dimension', async () => {
+    const zeroDoc = doc([pt('a', 0, 0), pt('b', 0, 0)]);
+    const wrapper = mountCanvas({ document: zeroDoc, tool: 'dimension' });
+
+    down(pointCircle(wrapper, 'a').element, 300, 200);
+    down(pointCircle(wrapper, 'b').element, 300, 200);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(false);
+
+    down(wrapper.find('[data-testid="grid"]').element, 400, 300);
+    expect(wrapper.emitted('add-dimension')).toEqual([
+      [{ a: 'a', b: 'b', orientation: 'aligned', offset: 12 }],
+    ]);
+  });
+
+  it('picks two points for a dimension and ignores a repeated point', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc, tool: 'dimension' });
+
+    down(pointCircle(wrapper, 'c').element, 300, 200);
+    down(pointCircle(wrapper, 'c').element, 300, 200);
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(false);
+
+    down(pointCircle(wrapper, 'a').element, 300, 200);
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(true);
+
+    down(wrapper.find('[data-testid="grid"]').element, 400, 300);
+
+    expect(wrapper.emitted('add-dimension')).toEqual([
+      [{ a: 'c', b: 'a', orientation: 'aligned', offset: 12 }],
+    ]);
+  });
+
+  it('resets dimension picks when an empty or curve hit interrupts them', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc, tool: 'dimension' });
+
+    down(pointCircle(wrapper, 'a').element, 300, 200);
+    down(wrapper.find('[data-kind="curve"]').element, 300, 200);
+    down(pointCircle(wrapper, 'b').element, 300, 200);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(false);
+
+    down(wrapper.find('[data-testid="grid"]').element, 400, 300);
+    expect(wrapper.emitted('add-dimension')).toBeUndefined();
+    expect(wrapper.emitted('update:selectedId')).toBeUndefined();
+  });
+
+  it('opens the inline editor on double-click and commits a valid value', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc });
+
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await flushPromises();
+
+    const editor = wrapper.find('[data-testid="dimension-editor"]');
+    expect(editor.exists()).toBe(true);
+    expect((editor.element as HTMLInputElement).value).toBe('100');
+
+    await editor.setValue('150');
+    await editor.trigger('keydown', { key: 'Enter' });
+
+    expect(wrapper.emitted('update-dimension')).toEqual([['w', { value: 150 }]]);
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(false);
+  });
+
+  it('keeps an invalid inline value editable and cancels on Escape', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc });
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await flushPromises();
+
+    await wrapper.find('[data-testid="dimension-editor"]').setValue('0');
+    await wrapper.find('[data-testid="dimension-editor"]').trigger('keydown', { key: 'Enter' });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(true);
+    expect(wrapper.emitted('update-dimension')).toBeUndefined();
+
+    await wrapper.find('[data-testid="dimension-editor"]').trigger('keydown', { key: 'Escape' });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(false);
+    expect(wrapper.emitted('update-dimension')).toBeUndefined();
+  });
+
+  it('commits a valid blur and discards an invalid one', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc });
+
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await flushPromises();
+    await wrapper.find('[data-testid="dimension-editor"]').setValue('120');
+    await wrapper.find('[data-testid="dimension-editor"]').trigger('blur');
+    expect(wrapper.emitted('update-dimension')).toEqual([['w', { value: 120 }]]);
+
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await flushPromises();
+    await wrapper.find('[data-testid="dimension-editor"]').setValue('');
+    await wrapper.find('[data-testid="dimension-editor"]').trigger('blur');
+    expect(wrapper.emitted('update-dimension')).toEqual([['w', { value: 120 }]]);
+  });
+
+  it('ignores double-click on a preview label and closes the editor when hidden', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc, tool: 'dimension' });
+
+    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200);
+    await nextTick();
+    await wrapper.find('[data-testid="dimension-label-dimension-preview"]').trigger('dblclick');
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(true);
+
+    wrapper.setProps({ showDimensions: false });
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(false);
+
+    wrapper.setProps({ showDimensions: true });
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-label-w"]').exists()).toBe(true);
+  });
+
+  it('closes the inline editor when the document changes underneath it', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc });
+
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(true);
+
+    wrapper.setProps({ document: { ...dimensionDoc, constraints: [] } });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(false);
+  });
+
+  it('drags a dimension line to a new offset', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc });
+    const vp = fittedViewport(dimensionDoc);
+    const target = worldToScreen(vp, { x: 50, y: 40 });
+
+    down(wrapper.find('[data-testid="dimension-drag-w"]').element, 300, 200);
+    move(target.x, target.y);
+    await nextTick();
+    up();
+
+    expect(wrapper.emitted('update-dimension')).toEqual([['w', { offset: 40 }]]);
+  });
+
+  it('drags a dimension from its label and ignores a click without movement', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc });
+    const vp = fittedViewport(dimensionDoc);
+    const target = worldToScreen(vp, { x: 50, y: 30 });
+
+    down(wrapper.find('[data-testid="dimension-label-w"]').element, 300, 200);
+    up();
+    expect(wrapper.emitted('update-dimension')).toBeUndefined();
+
+    down(wrapper.find('[data-testid="dimension-label-w"]').element, 300, 200);
+    move(target.x, target.y);
+    await nextTick();
+    up();
+
+    expect(wrapper.emitted('update-dimension')).toEqual([['w', { offset: 30 }]]);
+  });
+
+  it('does not drag dimensions outside the select tool or during constraint placement', async () => {
+    const dimensionTool = mountCanvas({ document: dimensionDoc, tool: 'dimension' });
+    down(dimensionTool.find('[data-testid="dimension-drag-w"]').element, 300, 200);
+    move(400, 300);
+    up();
+    expect(dimensionTool.emitted('update-dimension')).toBeUndefined();
+
+    const constraintTool = mountCanvas({ document: dimensionDoc, constraintActive: true });
+    down(constraintTool.find('[data-testid="dimension-drag-w"]').element, 300, 200);
+    move(400, 300);
+    up();
+    expect(constraintTool.emitted('update-dimension')).toBeUndefined();
   });
 });

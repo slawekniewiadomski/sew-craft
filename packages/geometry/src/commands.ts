@@ -6,13 +6,17 @@ import {
   getSeam,
   seamForEdge,
 } from './document.js';
+import { constraintOffset, constraintOrientation } from './dimension.js';
 import { solve } from './solver.js';
 import type { SolveOptions, SolveResult } from './solver.js';
 import {
   CONSTRAINT_TYPES,
+  DIMENSION_ORIENTATIONS,
   type Constraint,
   type ConstraintType,
   type CurveEntity,
+  type DimensionOrientation,
+  type DistanceConstraint,
   type Entity,
   type EntityId,
   type LineEntity,
@@ -68,6 +72,17 @@ export interface AddConstraintParams {
   type: ConstraintType;
   entities: EntityId[];
   value?: number;
+  /** Measurement axis for `distance` constraints; ignored for other types. */
+  orientation?: DimensionOrientation;
+  /** Placement offset for `distance` constraints; ignored for other types. */
+  offset?: number;
+}
+
+export interface UpdateConstraintParams {
+  id: EntityId;
+  value?: number;
+  orientation?: DimensionOrientation;
+  offset?: number;
 }
 
 export interface RemoveConstraintParams {
@@ -109,6 +124,7 @@ export type Command =
     }
   | { id: EntityId; type: 'delete_entity'; params: DeleteEntityParams; issuedAt?: string }
   | { id: EntityId; type: 'add_constraint'; params: AddConstraintParams; issuedAt?: string }
+  | { id: EntityId; type: 'update_constraint'; params: UpdateConstraintParams; issuedAt?: string }
   | { id: EntityId; type: 'remove_constraint'; params: RemoveConstraintParams; issuedAt?: string }
   | { id: EntityId; type: 'add_seam_allowance'; params: AddSeamAllowanceParams; issuedAt?: string }
   | {
@@ -199,6 +215,8 @@ export function applyCommand(document: PatternDocument, command: Command): Comma
       return applyDeleteEntity(document, command);
     case 'add_constraint':
       return applyAddConstraint(document, command);
+    case 'update_constraint':
+      return applyUpdateConstraint(document, command);
     case 'remove_constraint':
       return applyRemoveConstraint(document, command);
     case 'add_seam_allowance':
@@ -425,7 +443,7 @@ function applyAddConstraint(
   document: PatternDocument,
   command: CommandOf<'add_constraint'>,
 ): CommandApplication {
-  const { type, entities, value } = command.params;
+  const { type, entities, value, orientation, offset } = command.params;
   if (!CONSTRAINT_TYPES.includes(type)) {
     throw new CommandValidationError('add_constraint', `unknown constraint type: ${String(type)}`);
   }
@@ -448,15 +466,161 @@ function applyAddConstraint(
     throw new CommandValidationError('add_constraint', 'angle requires a finite value');
   }
 
+  if (type !== 'distance' && (orientation !== undefined || offset !== undefined)) {
+    throw new CommandValidationError(
+      'add_constraint',
+      'orientation and offset apply only to distance constraints',
+    );
+  }
+  if (orientation !== undefined && !DIMENSION_ORIENTATIONS.includes(orientation)) {
+    throw new CommandValidationError(
+      'add_constraint',
+      `unknown dimension orientation: ${String(orientation)}`,
+    );
+  }
+  if (offset !== undefined && !Number.isFinite(offset)) {
+    throw new CommandValidationError('add_constraint', 'offset must be a finite number');
+  }
+
   if (getConstraint(document, command.id) !== undefined) {
     return noOp(document);
   }
 
-  const constraint = buildConstraint(command.id, type, entities, value);
+  const constraint = buildConstraint(command.id, type, entities, value, orientation, offset);
 
   return {
     document: { ...document, constraints: [...document.constraints, constraint] },
     inverse: { id: command.id, type: 'remove_constraint', params: { id: command.id } },
+  };
+}
+
+/**
+ * Update a dimensional constraint. Distance constraints may also change their
+ * measurement axis and placement offset; angle constraints only their value.
+ * The inverse restores the previous *effective* values, so an omitted orientation
+ * or offset is materialised as its default (they are semantically identical).
+ */
+function applyUpdateConstraint(
+  document: PatternDocument,
+  command: CommandOf<'update_constraint'>,
+): CommandApplication {
+  const { id, value, orientation, offset } = command.params;
+  const constraint = getConstraint(document, id);
+  if (constraint === undefined) {
+    throw new CommandValidationError('update_constraint', `unknown constraint: ${id}`);
+  }
+  if (constraint.type !== 'distance' && constraint.type !== 'angle') {
+    throw new CommandValidationError(
+      'update_constraint',
+      `constraint ${id} is a ${constraint.type}, expected distance or angle`,
+    );
+  }
+  if (value === undefined && orientation === undefined && offset === undefined) {
+    throw new CommandValidationError('update_constraint', 'provide value, orientation or offset');
+  }
+
+  if (value !== undefined) {
+    if (constraint.type === 'distance' && (!Number.isFinite(value) || value <= 0)) {
+      throw new CommandValidationError('update_constraint', 'distance requires a finite value > 0');
+    }
+    if (constraint.type === 'angle' && !Number.isFinite(value)) {
+      throw new CommandValidationError('update_constraint', 'angle requires a finite value');
+    }
+  }
+  if (orientation !== undefined) {
+    if (constraint.type !== 'distance') {
+      throw new CommandValidationError(
+        'update_constraint',
+        'orientation applies only to distance constraints',
+      );
+    }
+    if (!DIMENSION_ORIENTATIONS.includes(orientation)) {
+      throw new CommandValidationError(
+        'update_constraint',
+        `unknown dimension orientation: ${String(orientation)}`,
+      );
+    }
+  }
+  if (offset !== undefined) {
+    if (constraint.type !== 'distance') {
+      throw new CommandValidationError(
+        'update_constraint',
+        'offset applies only to distance constraints',
+      );
+    }
+    if (!Number.isFinite(offset)) {
+      throw new CommandValidationError('update_constraint', 'offset must be a finite number');
+    }
+  }
+
+  const updated = updatedConstraint(constraint, value, orientation, offset);
+  if (updated === null) {
+    return noOp(document);
+  }
+
+  const constraints = document.constraints.map((candidate) =>
+    candidate.id === id ? updated.constraint : candidate,
+  );
+
+  return {
+    document: { ...document, constraints },
+    inverse: {
+      id: command.id,
+      type: 'update_constraint',
+      params: updated.inverse,
+    },
+  };
+}
+
+interface UpdatedConstraint {
+  constraint: Constraint;
+  inverse: UpdateConstraintParams;
+}
+
+/** Build the next constraint plus the params that restore its previous values. */
+function updatedConstraint(
+  constraint: DistanceConstraint | Extract<Constraint, { type: 'angle' }>,
+  value: number | undefined,
+  orientation: DimensionOrientation | undefined,
+  offset: number | undefined,
+): UpdatedConstraint | null {
+  if (constraint.type === 'angle') {
+    // Validation rejects presentation fields for angles, so a value is present.
+    const nextValue = value!;
+    if (nextValue === constraint.value) return null;
+    return {
+      constraint: { ...constraint, value: nextValue },
+      inverse: { id: constraint.id, value: constraint.value },
+    };
+  }
+
+  const previousOrientation = constraintOrientation(constraint);
+  const previousOffset = constraintOffset(constraint);
+  const nextValue = value ?? constraint.value;
+  const nextOrientation = orientation ?? previousOrientation;
+  const nextOffset = offset ?? previousOffset;
+
+  if (
+    nextValue === constraint.value &&
+    nextOrientation === previousOrientation &&
+    nextOffset === previousOffset
+  ) {
+    return null;
+  }
+
+  return {
+    constraint: {
+      ...constraint,
+      value: nextValue,
+      orientation: nextOrientation,
+      offset: nextOffset,
+    },
+    inverse: {
+      id: constraint.id,
+      value: constraint.value,
+      orientation: previousOrientation,
+      offset: previousOffset,
+    },
   };
 }
 
@@ -544,6 +708,8 @@ function buildConstraint(
   type: ConstraintType,
   entities: EntityId[],
   value: number | undefined,
+  orientation: DimensionOrientation | undefined,
+  offset: number | undefined,
 ): Constraint {
   const [a, b, c, d] = entities;
 
@@ -557,7 +723,15 @@ function buildConstraint(
     case 'point_on_line':
       return { id, type, point: a!, a: b!, b: c! };
     case 'distance':
-      return { id, type, a: a!, b: b!, value: value! };
+      return {
+        id,
+        type,
+        a: a!,
+        b: b!,
+        value: value!,
+        ...(orientation === undefined ? {} : { orientation }),
+        ...(offset === undefined ? {} : { offset }),
+      };
     case 'angle':
       return { id, type, a: a!, b: b!, c: c!, value: value! };
     case 'equal':
@@ -574,7 +748,13 @@ function constraintToParams(constraint: Constraint): AddConstraintParams {
     case 'point_on_line':
       return { type: 'point_on_line', entities: [constraint.point, constraint.a, constraint.b] };
     case 'distance':
-      return { type: 'distance', entities: [constraint.a, constraint.b], value: constraint.value };
+      return {
+        type: 'distance',
+        entities: [constraint.a, constraint.b],
+        value: constraint.value,
+        ...(constraint.orientation === undefined ? {} : { orientation: constraint.orientation }),
+        ...(constraint.offset === undefined ? {} : { offset: constraint.offset }),
+      };
     case 'angle':
       return {
         type: 'angle',

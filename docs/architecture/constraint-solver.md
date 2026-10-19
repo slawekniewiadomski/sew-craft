@@ -24,15 +24,21 @@ accept    if ||r(x+Δ)|| < ||r(x)||, else increase λ
 
 ## v0.1 constraint set
 
-| Type            | Params                 | Residuals                                 |
-| --------------- | ---------------------- | ----------------------------------------- |
-| `coincident`    | `a`, `b`               | `ax−bx`, `ay−by` (2)                      |
-| `horizontal`    | `a`, `b`               | `ay−by`                                   |
-| `vertical`      | `a`, `b`               | `ax−bx`                                   |
-| `point_on_line` | `point`, `a`, `b`      | signed distance from `point` to line `ab` |
-| `distance`      | `a`, `b`, `value`      | `‖b−a‖ − value`                           |
-| `angle`         | `a`, `b`, `c`, `value` | signed angle `∠abc − value`               |
-| `equal`         | `a1,a2,b1,b2`          | `‖a2−a1‖ − ‖b2−b1‖`                       |
+| Type            | Params                            | Residuals                                   |
+| --------------- | --------------------------------- | ------------------------------------------- |
+| `coincident`    | `a`, `b`                          | `ax−bx`, `ay−by` (2)                        |
+| `horizontal`    | `a`, `b`                          | `ay−by`                                     |
+| `vertical`      | `a`, `b`                          | `ax−bx`                                     |
+| `point_on_line` | `point`, `a`, `b`                 | signed distance from `point` to line `ab`   |
+| `distance`      | `a`, `b`, `value`, `orientation?` | `aligned`: `‖b−a‖ − value`; `horizontal`: ` | bx−ax | − value`; `vertical`: ` | by−ay | − value` |
+| `angle`         | `a`, `b`, `c`, `value`            | signed angle `∠abc − value`                 |
+| `equal`         | `a1,a2,b1,b2`                     | `‖a2−a1‖ − ‖b2−b1‖`                         |
+
+A `distance` constraint doubles as a linear dimension: its optional
+`orientation` (`aligned` default, or `horizontal`/`vertical`) selects which span
+the solver drives, and its optional `offset` is presentation only — it moves the
+rendered dimension line away from the measured span without changing the
+residual. See `specs/014-linear-dimensions.md`.
 
 Further types (parallel, perpendicular, tangent, symmetry, radius, point-on-circle)
 are deferred; see `specs/003-constraint-solver-core.md`.

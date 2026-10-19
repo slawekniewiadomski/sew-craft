@@ -58,6 +58,8 @@ interface CommandApplication {
 
 `add_constraint` and `remove_constraint` are mutual inverses: removing a
 constraint rebuilds the `add_constraint` that recreates it with the same id.
+`update_constraint` is its own inverse: it captures the previous effective value,
+orientation and offset so the change can be undone, keeping the same id.
 
 ## Solving
 

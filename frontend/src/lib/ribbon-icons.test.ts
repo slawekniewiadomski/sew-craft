@@ -10,6 +10,7 @@ describe('RIBBON_ICONS', () => {
       'coincident',
       'curve',
       'delete',
+      'dimension',
       'distance',
       'download',
       'equal',
@@ -38,6 +39,7 @@ describe('RIBBON_ICONS', () => {
     expect(RIBBON_ICONS.select.paths).toHaveLength(1);
     expect(RIBBON_ICONS.point).toEqual({ paths: [], dots: [{ cx: 6, cy: 6, r: 1.9 }] });
     expect(RIBBON_ICONS.line.paths).toEqual(['M2.5 9.5 L9.5 2.5']);
+    expect(RIBBON_ICONS.dimension.paths).toHaveLength(5);
     expect(RIBBON_ICONS.download.paths).toHaveLength(3);
   });
 

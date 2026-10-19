@@ -42,6 +42,7 @@ const TOOL_ICONS: Record<EditorTool, RibbonIconName> = {
   add_point: 'point',
   add_line: 'line',
   add_curve: 'curve',
+  dimension: 'dimension',
 };
 
 const TOOL_ITEMS = new Map<EditorTool, RibbonToolItem>(
@@ -90,7 +91,12 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
   {
     id: 'sketching',
     label: 'Sketching',
-    items: [toolItem('add_point'), toolItem('add_line'), toolItem('add_curve')],
+    items: [
+      toolItem('add_point'),
+      toolItem('add_line'),
+      toolItem('add_curve'),
+      toolItem('dimension'),
+    ],
   },
   {
     id: 'constraints',

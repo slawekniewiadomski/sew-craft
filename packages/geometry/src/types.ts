@@ -51,12 +51,34 @@ export const CONSTRAINT_TYPES = [
 
 export type ConstraintType = (typeof CONSTRAINT_TYPES)[number];
 
+/**
+ * How a linear dimension measures the span between its two points. `aligned`
+ * reports the true point-to-point length; `horizontal`/`vertical` report the
+ * absolute distance along that axis. Dimensions are distance constraints with
+ * optional presentation, so `orientation` and `offset` only apply to `distance`.
+ */
+export const DIMENSION_ORIENTATIONS = ['aligned', 'horizontal', 'vertical'] as const;
+
+export type DimensionOrientation = (typeof DIMENSION_ORIENTATIONS)[number];
+
+export type DistanceConstraint = {
+  id: EntityId;
+  type: 'distance';
+  a: EntityId;
+  b: EntityId;
+  value: number;
+  /** Measurement axis; omitted means `aligned`. */
+  orientation?: DimensionOrientation;
+  /** Signed millimetres from the measured span to the dimension line. */
+  offset?: number;
+};
+
 export type Constraint =
   | { id: EntityId; type: 'coincident'; a: EntityId; b: EntityId }
   | { id: EntityId; type: 'horizontal'; a: EntityId; b: EntityId }
   | { id: EntityId; type: 'vertical'; a: EntityId; b: EntityId }
   | { id: EntityId; type: 'point_on_line'; point: EntityId; a: EntityId; b: EntityId }
-  | { id: EntityId; type: 'distance'; a: EntityId; b: EntityId; value: number }
+  | DistanceConstraint
   | { id: EntityId; type: 'angle'; a: EntityId; b: EntityId; c: EntityId; value: number }
   | { id: EntityId; type: 'equal'; a1: EntityId; a2: EntityId; b1: EntityId; b2: EntityId };
 

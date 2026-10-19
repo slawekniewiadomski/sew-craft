@@ -72,6 +72,27 @@ arrays. Document helpers in `document.ts`:
 - `getSeam(document, id)` / `seamForEdge(document, edge)` — look up a seam
   allowance by its own id or by the edge it is attached to.
 
+## Linear dimensions (`dimension.ts`)
+
+A linear dimension is not an entity: it is the CAD rendering of a driving
+`distance` constraint (see `constraint-solver.md`). The pure helpers in
+`dimension.ts` compute that rendering and are consumed by the frontend canvas:
+
+- `dimensionGeometry(document, constraint)` — extension lines, dimension line,
+  end chevrons and a rotated value label for a `distance` constraint, or `null`
+  when its points are missing. Honors `orientation` and `offset`
+  (`DEFAULT_DIMENSION_OFFSET` is `12` mm).
+- `measureLinearDimension(document, a, b, orientation)` — the span the constraint
+  would drive, or `null` when a point is missing.
+- `inferDimensionOrientation(document, a, b, pointer)` — pick the axis from a
+  pointer position while placing a dimension.
+- `dimensionOffsetForPointer(document, a, b, orientation, pointer)` — the signed
+  offset from the span to a pointer, used while dragging a dimension line.
+- `findDistanceConstraint(document, a, b)` — the existing distance between two
+  points (unordered), so the UI can reuse rather than duplicate it.
+- `constraintOrientation(constraint)` / `constraintOffset(constraint)` — the
+  effective presentation values, applying the defaults.
+
 ## Seam allowance (`offset.ts`)
 
 A seam allowance is a per-edge offset stored on the document as
@@ -119,6 +140,8 @@ import {
   executeCommand,
   solveDocument,
   toSvg,
+  dimensionGeometry,
+  findDistanceConstraint,
   type Command,
   type PointEntity,
   type Constraint,

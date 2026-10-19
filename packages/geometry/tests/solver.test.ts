@@ -197,4 +197,42 @@ describe('solve', () => {
     expect(result.coordinates.get('b')!.y).toBeCloseTo(0, 6);
     expect(result.coordinates.get('c')!.x).toBeCloseTo(100, 6);
   });
+
+  it('measures a horizontal distance along the x axis only', () => {
+    const points = [point('a', 0, 0, true), point('b', 10, 30)];
+    const constraints: Constraint[] = [
+      { id: 'd', type: 'distance', a: 'a', b: 'b', value: 40, orientation: 'horizontal' },
+    ];
+
+    const result = solve(points, constraints);
+    const b = result.coordinates.get('b')!;
+
+    expect(result.converged).toBe(true);
+    expect(Math.abs(b.x - result.coordinates.get('a')!.x)).toBeCloseTo(40, 6);
+  });
+
+  it('measures a vertical distance along the y axis only', () => {
+    const points = [point('a', 0, 0, true), point('b', 40, 10)];
+    const constraints: Constraint[] = [
+      { id: 'd', type: 'distance', a: 'a', b: 'b', value: 25, orientation: 'vertical' },
+    ];
+
+    const result = solve(points, constraints);
+    const b = result.coordinates.get('b')!;
+
+    expect(result.converged).toBe(true);
+    expect(Math.abs(b.y - result.coordinates.get('a')!.y)).toBeCloseTo(25, 6);
+  });
+
+  it('treats an explicit aligned orientation as the Euclidean distance', () => {
+    const points = [point('a', 0, 0, true), point('b', 3, 4)];
+    const constraints: Constraint[] = [
+      { id: 'd', type: 'distance', a: 'a', b: 'b', value: 10, orientation: 'aligned' },
+    ];
+
+    const result = solve(points, constraints);
+
+    expect(result.converged).toBe(true);
+    expect(distance(result.coordinates.get('a')!, result.coordinates.get('b')!)).toBeCloseTo(10, 6);
+  });
 });
