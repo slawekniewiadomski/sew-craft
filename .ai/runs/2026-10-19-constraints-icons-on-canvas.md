@@ -103,5 +103,5 @@ command or persistence contracts.
 
 ### Phase 4: Validation and evidence
 
-- [ ] 4.1 Run the full validation gate and capture browser evidence
+- [x] 4.1 Run the full validation gate and capture browser evidence
 - [x] 4.2 Correct the invalid Pint gate command — fb62476
