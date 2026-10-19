@@ -1,6 +1,6 @@
 # Primary color: green
 
-Status: proposed
+Status: complete
 Implements: [#26 — Primary color](https://github.com/slawekniewiadomski/sew-craft/issues/26)
 Depends on: none (reverts the token change shipped in PR #25)
 
@@ -166,16 +166,16 @@ Before (blue-600)                 After (green-600)
 
 ## 📋 Acceptance criteria
 
-- [ ] `--primary` in `frontend/src/assets/main.css` is
+- [x] `--primary` in `frontend/src/assets/main.css` is
       `oklch(0.627 0.194 149.214)` (green-600), replacing the blue value.
-- [ ] `--ring` uses the same green value, so focus rings are no longer blue.
-- [ ] `--primary-foreground` remains `oklch(0.985 0 0)`.
-- [ ] No other file hard-codes a blue brand color; no component or test-id
+- [x] `--ring` uses the same green value, so focus rings are no longer blue.
+- [x] `--primary-foreground` remains `oklch(0.985 0 0)`.
+- [x] No other file hard-codes a blue brand color; no component or test-id
       changes are needed.
-- [ ] Default buttons, the active ribbon tool, selected canvas points/entities,
+- [x] Default buttons, the active ribbon tool, selected canvas points/entities,
       the sidebar resize handle and focus rings render green in a browser.
-- [ ] `SEAM_ALLOWANCE_COLOR` in the geometry export is unchanged.
-- [ ] `npm run test:coverage` stays at **100 %** for statements, branches,
+- [x] `SEAM_ALLOWANCE_COLOR` in the geometry export is unchanged.
+- [x] `npm run test:coverage` stays at **100 %** for statements, branches,
       functions and lines; `format`, `typecheck`, `lint`, `format:check` and
       `build` are green, and the backend gate still passes.
 
