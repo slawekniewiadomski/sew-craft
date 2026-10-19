@@ -70,14 +70,14 @@ dependency.
 
 ### Phase 1: Icon data and renderer
 
-- [ ] 1.1 Add `ribbon-icons.ts` with descriptors and accessor (tests)
-- [ ] 1.2 Add `RibbonIcon.vue` renderer (tests)
+- [x] 1.1 Add `ribbon-icons.ts` with descriptors and accessor (tests) — 6f9d2f3
+- [x] 1.2 Add `RibbonIcon.vue` renderer (tests) — 6f9d2f3
 
 ### Phase 2: Ribbon data and component
 
-- [ ] 2.1 Extend `editor-ribbon.ts` with icons and four named groups (tests)
-- [ ] 2.2 Update `EditorRibbon.vue` for icon-only buttons, tooltips and captions (tests)
+- [x] 2.1 Extend `editor-ribbon.ts` with icons and four named groups (tests) — 46a09db
+- [x] 2.2 Update `EditorRibbon.vue` for icon-only buttons, tooltips and captions (tests) — 2bd0def
 
 ### Phase 3: Verification
 
-- [ ] 3.1 Run the full validation gate and record results
+- [x] 3.1 Run the full validation gate and record results — format, typecheck, lint, format:check, coverage 100%, build, Pest 100%, Pint all green
