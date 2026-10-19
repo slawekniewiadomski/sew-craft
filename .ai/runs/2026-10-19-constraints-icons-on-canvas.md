@@ -96,8 +96,8 @@ command or persistence contracts.
 
 ### Phase 3: Constraints drawer
 
-- [ ] 3.1 Register the constraints drawer and add/remove controls
-- [ ] 3.2 Wire the icon toggle and command handlers in the editor view
+- [x] 3.1 Register the constraints drawer and add/remove controls — cc33d51
+- [x] 3.2 Wire the icon toggle and command handlers in the editor view — ce2af13
 
 ### Phase 4: Validation and evidence
 
