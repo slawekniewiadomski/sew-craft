@@ -48,15 +48,6 @@ async function openViewDrawer(wrapper: VueWrapper): Promise<void> {
   await nextTick();
 }
 
-/**
- * jsdom does not fire `submit` when a submit button is clicked, so drive the
- * form's submit event the way the browser would after a real click.
- */
-async function submitConstraintForm(wrapper: VueWrapper): Promise<void> {
-  await wrapper.find('form').trigger('submit');
-  await nextTick();
-}
-
 function canvasDown(wrapper: VueWrapper, x: number, y: number, button = 0): void {
   wrapper
     .find('[data-testid="grid"]')
@@ -65,12 +56,16 @@ function canvasDown(wrapper: VueWrapper, x: number, y: number, button = 0): void
     );
 }
 
-function pointDown(wrapper: VueWrapper, id: EntityId): void {
+function entityDown(wrapper: VueWrapper, kind: 'point' | 'line' | 'curve', id: EntityId): void {
   wrapper
-    .find(`[data-kind="point"][data-entity-id="${id}"]`)
+    .find(`[data-kind="${kind}"][data-entity-id="${id}"]`)
     .element.dispatchEvent(
       new MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100, button: 0 }),
     );
+}
+
+function pointDown(wrapper: VueWrapper, id: EntityId): void {
+  entityDown(wrapper, 'point', id);
 }
 
 function keydown(key: string): void {
@@ -99,6 +94,40 @@ const edgeDoc: PatternDocument = {
     { id: 'l1', kind: 'line', start: 'p', end: 'q', construction: false },
   ],
 };
+
+const lineDoc: PatternDocument = {
+  ...createEmptyDocument(),
+  entities: [
+    { id: 'a', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+    { id: 'b', kind: 'point', x: 100, y: 0, construction: false, fixed: false },
+    { id: 'c', kind: 'point', x: 100, y: 100, construction: false, fixed: false },
+    { id: 'd', kind: 'point', x: 0, y: 100, construction: false, fixed: false },
+    { id: 'e', kind: 'point', x: 50, y: 50, construction: false, fixed: false },
+    { id: 'ab', kind: 'line', start: 'a', end: 'b', construction: false },
+    { id: 'bc', kind: 'line', start: 'b', end: 'c', construction: false },
+    { id: 'cd', kind: 'line', start: 'c', end: 'd', construction: false },
+    { id: 'da', kind: 'line', start: 'd', end: 'a', construction: false },
+  ],
+};
+
+const curveDoc: PatternDocument = {
+  ...lineDoc,
+  entities: [
+    ...lineDoc.entities,
+    { id: 'curve', kind: 'curve', p0: 'a', p1: 'b', p2: 'c', p3: 'd', construction: false },
+  ],
+};
+
+async function mountLoaded(
+  document: PatternDocument,
+): Promise<{ wrapper: VueWrapper; store: ReturnType<typeof useEditorStore> }> {
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  const store = useEditorStore();
+  store.load(document);
+  const wrapper = await mountEditor(pinia);
+  return { wrapper, store };
+}
 
 describe('EditorView', () => {
   it('seeds a starter sketch on first mount', async () => {
@@ -509,79 +538,256 @@ describe('EditorView', () => {
     expect(wrapper.text()).toContain('No constraints yet.');
   });
 
-  it('adds a parameterless constraint from the drawer form', async () => {
-    const pinia = createPinia();
-    setActivePinia(pinia);
-    const store = useEditorStore();
-    store.load({
-      ...createEmptyDocument(),
-      entities: [
-        { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
-        { id: 'q', kind: 'point', x: 100, y: 0, construction: false, fixed: false },
-      ],
-    });
+  it('shows the constraints group and arms a mode with its prompt', async () => {
+    const wrapper = await mountEditor(createPinia());
 
-    const wrapper = await mountEditor(pinia);
-    await wrapper.find('[data-testid="drawer-toggle-constraints"]').trigger('click');
+    expect(wrapper.find('[data-testid="constraint-horizontal"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="constraint-equal"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="constraint-horizontal"]').trigger('click');
     await nextTick();
 
-    expect(wrapper.find('[data-testid="constraint-value"]').exists()).toBe(false);
-    expect(wrapper.findAll('[data-testid^="constraint-entity-"]')).toHaveLength(2);
+    expect(wrapper.find('[data-testid="constraint-horizontal"]').attributes('aria-pressed')).toBe(
+      'true',
+    );
+    expect(wrapper.find('[data-testid="tool-select"]').attributes('aria-pressed')).toBeUndefined();
+    expect(wrapper.find('[data-testid="constraint-prompt"]').text()).toBe(
+      'Pick a line, or two points.',
+    );
+    expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Select');
 
-    await wrapper.find('[data-testid="constraint-entity-0"]').setValue('p');
-    await wrapper.find('[data-testid="constraint-entity-1"]').setValue('q');
-    await submitConstraintForm(wrapper);
+    await wrapper.find('[data-testid="constraint-horizontal"]').trigger('click');
     await nextTick();
 
-    expect(store.document.constraints).toEqual([
-      { id: expect.any(String), type: 'horizontal', a: 'p', b: 'q' },
-    ]);
-    expect(store.journal).toHaveLength(1);
+    expect(wrapper.find('[data-testid="constraint-prompt"]').exists()).toBe(false);
+    expect(
+      wrapper.find('[data-testid="constraint-horizontal"]').attributes('aria-pressed'),
+    ).toBeUndefined();
   });
 
-  it('ignores the add action until every point is picked and the value is valid', async () => {
-    const pinia = createPinia();
-    setActivePinia(pinia);
-    const store = useEditorStore();
-    store.load({
-      ...createEmptyDocument(),
-      entities: [
-        { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
-        { id: 'q', kind: 'point', x: 100, y: 0, construction: false, fixed: false },
-      ],
-    });
+  it('applies horizontal from a line and stays armed', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
 
-    const wrapper = await mountEditor(pinia);
+    await wrapper.find('[data-testid="constraint-horizontal"]').trigger('click');
+    entityDown(wrapper, 'line', 'ab');
+    await flushPromises();
+
+    expect(store.document.constraints).toEqual([
+      { id: expect.any(String), type: 'horizontal', a: 'a', b: 'b' },
+    ]);
+    expect(wrapper.find('[data-testid="constraint-horizontal"]').attributes('aria-pressed')).toBe(
+      'true',
+    );
+    expect(wrapper.findComponent(PatternCanvas).props('constraintPicks')).toEqual([]);
+    expect(wrapper.find('[data-testid="constraint-prompt"]').text()).toBe(
+      'Pick a line, or two points.',
+    );
+  });
+
+  it('applies vertical from two points', async () => {
+    const { wrapper, store } = await mountLoaded(simpleDoc);
+
+    await wrapper.find('[data-testid="constraint-vertical"]').trigger('click');
+    pointDown(wrapper, 'p');
+    await nextTick();
+    expect(wrapper.find('[data-testid="constraint-prompt"]').text()).toBe('Pick the second point.');
+
+    pointDown(wrapper, 's');
+    await flushPromises();
+
+    expect(store.document.constraints).toEqual([
+      { id: expect.any(String), type: 'vertical', a: 'p', b: 's' },
+    ]);
+  });
+
+  it('applies equal length from two lines, including a shared endpoint', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    await wrapper.find('[data-testid="constraint-equal"]').trigger('click');
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+    expect(wrapper.find('[data-testid="constraint-prompt"]').text()).toBe(
+      'Pick the second line, or two points.',
+    );
+
+    entityDown(wrapper, 'line', 'bc');
+    await flushPromises();
+
+    expect(store.document.constraints).toEqual([
+      { id: expect.any(String), type: 'equal', a1: 'a', a2: 'b', b1: 'b', b2: 'c' },
+    ]);
+  });
+
+  it('applies point on line from a point and a line', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    await wrapper.find('[data-testid="constraint-point_on_line"]').trigger('click');
+    pointDown(wrapper, 'e');
+    await nextTick();
+    expect(wrapper.find('[data-testid="constraint-prompt"]').text()).toBe(
+      'Pick a line, or two points.',
+    );
+
+    entityDown(wrapper, 'line', 'ab');
+    await flushPromises();
+
+    expect(store.document.constraints).toEqual([
+      { id: expect.any(String), type: 'point_on_line', point: 'e', a: 'a', b: 'b' },
+    ]);
+  });
+
+  it('rejects a curve click without staging a constraint', async () => {
+    const { wrapper, store } = await mountLoaded(curveDoc);
+
+    await wrapper.find('[data-testid="constraint-horizontal"]').trigger('click');
+    entityDown(wrapper, 'curve', 'curve');
+    await nextTick();
+
+    expect(store.document.constraints).toHaveLength(0);
+    expect(wrapper.find('[data-testid="constraint-rejection"]').text()).toBe(
+      'Curves are not supported yet; pick a point or a line.',
+    );
+    expect(wrapper.findComponent(PatternCanvas).props('constraintPicks')).toEqual([]);
+  });
+
+  it('prefills distance, applies the typed value and closes the bar', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+    document.body.appendChild(wrapper.element);
+
+    await wrapper.find('[data-testid="constraint-distance"]').trigger('click');
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+
+    expect(
+      (wrapper.find('[data-testid="constraint-value"]').element as HTMLInputElement).value,
+    ).toBe('100');
+
+    const backspace = new KeyboardEvent('keydown', {
+      key: 'Backspace',
+      bubbles: true,
+      cancelable: true,
+    });
+    wrapper.find('[data-testid="constraint-value"]').element.dispatchEvent(backspace);
+    expect(backspace.defaultPrevented).toBe(false);
+
+    const deleteEvent = new KeyboardEvent('keydown', {
+      key: 'Delete',
+      bubbles: true,
+      cancelable: true,
+    });
+    document.body.dispatchEvent(deleteEvent);
+    expect(deleteEvent.defaultPrevented).toBe(true);
+
+    pointDown(wrapper, 'e');
+    await nextTick();
+    expect(wrapper.findComponent(PatternCanvas).props('constraintPicks')).toEqual([
+      { id: 'ab', kind: 'line' },
+    ]);
+    expect(wrapper.find('[data-testid="constraint-value"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="constraint-value"]').setValue('120');
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+
+    expect(store.document.constraints).toEqual([
+      { id: expect.any(String), type: 'distance', a: 'a', b: 'b', value: 120 },
+    ]);
+    expect(wrapper.find('[data-testid="constraint-value"]').exists()).toBe(false);
+    expect(wrapper.findComponent(PatternCanvas).props('constraintPicks')).toEqual([]);
+  });
+
+  it('prefills angle in degrees and dispatches radians', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    await wrapper.find('[data-testid="constraint-angle"]').trigger('click');
+    pointDown(wrapper, 'a');
+    pointDown(wrapper, 'b');
+    pointDown(wrapper, 'c');
+    await nextTick();
+
+    expect(
+      (wrapper.find('[data-testid="constraint-value"]').element as HTMLInputElement).value,
+    ).toBe('-90');
+
+    await wrapper.find('[data-testid="constraint-value"]').setValue('45');
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+
+    const [constraint] = store.document.constraints;
+    expect(constraint).toMatchObject({ type: 'angle', a: 'a', b: 'b', c: 'c' });
+    expect(constraint?.type === 'angle' ? constraint.value : null).toBeCloseTo(Math.PI / 4);
+  });
+
+  it('exits the mode with Cancel, Escape or another tool', async () => {
+    const cancelled = await mountLoaded(lineDoc);
+    await cancelled.wrapper.find('[data-testid="constraint-horizontal"]').trigger('click');
+    await cancelled.wrapper.find('[data-testid="constraint-cancel"]').trigger('click');
+    await nextTick();
+    expect(cancelled.wrapper.find('[data-testid="constraint-prompt"]').exists()).toBe(false);
+    expect(
+      cancelled.wrapper.find('[data-testid="constraint-horizontal"]').attributes('aria-pressed'),
+    ).toBeUndefined();
+
+    const escaped = await mountLoaded(lineDoc);
+    await escaped.wrapper.find('[data-testid="constraint-horizontal"]').trigger('click');
+    keydown('Escape');
+    await nextTick();
+    expect(escaped.wrapper.find('[data-testid="constraint-prompt"]').exists()).toBe(false);
+
+    const switched = await mountLoaded(lineDoc);
+    await switched.wrapper.find('[data-testid="constraint-horizontal"]').trigger('click');
+    await switched.wrapper.find('[data-testid="tool-add_point"]').trigger('click');
+    await nextTick();
+    expect(switched.wrapper.find('[data-testid="constraint-prompt"]').exists()).toBe(false);
+    expect(
+      switched.wrapper.find('[data-testid="constraint-horizontal"]').attributes('aria-pressed'),
+    ).toBeUndefined();
+  });
+
+  it('prunes disappeared picks and closes a stale value bar', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    await wrapper.find('[data-testid="constraint-coincident"]').trigger('click');
+    pointDown(wrapper, 'e');
+    await nextTick();
+    expect(wrapper.findComponent(PatternCanvas).props('constraintPicks')).toEqual([
+      { id: 'e', kind: 'point' },
+    ]);
+
+    store.dispatch({ id: 'move-a', type: 'move_point', params: { id: 'a', x: 1, y: 1 } });
+    await nextTick();
+    expect(wrapper.findComponent(PatternCanvas).props('constraintPicks')).toEqual([
+      { id: 'e', kind: 'point' },
+    ]);
+
+    store.dispatch({ id: 'delete-e', type: 'delete_entity', params: { id: 'e' } });
+    await nextTick();
+    expect(wrapper.findComponent(PatternCanvas).props('constraintPicks')).toEqual([]);
+    expect(wrapper.find('[data-testid="constraint-prompt"]').text()).toBe('Pick the first point.');
+
+    await wrapper.find('[data-testid="constraint-distance"]').trigger('click');
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+    expect(wrapper.find('[data-testid="constraint-value"]').exists()).toBe(true);
+
+    store.dispatch({ id: 'delete-ab', type: 'delete_entity', params: { id: 'ab' } });
+    await nextTick();
+    expect(wrapper.find('[data-testid="constraint-value"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="constraint-prompt"]').text()).toBe(
+      'Pick a line, or two points.',
+    );
+  });
+
+  it('keeps the constraints drawer as a list-only surface', async () => {
+    const wrapper = await mountEditor(createPinia());
+
     await wrapper.find('[data-testid="drawer-toggle-constraints"]').trigger('click');
     await nextTick();
 
-    await submitConstraintForm(wrapper);
-    expect(store.document.constraints).toHaveLength(0);
-
-    await wrapper.find('[data-testid="constraint-type"]').setValue('distance');
-    await nextTick();
-    expect(wrapper.find('[data-testid="constraint-value"]').exists()).toBe(true);
-    expect(wrapper.text()).toContain('Value (mm)');
-
-    await wrapper.find('[data-testid="constraint-entity-0"]').setValue('p');
-    await wrapper.find('[data-testid="constraint-entity-1"]').setValue('q');
-    await submitConstraintForm(wrapper);
-    expect(store.document.constraints).toHaveLength(0);
-
-    await wrapper.find('[data-testid="constraint-value"]').setValue('0');
-    await submitConstraintForm(wrapper);
-    expect(store.document.constraints).toHaveLength(0);
-
-    await wrapper.find('[data-testid="constraint-value"]').setValue('50');
-    await submitConstraintForm(wrapper);
-    await nextTick();
-
-    expect(store.document.constraints).toEqual([
-      { id: expect.any(String), type: 'distance', a: 'p', b: 'q', value: 50 },
-    ]);
-    expect(
-      (wrapper.find('[data-testid="constraint-value"]').element as HTMLInputElement).value,
-    ).toBe('');
+    expect(wrapper.findAll('[aria-label="Constraints"] li')).toHaveLength(6);
+    expect(wrapper.find('[data-testid="constraint-type"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="constraint-entity-0"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="add-constraint"]').exists()).toBe(false);
   });
 
   it('reports the active tool and selection in the properties drawer', async () => {

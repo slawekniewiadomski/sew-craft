@@ -6,6 +6,7 @@ import EditorRibbon from './EditorRibbon.vue';
 function mountRibbon(
   overrides: Partial<{
     activeTool: 'select' | 'add_point' | 'add_line' | 'add_curve';
+    activeConstraint: 'horizontal' | null;
     canUndo: boolean;
     canRedo: boolean;
     canDelete: boolean;
@@ -14,6 +15,7 @@ function mountRibbon(
   return mount(EditorRibbon, {
     props: {
       activeTool: 'select',
+      activeConstraint: null,
       canUndo: false,
       canRedo: false,
       canDelete: false,
@@ -23,12 +25,14 @@ function mountRibbon(
 }
 
 describe('EditorRibbon', () => {
-  it('renders every tool and action as a button', () => {
+  it('renders every tool, constraint and action as a button', () => {
     const wrapper = mountRibbon();
 
-    expect(wrapper.findAll('button')).toHaveLength(9);
+    expect(wrapper.findAll('button')).toHaveLength(16);
     expect(wrapper.find('[data-testid="editor-ribbon"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="tool-select"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="constraint-horizontal"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="constraint-equal"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="undo"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="download-svg"]').exists()).toBe(true);
   });
@@ -50,6 +54,23 @@ describe('EditorRibbon', () => {
     await wrapper.find('[data-testid="tool-add_point"]').trigger('click');
 
     expect(wrapper.emitted('select-tool')).toEqual([['add_point']]);
+  });
+
+  it('marks the active constraint pressed and emits select-constraint on click', async () => {
+    const wrapper = mountRibbon({ activeConstraint: 'horizontal' });
+
+    expect(wrapper.find('[data-testid="constraint-horizontal"]').attributes('aria-pressed')).toBe(
+      'true',
+    );
+    expect(wrapper.find('[data-testid="constraint-horizontal"]').classes()).toContain('bg-primary');
+    expect(wrapper.find('[data-testid="tool-select"]').attributes('aria-pressed')).toBeUndefined();
+    expect(
+      wrapper.find('[data-testid="constraint-vertical"]').attributes('aria-pressed'),
+    ).toBeUndefined();
+
+    await wrapper.find('[data-testid="constraint-vertical"]').trigger('click');
+
+    expect(wrapper.emitted('select-constraint')).toEqual([['vertical']]);
   });
 
   it('disables undo, redo and delete without history or a selection', () => {

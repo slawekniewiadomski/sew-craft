@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { Button, type ButtonVariant } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import type { ConstraintType } from '@sewcraft/geometry';
+
 import { RIBBON_GROUPS, type RibbonAction, type RibbonItem } from '@/lib/editor-ribbon';
 import type { EditorTool } from '@/lib/editor-tools';
 
 const props = defineProps<{
   activeTool: EditorTool;
+  activeConstraint?: ConstraintType | null;
   canUndo: boolean;
   canRedo: boolean;
   canDelete: boolean;
@@ -13,18 +16,23 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'select-tool': [tool: EditorTool];
+  'select-constraint': [constraint: ConstraintType];
   action: [action: RibbonAction];
 }>();
 
 function isActive(item: RibbonItem): boolean {
-  return item.kind === 'tool' && props.activeTool === item.tool;
+  if (item.kind === 'tool') {
+    return props.activeConstraint == null && props.activeTool === item.tool;
+  }
+  if (item.kind === 'constraint') {
+    return props.activeConstraint === item.constraint;
+  }
+  return false;
 }
 
 function variantFor(item: RibbonItem): ButtonVariant {
-  if (item.kind === 'tool') {
-    return isActive(item) ? 'default' : 'ghost';
-  }
-  return 'outline';
+  if (item.kind === 'action') return 'outline';
+  return isActive(item) ? 'default' : 'ghost';
 }
 
 function isDisabled(item: RibbonItem): boolean {
@@ -48,6 +56,8 @@ function pressed(item: RibbonItem): true | undefined {
 function activate(item: RibbonItem): void {
   if (item.kind === 'tool') {
     emit('select-tool', item.tool);
+  } else if (item.kind === 'constraint') {
+    emit('select-constraint', item.constraint);
   } else {
     emit('action', item.action);
   }

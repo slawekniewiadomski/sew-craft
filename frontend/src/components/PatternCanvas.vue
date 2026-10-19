@@ -13,6 +13,7 @@ import {
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import { curvePath, polylinePath } from '@/lib/canvas-render';
+import type { ConstraintPick } from '@/lib/constraint-tools';
 import { CONSTRAINT_ICONS, constraintMarkers, type ConstraintMarker } from '@/lib/constraint-view';
 import type { EditorTool } from '@/lib/editor-tools';
 import { snapPoint, snapToGrid } from '@/lib/snap';
@@ -60,8 +61,17 @@ const props = withDefaults(
     fitToken?: number;
     showSeamAllowance?: boolean;
     showConstraints?: boolean;
+    constraintActive?: boolean;
+    constraintPicks?: ConstraintPick[];
   }>(),
-  { selectedId: null, fitToken: 0, showSeamAllowance: true, showConstraints: false },
+  {
+    selectedId: null,
+    fitToken: 0,
+    showSeamAllowance: true,
+    showConstraints: false,
+    constraintActive: false,
+    constraintPicks: () => [],
+  },
 );
 
 const emit = defineEmits<{
@@ -70,6 +80,7 @@ const emit = defineEmits<{
   'add-point': [x: number, y: number];
   'add-line': [start: EntityId, end: EntityId];
   'add-curve': [points: [EntityId, EntityId, EntityId, EntityId]];
+  'constraint-pick': [pick: ConstraintPick];
 }>();
 
 const svg = ref<SVGSVGElement | null>(null);
@@ -169,7 +180,15 @@ const visible = computed(() => visibleWorldRect(viewport.value, size.value));
 const xTicks = computed(() => ticksAlong(visible.value, 'x', gridStep.value));
 const yTicks = computed(() => ticksAlong(visible.value, 'y', gridStep.value));
 const cursorClass = computed(() =>
-  props.tool === 'select' ? 'cursor-default' : 'cursor-crosshair',
+  props.constraintActive || props.tool !== 'select' ? 'cursor-crosshair' : 'cursor-default',
+);
+const pickedPointIds = computed(
+  () =>
+    new Set(props.constraintPicks.filter((pick) => pick.kind === 'point').map((pick) => pick.id)),
+);
+const pickedLineIds = computed(
+  () =>
+    new Set(props.constraintPicks.filter((pick) => pick.kind === 'line').map((pick) => pick.id)),
 );
 
 function xTickPosition(value: number): number {
@@ -181,14 +200,19 @@ function yTickPosition(value: number): number {
 }
 
 function pointClass(point: PointEntity): string {
+  if (pickedPointIds.value.has(point.id)) return 'fill-primary stroke-primary-foreground';
   if (point.id === props.selectedId) return 'fill-primary stroke-primary-foreground';
   if (pendingIds.value.has(point.id)) return 'fill-accent stroke-accent-foreground';
   return point.construction ? 'fill-muted-foreground' : 'fill-foreground';
 }
 
 function entityClass(entity: { id: EntityId; construction: boolean }): string {
-  if (entity.id === props.selectedId) return 'text-primary';
+  if (pickedLineIds.value.has(entity.id) || entity.id === props.selectedId) return 'text-primary';
   return entity.construction ? 'text-muted-foreground' : 'text-foreground';
+}
+
+function lineWidth(id: EntityId): number {
+  return pickedLineIds.value.has(id) || id === props.selectedId ? 3 : 2;
 }
 
 function svgRect(): DOMRect {
@@ -229,6 +253,13 @@ function onPointerDown(event: PointerEvent): void {
   }
 
   const hit = hitEntity(event);
+  if (props.constraintActive) {
+    if (hit !== null) {
+      emit('constraint-pick', { id: hit.id, kind: hit.kind as ConstraintPick['kind'] });
+    }
+    return;
+  }
+
   switch (props.tool) {
     case 'select':
       if (hit && hit.kind === 'point') {
@@ -449,7 +480,7 @@ watch(
               :y2="entry.end.y"
               :class="entityClass(entry.line)"
               :stroke-dasharray="entry.line.construction ? '4 4' : undefined"
-              :stroke-width="entry.line.id === selectedId ? 3 : 2"
+              :stroke-width="lineWidth(entry.line.id)"
               stroke="currentColor"
               stroke-linecap="round"
               vector-effect="non-scaling-stroke"
