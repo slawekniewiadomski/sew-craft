@@ -1,6 +1,21 @@
 <script setup lang="ts">
-import { cutEdges, DEFAULT_SEAM_ALLOWANCE, seamForEdge, toSvg } from '@sewcraft/geometry';
-import type { Command, CurveEntity, EntityId, LineEntity } from '@sewcraft/geometry';
+import {
+  allPoints,
+  constraintEntityIds,
+  CONSTRAINT_TYPES,
+  cutEdges,
+  DEFAULT_SEAM_ALLOWANCE,
+  seamForEdge,
+  toSvg,
+} from '@sewcraft/geometry';
+import type {
+  AddConstraintParams,
+  Command,
+  ConstraintType,
+  CurveEntity,
+  EntityId,
+  LineEntity,
+} from '@sewcraft/geometry';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import EditorRibbon from '@/components/EditorRibbon.vue';
@@ -11,6 +26,13 @@ import { useCommandBus } from '@/composables/use-command-bus';
 import { useSidebarLayout } from '@/composables/use-sidebar-layout';
 import { nextCommandId } from '@/lib/command-ids';
 import { downloadSvgFile } from '@/lib/download';
+import {
+  CONSTRAINT_LABELS,
+  CONSTRAINT_ROLES,
+  constraintLabel,
+  constraintValueUnit,
+  isValidConstraintValue,
+} from '@/lib/constraint-view';
 import type { RibbonAction } from '@/lib/editor-ribbon';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 
@@ -26,7 +48,11 @@ const fitToken = ref(0);
 const showConstruction = ref(true);
 const includeConstruction = ref(false);
 const showSeamAllowance = ref(true);
+const showConstraints = ref(true);
 const seamWidths = ref<Record<string, number>>({});
+const constraintType = ref<ConstraintType>('horizontal');
+const constraintEntities = ref<EntityId[]>([]);
+const constraintValue = ref('');
 
 /**
  * Construction geometry is presentation only: hiding it filters what is drawn
@@ -60,6 +86,10 @@ const cutEdgeCount = computed(() => cutEdges(pattern.value).length);
 const activeToolLabel = computed(
   () => EDITOR_TOOLS.find((tool) => tool.id === activeTool.value)!.label,
 );
+
+const constraintRoles = computed(() => CONSTRAINT_ROLES[constraintType.value]);
+const valueUnit = computed(() => constraintValueUnit(constraintType.value));
+const pointOptions = computed(() => allPoints(pattern.value));
 
 function run(action: () => void): void {
   try {
@@ -170,6 +200,39 @@ function removeSeam(id: EntityId): void {
   run(() => dispatch({ id: nextCommandId('seam'), type: 'remove_seam_allowance', params: { id } }));
 }
 
+function entityAt(index: number): EntityId {
+  return constraintEntities.value[index] ?? '';
+}
+
+function setEntity(index: number, id: EntityId): void {
+  const next = [...constraintEntities.value];
+  next[index] = id;
+  constraintEntities.value = next;
+}
+
+function addConstraint(): void {
+  const type = constraintType.value;
+  const entities = constraintRoles.value.map((_, index) => entityAt(index));
+  if (entities.some((id) => id === '')) return;
+
+  const params: AddConstraintParams = { type, entities };
+  if (valueUnit.value !== null) {
+    const raw = constraintValue.value.trim();
+    const value = Number(raw);
+    if (raw === '' || !isValidConstraintValue(type, value)) return;
+    params.value = value;
+  }
+
+  run(() => dispatch({ id: nextCommandId('constraint'), type: 'add_constraint', params }));
+  constraintValue.value = '';
+}
+
+function removeConstraint(id: EntityId): void {
+  run(() =>
+    dispatch({ id: nextCommandId('constraint'), type: 'remove_constraint', params: { id } }),
+  );
+}
+
 function onKeyDown(event: KeyboardEvent): void {
   if (event.key === 'Delete' || event.key === 'Backspace') {
     event.preventDefault();
@@ -239,6 +302,7 @@ onBeforeUnmount(() => {
           :tool="activeTool"
           :fit-token="fitToken"
           :show-seam-allowance="showSeamAllowance"
+          :show-constraints="showConstraints"
           @move-point="onMovePoint"
           @add-point="onAddPoint"
           @add-line="onAddLine"
@@ -324,6 +388,81 @@ onBeforeUnmount(() => {
           <p v-else class="text-sm text-muted-foreground">No edges yet.</p>
         </template>
 
+        <template #constraints>
+          <ul v-if="pattern.constraints.length > 0" class="space-y-2" aria-label="Constraints">
+            <li
+              v-for="constraint in pattern.constraints"
+              :key="constraint.id"
+              class="flex flex-wrap items-center justify-between gap-2 text-sm"
+            >
+              <div class="min-w-0">
+                <span class="font-mono text-muted-foreground">{{ constraint.id }}</span>
+                <span class="ml-2">{{ constraintLabel(constraint) }}</span>
+                <span class="ml-2 text-xs text-muted-foreground">
+                  ({{ constraintEntityIds(constraint).join(', ') }})
+                </span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                :data-testid="`remove-constraint-${constraint.id}`"
+                @click="removeConstraint(constraint.id)"
+              >
+                Remove
+              </Button>
+            </li>
+          </ul>
+          <p v-else class="text-sm text-muted-foreground">No constraints yet.</p>
+
+          <form class="mt-3 space-y-2" @submit.prevent="addConstraint">
+            <label class="block text-sm">
+              Type
+              <select
+                v-model="constraintType"
+                class="mt-1 w-full rounded-md border px-2 py-1 text-sm"
+                data-testid="constraint-type"
+              >
+                <option v-for="type in CONSTRAINT_TYPES" :key="type" :value="type">
+                  {{ CONSTRAINT_LABELS[type] }}
+                </option>
+              </select>
+            </label>
+
+            <label
+              v-for="(role, index) in constraintRoles"
+              :key="`${constraintType}-${role}`"
+              class="block text-sm"
+            >
+              {{ role }}
+              <select
+                class="mt-1 w-full rounded-md border px-2 py-1 text-sm"
+                :data-testid="`constraint-entity-${index}`"
+                :value="entityAt(index)"
+                @change="setEntity(index, ($event.target as HTMLSelectElement).value)"
+              >
+                <option value="">Select a point…</option>
+                <option v-for="point in pointOptions" :key="point.id" :value="point.id">
+                  {{ point.id }} ({{ point.x }}, {{ point.y }})
+                </option>
+              </select>
+            </label>
+
+            <label v-if="valueUnit !== null" class="block text-sm">
+              Value ({{ valueUnit }})
+              <input
+                type="number"
+                step="any"
+                class="mt-1 w-full rounded-md border px-2 py-1 text-sm"
+                data-testid="constraint-value"
+                :value="constraintValue"
+                @input="constraintValue = ($event.target as HTMLInputElement).value"
+              />
+            </label>
+
+            <Button type="submit" size="sm" data-testid="add-constraint">Add constraint</Button>
+          </form>
+        </template>
+
         <template #view>
           <div class="space-y-2">
             <label class="flex items-center gap-2 text-sm">
@@ -345,6 +484,10 @@ onBeforeUnmount(() => {
                 data-testid="toggle-construction"
               />
               Include construction
+            </label>
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="showConstraints" type="checkbox" data-testid="show-constraints" />
+              Show constraints
             </label>
           </div>
         </template>
