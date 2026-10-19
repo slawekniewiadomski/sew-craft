@@ -3,35 +3,41 @@ import { describe, expect, it } from 'vitest';
 import { RIBBON_GROUPS } from './editor-ribbon';
 
 describe('RIBBON_GROUPS', () => {
-  it('groups tools, constraints, history, edit and canvas actions', () => {
+  it('groups controls into tools, sketching, constraints and export', () => {
     expect(RIBBON_GROUPS.map((group) => group.id)).toEqual([
       'tools',
+      'sketching',
       'constraints',
-      'history',
-      'edit',
-      'canvas',
+      'export',
     ]);
     expect(RIBBON_GROUPS.map((group) => group.label)).toEqual([
       'Tools',
+      'Sketching',
       'Constraints',
-      'History',
-      'Edit',
-      'Canvas',
+      'Export',
     ]);
   });
 
-  it('exposes each tool as a button keyed by its testid', () => {
-    const tools = RIBBON_GROUPS[0]!.items;
-    expect(tools).toEqual([
-      { kind: 'tool', id: 'tool-select', label: 'Select', tool: 'select' },
-      { kind: 'tool', id: 'tool-add_point', label: 'Point', tool: 'add_point' },
-      { kind: 'tool', id: 'tool-add_line', label: 'Line', tool: 'add_line' },
-      { kind: 'tool', id: 'tool-add_curve', label: 'Curve', tool: 'add_curve' },
+  it('puts select and the history/canvas actions in the tools group', () => {
+    expect(RIBBON_GROUPS[0]!.items).toEqual([
+      { kind: 'tool', id: 'tool-select', label: 'Select', icon: 'select', tool: 'select' },
+      { kind: 'action', id: 'undo', label: 'Undo', icon: 'undo', action: 'undo' },
+      { kind: 'action', id: 'redo', label: 'Redo', icon: 'redo', action: 'redo' },
+      { kind: 'action', id: 'delete', label: 'Delete', icon: 'delete', action: 'delete' },
+      { kind: 'action', id: 'fit', label: 'Fit', icon: 'fit', action: 'fit' },
     ]);
   });
 
-  it('exposes every constraint type as a button', () => {
-    const constraints = RIBBON_GROUPS[1]!.items;
+  it('exposes the sketching tools with distinct icons', () => {
+    expect(RIBBON_GROUPS[1]!.items).toEqual([
+      { kind: 'tool', id: 'tool-add_point', label: 'Point', icon: 'point', tool: 'add_point' },
+      { kind: 'tool', id: 'tool-add_line', label: 'Line', icon: 'line', tool: 'add_line' },
+      { kind: 'tool', id: 'tool-add_curve', label: 'Curve', icon: 'curve', tool: 'add_curve' },
+    ]);
+  });
+
+  it('exposes every constraint type as an icon button', () => {
+    const constraints = RIBBON_GROUPS[2]!.items;
     expect(constraints.map((item) => item.id)).toEqual([
       'constraint-coincident',
       'constraint-horizontal',
@@ -45,31 +51,20 @@ describe('RIBBON_GROUPS', () => {
     expect(constraints[1]).toMatchObject({
       kind: 'constraint',
       label: 'Horizontal',
+      icon: 'horizontal',
       constraint: 'horizontal',
     });
   });
 
-  it('exposes undo, redo, delete, fit and download actions', () => {
-    const actions = RIBBON_GROUPS.flatMap((group) => group.items).map((item) =>
-      item.kind === 'action' ? item.action : null,
-    );
-    expect(actions).toEqual([
-      null,
-      null,
-      null,
-      null,
-      null,
-      null,
-      null,
-      null,
-      null,
-      null,
-      null,
-      'undo',
-      'redo',
-      'delete',
-      'fit',
-      'download_svg',
+  it('exposes the SVG export action on its own', () => {
+    expect(RIBBON_GROUPS[3]!.items).toEqual([
+      {
+        kind: 'action',
+        id: 'download-svg',
+        label: 'Download SVG',
+        icon: 'download',
+        action: 'download_svg',
+      },
     ]);
   });
 });

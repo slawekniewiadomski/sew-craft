@@ -1,5 +1,6 @@
 import { CONSTRAINT_TOOLS } from './constraint-tools';
 import { EDITOR_TOOLS, type EditorTool } from './editor-tools';
+import type { RibbonIconName } from './ribbon-icons';
 
 export type RibbonAction = 'undo' | 'redo' | 'delete' | 'fit' | 'download_svg';
 
@@ -7,6 +8,7 @@ export interface RibbonConstraintItem {
   kind: 'constraint';
   id: string;
   label: string;
+  icon: RibbonIconName;
   constraint: (typeof CONSTRAINT_TOOLS)[number]['type'];
 }
 
@@ -14,6 +16,7 @@ export interface RibbonToolItem {
   kind: 'tool';
   id: string;
   label: string;
+  icon: RibbonIconName;
   tool: EditorTool;
 }
 
@@ -21,6 +24,7 @@ export interface RibbonActionItem {
   kind: 'action';
   id: string;
   label: string;
+  icon: RibbonIconName;
   action: RibbonAction;
 }
 
@@ -32,20 +36,61 @@ export interface RibbonGroup {
   items: RibbonItem[];
 }
 
+/** The glyph each drawing tool shows in the ribbon. */
+const TOOL_ICONS: Record<EditorTool, RibbonIconName> = {
+  select: 'select',
+  add_point: 'point',
+  add_line: 'line',
+  add_curve: 'curve',
+};
+
+const TOOL_ITEMS = new Map<EditorTool, RibbonToolItem>(
+  EDITOR_TOOLS.map((tool): [EditorTool, RibbonToolItem] => [
+    tool.id,
+    {
+      kind: 'tool',
+      id: `tool-${tool.id}`,
+      label: tool.label,
+      icon: TOOL_ICONS[tool.id],
+      tool: tool.id,
+    },
+  ]),
+);
+
+function toolItem(tool: EditorTool): RibbonToolItem {
+  return TOOL_ITEMS.get(tool)!;
+}
+
+function actionItem(
+  id: string,
+  label: string,
+  action: RibbonAction,
+  icon: RibbonIconName,
+): RibbonActionItem {
+  return { kind: 'action', id, label, action, icon };
+}
+
 /**
- * The ribbon is data-driven so a group can gain items (or a new group/tab) by
- * editing this list alone. `id` is the control's `data-testid`.
+ * The ribbon is data-driven so a group can gain items by editing this list
+ * alone. `id` is the control's `data-testid`; `label` is its tooltip and
+ * accessible name. Each group renders its label as a small uppercase caption.
  */
 export const RIBBON_GROUPS: RibbonGroup[] = [
   {
     id: 'tools',
     label: 'Tools',
-    items: EDITOR_TOOLS.map((tool) => ({
-      kind: 'tool',
-      id: `tool-${tool.id}`,
-      label: tool.label,
-      tool: tool.id,
-    })),
+    items: [
+      toolItem('select'),
+      actionItem('undo', 'Undo', 'undo', 'undo'),
+      actionItem('redo', 'Redo', 'redo', 'redo'),
+      actionItem('delete', 'Delete', 'delete', 'delete'),
+      actionItem('fit', 'Fit', 'fit', 'fit'),
+    ],
+  },
+  {
+    id: 'sketching',
+    label: 'Sketching',
+    items: [toolItem('add_point'), toolItem('add_line'), toolItem('add_curve')],
   },
   {
     id: 'constraints',
@@ -54,28 +99,13 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
       kind: 'constraint',
       id: tool.id,
       label: tool.label,
+      icon: tool.type,
       constraint: tool.type,
     })),
   },
   {
-    id: 'history',
-    label: 'History',
-    items: [
-      { kind: 'action', id: 'undo', label: 'Undo', action: 'undo' },
-      { kind: 'action', id: 'redo', label: 'Redo', action: 'redo' },
-    ],
-  },
-  {
-    id: 'edit',
-    label: 'Edit',
-    items: [{ kind: 'action', id: 'delete', label: 'Delete', action: 'delete' }],
-  },
-  {
-    id: 'canvas',
-    label: 'Canvas',
-    items: [
-      { kind: 'action', id: 'fit', label: 'Fit', action: 'fit' },
-      { kind: 'action', id: 'download-svg', label: 'Download SVG', action: 'download_svg' },
-    ],
+    id: 'export',
+    label: 'Export',
+    items: [actionItem('download-svg', 'Download SVG', 'download_svg', 'download')],
   },
 ];
