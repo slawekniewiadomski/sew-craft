@@ -147,9 +147,11 @@ const constraintLayer = computed<ConstraintMarker[]>(() => {
   const stacks = new Map<string, number>();
   return constraintMarkers(props.document).map((marker) => {
     const screen = worldToScreen(viewport.value, marker);
-    const cell = `${Math.round(screen.x / CONSTRAINT_ICON_STEP)}:${Math.round(screen.y / CONSTRAINT_ICON_STEP)}`;
-    const index = stacks.get(cell) ?? 0;
-    stacks.set(cell, index + 1);
+    // Group by the shared world anchor, not screen proximity, so icons do not
+    // jump between stacks as the viewport pans or zooms.
+    const anchor = `${Math.round(marker.x * 1000)}:${Math.round(marker.y * 1000)}`;
+    const index = stacks.get(anchor) ?? 0;
+    stacks.set(anchor, index + 1);
 
     return {
       ...marker,
