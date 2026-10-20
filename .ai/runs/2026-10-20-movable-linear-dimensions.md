@@ -75,12 +75,12 @@ spec and the implementation on this single branch.
 
 ### Phase 3: Canvas drag eligibility and affordance
 
-- [ ] 3.1 Derive drag eligibility from the active tool and `constraintActive`; render the strip only when draggable
-- [ ] 3.2 Widen the line hit strip to 24 px and apply move/edit cursors and tooltip copy
+- [x] 3.1 Derive drag eligibility from the active tool and `constraintActive`; render the strip only when draggable — 76624ba
+- [x] 3.2 Widen the line hit strip to 24 px and apply move/edit cursors and tooltip copy — 76624ba
 
 ### Phase 4: Pointer teardown
 
-- [ ] 4.1 Add `pointercancel` and a shared teardown; cancel drags on tool switch and layer hide
+- [x] 4.1 Add `pointercancel` and a shared teardown; cancel drags on tool switch and layer hide — 76624ba
 
 ### Phase 5: Tests
 
