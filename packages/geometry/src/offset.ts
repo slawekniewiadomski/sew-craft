@@ -1,5 +1,5 @@
 import { entityPoints, getEntity } from './document.js';
-import type { EntityId, PatternDocument, Seam } from './types.js';
+import { seamSide, type EntityId, type PatternDocument, type Seam, type SeamSide } from './types.js';
 import { add, cross, dot, magnitude, normalize, scale, sub, type Vec2 } from './vector.js';
 
 export type JoinStyle = 'miter' | 'round';
@@ -26,6 +26,8 @@ export interface SelfIntersection {
 export interface SeamAllowancePath {
   edge: EntityId;
   width: number;
+  /** The edge-relative side the allowance was offset to. */
+  side: SeamSide;
   join: JoinStyle;
   path: Vec2[];
   selfIntersections: SelfIntersection[];
@@ -288,10 +290,13 @@ export function seamAllowancePath(
   }
 
   const join = options.join ?? 'miter';
-  const path = offsetPolyline(polyline, seam.width, options);
+  const side = seamSide(seam);
+  const distance = side === 'left' ? seam.width : -seam.width;
+  const path = offsetPolyline(polyline, distance, options);
   return {
     edge: seam.edge,
     width: seam.width,
+    side,
     join,
     path,
     selfIntersections: findSelfIntersections(path, { closed: options.closed ?? false }),

@@ -87,10 +87,25 @@ export type Constraint =
   | { id: EntityId; type: 'angle'; a: EntityId; b: EntityId; c: EntityId; value: number }
   | { id: EntityId; type: 'equal'; a1: EntityId; a2: EntityId; b1: EntityId; b2: EntityId };
 
+export const SEAM_SIDES = ['left', 'right'] as const;
+
+/** The side of an edge's start→end direction an allowance is offset to. */
+export type SeamSide = (typeof SEAM_SIDES)[number];
+
 export interface Seam {
   id: EntityId;
   edge: EntityId;
   width: number;
+  /**
+   * Offset side relative to the edge direction. Absent on documents written
+   * before sides existed, where it means `left` (the original rendering).
+   */
+  side?: SeamSide;
+}
+
+/** The effective side of a seam; an omitted side keeps the original `left` offset. */
+export function seamSide(seam: Seam): SeamSide {
+  return seam.side ?? 'left';
 }
 
 /**

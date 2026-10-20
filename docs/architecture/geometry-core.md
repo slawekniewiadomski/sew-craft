@@ -102,9 +102,12 @@ compute that rendering and are consumed by the frontend canvas:
 ## Seam allowance (`offset.ts`)
 
 A seam allowance is a per-edge offset stored on the document as
-`Seam { id, edge, width }`. `width` is millimetres; the default when a command
-omits it is `10` (`DEFAULT_SEAM_ALLOWANCE`). Only line and curve edges can carry
-one, and at most one seam per edge.
+`Seam { id, edge, width, side? }`. `width` is millimetres; the default when a
+command omits it is `10` (`DEFAULT_SEAM_ALLOWANCE`). `side` is `'left'` or
+`'right'` relative to the edge's start→end direction; `seamSide(seam)` resolves
+an omitted side to `'left'`, which is how documents written before sides existed
+keep rendering. Only line and curve edges can carry one, and at most one seam per
+edge.
 
 The offset is produced by pure functions:
 
@@ -117,8 +120,9 @@ The offset is produced by pure functions:
 - `edgePolyline(document, edge, segments?)` — flatten a line (two points) or
   cubic Bézier (sampled) edge to a polyline.
 - `seamAllowancePath(document, seam, options?)` / `seamAllowancePaths(document, options?)`
-  — the offset `path` plus its `selfIntersections`, or `null` for an edge that is
-  missing or is a point.
+  — the offset `path` plus its `side` and `selfIntersections`, or `null` for an
+  edge that is missing or is a point. The offset distance is `+width` for a
+  `left` seam and `-width` for a `right` seam; the width itself stays positive.
 - `cubicPoint` / `curvePoints` — cubic Bézier evaluation and flattening.
 
 The editor renders `seamAllowancePaths(document)` as a dashed, pointer-transparent
