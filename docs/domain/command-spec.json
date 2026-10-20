@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://sewcraft.local/schemas/command-spec-0.3.json",
+  "$id": "https://sewcraft.local/schemas/command-spec-0.4.json",
   "title": "SewCraft Command Spec",
-  "schema": "sewcraft.command-spec/0.3",
-  "spec_version": "0.3.0",
+  "schema": "sewcraft.command-spec/0.4",
+  "spec_version": "0.4.0",
   "units": "mm",
   "envelope": {
     "id": "ULID string, client-generated, unique",
@@ -91,6 +91,11 @@
       "description": "Detach the seam allowance from an edge.",
       "params": { "id": "entity_id" },
       "inverse": "add_seam_allowance"
+    },
+    "set_seam_allowance": {
+      "description": "Change the width of an attached seam allowance (mm).",
+      "params": { "id": "entity_id", "width": "number" },
+      "inverse": "set_seam_allowance"
     },
     "solve": {
       "description": "Rebuild the sketch by running the constraint solver.",

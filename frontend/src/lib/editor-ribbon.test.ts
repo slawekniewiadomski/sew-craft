@@ -40,6 +40,13 @@ describe('RIBBON_GROUPS', () => {
         icon: 'dimension',
         tool: 'dimension',
       },
+      {
+        kind: 'tool',
+        id: 'tool-add_allowance',
+        label: 'Seam allowance',
+        icon: 'allowance',
+        tool: 'add_allowance',
+      },
     ]);
   });
 

@@ -98,6 +98,11 @@ export interface RemoveSeamAllowanceParams {
   id: EntityId;
 }
 
+export interface SetSeamAllowanceParams {
+  id: EntityId;
+  width: number;
+}
+
 export type SolveParams = Record<string, never>;
 
 /**
@@ -131,6 +136,12 @@ export type Command =
       id: EntityId;
       type: 'remove_seam_allowance';
       params: RemoveSeamAllowanceParams;
+      issuedAt?: string;
+    }
+  | {
+      id: EntityId;
+      type: 'set_seam_allowance';
+      params: SetSeamAllowanceParams;
       issuedAt?: string;
     }
   | { id: EntityId; type: 'solve'; params: SolveParams; issuedAt?: string };
@@ -223,6 +234,8 @@ export function applyCommand(document: PatternDocument, command: Command): Comma
       return applyAddSeamAllowance(document, command);
     case 'remove_seam_allowance':
       return applyRemoveSeamAllowance(document, command);
+    case 'set_seam_allowance':
+      return applySetSeamAllowance(document, command);
     case 'solve':
       return noOp(document);
   }
@@ -699,6 +712,40 @@ function applyRemoveSeamAllowance(
       id: seam.id,
       type: 'add_seam_allowance',
       params: { edge: seam.edge, width: seam.width },
+    },
+  };
+}
+
+function applySetSeamAllowance(
+  document: PatternDocument,
+  command: CommandOf<'set_seam_allowance'>,
+): CommandApplication {
+  const { id, width } = command.params;
+  if (!Number.isFinite(width) || width <= 0) {
+    throw new CommandValidationError(
+      'set_seam_allowance',
+      'width must be a finite number greater than 0',
+    );
+  }
+
+  const seam = getSeam(document, id);
+  if (seam === undefined) {
+    throw new CommandValidationError('set_seam_allowance', `seam ${id} does not exist`);
+  }
+  if (seam.width === width) {
+    return noOp(document);
+  }
+
+  const seams = document.seams.map((candidate) =>
+    candidate.id === id ? { ...candidate, width } : candidate,
+  );
+
+  return {
+    document: { ...document, seams },
+    inverse: {
+      id: command.id,
+      type: 'set_seam_allowance',
+      params: { id, width: seam.width },
     },
   };
 }

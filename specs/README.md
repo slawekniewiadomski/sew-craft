@@ -1,5 +1,9 @@
 # Specs
 
+> **Legacy reference.** New agent-authored specs live in
+> [`.ai/specs/`](../.ai/specs/), which is the source of truth. This directory is
+> kept for human-readable reference and is not updated by automation.
+
 Each spec is a self-contained unit of work for one agent session. Pick **one**,
 implement it, run the checks it lists, and update the docs it points to. Do not
 bundle unrelated specs. Follow the conventions in

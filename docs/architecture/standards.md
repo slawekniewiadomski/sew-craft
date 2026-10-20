@@ -186,8 +186,9 @@ Laravel-idiomatic, matching `docs/architecture/data-model.md`:
 
 ## Documentation & spec conventions (Reviewed)
 
-- **Specs** (`specs/NNN-title.md`) are the unit of work; use the template in
-  `specs/README.md`. One spec per task.
+- **Specs** (`.ai/specs/NNN-title.md`) are the unit of work; use the template in
+  `.ai/specs/README.md`. One spec per task. The legacy `specs/` directory is kept
+  for human reference only — agents read and write `.ai/specs/`.
 - **ADRs** live in `docs/decisions/NNNN-title.md` using the format in
   `docs/decisions/README.md`. Settled ADRs are not edited; supersede them with a
   new ADR.

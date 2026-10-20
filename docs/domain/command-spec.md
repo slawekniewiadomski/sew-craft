@@ -15,7 +15,7 @@ runtime source of truth is `config/geometry.php`, exposed at `GET /api/commands`
 }
 ```
 
-## Commands (v0.3)
+## Commands (v0.4)
 
 ### `add_point`
 
@@ -127,6 +127,22 @@ Detach the seam allowance from an edge.
 
 - params: `id: entity_id` (the seam id, i.e. the `add_seam_allowance` command id)
 - inverse: `add_seam_allowance` (params rebuilt from the removed seam, keeping its id)
+
+### `set_seam_allowance`
+
+Change the width of an attached seam allowance without detaching it.
+
+- params: `id: entity_id` (an existing seam id), `width: number` (mm)
+- `width` follows the `add_seam_allowance` rule: finite and greater than `0`.
+- An unknown seam is a validation error. Re-applying the current width is a
+  no-op with `inverse: null`.
+- inverse: `set_seam_allowance` (restores the previous width, keeping the command id)
+- additive: v0.3 payloads still apply; `spec_version` is bumped to `0.4.0`.
+
+### Migration from spec 0.3.0
+
+`set_seam_allowance` is new. Existing payloads are unchanged and still apply.
+`spec_version` is bumped to `0.4.0`.
 
 ### Migration from spec 0.2.0
 

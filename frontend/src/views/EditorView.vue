@@ -4,7 +4,6 @@ import {
   constraintOffset,
   constraintOrientation,
   cutEdges,
-  DEFAULT_SEAM_ALLOWANCE,
   findDistanceConstraint,
   measureLinearDimension,
   seamForEdge,
@@ -50,6 +49,7 @@ import {
 import { downloadSvgFile } from '@/lib/download';
 import type { RibbonAction } from '@/lib/editor-ribbon';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
+import { parseSeamWidth } from '@/lib/seam-width';
 
 const props = defineProps<{ id: string }>();
 
@@ -65,7 +65,6 @@ const includeConstruction = ref(false);
 const showSeamAllowance = ref(true);
 const showConstraints = ref(true);
 const showDimensions = ref(true);
-const seamWidths = ref<Record<string, number>>({});
 const activeConstraint = ref<ConstraintType | null>(null);
 const constraintPicks = ref<ConstraintPick[]>([]);
 const pendingConstraint = ref<AddConstraintParams | null>(null);
@@ -154,7 +153,7 @@ function run(action: () => void): boolean {
 
 function selectTool(tool: EditorTool): void {
   exitConstraint();
-  activeTool.value = tool;
+  activeTool.value = activeTool.value === tool ? 'select' : tool;
 }
 
 function exitConstraint(): void {
@@ -317,25 +316,34 @@ function convert(id: string, construction: boolean): void {
   );
 }
 
-function seamWidthFor(id: EntityId): number {
-  return seamWidths.value[id] ?? DEFAULT_SEAM_ALLOWANCE;
+function onAddAllowance(edge: EntityId): void {
+  const entity = pattern.value.entities.find((candidate) => candidate.id === edge);
+  if (seamForEdge(pattern.value, edge) !== undefined) return;
+
+  if (entity === undefined || entity.kind === 'point' || entity.construction) {
+    error.value = 'Only cut edges can carry a seam allowance';
+    return;
+  }
+
+  run(() => dispatch({ id: nextCommandId('seam'), type: 'add_seam_allowance', params: { edge } }));
 }
 
-function isValidSeamWidth(width: number): boolean {
-  return width > 0;
-}
-
-function setSeamWidth(id: EntityId, value: string): void {
-  seamWidths.value = { ...seamWidths.value, [id]: Number(value) };
-}
-
-function addSeam(edge: EntityId): void {
-  const width = seamWidthFor(edge);
-  if (!isValidSeamWidth(width)) return;
-
+function setSeamWidth(id: EntityId, width: number): void {
   run(() =>
-    dispatch({ id: nextCommandId('seam'), type: 'add_seam_allowance', params: { edge, width } }),
+    dispatch({ id: nextCommandId('seam'), type: 'set_seam_allowance', params: { id, width } }),
   );
+}
+
+/** Sidebar width edit: invalid or unchanged values snap back without a command. */
+function onSeamWidthEdit(id: EntityId, current: number, event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const width = parseSeamWidth(input.value);
+  if (width === null || width === current) {
+    input.value = String(current);
+    return;
+  }
+
+  setSeamWidth(id, width);
 }
 
 function removeSeam(id: EntityId): void {
@@ -397,6 +405,12 @@ function onKeyDown(event: KeyboardEvent): void {
   if (event.key === 'Escape' && activeConstraint.value !== null) {
     event.preventDefault();
     exitConstraint();
+    return;
+  }
+
+  if (event.key === 'Escape' && activeTool.value !== 'select') {
+    event.preventDefault();
+    activeTool.value = 'select';
     return;
   }
 
@@ -505,6 +519,8 @@ onBeforeUnmount(() => {
           @constraint-pick="onConstraintPick"
           @add-dimension="onAddDimension"
           @update-dimension="onUpdateDimension"
+          @add-allowance="onAddAllowance"
+          @set-seam-width="setSeamWidth"
         />
       </div>
 
@@ -544,9 +560,26 @@ onBeforeUnmount(() => {
 
               <div class="flex items-center gap-2">
                 <template v-if="edge.seamId !== null">
-                  <span class="text-muted-foreground" :data-testid="`seam-label-${edge.id}`">
-                    Allowance {{ edge.seamWidth }} mm
-                  </span>
+                  <label
+                    class="flex items-center gap-1 text-muted-foreground"
+                    :data-testid="`seam-label-${edge.id}`"
+                  >
+                    Allowance
+                    <input
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      class="w-16 rounded-md border px-2 py-1 text-sm text-foreground"
+                      :value="edge.seamWidth!"
+                      :aria-label="`Allowance width in millimetres for ${edge.id}`"
+                      :data-testid="`seam-width-${edge.id}`"
+                      @change="onSeamWidthEdit(edge.seamId!, edge.seamWidth!, $event)"
+                      @keydown.enter.prevent="
+                        onSeamWidthEdit(edge.seamId!, edge.seamWidth!, $event)
+                      "
+                    />
+                    mm
+                  </label>
                   <Button
                     variant="outline"
                     size="sm"
@@ -557,24 +590,9 @@ onBeforeUnmount(() => {
                   </Button>
                 </template>
                 <template v-else>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    class="w-16 rounded-md border px-2 py-1 text-sm"
-                    :value="seamWidthFor(edge.id)"
-                    :aria-label="`Seam width for ${edge.id}`"
-                    :data-testid="`seam-width-${edge.id}`"
-                    @input="setSeamWidth(edge.id, ($event.target as HTMLInputElement).value)"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    :data-testid="`add-seam-${edge.id}`"
-                    @click="addSeam(edge.id)"
-                  >
-                    Add allowance
-                  </Button>
+                  <span class="text-muted-foreground" :data-testid="`seam-empty-${edge.id}`">
+                    No allowance
+                  </span>
                 </template>
 
                 <Button variant="outline" size="sm" @click="convert(edge.id, !edge.construction)">
