@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.4.0',
+    'spec_version' => '0.5.0',
 
     /*
     |--------------------------------------------------------------------------
@@ -96,7 +96,7 @@ return [
             ],
         ],
         'add_constraint' => [
-            'description' => 'Attach a geometric constraint to one or more entities.',
+            'description' => 'Attach a geometric constraint to one or more entities. A distance without a value is a driven dimension.',
             'params' => [
                 'type' => 'coincident|horizontal|vertical|point_on_line|distance|angle|equal',
                 'entities' => 'entity_id[]',
@@ -107,10 +107,10 @@ return [
             'inverse' => 'remove_constraint',
         ],
         'update_constraint' => [
-            'description' => 'Change a dimensional constraint value or its dimension presentation.',
+            'description' => 'Change a dimensional constraint value or its dimension presentation. Null clears a distance to driven.',
             'params' => [
                 'id' => 'entity_id',
-                'value' => 'number?',
+                'value' => 'number|null?',
                 'orientation' => 'aligned|horizontal|vertical?',
                 'offset' => 'number?',
             ],
