@@ -90,4 +90,4 @@ spec and the implementation on this single branch.
 ### Phase 6: Docs and gate
 
 - [x] 6.1 Correct the 12 mm default in geometry-core, data-model and command-spec docs — 3bdada9
-- [ ] 6.2 Run the full validation gate and the automated review, then finalize the PR
+- [x] 6.2 Run the full validation gate and the automated review, then finalize the PR — 05de4fe
