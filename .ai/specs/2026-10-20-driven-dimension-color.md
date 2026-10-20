@@ -1,6 +1,6 @@
 # Gray driven dimension text
 
-Status: proposed
+Status: implemented
 Refs #38
 Builds on: `.ai/specs/2026-10-20-driven-and-set-dimensions.md` (driven
 dimensions already exist and render in parentheses).
@@ -40,15 +40,14 @@ cue rather than the only signal.
 
 | # | Option | Trade-offs | Verdict |
 | - | ------ | ---------- | ------- |
-| A | **Gray the committed driven canvas label only**, using the existing `muted-foreground` token | Smallest change: one class binding and focused render tests. The canvas is where set and driven labels are read side by side. The drawer and inspector already carry a textual `Driven`/`Set` badge, so they do not rely on color. | **Recommended** — pending Q1 |
+| A | **Gray the committed driven canvas label only**, using the existing `muted-foreground` token | Smallest change: one class binding and focused render tests. The canvas is where set and driven labels are read side by side. The drawer and inspector already carry a textual `Driven`/`Set` badge, so they do not rely on color. | **Recommended and chosen** — Q1 resolved to A |
 | B | **Gray every driven value surface**: canvas label, Dimensions drawer value and Properties inspector value | One consistent visual language across the three places a driven value appears. Cost: two more components and tests, and a gray editable form value can read as disabled, especially because the input is still editable. | Viable if the issue chooses consistency over form affordance |
 | C | **Add a dedicated `--dimension-driven` theme token** and use it on every surface | Leaves room for a future driven-specific color without reusing a generic muted token. Cost: a new token and utility for one use, extra theme maintenance, no user-visible gain today. | Rejected — over-engineered for one label state |
 | D | **Build nothing** and rely on parentheses plus the accessible name | No code, no contrast risk. Cost: #38 exists because the current cue is too subtle on a busy canvas. | Rejected — does not solve the reported problem |
 | E | **Gray the whole dimension**: line, ticks and label | Strongest visual separation. Cost: dimension lines would compete with construction geometry, which is already drawn in muted gray and dashed, and the drawing loses legibility. | Rejected — out of scope and collides with an existing convention |
 
-Option A is the smallest change that answers the issue. Q1 asks whether the
-visual language should extend to the two sidebar surfaces; the spec is written
-under option A and names the option-B delta so either answer is implementable
+Option A is the smallest change that answers the issue and is the resolved answer
+to Q1. The option-B delta below keeps the sidebar extension implementable later
 without redesigning the model.
 
 ### Behaviour
@@ -188,10 +187,10 @@ already badges the two states).
 
 | # | Question | Why it blocks | Recommended answer |
 | - | -------- | ------------- | ------------------ |
-| Q1 | Should the gray apply only to the committed canvas label (A), or also to the Dimensions drawer and Properties inspector values (B)? | It changes the acceptance criteria and the number of touched components. The canvas is where the two states are read together; the sidebar already names the state with a badge, and a gray editable field can look disabled. | **A — canvas label only.** Ask the issue author before implementation if they intended every surface. |
+| Q1 | Should the gray apply only to the committed canvas label (A), or also to the Dimensions drawer and Properties inspector values (B)? | It changes the acceptance criteria and the number of touched components. The canvas is where the two states are read together; the sidebar already names the state with a badge, and a gray editable field can look disabled. | **A — canvas label only.** Resolved 2026-10-20: the PR carries `spec-ready` and option A, the recommendation, is implemented. Extending the gray to the sidebar remains an option-B follow-up if #38 asks for it. |
 
-This is the only blocking product decision. The PR stays draft until Q1 is
-answered on #38.
+This was the only blocking product decision; it is resolved as option A and the
+spec is implemented on this branch.
 
 ## ✅ Resolved assumptions (autonomous defaults)
 
