@@ -5,8 +5,10 @@ import {
   DIMENSION_ORIENTATION_OPTIONS,
   dimensionLabelWidth,
   dimensionSegments,
+  formatDimensionLabel,
   formatDimensionValue,
   isValidDimensionValue,
+  parseDimensionEdit,
   parseDimensionValue,
 } from './dimensions';
 
@@ -69,6 +71,31 @@ describe('isValidDimensionValue', () => {
     expect(isValidDimensionValue(-1)).toBe(false);
     expect(isValidDimensionValue(Number.NaN)).toBe(false);
     expect(isValidDimensionValue(null)).toBe(false);
+  });
+});
+
+describe('parseDimensionEdit', () => {
+  it('maps empty and whitespace input to driven', () => {
+    expect(parseDimensionEdit('')).toEqual({ kind: 'driven' });
+    expect(parseDimensionEdit('   ')).toEqual({ kind: 'driven' });
+  });
+
+  it('maps a finite positive number to a set value', () => {
+    expect(parseDimensionEdit(' 12.5 ')).toEqual({ kind: 'set', value: 12.5 });
+  });
+
+  it('rejects zero, negative, infinite and non-numeric input', () => {
+    expect(parseDimensionEdit('0')).toEqual({ kind: 'invalid' });
+    expect(parseDimensionEdit('-5')).toEqual({ kind: 'invalid' });
+    expect(parseDimensionEdit('Infinity')).toEqual({ kind: 'invalid' });
+    expect(parseDimensionEdit('abc')).toEqual({ kind: 'invalid' });
+  });
+});
+
+describe('formatDimensionLabel', () => {
+  it('wraps driven measurements in parentheses', () => {
+    expect(formatDimensionLabel(100.1234, true)).toBe('(100.123)');
+    expect(formatDimensionLabel(100.1234, false)).toBe('100.123');
   });
 });
 

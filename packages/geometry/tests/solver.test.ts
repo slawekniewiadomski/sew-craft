@@ -235,4 +235,39 @@ describe('solve', () => {
     expect(result.converged).toBe(true);
     expect(distance(result.coordinates.get('a')!, result.coordinates.get('b')!)).toBeCloseTo(10, 6);
   });
+
+  it('leaves geometry untouched and converged for a driven-only document', () => {
+    const points = [point('a', 0, 0), point('b', 3, 4)];
+    const constraints: Constraint[] = [
+      { id: 'd', type: 'distance', a: 'a', b: 'b' },
+      { id: 'h', type: 'distance', a: 'a', b: 'b', orientation: 'horizontal', offset: -5 },
+    ];
+
+    const result = solve(points, constraints);
+
+    expect(result.converged).toBe(true);
+    expect(result.iterations).toBe(0);
+    expect(result.residualNorm).toBe(0);
+    expect(result.coordinates.get('a')).toEqual({ x: 0, y: 0 });
+    expect(result.coordinates.get('b')).toEqual({ x: 3, y: 4 });
+  });
+
+  it('ignores a driven dimension beside a driving one', () => {
+    const points = [point('a', 0, 0, true), point('b', 3, 0), point('c', 0, 4)];
+    const drivingOnly: Constraint[] = [
+      { id: 'd', type: 'distance', a: 'a', b: 'b', value: 5 },
+      { id: 'e', type: 'vertical', a: 'a', b: 'c' },
+    ];
+    const withDriven: Constraint[] = [
+      ...drivingOnly,
+      { id: 'm', type: 'distance', a: 'b', b: 'c', orientation: 'aligned' },
+    ];
+
+    const expected = solve(points, drivingOnly);
+    const result = solve(points, withDriven);
+
+    expect(result.converged).toBe(true);
+    expect(result.coordinates).toEqual(expected.coordinates);
+    expect(result.residualNorm).toBeCloseTo(expected.residualNorm, 12);
+  });
 });

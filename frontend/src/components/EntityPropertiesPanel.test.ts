@@ -130,6 +130,43 @@ describe('EntityPropertiesPanel', () => {
 
     await input.setValue('100');
     expect(wrapper.emitted('update-dimension')).toEqual([['width', 120]]);
+
+    await input.setValue('');
+    expect(wrapper.emitted('update-dimension')).toEqual([
+      ['width', 120],
+      ['width', null],
+    ]);
+  });
+
+  it('shows a driven dimension, sets it explicitly and keeps an empty driven edit', async () => {
+    const { wrapper } = panel(
+      doc({
+        constraints: [{ id: 'live', type: 'distance', a: 'a', b: 'b', orientation: 'horizontal' }],
+      }),
+      'l1',
+    );
+    const input = wrapper.find('[data-testid="entity-dimension-value-live"]');
+
+    expect((input.element as HTMLInputElement).value).toBe('100');
+    expect(wrapper.find('[data-testid="entity-dimension-state-live"]').text()).toBe('Driven');
+
+    await input.setValue('100');
+    expect(wrapper.emitted('update-dimension')).toEqual([['live', 100]]);
+
+    await input.setValue('');
+    expect((input.element as HTMLInputElement).value).toBe('100');
+    expect(wrapper.emitted('update-dimension')).toEqual([['live', 100]]);
+  });
+
+  it('leaves an unmeasurable dimension value empty', () => {
+    const { wrapper } = panel(
+      doc({ constraints: [{ id: 'ghost', type: 'distance', a: 'a', b: 'gone' }] }),
+      'l1',
+    );
+    const input = wrapper.find('[data-testid="entity-dimension-value-ghost"]');
+
+    expect((input.element as HTMLInputElement).value).toBe('');
+    expect(wrapper.find('[data-testid="entity-dimension-state-ghost"]').text()).toBe('Driven');
   });
 
   it('emits the remove intent for dimensions and constraints', async () => {

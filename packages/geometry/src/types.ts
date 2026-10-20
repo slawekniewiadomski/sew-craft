@@ -66,7 +66,12 @@ export type DistanceConstraint = {
   type: 'distance';
   a: EntityId;
   b: EntityId;
-  value: number;
+  /**
+   * Driving length in millimetres. Absent means **driven**: the dimension is a
+   * reference measurement with no solver residual. A present value makes it a
+   * **set** dimension that drives the sketch.
+   */
+  value?: number;
   /** Measurement axis; omitted means `aligned`. */
   orientation?: DimensionOrientation;
   /** Signed millimetres from the measured span to the dimension line. */

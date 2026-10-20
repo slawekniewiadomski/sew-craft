@@ -10,9 +10,11 @@ import {
   dimensionGeometry,
   dimensionOffsetForPointer,
   type DimensionLayout,
+  dimensionValue,
   type DistanceConstraint,
   type EntityId,
   inferDimensionOrientation,
+  isDrivenDimension,
   type LineEntity,
   measureLinearDimension,
   type PatternDocument,
@@ -29,9 +31,10 @@ import { CONSTRAINT_ICONS, constraintMarkers, type ConstraintMarker } from '@/li
 import {
   dimensionLabelWidth,
   dimensionSegments,
+  formatDimensionLabel,
   formatDimensionValue,
-  isValidDimensionValue,
-  parseDimensionValue,
+  parseDimensionEdit,
+  type DimensionEdit,
   type DimensionPatch,
   type DimensionPlacement,
   type DimensionSegment,
@@ -85,7 +88,11 @@ interface DimensionDrawing {
   constraint: DistanceConstraint;
   layout: DimensionLayout;
   segments: DimensionSegment[];
+  /** Label text, wrapped in parentheses when the dimension is driven. */
   value: string;
+  /** The effective number without parentheses, for accessible names. */
+  measured: string;
+  driven: boolean;
   preview: boolean;
   draggable: boolean;
   editable: boolean;
@@ -97,6 +104,8 @@ interface DimensionLabelView {
   id: EntityId;
   constraint: DistanceConstraint;
   value: string;
+  measured: string;
+  driven: boolean;
   width: number;
   x: number;
   y: number;
@@ -297,12 +306,18 @@ function drawingFor(constraint: DistanceConstraint, preview: boolean): Dimension
   const layout = dimensionGeometry(props.document, placed);
   if (layout === null) return null;
 
+  // `layout` resolves the same points, so the effective value is always present.
+  const value = dimensionValue(props.document, placed)!;
+  const driven = isDrivenDimension(constraint);
+
   return {
     id: constraint.id,
     constraint,
     layout,
     segments: dimensionSegments(layout),
-    value: formatDimensionValue(constraint.value),
+    value: formatDimensionLabel(value, driven),
+    measured: formatDimensionValue(value),
+    driven,
     preview,
     draggable: !preview && dimensionDragEnabled.value,
     editable: !preview && !props.constraintActive,
@@ -315,20 +330,20 @@ const dimensionPreviewConstraint = computed<DistanceConstraint | null>(() => {
   const placement = dimensionPlacement.value;
   if (placement === null) return null;
 
-  const value = measureLinearDimension(
+  const measured = measureLinearDimension(
     props.document,
     placement.a,
     placement.b,
     placement.orientation,
   )!;
-  if (value <= 0) return null;
+  if (measured <= 0) return null;
 
+  // A dimension being placed is a driven preview: it measures without a value.
   return {
     id: 'dimension-preview',
     type: 'distance',
     a: placement.a,
     b: placement.b,
-    value,
     orientation: placement.orientation,
     offset: placement.offset,
   };
@@ -359,6 +374,8 @@ const dimensionLabels = computed<DimensionLabelView[]>(() =>
       id: drawing.id,
       constraint: drawing.constraint,
       value: drawing.value,
+      measured: drawing.measured,
+      driven: drawing.driven,
       width: dimensionLabelWidth(drawing.value),
       x: screen.x,
       y: screen.y,
@@ -529,9 +546,11 @@ function onDimensionDoubleClick(label: DimensionLabelView): void {
 }
 
 async function beginDimensionEdit(constraint: DistanceConstraint): Promise<void> {
+  // The label only renders for a resolvable span, so an effective value exists.
+  const value = dimensionValue(props.document, constraint)!;
   editingDimension.value = {
     id: constraint.id,
-    value: formatDimensionValue(constraint.value),
+    value: formatDimensionValue(value),
   };
   await nextTick();
   dimensionInput.value!.focus();
@@ -546,24 +565,29 @@ function onDimensionEditInput(event: Event): void {
   };
 }
 
-/** Enter: apply a valid value, otherwise keep editing so the typo can be fixed. */
+/** Enter: apply a set or driven edit, otherwise keep editing to fix the typo. */
 function applyDimensionEdit(): void {
   const editing = editingDimension.value!;
-  const value = parseDimensionValue(editing.value);
-  if (!isValidDimensionValue(value)) return;
+  const edit = parseDimensionEdit(editing.value);
+  if (edit.kind === 'invalid') return;
 
   editingDimension.value = null;
-  emit('update-dimension', editing.id, { value });
+  emit('update-dimension', editing.id, dimensionPatchFor(edit));
 }
 
-/** Blur: commit a valid value and discard an invalid one. */
+/** Blur: commit a set or driven edit and discard an invalid one. */
 function finishDimensionEdit(): void {
   const editing = editingDimension.value!;
-  const value = parseDimensionValue(editing.value);
+  const edit = parseDimensionEdit(editing.value);
   editingDimension.value = null;
-  if (isValidDimensionValue(value)) {
-    emit('update-dimension', editing.id, { value });
+  if (edit.kind !== 'invalid') {
+    emit('update-dimension', editing.id, dimensionPatchFor(edit));
   }
+}
+
+/** Map a parsed edit to the command patch: driven clears the value with `null`. */
+function dimensionPatchFor(edit: Exclude<DimensionEdit, { kind: 'invalid' }>): DimensionPatch {
+  return edit.kind === 'driven' ? { value: null } : { value: edit.value };
 }
 
 function cancelDimensionEdit(): void {
@@ -1030,7 +1054,11 @@ watch(
           :data-testid="`dimension-label-${label.id}`"
           :transform="`translate(${label.x} ${label.y}) rotate(${label.angle})`"
           role="img"
-          :aria-label="`Dimension ${label.value} millimetres`"
+          :aria-label="
+            label.driven
+              ? `Driven dimension, measured ${label.measured} millimetres`
+              : `Dimension ${label.measured} millimetres`
+          "
           @pointerdown.stop="
             label.draggable ? beginDimensionDrag(label.constraint, $event) : undefined
           "

@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://sewcraft.local/schemas/command-spec-0.4.json",
+  "$id": "https://sewcraft.local/schemas/command-spec-0.5.json",
   "title": "SewCraft Command Spec",
-  "schema": "sewcraft.command-spec/0.4",
-  "spec_version": "0.4.0",
+  "schema": "sewcraft.command-spec/0.5",
+  "spec_version": "0.5.0",
   "units": "mm",
   "envelope": {
     "id": "ULID string, client-generated, unique",
@@ -57,7 +57,7 @@
       "params": { "id": "entity_id" }
     },
     "add_constraint": {
-      "description": "Attach a geometric constraint to one or more entities.",
+      "description": "Attach a geometric constraint to one or more entities. A distance without a value is a driven dimension.",
       "params": {
         "type": "coincident|horizontal|vertical|point_on_line|distance|angle|equal",
         "entities": "entity_id[]",
@@ -68,10 +68,10 @@
       "inverse": "remove_constraint"
     },
     "update_constraint": {
-      "description": "Change a dimensional constraint value or its dimension presentation.",
+      "description": "Change a dimensional constraint value or its dimension presentation. Null clears a distance to driven.",
       "params": {
         "id": "entity_id",
-        "value": "number?",
+        "value": "number|null?",
         "orientation": "aligned|horizontal|vertical?",
         "offset": "number?"
       },

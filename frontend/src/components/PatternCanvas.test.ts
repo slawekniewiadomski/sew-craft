@@ -746,6 +746,9 @@ describe('PatternCanvas', () => {
     expect(wrapper.find('[data-testid="dimension-lines-h"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="dimension-lines-ghost"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="dimension-label-w"]').find('text').text()).toBe('100');
+    expect(wrapper.find('[data-testid="dimension-label-w"]').attributes('aria-label')).toBe(
+      'Dimension 100 millimetres',
+    );
     expect(wrapper.find('[data-testid="dimension-label-h"]').find('text').text()).toBe('100');
     expect(wrapper.find('[data-testid="dimension-label-h"]').attributes('transform')).toContain(
       'rotate(90)',
@@ -755,6 +758,24 @@ describe('PatternCanvas', () => {
     expect(lines[0]!.classes()).toContain('stroke-muted-foreground');
     expect(lines[2]!.classes()).toContain('stroke-foreground');
     expect(wrapper.find('[data-testid="dimension-drag-w"]').exists()).toBe(true);
+  });
+
+  it('renders a driven measurement in parentheses with a stateful accessible name', () => {
+    const drivenDoc: PatternDocument = {
+      ...baseDoc,
+      constraints: [
+        { id: 'm', type: 'distance', a: 'a', b: 'c', orientation: 'horizontal' },
+        { id: 'ghost', type: 'distance', a: 'a', b: 'missing' },
+      ],
+    };
+    const wrapper = mountCanvas({ document: drivenDoc });
+
+    const label = wrapper.find('[data-testid="dimension-label-m"]');
+    expect(label.find('text').text()).toBe('(100)');
+    expect(label.attributes('aria-label')).toBe('Driven dimension, measured 100 millimetres');
+    expect(label.find('rect').attributes('width')).toBe('38');
+    expect(wrapper.find('[data-testid="dimension-drag-m"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="dimension-label-ghost"]').exists()).toBe(false);
   });
 
   it('hides dimension lines and labels when the toggle is off', () => {
@@ -774,7 +795,10 @@ describe('PatternCanvas', () => {
     expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(true);
     expect(
       wrapper.find('[data-testid="dimension-label-dimension-preview"]').find('text').text(),
-    ).toBe('100');
+    ).toBe('(100)');
+    expect(
+      wrapper.find('[data-testid="dimension-label-dimension-preview"]').attributes('aria-label'),
+    ).toBe('Driven dimension, measured 100 millimetres');
 
     const target = worldToScreen(vp, { x: 50, y: 40 });
     wrapper
@@ -901,7 +925,28 @@ describe('PatternCanvas', () => {
     await flushPromises();
     await wrapper.find('[data-testid="dimension-editor"]').setValue('');
     await wrapper.find('[data-testid="dimension-editor"]').trigger('blur');
-    expect(wrapper.emitted('update-dimension')).toEqual([['w', { value: 120 }]]);
+    expect(wrapper.emitted('update-dimension')).toEqual([
+      ['w', { value: 120 }],
+      ['w', { value: null }],
+    ]);
+  });
+
+  it('prefills a driven measurement and clears it on Enter', async () => {
+    const drivenDoc: PatternDocument = {
+      ...baseDoc,
+      constraints: [{ id: 'm', type: 'distance', a: 'a', b: 'c', orientation: 'horizontal' }],
+    };
+    const wrapper = mountCanvas({ document: drivenDoc });
+
+    await wrapper.find('[data-testid="dimension-label-m"]').trigger('dblclick');
+    await flushPromises();
+
+    const editor = wrapper.find('[data-testid="dimension-editor"]');
+    expect((editor.element as HTMLInputElement).value).toBe('100');
+
+    await editor.setValue('   ');
+    await editor.trigger('keydown', { key: 'Enter' });
+    expect(wrapper.emitted('update-dimension')).toEqual([['m', { value: null }]]);
   });
 
   it('ignores double-click on a preview label and closes the editor when hidden', async () => {

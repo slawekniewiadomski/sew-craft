@@ -6,8 +6,7 @@ import type { DimensionSummary, EntityProperties } from '@/lib/entity-properties
 import {
   DIMENSION_ORIENTATION_OPTIONS,
   formatDimensionValue,
-  isValidDimensionValue,
-  parseDimensionValue,
+  parseDimensionEdit,
 } from '@/lib/dimensions';
 import { parseSeamWidth } from '@/lib/seam-width';
 
@@ -22,7 +21,7 @@ const emit = defineEmits<{
   'add-seam': [id: EntityId];
   'set-seam-width': [id: EntityId, width: number];
   'remove-seam': [id: EntityId];
-  'update-dimension': [id: EntityId, value: number];
+  'update-dimension': [id: EntityId, value: number | null];
   'remove-constraint': [id: EntityId];
 }>();
 
@@ -60,16 +59,28 @@ function onSeamWidthEdit(id: EntityId, current: number, event: Event): void {
   emit('set-seam-width', id, width);
 }
 
-/** An invalid or unchanged value snaps back without emitting a command. */
+/** Millimetre text for a dimension, or empty when it cannot be measured. */
+function dimensionValueText(value: number | null): string {
+  return value === null ? '' : formatDimensionValue(value);
+}
+
+/** Empty text clears the value back to driven; invalid or unchanged text snaps back. */
 function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
   const input = event.target as HTMLInputElement;
-  const value = parseDimensionValue(input.value);
-  if (!isValidDimensionValue(value) || value === dimension.value) {
-    input.value = formatDimensionValue(dimension.value);
+  const edit = parseDimensionEdit(input.value);
+  const unchanged =
+    edit.kind === 'invalid'
+      ? true
+      : edit.kind === 'driven'
+        ? dimension.driven
+        : !dimension.driven && edit.value === dimension.value;
+
+  if (edit.kind === 'invalid' || unchanged) {
+    input.value = dimensionValueText(dimension.value);
     return;
   }
 
-  emit('update-dimension', dimension.id, value);
+  emit('update-dimension', dimension.id, edit.kind === 'driven' ? null : edit.value);
 }
 </script>
 
@@ -205,12 +216,18 @@ function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
               min="0.001"
               step="0.1"
               class="w-20 rounded-md border px-2 py-1"
-              :value="formatDimensionValue(dimension.value)"
+              :value="dimensionValueText(dimension.value)"
               :aria-label="`Value for dimension ${dimension.id} on ${props.entity.id}`"
               :data-testid="`entity-dimension-value-${dimension.id}`"
               @change="onDimensionValueEdit(dimension, $event)"
             />
             <span class="text-xs text-muted-foreground">mm</span>
+            <span
+              class="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
+              :data-testid="`entity-dimension-state-${dimension.id}`"
+            >
+              {{ dimension.driven ? 'Driven' : 'Set' }}
+            </span>
           </label>
         </li>
       </ul>

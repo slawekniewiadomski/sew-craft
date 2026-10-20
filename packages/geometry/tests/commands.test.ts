@@ -98,7 +98,7 @@ const removeConstraintCommand = (id: string): Command => ({
 
 const updateConstraintCommand = (
   id: string,
-  params: { value?: number; orientation?: DimensionOrientation; offset?: number },
+  params: { value?: number | null; orientation?: DimensionOrientation; offset?: number },
 ): Command => ({ id: 'update', type: 'update_constraint', params: { id, ...params } });
 
 const seamCommand = (id: string, edge: string, width?: number): Command =>
@@ -570,7 +570,42 @@ describe('add_constraint', () => {
     unchanged(document, addConstraintCommand('d', 'distance', ['a', 'b'], 0));
     unchanged(document, addConstraintCommand('d', 'distance', ['a', 'b'], -5));
     unchanged(document, addConstraintCommand('d', 'distance', ['a', 'b'], Number.NaN));
-    unchanged(document, addConstraintCommand('d', 'distance', ['a', 'b']));
+    unchanged(document, {
+      id: 'd',
+      type: 'add_constraint',
+      params: { type: 'distance', entities: ['a', 'b'], value: null },
+    } as unknown as Command);
+  });
+
+  it('creates a driven distance when the value is omitted', () => {
+    const applied = applyCommand(document, addConstraintCommand('m', 'distance', ['a', 'b']));
+
+    const constraint = getConstraint(applied.document, 'm');
+    expect(constraint).toEqual({ id: 'm', type: 'distance', a: 'a', b: 'b' });
+    expect(constraint).not.toHaveProperty('value');
+    expect(applied.inverse).toEqual(removeConstraintCommand('m'));
+  });
+
+  it('creates a driven distance with explicit presentation fields', () => {
+    const applied = applyCommand(document, {
+      id: 'm',
+      type: 'add_constraint',
+      params: {
+        type: 'distance',
+        entities: ['a', 'b'],
+        orientation: 'horizontal',
+        offset: 4,
+      },
+    });
+
+    expect(getConstraint(applied.document, 'm')).toEqual({
+      id: 'm',
+      type: 'distance',
+      a: 'a',
+      b: 'b',
+      orientation: 'horizontal',
+      offset: 4,
+    });
   });
 
   it('rejects invalid angle values without mutating', () => {
@@ -724,6 +759,93 @@ describe('update_constraint', () => {
     });
   });
 
+  it('clears a set dimension to driven and restores the previous value', () => {
+    const applied = applyCommand(document, updateConstraintCommand('d', { value: null }));
+
+    expect(getConstraint(applied.document, 'd')).toEqual({
+      id: 'd',
+      type: 'distance',
+      a: 'a',
+      b: 'b',
+      orientation: 'aligned',
+      offset: 10,
+    });
+    expect(getConstraint(applied.document, 'd')).not.toHaveProperty('value');
+    expect(applied.inverse).toEqual(
+      updateConstraintCommand('d', { value: 25, orientation: 'aligned', offset: 10 }),
+    );
+  });
+
+  it('sets a driven dimension and inverts to a cleared value', () => {
+    const driven = documentOf(
+      [point('a', 0, 0), point('b', 10, 0)],
+      [{ id: 'm', type: 'distance', a: 'a', b: 'b' }],
+    );
+
+    const applied = applyCommand(driven, updateConstraintCommand('m', { value: 60 }));
+
+    expect(getConstraint(applied.document, 'm')).toEqual({
+      id: 'm',
+      type: 'distance',
+      a: 'a',
+      b: 'b',
+      value: 60,
+      orientation: 'aligned',
+      offset: DEFAULT_DIMENSION_OFFSET,
+    });
+    expect(applied.inverse).toEqual(
+      updateConstraintCommand('m', {
+        value: null,
+        orientation: 'aligned',
+        offset: DEFAULT_DIMENSION_OFFSET,
+      }),
+    );
+  });
+
+  it('treats clearing an already-driven dimension as a no-op', () => {
+    const driven = documentOf(
+      [point('a', 0, 0), point('b', 10, 0)],
+      [{ id: 'm', type: 'distance', a: 'a', b: 'b', orientation: 'aligned', offset: 10 }],
+    );
+
+    const applied = applyCommand(driven, updateConstraintCommand('m', { value: null }));
+
+    expect(applied.document).toBe(driven);
+    expect(applied.inverse).toBeNull();
+  });
+
+  it('restores driven state after a presentation-only edit', () => {
+    const driven = documentOf(
+      [point('a', 0, 0), point('b', 10, 0)],
+      [{ id: 'm', type: 'distance', a: 'a', b: 'b' }],
+    );
+
+    const applied = applyCommand(
+      driven,
+      updateConstraintCommand('m', { orientation: 'horizontal', offset: -2 }),
+    );
+
+    expect(getConstraint(applied.document, 'm')).toEqual({
+      id: 'm',
+      type: 'distance',
+      a: 'a',
+      b: 'b',
+      orientation: 'horizontal',
+      offset: -2,
+    });
+    expect(applied.inverse).toEqual(
+      updateConstraintCommand('m', {
+        value: null,
+        orientation: 'aligned',
+        offset: DEFAULT_DIMENSION_OFFSET,
+      }),
+    );
+  });
+
+  it('rejects clearing a value on an angle without mutating', () => {
+    unchanged(document, updateConstraintCommand('g', { value: null }));
+  });
+
   it('updates an angle value and restores the previous value', () => {
     const applied = applyCommand(document, updateConstraintCommand('g', { value: Math.PI / 3 }));
 
@@ -812,6 +934,32 @@ describe('remove_constraint', () => {
         offset: -3,
       },
     });
+  });
+
+  it('reconstructs a driven dimension inverse without a value', () => {
+    const constraint: Constraint = {
+      id: 'm',
+      type: 'distance',
+      a: 'a',
+      b: 'b',
+      orientation: 'horizontal',
+      offset: 5,
+    };
+    const document = documentOf([point('a', 0, 0), point('b', 10, 0)], [constraint]);
+
+    const applied = applyCommand(document, removeConstraintCommand('m'));
+
+    expect(applied.inverse).toEqual({
+      id: 'm',
+      type: 'add_constraint',
+      params: {
+        type: 'distance',
+        entities: ['a', 'b'],
+        orientation: 'horizontal',
+        offset: 5,
+      },
+    });
+    expect((applied.inverse as { params: object }).params).not.toHaveProperty('value');
   });
 
   it('is idempotent for an unknown id', () => {

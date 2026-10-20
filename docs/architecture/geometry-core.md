@@ -74,9 +74,12 @@ arrays. Document helpers in `document.ts`:
 
 ## Linear dimensions (`dimension.ts`)
 
-A linear dimension is not an entity: it is the CAD rendering of a driving
-`distance` constraint (see `constraint-solver.md`). The pure helpers in
-`dimension.ts` compute that rendering and are consumed by the frontend canvas:
+A linear dimension is not an entity: it is the CAD rendering of a `distance`
+constraint (see `constraint-solver.md`). A dimension is **driven** when the
+constraint has no `value` — it measures the sketch, renders in parentheses and
+adds no solver residual. Giving it a value makes it **set**: the solver drives
+the span and the label loses its parentheses. The pure helpers in `dimension.ts`
+compute that rendering and are consumed by the frontend canvas:
 
 - `dimensionGeometry(document, constraint)` — extension lines, dimension line,
   end chevrons and a rotated value label for a `distance` constraint, or `null`
@@ -84,6 +87,9 @@ A linear dimension is not an entity: it is the CAD rendering of a driving
   (`DEFAULT_DIMENSION_OFFSET` is `20` mm).
 - `measureLinearDimension(document, a, b, orientation)` — the span the constraint
   would drive, or `null` when a point is missing.
+- `isDrivenDimension(constraint)` — true when the constraint has no `value`.
+- `dimensionValue(document, constraint)` — the set value, or the live measurement
+  for a driven dimension; `null` when a measured point is missing.
 - `inferDimensionOrientation(document, a, b, pointer)` — pick the axis from a
   pointer position while placing a dimension.
 - `dimensionOffsetForPointer(document, a, b, orientation, pointer)` — the signed

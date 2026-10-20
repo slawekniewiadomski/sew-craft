@@ -15,7 +15,7 @@ runtime source of truth is `config/geometry.php`, exposed at `GET /api/commands`
 }
 ```
 
-## Commands (v0.4)
+## Commands (v0.5)
 
 ### `add_point`
 
@@ -72,7 +72,9 @@ Remove an entity and cascade-remove constraints that reference it.
 
 - params: `type` (§ solver), `entities: entity_id[]`, `value?: number`,
   `orientation?: 'aligned' | 'horizontal' | 'vertical'`, `offset?: number`
-- `value` is required for `distance` (mm) and `angle` (radians).
+- `value` is required for `angle` (radians). For `distance` it is optional: a
+  finite value `> 0` creates a **set** dimension; omitting it creates a
+  **driven** dimension that measures the sketch without adding an equation.
 - `orientation` and `offset` apply only to `distance`; they are presentation for
   the linear dimension that renders the constraint. `orientation` defaults to
   `aligned`, `offset` to `20` mm (signed, measured from the span).
@@ -97,12 +99,15 @@ dimension presentation. At least one of `value`, `orientation` or `offset` is
 required. A value edit re-solves the sketch and moves the measured geometry; an
 orientation/offset-only edit changes presentation and is a no-op for the solver.
 
-- params: `id: entity_id`, `value?: number`, `orientation?: aligned|horizontal|vertical`,
+- params: `id: entity_id`, `value?: number | null`, `orientation?: aligned|horizontal|vertical`,
   `offset?: number`
-- `value` keeps the `add_constraint` rules (`distance > 0`, `angle` finite).
+- `value` keeps the `add_constraint` rules when it is a number (`distance > 0`,
+  `angle` finite). `null` clears a `distance` to driven; omitting it leaves the
+  value untouched; `null` is rejected for `angle`.
 - `orientation`/`offset` are rejected for non-distance constraints.
-- inverse: `update_constraint` (restores the previous effective values, keeping
-  the command id)
+- inverse: `update_constraint` (restores the previous state and effective
+  presentation values, keeping the command id; a cleared dimension inverts to
+  its previous value, and a driven one inverts to `value: null`)
 
 ### `remove_constraint`
 
@@ -138,6 +143,14 @@ Change the width of an attached seam allowance without detaching it.
   no-op with `inverse: null`.
 - inverse: `set_seam_allowance` (restores the previous width, keeping the command id)
 - additive: v0.3 payloads still apply; `spec_version` is bumped to `0.4.0`.
+
+### Migration from spec 0.4.0
+
+`add_constraint` for `distance` no longer requires `value`: an omitted value
+creates a driven dimension. `update_constraint` accepts `value: null` to clear a
+distance back to driven. Both changes are additive — every 0.4.0 payload still
+applies unchanged (a distance with a value is still set). `spec_version` is
+bumped to `0.5.0`.
 
 ### Migration from spec 0.3.0
 

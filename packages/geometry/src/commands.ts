@@ -80,7 +80,8 @@ export interface AddConstraintParams {
 
 export interface UpdateConstraintParams {
   id: EntityId;
-  value?: number;
+  /** A number sets the value; `null` clears a distance to driven. */
+  value?: number | null;
   orientation?: DimensionOrientation;
   offset?: number;
 }
@@ -472,8 +473,15 @@ function applyAddConstraint(
     requirePoint(document, id, 'add_constraint');
   }
 
-  if (type === 'distance' && (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)) {
-    throw new CommandValidationError('add_constraint', 'distance requires a finite value > 0');
+  if (
+    type === 'distance' &&
+    value !== undefined &&
+    (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)
+  ) {
+    throw new CommandValidationError(
+      'add_constraint',
+      'distance requires a finite value > 0 when provided',
+    );
   }
   if (type === 'angle' && (typeof value !== 'number' || !Number.isFinite(value))) {
     throw new CommandValidationError('add_constraint', 'angle requires a finite value');
@@ -532,7 +540,14 @@ function applyUpdateConstraint(
     throw new CommandValidationError('update_constraint', 'provide value, orientation or offset');
   }
 
-  if (value !== undefined) {
+  if (value === null) {
+    if (constraint.type !== 'distance') {
+      throw new CommandValidationError(
+        'update_constraint',
+        'only distance constraints can be cleared to driven',
+      );
+    }
+  } else if (value !== undefined) {
     if (constraint.type === 'distance' && (!Number.isFinite(value) || value <= 0)) {
       throw new CommandValidationError('update_constraint', 'distance requires a finite value > 0');
     }
@@ -593,12 +608,12 @@ interface UpdatedConstraint {
 /** Build the next constraint plus the params that restore its previous values. */
 function updatedConstraint(
   constraint: DistanceConstraint | Extract<Constraint, { type: 'angle' }>,
-  value: number | undefined,
+  value: number | null | undefined,
   orientation: DimensionOrientation | undefined,
   offset: number | undefined,
 ): UpdatedConstraint | null {
   if (constraint.type === 'angle') {
-    // Validation rejects presentation fields for angles, so a value is present.
+    // Validation rejects presentation fields and `null` for angles, so a value is present.
     const nextValue = value!;
     if (nextValue === constraint.value) return null;
     return {
@@ -609,7 +624,8 @@ function updatedConstraint(
 
   const previousOrientation = constraintOrientation(constraint);
   const previousOffset = constraintOffset(constraint);
-  const nextValue = value ?? constraint.value;
+  // `null` clears the value; omitting it leaves the current state untouched.
+  const nextValue = value === null ? undefined : (value ?? constraint.value);
   const nextOrientation = orientation ?? previousOrientation;
   const nextOffset = offset ?? previousOffset;
 
@@ -621,16 +637,22 @@ function updatedConstraint(
     return null;
   }
 
+  const next: DistanceConstraint = {
+    id: constraint.id,
+    type: 'distance',
+    a: constraint.a,
+    b: constraint.b,
+    orientation: nextOrientation,
+    offset: nextOffset,
+  };
+  if (nextValue !== undefined) next.value = nextValue;
+
   return {
-    constraint: {
-      ...constraint,
-      value: nextValue,
-      orientation: nextOrientation,
-      offset: nextOffset,
-    },
+    constraint: next,
     inverse: {
       id: constraint.id,
-      value: constraint.value,
+      // A driven constraint is restored by clearing the value again.
+      value: constraint.value === undefined ? null : constraint.value,
       orientation: previousOrientation,
       offset: previousOffset,
     },
@@ -775,7 +797,7 @@ function buildConstraint(
         type,
         a: a!,
         b: b!,
-        value: value!,
+        ...(value === undefined ? {} : { value }),
         ...(orientation === undefined ? {} : { orientation }),
         ...(offset === undefined ? {} : { offset }),
       };
@@ -798,7 +820,7 @@ function constraintToParams(constraint: Constraint): AddConstraintParams {
       return {
         type: 'distance',
         entities: [constraint.a, constraint.b],
-        value: constraint.value,
+        ...(constraint.value === undefined ? {} : { value: constraint.value }),
         ...(constraint.orientation === undefined ? {} : { orientation: constraint.orientation }),
         ...(constraint.offset === undefined ? {} : { offset: constraint.offset }),
       };

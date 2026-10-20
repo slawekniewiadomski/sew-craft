@@ -1,7 +1,9 @@
 import {
   constraintEntityIds,
   constraintOrientation,
+  dimensionValue,
   getEntity,
+  isDrivenDimension,
   measureLinearDimension,
   seamForEdge,
   type ConstraintType,
@@ -34,7 +36,9 @@ export type EntityGeometry = PointGeometry | LineGeometry | CurveGeometry;
 export type DimensionSummary = {
   id: EntityId;
   entities: [EntityId, EntityId];
-  value: number;
+  /** The set value, or the live measurement when driven; `null` if unmeasurable. */
+  value: number | null;
+  driven: boolean;
   orientation: DimensionOrientation;
 };
 
@@ -116,7 +120,8 @@ export function entityProperties(
       dimensions.push({
         id: constraint.id,
         entities: [constraint.a, constraint.b],
-        value: constraint.value,
+        value: dimensionValue(document, constraint),
+        driven: isDrivenDimension(constraint),
         orientation: constraintOrientation(constraint),
       });
       continue;

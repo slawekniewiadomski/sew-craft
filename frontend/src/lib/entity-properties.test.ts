@@ -114,8 +114,8 @@ describe('entityProperties', () => {
     const properties = entityProperties(doc({ constraints }), 'l1');
 
     expect(properties?.dimensions).toEqual([
-      { id: 'width', entities: ['a', 'b'], value: 100, orientation: 'aligned' },
-      { id: 'axis', entities: ['a', 'c'], value: 108, orientation: 'horizontal' },
+      { id: 'width', entities: ['a', 'b'], value: 100, driven: false, orientation: 'aligned' },
+      { id: 'axis', entities: ['a', 'c'], value: 108, driven: false, orientation: 'horizontal' },
     ]);
     expect(properties?.constraints).toEqual([
       { id: 'horizontal', type: 'horizontal', label: 'Horizontal', entities: ['a', 'b'] },
@@ -131,6 +131,23 @@ describe('entityProperties', () => {
     expect(properties?.dimensions).toEqual([]);
   });
 
+  it('reports a driven dimension measurement and an unmeasurable one', () => {
+    const properties = entityProperties(
+      doc({
+        constraints: [
+          { id: 'live', type: 'distance', a: 'a', b: 'b', orientation: 'horizontal' },
+          { id: 'ghost', type: 'distance', a: 'a', b: 'gone' },
+        ],
+      }),
+      'l1',
+    );
+
+    expect(properties?.dimensions).toEqual([
+      { id: 'live', entities: ['a', 'b'], value: 100, driven: true, orientation: 'horizontal' },
+      { id: 'ghost', entities: ['a', 'gone'], value: null, driven: true, orientation: 'aligned' },
+    ]);
+  });
+
   it('relates point selections to constraints on that point', () => {
     const properties = entityProperties(
       doc({
@@ -143,7 +160,7 @@ describe('entityProperties', () => {
     );
 
     expect(properties?.dimensions).toEqual([
-      { id: 'width', entities: ['b', 'a'], value: 100, orientation: 'aligned' },
+      { id: 'width', entities: ['b', 'a'], value: 100, driven: false, orientation: 'aligned' },
     ]);
     expect(properties?.constraints).toEqual([
       { id: 'angle', type: 'angle', label: 'Angle 90°', entities: ['a', 'b', 'c'] },
