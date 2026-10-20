@@ -7,8 +7,8 @@ command-based core, a parametric sketch/constraint model, and an agent-friendly
 interface.
 
 > **State:** early scaffold. The API, SPA shell, geometry package and constraint
-> solver exist and are tested; real editing features are specced in `specs/` but
-> mostly not built yet.
+> solver exist and are tested; real editing features are specced in `.ai/specs/`
+> but mostly not built yet.
 
 ## Stack
 
@@ -61,7 +61,8 @@ packages/geometry/        @sewcraft/geometry — model, solver, exports
 docs/architecture/        System design + contracts
 docs/domain/              Glossary + command spec
 docs/decisions/           Architecture Decision Records
-specs/                    Per-feature task specs
+.ai/specs/                Per-feature task specs (source of truth)
+specs/                    Legacy human-readable spec reference
 ROADMAP.md                Phased plan
 ```
 

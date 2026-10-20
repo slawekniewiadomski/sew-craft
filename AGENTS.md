@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Operating guide for AI agents (and humans) working in the SewCraft repository.
-Read this before making changes. Companion docs live in `docs/` and `specs/`.
+Read this before making changes. Companion docs live in `docs/` and `.ai/specs/`.
 
 ## What this is
 
@@ -13,7 +13,7 @@ interface.
 
 Current state: **early scaffold**. The API, SPA shell, geometry package and
 constraint solver exist and are tested; real editing features are specced in
-`specs/` but mostly not built yet.
+`.ai/specs/` but mostly not built yet.
 
 ## Stack (locked decisions)
 
@@ -42,7 +42,8 @@ packages/geometry/        @sewcraft/geometry — model, solver, (later) export
 docs/architecture/        System design, contracts + engineering standards
 docs/domain/              Glossary + command spec (+ JSON schema)
 docs/decisions/           Architecture Decision Records (ADRs)
-specs/                    Per-feature task specs — the unit of work for agents
+.ai/specs/                Per-feature task specs — source of truth for agents
+specs/                    Legacy human-readable spec reference (do not add new specs)
 ROADMAP.md                Phased plan from MVP to advanced features
 ```
 
@@ -141,7 +142,7 @@ test:coverage` (Vitest, v8) and the backend `--coverage --min=100` command above
 
 ## Agent workflow
 
-1. Pick **one** spec from `specs/`. Do not bundle unrelated features.
+1. Pick **one** spec from `.ai/specs/`. Do not bundle unrelated features.
 2. Read the spec's _Context_ and any linked architecture docs.
 3. Implement, then run the checks the spec lists (at minimum `php artisan test`,
    `npm test`, `npm run test:coverage`, `npm run lint`, `npm run format:check`,
@@ -162,8 +163,10 @@ you started it by hand or through the committed `feature-issue` cezar workflow
 - **`feature`** — deliver it end to end on **one combined PR**: plan (author the
   spec), implement, verify, open the PR, review, fix, then leave a **ready,
   labeled** PR and stop. The spec and the implementation ship on the same branch;
-  there is no separate spec-only PR. Use `om-auto-create-pr` (the workflow's
-  engine) so the spec lands as the first commit.
+  there is no separate spec-only PR. When the design needs review first, the
+  combined PR may start as a **draft spec-only PR**; a human applies `spec-ready`,
+  then implementation continues on the same branch. Use `om-auto-create-pr` (the
+  workflow's engine) so the spec lands as the first commit.
 - **`bug`** — take the bug chain: `om-verify-in-repo` → `om-root-cause` →
   `om-fix` → `om-open-pr` → `om-auto-review-pr`.
 

@@ -41,6 +41,7 @@
       "skip-qa",
       "qa-approved",
       "qa-self-verified",
+      "spec-ready",
       "in-progress",
       "ci-monitoring"
     ],
