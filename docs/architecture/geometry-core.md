@@ -84,7 +84,7 @@ compute that rendering and are consumed by the frontend canvas:
 - `dimensionGeometry(document, constraint)` — extension lines, dimension line,
   end chevrons and a rotated value label for a `distance` constraint, or `null`
   when its points are missing. Honors `orientation` and `offset`
-  (`DEFAULT_DIMENSION_OFFSET` is `12` mm).
+  (`DEFAULT_DIMENSION_OFFSET` is `20` mm).
 - `measureLinearDimension(document, a, b, orientation)` — the span the constraint
   would drive, or `null` when a point is missing.
 - `isDrivenDimension(constraint)` — true when the constraint has no `value`.

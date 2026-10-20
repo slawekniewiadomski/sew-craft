@@ -95,6 +95,7 @@ interface DimensionDrawing {
   driven: boolean;
   preview: boolean;
   draggable: boolean;
+  editable: boolean;
   dragging: boolean;
 }
 
@@ -111,6 +112,7 @@ interface DimensionLabelView {
   angle: number;
   preview: boolean;
   draggable: boolean;
+  editable: boolean;
 }
 
 const props = withDefaults(
@@ -290,6 +292,11 @@ const distanceConstraints = computed(() =>
   ),
 );
 
+/** Committed dimensions can be dragged only with the tools that own a placed line. */
+const dimensionDragEnabled = computed(
+  () => !props.constraintActive && (props.tool === 'select' || props.tool === 'dimension'),
+);
+
 function drawingFor(constraint: DistanceConstraint, preview: boolean): DimensionDrawing | null {
   const drag = dimensionDrag.value;
   const placed =
@@ -312,7 +319,8 @@ function drawingFor(constraint: DistanceConstraint, preview: boolean): Dimension
     measured: formatDimensionValue(value),
     driven,
     preview,
-    draggable: !preview,
+    draggable: !preview && dimensionDragEnabled.value,
+    editable: !preview && !props.constraintActive,
     dragging: drag !== null && drag.id === constraint.id,
   };
 }
@@ -374,6 +382,7 @@ const dimensionLabels = computed<DimensionLabelView[]>(() =>
       angle: drawing.layout.label.angleDegrees,
       preview: drawing.preview,
       draggable: drawing.draggable,
+      editable: drawing.editable,
     };
   }),
 );
@@ -517,8 +526,6 @@ function updateDimensionPlacement(screen: Vec2): void {
 }
 
 function beginDimensionDrag(constraint: DistanceConstraint, event: PointerEvent): void {
-  if (props.tool !== 'select' || props.constraintActive) return;
-
   event.stopPropagation();
   event.preventDefault();
   const offset = constraintOffset(constraint);
@@ -534,7 +541,7 @@ function beginDimensionDrag(constraint: DistanceConstraint, event: PointerEvent)
 }
 
 function onDimensionDoubleClick(label: DimensionLabelView): void {
-  if (!label.draggable) return;
+  if (!label.editable) return;
   void beginDimensionEdit(label.constraint);
 }
 
@@ -681,6 +688,18 @@ function onCanvasPointerMove(event: PointerEvent): void {
   }
 }
 
+/** Drop every in-flight pointer interaction without emitting a command. */
+function cancelPointerInteraction(): void {
+  dimensionDrag.value = null;
+  dragState.value = null;
+  panState.value = null;
+  removePointerListeners();
+}
+
+function onPointerCancel(): void {
+  cancelPointerInteraction();
+}
+
 function onPointerUp(): void {
   if (dimensionDrag.value) {
     const { id, offset, startOffset } = dimensionDrag.value;
@@ -761,11 +780,13 @@ function beginDrag(id: EntityId, origin: Vec2): void {
 function addPointerListeners(): void {
   window.addEventListener('pointermove', onPointerMove);
   window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('pointercancel', onPointerCancel);
 }
 
 function removePointerListeners(): void {
   window.removeEventListener('pointermove', onPointerMove);
   window.removeEventListener('pointerup', onPointerUp);
+  window.removeEventListener('pointercancel', onPointerCancel);
 }
 
 function fit(): void {
@@ -809,6 +830,7 @@ watch(
     dimensionPending.value = [];
     dimensionPlacement.value = null;
     editingDimension.value = null;
+    cancelPointerInteraction();
     editingSeam.value = null;
     dimensionDrag.value = null;
   },
@@ -828,6 +850,7 @@ watch(
   () => props.showDimensions,
   (visible) => {
     if (!visible) editingDimension.value = null;
+    if (!visible && dimensionDrag.value) cancelPointerInteraction();
   },
 );
 
@@ -1007,7 +1030,7 @@ watch(
             :x2="drawing.layout.dimensionEnd.x"
             :y2="drawing.layout.dimensionEnd.y"
             stroke="transparent"
-            stroke-width="14"
+            stroke-width="24"
             vector-effect="non-scaling-stroke"
             class="pointer-events-auto cursor-move"
             :data-testid="`dimension-drag-${drawing.id}`"
@@ -1020,7 +1043,13 @@ watch(
         <g
           v-for="label in dimensionLabels"
           :key="label.id"
-          :class="label.draggable ? 'pointer-events-auto cursor-text' : 'pointer-events-none'"
+          :class="
+            label.draggable
+              ? 'pointer-events-auto cursor-move'
+              : label.editable
+                ? 'pointer-events-auto cursor-text'
+                : 'pointer-events-none'
+          "
           :data-dimension-id="label.id"
           :data-testid="`dimension-label-${label.id}`"
           :transform="`translate(${label.x} ${label.y}) rotate(${label.angle})`"
@@ -1035,7 +1064,15 @@ watch(
           "
           @dblclick.stop.prevent="onDimensionDoubleClick(label)"
         >
-          <title>{{ label.draggable ? 'Double-click to edit' : 'Dimension preview' }}</title>
+          <title>
+            {{
+              label.draggable
+                ? 'Drag to reposition, double-click to edit'
+                : label.editable
+                  ? 'Double-click to edit'
+                  : 'Dimension preview'
+            }}
+          </title>
           <rect
             :x="-label.width / 2"
             y="-8"

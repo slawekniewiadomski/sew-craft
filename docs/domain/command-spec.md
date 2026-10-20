@@ -77,7 +77,7 @@ Remove an entity and cascade-remove constraints that reference it.
   **driven** dimension that measures the sketch without adding an equation.
 - `orientation` and `offset` apply only to `distance`; they are presentation for
   the linear dimension that renders the constraint. `orientation` defaults to
-  `aligned`, `offset` to `12` mm (signed, measured from the span).
+  `aligned`, `offset` to `20` mm (signed, measured from the span).
 - inverse: `remove_constraint`
 
 Constraint param mapping:

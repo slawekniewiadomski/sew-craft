@@ -65,6 +65,10 @@ const arm = (tipX: number, tipY: number, reachX: number, reachY: number, angle: 
 };
 
 describe('constraintOrientation / constraintOffset', () => {
+  it('pins the documented default offset to 20 mm', () => {
+    expect(DEFAULT_DIMENSION_OFFSET).toBe(20);
+  });
+
   it('defaults to aligned and the default offset', () => {
     const constraint = distance('d', 'a', 'b');
     expect(constraintOrientation(constraint)).toBe('aligned');

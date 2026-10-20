@@ -838,7 +838,7 @@ describe('PatternCanvas', () => {
 
     down(wrapper.find('[data-testid="grid"]').element, 400, 300);
     expect(wrapper.emitted('add-dimension')).toEqual([
-      [{ a: 'a', b: 'b', orientation: 'aligned', offset: 12 }],
+      [{ a: 'a', b: 'b', orientation: 'aligned', offset: 20 }],
     ]);
   });
 
@@ -857,7 +857,7 @@ describe('PatternCanvas', () => {
     down(wrapper.find('[data-testid="grid"]').element, 400, 300);
 
     expect(wrapper.emitted('add-dimension')).toEqual([
-      [{ a: 'c', b: 'a', orientation: 'aligned', offset: 12 }],
+      [{ a: 'c', b: 'a', orientation: 'aligned', offset: 20 }],
     ]);
   });
 
@@ -1013,17 +1013,223 @@ describe('PatternCanvas', () => {
     expect(wrapper.emitted('update-dimension')).toEqual([['w', { offset: 30 }]]);
   });
 
-  it('does not drag dimensions outside the select tool or during constraint placement', async () => {
-    const dimensionTool = mountCanvas({ document: dimensionDoc, tool: 'dimension' });
-    down(dimensionTool.find('[data-testid="dimension-drag-w"]').element, 300, 200);
-    move(400, 300);
-    up();
-    expect(dimensionTool.emitted('update-dimension')).toBeUndefined();
+  it('does not drag dimensions during constraint placement', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc, constraintActive: true });
 
-    const constraintTool = mountCanvas({ document: dimensionDoc, constraintActive: true });
-    down(constraintTool.find('[data-testid="dimension-drag-w"]').element, 300, 200);
-    move(400, 300);
+    expect(wrapper.find('[data-testid="dimension-drag-w"]').exists()).toBe(false);
+    expect(wrapper.emitted('update-dimension')).toBeUndefined();
+  });
+
+  it('drags a dimension line with the dimension tool and keeps the tool available', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc, tool: 'dimension' });
+    const vp = fittedViewport(dimensionDoc);
+    const target = worldToScreen(vp, { x: 50, y: 40 });
+
+    down(wrapper.find('[data-testid="dimension-drag-w"]').element, 300, 200);
+    move(target.x, target.y);
+    await nextTick();
     up();
-    expect(constraintTool.emitted('update-dimension')).toBeUndefined();
+
+    expect(wrapper.emitted('update-dimension')).toEqual([['w', { offset: 40 }]]);
+    expect(wrapper.emitted('add-dimension')).toBeUndefined();
+  });
+
+  it('drags a dimension from its label with the dimension tool', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc, tool: 'dimension' });
+    const vp = fittedViewport(dimensionDoc);
+    const target = worldToScreen(vp, { x: 50, y: 30 });
+
+    down(wrapper.find('[data-testid="dimension-label-w"]').element, 300, 200);
+    up();
+    expect(wrapper.emitted('update-dimension')).toBeUndefined();
+    expect(wrapper.emitted('add-dimension')).toBeUndefined();
+
+    down(wrapper.find('[data-testid="dimension-label-w"]').element, 300, 200);
+    move(target.x, target.y);
+    await nextTick();
+    up();
+
+    expect(wrapper.emitted('update-dimension')).toEqual([['w', { offset: 30 }]]);
+  });
+
+  it('renders the drag strip only while a drag is possible', async () => {
+    const placing = mountCanvas({ document: dimensionDoc, tool: 'dimension' });
+    down(placing.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200);
+    await nextTick();
+    expect(placing.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(true);
+    expect(placing.find('[data-testid="dimension-drag-dimension-preview"]').exists()).toBe(false);
+    expect(placing.find('[data-testid="dimension-drag-w"]').exists()).toBe(true);
+
+    const hidden = mountCanvas({ document: dimensionDoc, showDimensions: false });
+    expect(hidden.find('[data-testid="dimension-drag-w"]').exists()).toBe(false);
+
+    const constrained = mountCanvas({ document: dimensionDoc, constraintActive: true });
+    expect(constrained.find('[data-testid="dimension-drag-w"]').exists()).toBe(false);
+
+    const drawing = mountCanvas({ document: dimensionDoc, tool: 'add_line' });
+    expect(drawing.find('[data-testid="dimension-drag-w"]').exists()).toBe(false);
+  });
+
+  it('sizes the drag strip to 24 px and uses a move cursor on both handles', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc });
+    const strip = wrapper.find('[data-testid="dimension-drag-w"]');
+
+    expect(strip.attributes('stroke')).toBe('transparent');
+    expect(strip.attributes('stroke-width')).toBe('24');
+    expect(strip.classes()).toContain('cursor-move');
+    expect(wrapper.find('[data-testid="dimension-label-w"]').classes()).toContain('cursor-move');
+    expect(wrapper.find('[data-testid="dimension-label-w"]').classes()).toContain(
+      'pointer-events-auto',
+    );
+
+    const drawing = mountCanvas({ document: dimensionDoc, tool: 'add_line' });
+    expect(drawing.find('[data-testid="dimension-label-w"]').classes()).toContain('cursor-text');
+    expect(drawing.find('[data-testid="dimension-label-w"]').classes()).not.toContain(
+      'cursor-move',
+    );
+
+    const placing = mountCanvas({ document: dimensionDoc, tool: 'dimension' });
+    down(placing.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200);
+    await nextTick();
+    const preview = placing.find('[data-testid="dimension-label-dimension-preview"]');
+    expect(preview.classes()).toContain('pointer-events-none');
+    expect(preview.classes()).not.toContain('cursor-text');
+  });
+
+  it('explains drag and edit in the label tooltip', async () => {
+    const draggable = mountCanvas({ document: dimensionDoc });
+    expect(draggable.find('[data-testid="dimension-label-w"] title').text()).toBe(
+      'Drag to reposition, double-click to edit',
+    );
+
+    const editable = mountCanvas({ document: dimensionDoc, tool: 'add_line' });
+    expect(editable.find('[data-testid="dimension-label-w"] title').text()).toBe(
+      'Double-click to edit',
+    );
+
+    const placing = mountCanvas({ document: dimensionDoc, tool: 'dimension' });
+    down(placing.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200);
+    await nextTick();
+    expect(placing.find('[data-testid="dimension-label-dimension-preview"] title').text()).toBe(
+      'Dimension preview',
+    );
+  });
+
+  it('drops an in-flight dimension drag on pointercancel', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc });
+    const vp = fittedViewport(dimensionDoc);
+    const mainLine = () => wrapper.find('[data-testid="dimension-lines-w"]').findAll('line')[2]!;
+    const committed = mainLine().attributes('y1');
+
+    down(wrapper.find('[data-testid="dimension-drag-w"]').element, 300, 200);
+    const target = worldToScreen(vp, { x: 50, y: 40 });
+    move(target.x, target.y);
+    await nextTick();
+    expect(mainLine().attributes('y1')).not.toBe(committed);
+
+    window.dispatchEvent(new MouseEvent('pointercancel'));
+    await nextTick();
+    expect(mainLine().attributes('y1')).toBe(committed);
+
+    move(target.x + 40, target.y + 40);
+    await nextTick();
+    expect(mainLine().attributes('y1')).toBe(committed);
+
+    up();
+    expect(wrapper.emitted('update-dimension')).toBeUndefined();
+  });
+
+  it('drops a point drag and a pan on pointercancel', async () => {
+    const dragging = mountCanvas({ document: dimensionDoc });
+    const moved = () => dragging.emitted('move-point');
+
+    down(pointCircle(dragging, 'a').element, 300, 200);
+    move(420, 320);
+    await nextTick();
+    window.dispatchEvent(new MouseEvent('pointercancel'));
+    await nextTick();
+    up();
+    expect(moved()).toBeUndefined();
+
+    const panning = mountCanvas({ document: dimensionDoc });
+    const beforePan = transformOf(panning);
+    down(panning.find('[data-testid="grid"]').element, 300, 200);
+    move(360, 260);
+    await nextTick();
+    const panned = transformOf(panning);
+    expect(panned).not.toBe(beforePan);
+
+    window.dispatchEvent(new MouseEvent('pointercancel'));
+    await nextTick();
+    move(500, 400);
+    await nextTick();
+
+    expect(transformOf(panning)).toBe(panned);
+  });
+
+  it('cancels a dimension drag when the tool switches mid-drag', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc });
+    const vp = fittedViewport(dimensionDoc);
+    const mainLine = () => wrapper.find('[data-testid="dimension-lines-w"]').findAll('line')[2]!;
+    const committed = mainLine().attributes('y1');
+
+    down(wrapper.find('[data-testid="dimension-drag-w"]').element, 300, 200);
+    const target = worldToScreen(vp, { x: 50, y: 40 });
+    move(target.x, target.y);
+    await nextTick();
+    expect(mainLine().attributes('y1')).not.toBe(committed);
+
+    wrapper.setProps({ tool: 'add_line' });
+    await nextTick();
+    expect(mainLine().attributes('y1')).toBe(committed);
+
+    move(target.x, target.y);
+    await nextTick();
+    up();
+    expect(wrapper.emitted('update-dimension')).toBeUndefined();
+  });
+
+  it('cancels a dimension drag when the layer hides', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc });
+    const vp = fittedViewport(dimensionDoc);
+
+    down(wrapper.find('[data-testid="dimension-drag-w"]').element, 300, 200);
+    const target = worldToScreen(vp, { x: 50, y: 40 });
+    move(target.x, target.y);
+    await nextTick();
+
+    wrapper.setProps({ showDimensions: false });
+    await nextTick();
+    up();
+    expect(wrapper.emitted('update-dimension')).toBeUndefined();
+  });
+
+  it('removes every window pointer listener on unmount mid-drag', () => {
+    const removeSpy = vi.spyOn(window, 'removeEventListener');
+    const wrapper = mountCanvas({ document: dimensionDoc });
+
+    down(wrapper.find('[data-testid="dimension-drag-w"]').element, 300, 200);
+    wrapper.unmount();
+
+    const removed = removeSpy.mock.calls.map(([type]) => type);
+    expect(removed).toContain('pointermove');
+    expect(removed).toContain('pointerup');
+    expect(removed).toContain('pointercancel');
+    removeSpy.mockRestore();
+  });
+
+  it('blocks dragging and editing during constraint placement', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc, constraintActive: true });
+
+    expect(wrapper.find('[data-testid="dimension-drag-w"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-label-w"]').classes()).toContain(
+      'pointer-events-none',
+    );
+
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(false);
+    expect(wrapper.emitted('update-dimension')).toBeUndefined();
   });
 });
