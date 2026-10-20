@@ -267,8 +267,7 @@ const distanceConstraints = computed(() =>
 
 /** Committed dimensions can be dragged only with the tools that own a placed line. */
 const dimensionDragEnabled = computed(
-  () =>
-    !props.constraintActive && (props.tool === 'select' || props.tool === 'dimension'),
+  () => !props.constraintActive && (props.tool === 'select' || props.tool === 'dimension'),
 );
 
 function drawingFor(constraint: DistanceConstraint, preview: boolean): DimensionDrawing | null {
@@ -965,13 +964,15 @@ watch(
           "
           @dblclick.stop.prevent="onDimensionDoubleClick(label)"
         >
-          <title>{{
-            label.draggable
-              ? 'Drag to reposition, double-click to edit'
-              : label.editable
-                ? 'Double-click to edit'
-                : 'Dimension preview'
-          }}</title>
+          <title>
+            {{
+              label.draggable
+                ? 'Drag to reposition, double-click to edit'
+                : label.editable
+                  ? 'Double-click to edit'
+                  : 'Dimension preview'
+            }}
+          </title>
           <rect
             :x="-label.width / 2"
             y="-8"
