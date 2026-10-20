@@ -43,6 +43,7 @@ const TOOL_ICONS: Record<EditorTool, RibbonIconName> = {
   add_line: 'line',
   add_curve: 'curve',
   dimension: 'dimension',
+  add_allowance: 'allowance',
 };
 
 const TOOL_ITEMS = new Map<EditorTool, RibbonToolItem>(
@@ -96,6 +97,7 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
       toolItem('add_line'),
       toolItem('add_curve'),
       toolItem('dimension'),
+      toolItem('add_allowance'),
     ],
   },
   {

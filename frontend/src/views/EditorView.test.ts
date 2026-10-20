@@ -417,41 +417,152 @@ describe('EditorView', () => {
     expect(wrapper.text()).toContain('1 cut edge(s)');
   });
 
-  it('attaches and detaches a seam allowance on an edge', async () => {
-    const pinia = createPinia();
-    setActivePinia(pinia);
-    useEditorStore().load(edgeDoc);
+  it('arms the seam allowance tool, toggles it off and leaves it with Escape', async () => {
+    const { wrapper } = await mountLoaded(edgeDoc);
 
-    const wrapper = await mountEditor(pinia);
-
-    await wrapper.find('[data-testid="seam-width-l1"]').setValue('12');
-    await wrapper.find('[data-testid="add-seam-l1"]').trigger('click');
+    await wrapper.find('[data-testid="tool-add_allowance"]').trigger('click');
     await nextTick();
 
-    expect(wrapper.find('[data-testid="seam-label-l1"]').text()).toContain('12');
-    expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Seam allowance');
+    expect(wrapper.find('[data-testid="tool-add_allowance"]').attributes('aria-pressed')).toBe(
+      'true',
+    );
 
-    await wrapper.find('[data-testid="remove-seam-l1"]').trigger('click');
+    await wrapper.find('[data-testid="tool-add_allowance"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Select');
+
+    await wrapper.find('[data-testid="tool-add_allowance"]').trigger('click');
+    await nextTick();
+    keydown('Escape');
     await nextTick();
 
-    expect(wrapper.find('[data-testid="seam-label-l1"]').exists()).toBe(false);
-    expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Select');
   });
 
-  it('ignores a non-positive seam width', async () => {
-    const pinia = createPinia();
-    setActivePinia(pinia);
-    const store = useEditorStore();
-    store.load(edgeDoc);
+  it('attaches a default allowance from the canvas and stays armed', async () => {
+    const { wrapper, store } = await mountLoaded(edgeDoc);
 
-    const wrapper = await mountEditor(pinia);
-
-    await wrapper.find('[data-testid="seam-width-l1"]').setValue('0');
-    await wrapper.find('[data-testid="add-seam-l1"]').trigger('click');
+    await wrapper.find('[data-testid="tool-add_allowance"]').trigger('click');
     await nextTick();
+    entityDown(wrapper, 'line', 'l1');
+    await flushPromises();
+
+    expect(store.document.seams).toHaveLength(1);
+    expect(store.document.seams[0]).toMatchObject({ edge: 'l1', width: 10 });
+    expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Seam allowance');
+  });
+
+  it('rejects a construction edge with the error banner', async () => {
+    const guideDoc: PatternDocument = {
+      ...edgeDoc,
+      entities: edgeDoc.entities.map((entity) =>
+        entity.kind === 'line' ? { ...entity, construction: true } : entity,
+      ),
+    };
+    const { wrapper, store } = await mountLoaded(guideDoc);
+
+    await wrapper.find('[data-testid="tool-add_allowance"]').trigger('click');
+    await nextTick();
+    entityDown(wrapper, 'line', 'l1');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Only cut edges can carry a seam allowance');
+    expect(store.document.seams).toHaveLength(0);
+  });
+
+  it('does nothing when clicking an edge that already has an allowance', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...edgeDoc,
+      seams: [{ id: 's1', edge: 'l1', width: 10 }],
+    });
+
+    await wrapper.find('[data-testid="tool-add_allowance"]').trigger('click');
+    await nextTick();
+    entityDown(wrapper, 'line', 'l1');
+    await flushPromises();
+
+    expect(store.document.seams).toHaveLength(1);
+    expect(store.journal).toHaveLength(0);
+  });
+
+  it('edits a seam width by double-clicking and restores it with undo', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...edgeDoc,
+      seams: [{ id: 's1', edge: 'l1', width: 10 }],
+    });
+
+    await wrapper.find('[data-seam-hit="l1"]').trigger('dblclick');
+    await flushPromises();
+
+    const input = wrapper.find('[data-testid="seam-width-input"]');
+    expect((input.element as HTMLInputElement).value).toBe('10');
+    await input.setValue('15');
+    await input.trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+
+    expect(store.document.seams[0]).toMatchObject({ id: 's1', width: 15 });
+    expect((wrapper.find('[data-testid="seam-width-l1"]').element as HTMLInputElement).value).toBe(
+      '15',
+    );
+
+    await wrapper.find('[data-testid="undo"]').trigger('click');
+    await flushPromises();
+
+    expect(store.document.seams[0]).toMatchObject({ width: 10 });
+  });
+
+  it('edits the sidebar width and snaps back on invalid or unchanged input', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...edgeDoc,
+      seams: [{ id: 's1', edge: 'l1', width: 10 }],
+    });
+    const field = () => wrapper.find('[data-testid="seam-width-l1"]');
+
+    await field().setValue('18');
+    await field().trigger('change');
+    await flushPromises();
+    expect(store.document.seams[0]).toMatchObject({ width: 18 });
+    const journal = store.journal.length;
+
+    await field().setValue('0');
+    await field().trigger('change');
+    await nextTick();
+    expect(store.document.seams[0]).toMatchObject({ width: 18 });
+    expect((field().element as HTMLInputElement).value).toBe('18');
+
+    await field().setValue('18');
+    await field().trigger('change');
+    await flushPromises();
+    expect(store.journal).toHaveLength(journal);
+
+    await field().setValue('22');
+    await field().trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    expect(store.document.seams[0]).toMatchObject({ width: 22 });
+  });
+
+  it('shows No allowance for an unattached edge with no add control', async () => {
+    const { wrapper } = await mountLoaded(edgeDoc);
+
+    expect(wrapper.find('[data-testid="seam-empty-l1"]').text()).toBe('No allowance');
+    expect(wrapper.find('[data-testid="add-seam-l1"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="seam-width-l1"]').exists()).toBe(false);
+  });
+
+  it('removes an allowance and its dashed path', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...edgeDoc,
+      seams: [{ id: 's1', edge: 'l1', width: 10 }],
+    });
+
+    await wrapper.find('[data-testid="remove-seam-l1"]').trigger('click');
+    await flushPromises();
 
     expect(store.document.seams).toHaveLength(0);
-    expect(wrapper.find('[data-testid="seam-label-l1"]').exists()).toBe(false);
+    expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="seam-empty-l1"]').exists()).toBe(true);
   });
 
   it('hides seam allowances without changing the document', async () => {

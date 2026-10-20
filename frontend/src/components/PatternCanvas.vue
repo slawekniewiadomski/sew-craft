@@ -18,6 +18,7 @@ import {
   type PatternDocument,
   type PointEntity,
   seamAllowancePaths,
+  seamForEdge,
   type Vec2,
 } from '@sewcraft/geometry';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -51,6 +52,8 @@ import {
   type Viewport,
 } from '@/lib/viewport';
 
+import SeamWidthEditor from './SeamWidthEditor.vue';
+
 interface LineView {
   line: LineEntity;
   start: PointEntity;
@@ -68,7 +71,10 @@ interface Hit {
 }
 
 interface SeamView {
+  id: EntityId;
   edge: EntityId;
+  kind: 'line' | 'curve';
+  width: number;
   d: string;
   selfIntersects: boolean;
 }
@@ -130,6 +136,8 @@ const emit = defineEmits<{
   'constraint-pick': [pick: ConstraintPick];
   'add-dimension': [placement: DimensionPlacement];
   'update-dimension': [id: EntityId, patch: DimensionPatch];
+  'add-allowance': [edge: EntityId];
+  'set-seam-width': [id: EntityId, width: number];
 }>();
 
 const svg = ref<SVGSVGElement | null>(null);
@@ -157,6 +165,8 @@ const dimensionDrag = ref<{
 /** The inline value editor, keyed to the dimension being edited. */
 const editingDimension = ref<{ id: EntityId; value: string } | null>(null);
 const dimensionInput = ref<HTMLInputElement | null>(null);
+/** The inline seam-width editor, keyed to the seam and anchored in screen space. */
+const editingSeam = ref<{ id: EntityId; width: number; x: number; y: number } | null>(null);
 
 const points = computed(() =>
   allPoints(props.document).map((point) =>
@@ -198,11 +208,19 @@ const curves = computed(() =>
  */
 const seams = computed<SeamView[]>(() => {
   if (!props.showSeamAllowance) return [];
-  return seamAllowancePaths(props.document).map((allowance) => ({
-    edge: allowance.edge,
-    d: polylinePath(allowance.path),
-    selfIntersects: allowance.selfIntersections.length > 0,
-  }));
+  return seamAllowancePaths(props.document).map((allowance) => {
+    const seam = seamForEdge(props.document, allowance.edge)!;
+    const entity = props.document.entities.find((candidate) => candidate.id === allowance.edge) as
+      LineEntity | CurveEntity;
+    return {
+      id: seam.id,
+      edge: allowance.edge,
+      kind: entity.kind,
+      width: seam.width,
+      d: polylinePath(allowance.path),
+      selfIntersects: allowance.selfIntersections.length > 0,
+    };
+  });
 });
 
 /** Screen-space diameter of a constraint icon, in pixels. */
@@ -396,6 +414,14 @@ function screenPoint(event: { clientX: number; clientY: number }): Vec2 {
 }
 
 function hitEntity(event: Event): Hit | null {
+  const seamElement = (event.target as Element).closest('[data-seam-id]');
+  if (seamElement) {
+    const seam = seams.value.find(
+      (candidate) => candidate.id === seamElement.getAttribute('data-seam-id'),
+    )!;
+    return { id: seam.edge, kind: seam.kind };
+  }
+
   const element = (event.target as Element).closest('[data-entity-id]');
   if (!element) return null;
   return {
@@ -537,6 +563,21 @@ function cancelDimensionEdit(): void {
   editingDimension.value = null;
 }
 
+/** Double-click on the dashed allowance opens its inline width editor. */
+function onSeamDoubleClick(seam: SeamView, event: MouseEvent): void {
+  if (props.constraintActive) return;
+
+  const point = screenPoint(event);
+  editingSeam.value = { id: seam.id, width: seam.width, x: point.x, y: point.y };
+}
+
+function commitSeamWidth(width: number): void {
+  const editing = editingSeam.value!;
+
+  editingSeam.value = null;
+  emit('set-seam-width', editing.id, width);
+}
+
 function onPointerDown(event: PointerEvent): void {
   updateSize();
   const screen = screenPoint(event);
@@ -575,6 +616,11 @@ function onPointerDown(event: PointerEvent): void {
       break;
     case 'dimension':
       onDimensionPointer(hit);
+      break;
+    case 'add_allowance':
+      if (hit !== null && hit.kind !== 'point') {
+        emit('add-allowance', hit.id);
+      }
       break;
   }
 }
@@ -739,6 +785,7 @@ watch(
     dimensionPending.value = [];
     dimensionPlacement.value = null;
     editingDimension.value = null;
+    editingSeam.value = null;
     dimensionDrag.value = null;
   },
 );
@@ -749,6 +796,7 @@ watch(
   () => props.document,
   () => {
     editingDimension.value = null;
+    editingSeam.value = null;
   },
 );
 
@@ -756,6 +804,13 @@ watch(
   () => props.showDimensions,
   (visible) => {
     if (!visible) editingDimension.value = null;
+  },
+);
+
+watch(
+  () => props.showSeamAllowance,
+  (visible) => {
+    if (!visible) editingSeam.value = null;
   },
 );
 </script>
@@ -813,6 +868,22 @@ watch(
             vector-effect="non-scaling-stroke"
             :class="seam.selfIntersects ? 'text-destructive' : 'text-muted-foreground'"
             :data-seam-edge="seam.edge"
+          />
+        </g>
+
+        <g data-testid="seam-hit-layer">
+          <path
+            v-for="seam in seams"
+            :key="`hit-${seam.id}`"
+            :d="seam.d"
+            fill="none"
+            stroke="transparent"
+            stroke-width="12"
+            vector-effect="non-scaling-stroke"
+            class="pointer-events-auto cursor-pointer"
+            :data-seam-hit="seam.edge"
+            :data-seam-id="seam.id"
+            @dblclick.stop.prevent="onSeamDoubleClick(seam, $event)"
           />
         </g>
 
@@ -1047,6 +1118,15 @@ watch(
       @keydown.enter.prevent.stop="applyDimensionEdit"
       @keydown.esc.prevent.stop="cancelDimensionEdit"
       @blur="finishDimensionEdit"
+    />
+
+    <SeamWidthEditor
+      v-if="editingSeam !== null"
+      :width="editingSeam.width"
+      :x="editingSeam.x"
+      :y="editingSeam.y"
+      @commit="commitSeamWidth"
+      @cancel="editingSeam = null"
     />
   </div>
 </template>
