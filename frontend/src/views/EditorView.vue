@@ -9,6 +9,7 @@ import {
   isDrivenDimension,
   measureLinearDimension,
   seamForEdge,
+  seamSide,
   toSvg,
 } from '@sewcraft/geometry';
 import type {
@@ -19,6 +20,7 @@ import type {
   DimensionOrientation,
   EntityId,
   LineEntity,
+  SeamSide,
 } from '@sewcraft/geometry';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
@@ -100,6 +102,7 @@ const edges = computed(() =>
         construction: entity.construction,
         seamId: seam?.id ?? null,
         seamWidth: seam?.width ?? null,
+        seamSide: seam === undefined ? null : seamSide(seam),
       };
     }),
 );
@@ -352,6 +355,17 @@ function setSeamWidth(id: EntityId, width: number): void {
   );
 }
 
+/** Flip a seam to the opposite side of its edge as one undoable command. */
+function flipSeam(id: EntityId, side: SeamSide): void {
+  run(() =>
+    dispatch({
+      id: nextCommandId('seam'),
+      type: 'set_seam_allowance',
+      params: { id, side: side === 'left' ? 'right' : 'left' },
+    }),
+  );
+}
+
 /** Sidebar width edit: invalid or unchanged values snap back without a command. */
 function onSeamWidthEdit(id: EntityId, current: number, event: Event): void {
   const input = event.target as HTMLInputElement;
@@ -556,6 +570,7 @@ onBeforeUnmount(() => {
             @set-construction="convert"
             @add-seam="onAddAllowance"
             @set-seam-width="setSeamWidth"
+            @flip-seam="flipSeam"
             @remove-seam="removeSeam"
             @update-dimension="onInspectorDimensionValue"
             @remove-constraint="removeConstraint"
@@ -622,6 +637,29 @@ onBeforeUnmount(() => {
                     />
                     mm
                   </label>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    :aria-label="`Flip side of the seam allowance for ${edge.id}`"
+                    :data-testid="`flip-seam-${edge.id}`"
+                    @click="flipSeam(edge.seamId!, edge.seamSide!)"
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M2.5 5.5h10M10 3l2.5 2.5L10 8" />
+                      <path d="M13.5 10.5h-10M6 8l-2.5 2.5L6 13" />
+                    </svg>
+                    Flip side
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"

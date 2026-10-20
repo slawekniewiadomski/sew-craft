@@ -10,6 +10,7 @@ import {
   getSeam,
   PATTERN_SCHEMA,
   seamForEdge,
+  seamSide,
   type CurveEntity,
   type Entity,
   type LineEntity,
@@ -75,6 +76,11 @@ describe('seam helpers', () => {
   it('finds a seam by its edge', () => {
     expect(seamForEdge(document, 'l')).toBe(seam);
     expect(seamForEdge(document, 'missing')).toBeUndefined();
+  });
+
+  it('resolves a missing side to the original left default', () => {
+    expect(seamSide(seam)).toBe('left');
+    expect(seamSide({ ...seam, side: 'right' })).toBe('right');
   });
 });
 

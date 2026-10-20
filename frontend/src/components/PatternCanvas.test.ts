@@ -320,6 +320,7 @@ describe('PatternCanvas', () => {
       {
         edge: 'ab',
         width: 10,
+        side: 'left',
         join: 'miter',
         path: [
           { x: 0, y: 0 },
@@ -918,6 +919,12 @@ describe('PatternCanvas', () => {
     expect(wrapper.find('[data-testid="dimension-lines-h"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="dimension-lines-ghost"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="dimension-label-w"]').find('text').text()).toBe('100');
+    expect(wrapper.find('[data-testid="dimension-label-w"]').find('text').classes()).toContain(
+      'fill-foreground',
+    );
+    expect(wrapper.find('[data-testid="dimension-label-w"]').find('text').classes()).not.toContain(
+      'fill-muted-foreground',
+    );
     expect(wrapper.find('[data-testid="dimension-label-w"]').attributes('aria-label')).toBe(
       'Dimension 100 millimetres',
     );
@@ -944,6 +951,8 @@ describe('PatternCanvas', () => {
 
     const label = wrapper.find('[data-testid="dimension-label-m"]');
     expect(label.find('text').text()).toBe('(100)');
+    expect(label.find('text').classes()).toContain('fill-muted-foreground');
+    expect(label.find('text').classes()).not.toContain('fill-foreground');
     expect(label.attributes('aria-label')).toBe('Driven dimension, measured 100 millimetres');
     expect(label.find('rect').attributes('width')).toBe('38');
     expect(wrapper.find('[data-testid="dimension-drag-m"]').exists()).toBe(true);
@@ -968,6 +977,12 @@ describe('PatternCanvas', () => {
     expect(
       wrapper.find('[data-testid="dimension-label-dimension-preview"]').find('text').text(),
     ).toBe('(100)');
+    expect(
+      wrapper.find('[data-testid="dimension-label-dimension-preview"]').find('text').classes(),
+    ).toContain('fill-foreground');
+    expect(
+      wrapper.find('[data-testid="dimension-label-dimension-preview"]').find('text').classes(),
+    ).not.toContain('fill-muted-foreground');
     expect(
       wrapper.find('[data-testid="dimension-label-dimension-preview"]').attributes('aria-label'),
     ).toBe('Driven dimension, measured 100 millimetres');

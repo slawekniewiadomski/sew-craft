@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import type { DimensionOrientation, Entity, EntityId, PatternDocument } from '@sewcraft/geometry';
+import type {
+  DimensionOrientation,
+  Entity,
+  EntityId,
+  PatternDocument,
+  SeamSide,
+} from '@sewcraft/geometry';
+import { computed } from 'vue';
 
 import { Button } from '@/components/ui/button';
 import type { DimensionSummary, EntityProperties } from '@/lib/entity-properties';
@@ -20,6 +27,7 @@ const emit = defineEmits<{
   'set-construction': [id: EntityId, construction: boolean];
   'add-seam': [id: EntityId];
   'set-seam-width': [id: EntityId, width: number];
+  'flip-seam': [id: EntityId, side: SeamSide];
   'remove-seam': [id: EntityId];
   'update-dimension': [id: EntityId, value: number | null];
   'remove-constraint': [id: EntityId];
@@ -30,6 +38,14 @@ const KIND_LABELS: Record<Entity['kind'], string> = {
   line: 'Line',
   curve: 'Curve',
 };
+
+const KIND_NOUNS: Record<Entity['kind'], string> = {
+  point: 'point',
+  line: 'line',
+  curve: 'curve',
+};
+
+const kindNoun = computed(() => KIND_NOUNS[props.entity.kind]);
 
 function kindLabel(kind: Entity['kind']): string {
   return KIND_LABELS[kind];
@@ -102,6 +118,14 @@ function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
         Construction
       </span>
     </header>
+
+    <p
+      v-if="props.entity.geometry.kind !== 'point'"
+      class="text-xs text-muted-foreground"
+      data-testid="entity-scope-hint"
+    >
+      Showing what acts on this {{ kindNoun }}. Select a point to see its constraints.
+    </p>
 
     <section aria-labelledby="entity-geometry-heading">
       <h3
@@ -231,7 +255,7 @@ function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
           </label>
         </li>
       </ul>
-      <p v-else class="mt-1 text-xs text-muted-foreground">No related dimensions.</p>
+      <p v-else class="mt-1 text-xs text-muted-foreground">No dimensions on this {{ kindNoun }}.</p>
     </section>
 
     <section aria-labelledby="entity-constraints-heading">
@@ -270,7 +294,9 @@ function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
           </Button>
         </li>
       </ul>
-      <p v-else class="mt-1 text-xs text-muted-foreground">No related constraints.</p>
+      <p v-else class="mt-1 text-xs text-muted-foreground">
+        No constraints on this {{ kindNoun }}.
+      </p>
     </section>
 
     <section
@@ -300,6 +326,29 @@ function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
           />
           mm
         </label>
+        <Button
+          variant="outline"
+          size="sm"
+          :aria-label="`Flip side of the seam allowance for ${props.entity.id}`"
+          data-testid="entity-flip-seam"
+          @click="emit('flip-seam', props.entity.seam!.id, props.entity.seam!.side)"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M2.5 5.5h10M10 3l2.5 2.5L10 8" />
+            <path d="M13.5 10.5h-10M6 8l-2.5 2.5L6 13" />
+          </svg>
+          Flip side
+        </Button>
         <Button
           variant="outline"
           size="sm"

@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.5.0',
+    'spec_version' => '0.6.0',
 
     /*
     |--------------------------------------------------------------------------
@@ -128,6 +128,7 @@ return [
             'params' => [
                 'edge' => 'entity_id',
                 'width' => 'number?',
+                'side' => 'left|right?',
             ],
             'inverse' => 'remove_seam_allowance',
         ],
@@ -139,10 +140,11 @@ return [
             'inverse' => 'add_seam_allowance',
         ],
         'set_seam_allowance' => [
-            'description' => 'Change the width of an attached seam allowance (mm).',
+            'description' => 'Change the width or side of an attached seam allowance (mm).',
             'params' => [
                 'id' => 'entity_id',
-                'width' => 'number',
+                'width' => 'number?',
+                'side' => 'left|right?',
             ],
             'inverse' => 'set_seam_allowance',
         ],

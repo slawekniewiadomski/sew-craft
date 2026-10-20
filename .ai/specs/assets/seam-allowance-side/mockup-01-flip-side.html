@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Seam allowance side — illustrative mockup</title>
+    <style>
+      /* Theme tokens copied from frontend/src/assets/main.css so the mockup
+         matches the app's light theme. Illustrative only. */
+      :root {
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.145 0 0);
+        --primary: oklch(0.627 0.194 149.214);
+        --muted: oklch(0.97 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --border: oklch(0.922 0 0);
+        --input: oklch(0.922 0 0);
+        --radius: 0.5rem;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--background);
+        color: var(--foreground);
+        font-family:
+          ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        font-size: 14px;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 17px;
+        font-weight: 600;
+      }
+      .subtitle {
+        margin: 0 0 20px;
+        color: var(--muted-foreground);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      .card {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+      }
+      .card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border);
+        background: var(--muted);
+      }
+      .card-header h2 {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .tag {
+        padding: 2px 8px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--background);
+        color: var(--muted-foreground);
+        font-size: 11px;
+        white-space: nowrap;
+      }
+      .canvas {
+        display: block;
+        width: 100%;
+        height: auto;
+        background:
+          linear-gradient(to right, rgba(0, 0, 0, 0.045) 1px, transparent 1px) 0 0 / 20px 20px,
+          linear-gradient(to bottom, rgba(0, 0, 0, 0.045) 1px, transparent 1px) 0 0 / 20px 20px;
+      }
+      .sidebar {
+        padding: 12px 14px 14px;
+        border-top: 1px solid var(--border);
+      }
+      .sidebar h3 {
+        margin: 0 0 8px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted-foreground);
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .edge-id {
+        font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+        font-size: 12px;
+      }
+      .label {
+        color: var(--muted-foreground);
+      }
+      .width {
+        width: 64px;
+        padding: 4px 8px;
+        border: 1px solid var(--input);
+        border-radius: calc(var(--radius) - 2px);
+        font: inherit;
+        text-align: right;
+      }
+      .unit {
+        color: var(--muted-foreground);
+        margin-left: -4px;
+      }
+      .button {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) - 2px);
+        background: var(--background);
+        color: var(--foreground);
+        font: inherit;
+        line-height: 1.4;
+        cursor: pointer;
+      }
+      .button:hover {
+        background: var(--muted);
+      }
+      .button.subtle {
+        margin-left: auto;
+        border-color: transparent;
+        color: var(--muted-foreground);
+      }
+      .button.primary {
+        border-color: color-mix(in oklch, var(--primary) 40%, var(--border));
+        color: var(--primary);
+      }
+      .arrow {
+        stroke: var(--muted-foreground);
+        stroke-width: 1.5;
+        fill: none;
+      }
+      .arrow-head {
+        fill: var(--muted-foreground);
+      }
+      .edge {
+        stroke: var(--foreground);
+        stroke-width: 2.5;
+        fill: none;
+        stroke-linecap: round;
+      }
+      .other-edge {
+        stroke: var(--muted-foreground);
+        stroke-width: 1.5;
+        fill: none;
+        opacity: 0.55;
+      }
+      .allowance {
+        stroke: var(--muted-foreground);
+        stroke-width: 1.5;
+        stroke-dasharray: 6 4;
+        fill: none;
+      }
+      .allowance.flipped {
+        stroke: var(--primary);
+      }
+      .annotation {
+        fill: var(--muted-foreground);
+        font-size: 11px;
+      }
+      .point {
+        fill: var(--foreground);
+      }
+      .note {
+        margin-top: 16px;
+        color: var(--muted-foreground);
+        font-size: 12px;
+      }
+      code {
+        padding: 1px 4px;
+        border-radius: 4px;
+        background: var(--muted);
+        font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Seam allowance side — illustrative mockup</h1>
+    <p class="subtitle">
+      Same edge <code>a → b</code>, same 10&nbsp;mm allowance; only the stored side changes.
+    </p>
+
+    <div class="grid">
+      <section class="card">
+        <div class="card-header">
+          <h2>Today — side fixed by edge direction</h2>
+          <span class="tag">inside this outline</span>
+        </div>
+        <svg class="canvas" viewBox="0 0 420 300" role="img" aria-label="Today: the allowance is offset below the highlighted edge">
+          <rect x="110" y="70" width="200" height="150" class="other-edge" rx="2" />
+          <line x1="110" y1="70" x2="310" y2="70" class="edge" />
+          <line x1="110" y1="84" x2="310" y2="84" class="allowance" />
+          <line x1="140" y1="62" x2="240" y2="62" class="arrow" marker-end="url(#arrow-today)" />
+          <circle cx="110" cy="70" r="4" class="point" />
+          <circle cx="310" cy="70" r="4" class="point" />
+          <text x="114" y="60" class="annotation">a</text>
+          <text x="300" y="60" class="annotation">b</text>
+          <text x="196" y="102" class="annotation">10 mm allowance</text>
+        </svg>
+        <div class="sidebar">
+          <h3>Outline · allowance</h3>
+          <div class="row">
+            <span class="edge-id">l1</span>
+            <span class="label">allowance</span>
+            <input class="width" value="10" aria-label="Allowance width in millimetres for l1" />
+            <span class="unit">mm</span>
+            <button class="button subtle" type="button">Remove allowance</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-header">
+          <h2>Proposed — Flip side</h2>
+          <span class="tag">outside after one click</span>
+        </div>
+        <svg class="canvas" viewBox="0 0 420 300" role="img" aria-label="Proposed: the same allowance after Flip side, offset above the highlighted edge">
+          <rect x="110" y="70" width="200" height="150" class="other-edge" rx="2" />
+          <line x1="110" y1="70" x2="310" y2="70" class="edge" />
+          <line x1="110" y1="56" x2="310" y2="56" class="allowance flipped" />
+          <line x1="140" y1="78" x2="240" y2="78" class="arrow" marker-end="url(#arrow-proposed)" />
+          <circle cx="110" cy="70" r="4" class="point" />
+          <circle cx="310" cy="70" r="4" class="point" />
+          <text x="114" y="88" class="annotation">a</text>
+          <text x="300" y="88" class="annotation">b</text>
+          <text x="196" y="46" class="annotation">10 mm allowance, flipped</text>
+        </svg>
+        <div class="sidebar">
+          <h3>Outline · allowance</h3>
+          <div class="row">
+            <span class="edge-id">l1</span>
+            <span class="label">allowance</span>
+            <input class="width" value="10" aria-label="Allowance width in millimetres for l1" />
+            <span class="unit">mm</span>
+            <button class="button primary" type="button">
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                <path d="M2 4h6.5L7 2.5M10 8H3.5L5 9.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              Flip side
+            </button>
+            <button class="button subtle" type="button">Remove allowance</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <p class="note">
+      Illustrative only: the dashed line is the allowance, the solid line is the cut edge. The
+      button never says “left” or “right”, because those words invert on screen; the path moving is
+      the feedback. The inspector shows the same button in its Seam allowance section.
+    </p>
+
+    <svg width="0" height="0" aria-hidden="true">
+      <defs>
+        <marker id="arrow-today" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0L10 5L0 10z" class="arrow-head" />
+        </marker>
+        <marker id="arrow-proposed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0L10 5L0 10z" class="arrow-head" />
+        </marker>
+      </defs>
+    </svg>
+  </body>
+</html>

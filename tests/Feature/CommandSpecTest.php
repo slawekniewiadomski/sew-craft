@@ -3,7 +3,7 @@
 it('exposes the command spec', function () {
     $this->getJson('/api/commands')
         ->assertOk()
-        ->assertJsonPath('version', '0.5.0')
+        ->assertJsonPath('version', '0.6.0')
         ->assertJsonStructure([
             'version',
             'commands' => [
@@ -28,8 +28,10 @@ it('exposes dimension presentation and update params', function () {
 it('exposes the seam allowance update command', function () {
     $this->getJson('/api/commands')
         ->assertOk()
+        ->assertJsonPath('commands.add_seam_allowance.params.side', 'left|right?')
         ->assertJsonPath('commands.set_seam_allowance.params.id', 'entity_id')
-        ->assertJsonPath('commands.set_seam_allowance.params.width', 'number')
+        ->assertJsonPath('commands.set_seam_allowance.params.width', 'number?')
+        ->assertJsonPath('commands.set_seam_allowance.params.side', 'left|right?')
         ->assertJsonPath('commands.set_seam_allowance.inverse', 'set_seam_allowance');
 });
 
