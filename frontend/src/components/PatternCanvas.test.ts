@@ -702,7 +702,7 @@ describe('PatternCanvas', () => {
 
     down(wrapper.find('[data-testid="grid"]').element, 400, 300);
     expect(wrapper.emitted('add-dimension')).toEqual([
-      [{ a: 'a', b: 'b', orientation: 'aligned', offset: 12 }],
+      [{ a: 'a', b: 'b', orientation: 'aligned', offset: 20 }],
     ]);
   });
 
@@ -721,7 +721,7 @@ describe('PatternCanvas', () => {
     down(wrapper.find('[data-testid="grid"]').element, 400, 300);
 
     expect(wrapper.emitted('add-dimension')).toEqual([
-      [{ a: 'c', b: 'a', orientation: 'aligned', offset: 12 }],
+      [{ a: 'c', b: 'a', orientation: 'aligned', offset: 20 }],
     ]);
   });
 

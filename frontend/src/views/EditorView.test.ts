@@ -533,7 +533,7 @@ describe('EditorView', () => {
     ).toBe('aligned');
     expect(
       (wrapper.find('[data-testid="dimension-offset-width"]').element as HTMLInputElement).value,
-    ).toBe('12');
+    ).toBe('20');
 
     await wrapper.find('[data-testid="dimension-value-width"]').setValue('200');
     await wrapper.find('[data-testid="dimension-value-width"]').trigger('change');
@@ -915,7 +915,7 @@ describe('EditorView', () => {
         b: 'b',
         value: 100,
         orientation: 'aligned',
-        offset: 12,
+        offset: 20,
       },
     ]);
     expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(false);
@@ -950,7 +950,7 @@ describe('EditorView', () => {
     await flushPromises();
 
     expect(store.document.constraints).toHaveLength(1);
-    expect(store.document.constraints[0]).toMatchObject({ id: 'w', value: 100, offset: 12 });
+    expect(store.document.constraints[0]).toMatchObject({ id: 'w', value: 100, offset: 20 });
   });
 
   it('ignores a zero-length dimension placement', async () => {
