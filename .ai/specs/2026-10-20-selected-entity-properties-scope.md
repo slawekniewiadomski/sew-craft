@@ -43,8 +43,8 @@ That is deliberately broad: it includes constraints that genuinely span two
 edges, but also every constraint on a neighbouring edge that shares a corner.
 The earlier selection-inspector spec chose that rule in Q2/R5 and documented a
 dimension between the line's start and an unrelated point as related
-(`.ai/specs/2026-10-20-selected-entity-properties.md:188,221,233`). Issue #41
-shows the cost of that choice; this spec narrows it.
+(`.ai/specs/2026-10-20-selected-entity-properties.md`, since amended by this
+spec). Issue #41 shows the cost of that choice; this spec narrows it.
 
 ## 📝 Proposed Solution
 
