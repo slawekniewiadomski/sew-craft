@@ -61,12 +61,25 @@ function canvasDown(wrapper: VueWrapper, x: number, y: number, button = 0): void
     );
 }
 
-function entityDown(wrapper: VueWrapper, kind: 'point' | 'line' | 'curve', id: EntityId): void {
-  wrapper
-    .find(`[data-kind="${kind}"][data-entity-id="${id}"]`)
-    .element.dispatchEvent(
-      new MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100, button: 0 }),
-    );
+function canvasUp(): void {
+  window.dispatchEvent(new MouseEvent('pointerup'));
+}
+
+function entityDown(
+  wrapper: VueWrapper,
+  kind: 'point' | 'line' | 'curve',
+  id: EntityId,
+  init: MouseEventInit = {},
+): void {
+  wrapper.find(`[data-kind="${kind}"][data-entity-id="${id}"]`).element.dispatchEvent(
+    new MouseEvent('pointerdown', {
+      bubbles: true,
+      clientX: 100,
+      clientY: 100,
+      button: 0,
+      ...init,
+    }),
+  );
 }
 
 function pointDown(wrapper: VueWrapper, id: EntityId): void {
@@ -185,14 +198,14 @@ describe('EditorView', () => {
   });
 
   it('enables delete only with a selection and removes the point on Delete', async () => {
-    const wrapper = await mountEditor(createPinia());
+    const { wrapper } = await mountLoaded(simpleDoc);
 
     expect(wrapper.find('[data-testid="delete"]').attributes('disabled')).toBeDefined();
 
     keydown('Delete');
     expect(points(wrapper)).toHaveLength(4);
 
-    pointDown(wrapper, 'a');
+    pointDown(wrapper, 'p');
     await nextTick();
     expect(wrapper.find('[data-testid="delete"]').attributes('disabled')).toBeUndefined();
 
@@ -205,19 +218,140 @@ describe('EditorView', () => {
   });
 
   it('removes the selected point with Backspace and the delete button', async () => {
-    const wrapper = await mountEditor(createPinia());
+    const { wrapper } = await mountLoaded(simpleDoc);
 
-    pointDown(wrapper, 'a');
+    pointDown(wrapper, 'p');
     await nextTick();
     keydown('Backspace');
     await nextTick();
     expect(points(wrapper)).toHaveLength(3);
 
-    pointDown(wrapper, 'b');
+    pointDown(wrapper, 'q');
     await nextTick();
     await wrapper.find('[data-testid="delete"]').trigger('click');
     await nextTick();
     expect(points(wrapper)).toHaveLength(2);
+  });
+
+  it('deletes a multi-selection as one undo entry and summarises it', async () => {
+    const { wrapper, store } = await mountLoaded(simpleDoc);
+
+    pointDown(wrapper, 'p');
+    await nextTick();
+    entityDown(wrapper, 'point', 'q', { ctrlKey: true });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('2 entities selected');
+    expect(wrapper.find('[data-testid="selection-breakdown"]').text()).toBe('2 points');
+    expect(wrapper.find('[data-testid="selection-status"]').text()).toBe('2 entities selected');
+    expect(wrapper.text()).not.toContain('Select a point, line or curve to inspect it.');
+
+    const journal = store.journal.length;
+    await wrapper.find('[data-testid="selection-delete"]').trigger('click');
+    await nextTick();
+
+    expect(points(wrapper)).toHaveLength(2);
+    expect(store.journal).toHaveLength(journal + 1);
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
+
+    store.undo();
+    await nextTick();
+
+    expect(points(wrapper)).toHaveLength(4);
+  });
+
+  it('refuses a delete that would orphan one edge and names it', async () => {
+    const { wrapper, store } = await mountLoaded(edgeDoc);
+
+    pointDown(wrapper, 'p');
+    await nextTick();
+    entityDown(wrapper, 'point', 'q', { ctrlKey: true });
+    await nextTick();
+
+    const button = wrapper.find('[data-testid="selection-delete"]');
+    expect(button.attributes('disabled')).toBeDefined();
+    expect(button.attributes('title')).toBe('Include l1 in the selection to delete these points.');
+
+    keydown('Delete');
+    await nextTick();
+
+    expect(wrapper.text()).toContain(
+      'Cannot delete this selection: l1 would lose a point. Include the edge in the selection first.',
+    );
+    expect(points(wrapper)).toHaveLength(2);
+    expect(store.document.entities.filter((entity) => entity.kind === 'line')).toHaveLength(1);
+  });
+
+  it('refuses a delete that would orphan several edges', async () => {
+    const { wrapper } = await mountLoaded(lineDoc);
+
+    pointDown(wrapper, 'a');
+    await nextTick();
+    entityDown(wrapper, 'point', 'b', { ctrlKey: true });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="selection-delete"]').attributes('title')).toBe(
+      'Include ab, bc, da in the selection to delete these points.',
+    );
+
+    keydown('Delete');
+    await nextTick();
+
+    expect(wrapper.text()).toContain(
+      'Cannot delete this selection: ab, bc, da would lose a point. Include the edges in the selection first.',
+    );
+    expect(points(wrapper)).toHaveLength(5);
+  });
+
+  it('leaves Delete and Escape to the canvas while a marquee is in flight', async () => {
+    const { wrapper } = await mountLoaded(simpleDoc);
+
+    pointDown(wrapper, 'p');
+    await nextTick();
+    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(true);
+
+    canvasDown(wrapper, 700, 500);
+    keydown('Delete');
+    await nextTick();
+    expect(points(wrapper)).toHaveLength(4);
+
+    canvasUp();
+    await nextTick();
+
+    const canvas = wrapper.findComponent(PatternCanvas);
+    canvas.vm.$emit('marquee-change', true);
+    keydown('Escape');
+    keydown('Backspace');
+    await nextTick();
+    expect(points(wrapper)).toHaveLength(4);
+    canvas.vm.$emit('marquee-change', false);
+  });
+
+  it('prunes a selected id that disappears underneath the selection', async () => {
+    const { wrapper, store } = await mountLoaded(simpleDoc);
+
+    pointDown(wrapper, 'p');
+    await nextTick();
+    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(true);
+
+    store.dispatch({ id: 'external', type: 'delete_entity', params: { id: 'p' } });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('Select a point, line or curve to inspect it.');
+  });
+
+  it('skips an id that no longer resolves when summarising a selection', async () => {
+    const { wrapper } = await mountLoaded(simpleDoc);
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedEntityIds', ['p', 'ghost']);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="selection-breakdown"]').text()).toBe('1 point');
   });
 
   it('re-fits the canvas when Fit is pressed', async () => {
@@ -1146,6 +1280,7 @@ describe('EditorView', () => {
     expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Select');
 
     canvasDown(wrapper, 700, 500);
+    canvasUp();
     await nextTick();
     expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
 
