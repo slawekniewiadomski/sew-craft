@@ -133,6 +133,68 @@ describe('editor store', () => {
     expect(store.journal).toHaveLength(1);
   });
 
+  it('applies a group as one journal entry', () => {
+    const store = useEditorStore();
+    const before = store.document;
+    const commands = [addPoint('a', 0, 0), addPoint('b', 10, 0), addLine('l', 'a', 'b')];
+
+    store.dispatchGroup(commands);
+
+    expect(store.journal).toHaveLength(1);
+    expect(store.journal[0]?.commands).toEqual(commands);
+    expect(store.journal[0]?.command).toEqual(commands[2]);
+    expect(store.journal[0]?.inverses).toEqual([
+      { id: 'a', type: 'delete_entity', params: { id: 'a' } },
+      { id: 'b', type: 'delete_entity', params: { id: 'b' } },
+      { id: 'l', type: 'delete_entity', params: { id: 'l' } },
+    ]);
+    expect(store.journal[0]?.before).toBe(before);
+    expect(getEntity(store.document, 'l')).toMatchObject({ start: 'a', end: 'b' });
+  });
+
+  it('undoes a whole group in one step and redoes every command', () => {
+    const store = useEditorStore();
+    const before = store.document;
+    store.dispatchGroup([addPoint('a', 0, 0), addPoint('b', 10, 0), addLine('l', 'a', 'b')]);
+    const after = store.document;
+
+    store.undo();
+
+    expect(store.document).toBe(before);
+    expect(store.canUndo).toBe(false);
+    expect(store.canRedo).toBe(true);
+
+    store.redo();
+
+    expect(store.document).toEqual(after);
+    expect(getEntity(store.document, 'l')).toBeDefined();
+    expect(store.journal).toHaveLength(1);
+  });
+
+  it('treats an empty group as a no-op', () => {
+    const store = useEditorStore();
+    const document = store.document;
+
+    store.dispatchGroup([]);
+
+    expect(store.document).toBe(document);
+    expect(store.journal).toHaveLength(0);
+    expect(store.canUndo).toBe(false);
+  });
+
+  it('a failing group leaves the document and journal untouched', () => {
+    const store = useEditorStore();
+    const document = store.document;
+
+    expect(() =>
+      store.dispatchGroup([addPoint('a', 0, 0), addLine('l', 'a', 'missing')]),
+    ).toThrow(CommandValidationError);
+
+    expect(store.document).toBe(document);
+    expect(store.journal).toHaveLength(0);
+    expect(store.canUndo).toBe(false);
+  });
+
   it('a rejected command leaves the document and journal untouched', () => {
     const store = useEditorStore();
     const document = store.document;
