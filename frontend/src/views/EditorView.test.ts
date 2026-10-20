@@ -561,6 +561,30 @@ describe('EditorView', () => {
     expect(store.document.seams[0]).toMatchObject({ width: 22 });
   });
 
+  it('flips a seam side from the outline twice and undoes one flip', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...edgeDoc,
+      seams: [{ id: 's1', edge: 'l1', width: 10 }],
+    });
+    const flip = () => wrapper.find('[data-testid="flip-seam-l1"]');
+
+    expect(flip().attributes('aria-label')).toBe('Flip seam allowance side for l1');
+
+    await flip().trigger('click');
+    await flushPromises();
+    expect(store.document.seams[0]).toMatchObject({ id: 's1', side: 'right' });
+
+    await flip().trigger('click');
+    await flushPromises();
+    expect(store.document.seams[0]).toMatchObject({ side: 'left' });
+    expect(store.journal).toHaveLength(2);
+
+    await wrapper.find('[data-testid="undo"]').trigger('click');
+    await flushPromises();
+    expect(store.document.seams[0]).toMatchObject({ side: 'right' });
+    expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(true);
+  });
+
   it('shows No allowance for an unattached edge with no add control', async () => {
     const { wrapper } = await mountLoaded(edgeDoc);
 
@@ -1081,13 +1105,19 @@ describe('EditorView', () => {
 
     await wrapper.find('[data-testid="entity-add-seam"]').trigger('click');
     await flushPromises();
-    expect(store.document.seams).toEqual([{ id: expect.any(String), edge: 'l1', width: 10 }]);
+    expect(store.document.seams).toEqual([
+      { id: expect.any(String), edge: 'l1', width: 10, side: 'left' },
+    ]);
 
     const width = wrapper.find('[data-testid="entity-seam-width"]');
     expect((width.element as HTMLInputElement).value).toBe('10');
     await width.setValue('15');
     await flushPromises();
     expect(store.document.seams[0]).toMatchObject({ width: 15 });
+
+    await wrapper.find('[data-testid="entity-flip-seam"]').trigger('click');
+    await flushPromises();
+    expect(store.document.seams[0]).toMatchObject({ width: 15, side: 'right' });
 
     await wrapper.find('[data-testid="entity-remove-seam"]').trigger('click');
     await flushPromises();

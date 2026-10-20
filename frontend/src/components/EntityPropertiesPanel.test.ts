@@ -111,6 +111,11 @@ describe('EntityPropertiesPanel', () => {
     await input.setValue('10');
     expect(wrapper.emitted('set-seam-width')).toEqual([['s1', 15]]);
 
+    const flip = wrapper.find('[data-testid="entity-flip-seam"]');
+    expect(flip.attributes('aria-label')).toBe('Flip seam allowance side for l1');
+    await flip.trigger('click');
+    expect(wrapper.emitted('flip-seam')).toEqual([['s1', 'left']]);
+
     await wrapper.find('[data-testid="entity-remove-seam"]').trigger('click');
     expect(wrapper.emitted('remove-seam')).toEqual([['s1']]);
   });

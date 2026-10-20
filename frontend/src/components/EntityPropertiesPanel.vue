@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import type { DimensionOrientation, Entity, EntityId, PatternDocument } from '@sewcraft/geometry';
+import type {
+  DimensionOrientation,
+  Entity,
+  EntityId,
+  PatternDocument,
+  SeamSide,
+} from '@sewcraft/geometry';
 
 import { Button } from '@/components/ui/button';
 import type { DimensionSummary, EntityProperties } from '@/lib/entity-properties';
@@ -20,6 +26,7 @@ const emit = defineEmits<{
   'set-construction': [id: EntityId, construction: boolean];
   'add-seam': [id: EntityId];
   'set-seam-width': [id: EntityId, width: number];
+  'flip-seam': [id: EntityId, side: SeamSide];
   'remove-seam': [id: EntityId];
   'update-dimension': [id: EntityId, value: number | null];
   'remove-constraint': [id: EntityId];
@@ -300,6 +307,15 @@ function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
           />
           mm
         </label>
+        <Button
+          variant="outline"
+          size="sm"
+          :aria-label="`Flip seam allowance side for ${props.entity.id}`"
+          data-testid="entity-flip-seam"
+          @click="emit('flip-seam', props.entity.seam!.id, props.entity.seam!.side)"
+        >
+          Flip side
+        </Button>
         <Button
           variant="outline"
           size="sm"
