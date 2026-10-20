@@ -80,15 +80,15 @@ moving geometry. Ships on this PR, on the same branch as the spec.
 
 ### Phase 3: Rendering
 
-- [ ] 3.1 Add `formatDimensionLabel` and `parseDimensionEdit` (tests)
-- [ ] 3.2 Render driven labels in parentheses with stateful accessible names and effective values on the canvas (tests)
-- [ ] 3.3 Show the effective value and a `Driven`/`Set` badge in the Dimensions drawer (tests)
+- [x] 3.1 Add `formatDimensionLabel` and `parseDimensionEdit` (tests) — 8fce795
+- [x] 3.2 Render driven labels in parentheses with stateful accessible names and effective values on the canvas (tests) — 8fce795
+- [x] 3.3 Show the effective value and a `Driven`/`Set` badge in the Dimensions drawer (tests) — 8fce795
 
 ### Phase 4: Editing
 
-- [ ] 4.1 Default Dimension-tool placement to driven and keep existing dimensions' state on reuse (tests)
-- [ ] 4.2 Clear-to-driven in the canvas inline editor with the Enter/blur table (tests)
-- [ ] 4.3 Share the set/clear handlers in the sidebar and cover undo/redo across set and clear (tests)
+- [x] 4.1 Default Dimension-tool placement to driven and keep existing dimensions' state on reuse (tests) — 8fce795
+- [x] 4.2 Clear-to-driven in the canvas inline editor with the Enter/blur table (tests) — 8fce795
+- [x] 4.3 Share the set/clear handlers in the sidebar and cover undo/redo across set and clear (tests) — 8fce795
 
 ### Phase 5: Documentation and verification
 
