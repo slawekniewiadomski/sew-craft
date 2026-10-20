@@ -126,11 +126,18 @@ export function solve(
   }
 
   return {
-    converged: constraints.length === 0 || norm <= tolerance,
+    // A document with no driving constraints is converged by definition; driven
+    // dimensions measure the sketch without adding an equation.
+    converged: !constraints.some(isDrivingConstraint) || norm <= tolerance,
     iterations,
     residualNorm: norm,
     coordinates: readState(x),
   };
+}
+
+/** Whether a constraint adds an equation the solver must satisfy. */
+function isDrivingConstraint(constraint: Constraint): boolean {
+  return constraint.type !== 'distance' || constraint.value !== undefined;
 }
 
 function residuals(constraints: Constraint[], point: (id: EntityId) => Vec2): Float64Array {
@@ -166,6 +173,8 @@ function residuals(constraints: Constraint[], point: (id: EntityId) => Vec2): Fl
         break;
       }
       case 'distance': {
+        // A driven dimension has no value and contributes no residual.
+        if (constraint.value === undefined) break;
         const a = point(constraint.a);
         const b = point(constraint.b);
         // A dimension measures along `orientation`; the default preserves the

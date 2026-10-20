@@ -83,6 +83,28 @@ export function constraintOffset(constraint: DistanceConstraint): number {
   return constraint.offset ?? DEFAULT_DIMENSION_OFFSET;
 }
 
+/** True when a dimension only measures the sketch and adds no solver equation. */
+export function isDrivenDimension(constraint: DistanceConstraint): boolean {
+  return constraint.value === undefined;
+}
+
+/**
+ * The value a dimension reports: its set value when driving, otherwise the live
+ * measurement along its orientation. `null` when a measured point is missing.
+ */
+export function dimensionValue(
+  document: PatternDocument,
+  constraint: DistanceConstraint,
+): number | null {
+  if (constraint.value !== undefined) return constraint.value;
+  return measureLinearDimension(
+    document,
+    constraint.a,
+    constraint.b,
+    constraintOrientation(constraint),
+  );
+}
+
 /**
  * The measurement a dimension reports: true length for `aligned`, or the
  * absolute axis distance for `horizontal`/`vertical`. `null` when a referenced

@@ -11,8 +11,10 @@ import {
   DIMENSION_LABEL_GAP,
   dimensionGeometry,
   dimensionOffsetForPointer,
+  dimensionValue,
   findDistanceConstraint,
   inferDimensionOrientation,
+  isDrivenDimension,
   measureLinearDimension,
   createEmptyDocument,
   type Constraint,
@@ -91,6 +93,52 @@ describe('measureLinearDimension', () => {
   it('returns null when a point is missing', () => {
     expect(measureLinearDimension(document, 'a', 'missing', 'aligned')).toBeNull();
     expect(measureLinearDimension(document, 'missing', 'a', 'aligned')).toBeNull();
+  });
+});
+
+describe('isDrivenDimension / dimensionValue', () => {
+  const document = documentOf(basePoints);
+
+  it('reports whether a dimension has a driving value', () => {
+    const driven: DistanceConstraint = { id: 'm', type: 'distance', a: 'a', b: 'b' };
+    const set: DistanceConstraint = { id: 'd', type: 'distance', a: 'a', b: 'b', value: 100 };
+
+    expect(isDrivenDimension(driven)).toBe(true);
+    expect(isDrivenDimension(set)).toBe(false);
+  });
+
+  it('returns the stored value for a set dimension', () => {
+    const set: DistanceConstraint = { id: 'd', type: 'distance', a: 'a', b: 'b', value: 42 };
+
+    expect(dimensionValue(document, set)).toBe(42);
+  });
+
+  it('measures a driven dimension along every orientation', () => {
+    const aligned: DistanceConstraint = { id: 'a', type: 'distance', a: 'a', b: 'c' };
+    const horizontal: DistanceConstraint = {
+      id: 'h',
+      type: 'distance',
+      a: 'a',
+      b: 'c',
+      orientation: 'horizontal',
+    };
+    const vertical: DistanceConstraint = {
+      id: 'v',
+      type: 'distance',
+      a: 'a',
+      b: 'c',
+      orientation: 'vertical',
+    };
+
+    expect(dimensionValue(document, aligned)).toBeCloseTo(Math.hypot(100, 50), 9);
+    expect(dimensionValue(document, horizontal)).toBe(100);
+    expect(dimensionValue(document, vertical)).toBe(50);
+  });
+
+  it('returns null for a driven dimension whose point is missing', () => {
+    const missing: DistanceConstraint = { id: 'm', type: 'distance', a: 'a', b: 'missing' };
+
+    expect(dimensionValue(document, missing)).toBeNull();
   });
 });
 
