@@ -72,3 +72,4 @@ Store a per-edge seam allowance side (`left`/`right`, default `left`) and expose
 
 - [x] 5.1 Run the full validation gate and fix any failures — 53bea86
 - [x] 5.2 Run `om-auto-review-pr`, address findings, finalize labels and PR state — 348ae7f
+- [x] 5.3 Merge the latest `develop` (conflict with #45), re-run the gate and push — 0b8c095
