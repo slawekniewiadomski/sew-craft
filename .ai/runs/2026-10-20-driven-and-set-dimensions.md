@@ -68,9 +68,9 @@ moving geometry. Ships on this PR, on the same branch as the spec.
 
 ### Phase 1: Model and solver
 
-- [ ] 1.1 Make `DistanceConstraint.value` optional and skip value-less distances in the solver, with a driving-constraint convergence shortcut (tests)
-- [ ] 1.2 Add `isDrivenDimension` and `dimensionValue` helpers (tests)
-- [ ] 1.3 Bump the geometry package minor and refresh the lockfile
+- [x] 1.1 Make `DistanceConstraint.value` optional and skip value-less distances in the solver, with a driving-constraint convergence shortcut (tests) — fee70ef
+- [x] 1.2 Add `isDrivenDimension` and `dimensionValue` helpers (tests) — fee70ef
+- [x] 1.3 Bump the geometry package minor and refresh the lockfile — fee70ef
 
 ### Phase 2: Command contract
 
