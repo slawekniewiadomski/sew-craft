@@ -40,8 +40,9 @@ describe('EntityPropertiesPanel', () => {
     expect(wrapper.text()).toContain('10 mm');
     expect(wrapper.find('[data-testid="entity-fixed"]').text()).toBe('Yes');
     expect(wrapper.find('[data-testid="entity-seam"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('No related dimensions.');
-    expect(wrapper.text()).toContain('No related constraints.');
+    expect(wrapper.find('[data-testid="entity-scope-hint"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('No dimensions on this point.');
+    expect(wrapper.text()).toContain('No constraints on this point.');
   });
 
   it('renders a line with endpoints, length and related rows', () => {
@@ -56,6 +57,9 @@ describe('EntityPropertiesPanel', () => {
     expect(wrapper.find('[data-testid="entity-constraint-horizontal"]').text()).toContain(
       'Horizontal',
     );
+    expect(wrapper.find('[data-testid="entity-scope-hint"]').text()).toBe(
+      'Showing what acts on this line. Select a point to see its constraints.',
+    );
   });
 
   it('renders a curve with all four control points', () => {
@@ -66,6 +70,21 @@ describe('EntityPropertiesPanel', () => {
       expect(wrapper.text()).toContain(point);
     }
     expect(wrapper.text()).toContain('Construction');
+    expect(wrapper.find('[data-testid="entity-scope-hint"]').text()).toBe(
+      'Showing what acts on this curve. Select a point to see its constraints.',
+    );
+  });
+
+  it('names the entity in the empty states', () => {
+    const document = doc({ constraints: [] });
+
+    const line = panel(document, 'l1').wrapper;
+    expect(line.text()).toContain('No dimensions on this line.');
+    expect(line.text()).toContain('No constraints on this line.');
+
+    const curve = panel(document, 'c1').wrapper;
+    expect(curve.text()).toContain('No dimensions on this curve.');
+    expect(curve.text()).toContain('No constraints on this curve.');
   });
 
   it('shows the construction badge and toggles it', async () => {
@@ -166,10 +185,14 @@ describe('EntityPropertiesPanel', () => {
   });
 
   it('leaves an unmeasurable dimension value empty', () => {
-    const { wrapper } = panel(
-      doc({ constraints: [{ id: 'ghost', type: 'distance', a: 'a', b: 'gone' }] }),
-      'l1',
-    );
+    const document = doc({
+      entities: [
+        ...doc().entities,
+        { id: 'broken', kind: 'line', start: 'a', end: 'gone', construction: false },
+      ],
+      constraints: [{ id: 'ghost', type: 'distance', a: 'a', b: 'gone' }],
+    });
+    const { wrapper } = panel(document, 'broken');
     const input = wrapper.find('[data-testid="entity-dimension-value-ghost"]');
 
     expect((input.element as HTMLInputElement).value).toBe('');

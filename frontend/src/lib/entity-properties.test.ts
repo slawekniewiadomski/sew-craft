@@ -19,6 +19,28 @@ const doc = (overrides: Partial<PatternDocument> = {}): PatternDocument => ({
   ...overrides,
 });
 
+const rectangleConstraints: Constraint[] = [
+  { id: 'width', type: 'distance', a: 'a', b: 'b', value: 160 },
+  { id: 'height', type: 'distance', a: 'b', b: 'c', value: 90 },
+  { id: 'bottom', type: 'horizontal', a: 'a', b: 'b' },
+  { id: 'right', type: 'vertical', a: 'b', b: 'c' },
+  { id: 'top', type: 'horizontal', a: 'c', b: 'd' },
+  { id: 'left', type: 'vertical', a: 'd', b: 'a' },
+];
+
+/** The seeded rectangle from `EditorView.vue`, with its four edges. */
+const rectangle = (constraints: Constraint[]): PatternDocument =>
+  doc({
+    entities: [
+      ...entities.filter((entity) => entity.kind === 'point'),
+      { id: 'ab', kind: 'line', start: 'a', end: 'b', construction: false },
+      { id: 'bc', kind: 'line', start: 'b', end: 'c', construction: false },
+      { id: 'cd', kind: 'line', start: 'c', end: 'd', construction: false },
+      { id: 'da', kind: 'line', start: 'd', end: 'a', construction: false },
+    ],
+    constraints,
+  });
+
 describe('entityProperties', () => {
   it('returns null without a selection or for an id that no longer exists', () => {
     const document = doc();
@@ -112,23 +134,116 @@ describe('entityProperties', () => {
     ]);
   });
 
-  it('lists dimensions and constraints that reference the entity own points', () => {
-    const constraints: Constraint[] = [
-      { id: 'width', type: 'distance', a: 'a', b: 'b', value: 100 },
-      { id: 'axis', type: 'distance', a: 'a', b: 'c', value: 108, orientation: 'horizontal' },
-      { id: 'horizontal', type: 'horizontal', a: 'a', b: 'b' },
-      { id: 'unrelated', type: 'vertical', a: 'c', b: 'd' },
-      { id: 'unrelated-dimension', type: 'distance', a: 'c', b: 'd', value: 60 },
-    ];
-    const properties = entityProperties(doc({ constraints }), 'l1');
+  it('lists only the rows that act on the selected line in the seeded rectangle', () => {
+    const document = rectangle(rectangleConstraints);
+
+    expect(entityProperties(document, 'ab')?.dimensions).toEqual([
+      { id: 'width', entities: ['a', 'b'], value: 160, driven: false, orientation: 'aligned' },
+    ]);
+    expect(entityProperties(document, 'ab')?.constraints).toEqual([
+      { id: 'bottom', type: 'horizontal', label: 'Horizontal', entities: ['a', 'b'] },
+    ]);
+
+    expect(entityProperties(document, 'bc')?.dimensions).toEqual([
+      { id: 'height', entities: ['b', 'c'], value: 90, driven: false, orientation: 'aligned' },
+    ]);
+    expect(entityProperties(document, 'bc')?.constraints).toEqual([
+      { id: 'right', type: 'vertical', label: 'Vertical', entities: ['b', 'c'] },
+    ]);
+  });
+
+  it('keeps every constraint touching a selected point', () => {
+    const properties = entityProperties(rectangle(rectangleConstraints), 'b');
+
+    expect(properties?.dimensions.map((dimension) => dimension.id)).toEqual(['width', 'height']);
+    expect(properties?.constraints.map((constraint) => constraint.id)).toEqual(['bottom', 'right']);
+  });
+
+  it('matches the line endpoint pair regardless of order', () => {
+    const properties = entityProperties(
+      doc({ constraints: [{ id: 'width', type: 'distance', a: 'b', b: 'a', value: 100 }] }),
+      'l1',
+    );
 
     expect(properties?.dimensions).toEqual([
-      { id: 'width', entities: ['a', 'b'], value: 100, driven: false, orientation: 'aligned' },
-      { id: 'axis', entities: ['a', 'c'], value: 108, driven: false, orientation: 'horizontal' },
+      { id: 'width', entities: ['b', 'a'], value: 100, driven: false, orientation: 'aligned' },
     ]);
-    expect(properties?.constraints).toEqual([
-      { id: 'horizontal', type: 'horizontal', label: 'Horizontal', entities: ['a', 'b'] },
+  });
+
+  it('lists angle, equal and point_on_line on every segment they reference', () => {
+    const document = rectangle([
+      { id: 'angle', type: 'angle', a: 'a', b: 'b', c: 'c', value: Math.PI / 2 },
+      { id: 'equal', type: 'equal', a1: 'a', a2: 'b', b1: 'c', b2: 'd' },
+      { id: 'pin', type: 'point_on_line', point: 'd', a: 'a', b: 'b' },
     ]);
+
+    expect(
+      entityProperties(document, 'ab')?.constraints.map((constraint) => constraint.id),
+    ).toEqual(['angle', 'equal', 'pin']);
+    expect(
+      entityProperties(document, 'bc')?.constraints.map((constraint) => constraint.id),
+    ).toEqual(['angle']);
+    expect(
+      entityProperties(document, 'cd')?.constraints.map((constraint) => constraint.id),
+    ).toEqual(['equal']);
+  });
+
+  it('hides endpoint-anchoring constraints on the line and shows them on the point', () => {
+    const document = doc({
+      entities: [
+        ...entities,
+        { id: 'x', kind: 'point', x: 0, y: 50, construction: false, fixed: false },
+      ],
+      constraints: [
+        { id: 'coincident', type: 'coincident', a: 'a', b: 'x' },
+        { id: 'distance', type: 'distance', a: 'a', b: 'x', value: 30 },
+        { id: 'horizontal', type: 'horizontal', a: 'a', b: 'x' },
+      ],
+    });
+
+    expect(entityProperties(document, 'l1')?.dimensions).toEqual([]);
+    expect(entityProperties(document, 'l1')?.constraints).toEqual([]);
+    expect(entityProperties(document, 'a')?.dimensions.map((dimension) => dimension.id)).toEqual([
+      'distance',
+    ]);
+    expect(entityProperties(document, 'a')?.constraints.map((constraint) => constraint.id)).toEqual(
+      ['coincident', 'horizontal'],
+    );
+  });
+
+  it('keeps duplicate endpoint-pair constraints in document order', () => {
+    const properties = entityProperties(
+      doc({
+        constraints: [
+          { id: 'first', type: 'distance', a: 'a', b: 'b', value: 100 },
+          { id: 'second', type: 'distance', a: 'b', b: 'a', value: 100 },
+        ],
+      }),
+      'l1',
+    );
+
+    expect(properties?.dimensions.map((dimension) => dimension.id)).toEqual(['first', 'second']);
+  });
+
+  it('keeps the any-control-point relation for a curve', () => {
+    const properties = entityProperties(
+      doc({
+        entities: [
+          ...entities,
+          { id: 'x', kind: 'point', x: 0, y: 50, construction: false, fixed: false },
+          { id: 'y', kind: 'point', x: 50, y: 50, construction: false, fixed: false },
+        ],
+        constraints: [
+          { id: 'curve-width', type: 'distance', a: 'a', b: 'b', value: 100 },
+          { id: 'curve-side', type: 'vertical', a: 'b', b: 'c' },
+          { id: 'unrelated', type: 'horizontal', a: 'x', b: 'y' },
+        ],
+      }),
+      'c1',
+    );
+
+    expect(properties?.dimensions.map((dimension) => dimension.id)).toEqual(['curve-width']);
+    expect(properties?.constraints.map((constraint) => constraint.id)).toEqual(['curve-side']);
   });
 
   it('treats a dimension between unrelated points as unrelated', () => {
@@ -141,18 +256,21 @@ describe('entityProperties', () => {
   });
 
   it('reports a driven dimension measurement and an unmeasurable one', () => {
-    const properties = entityProperties(
-      doc({
-        constraints: [
-          { id: 'live', type: 'distance', a: 'a', b: 'b', orientation: 'horizontal' },
-          { id: 'ghost', type: 'distance', a: 'a', b: 'gone' },
-        ],
-      }),
-      'l1',
-    );
+    const document = doc({
+      entities: [
+        ...entities,
+        { id: 'broken', kind: 'line', start: 'a', end: 'gone', construction: false },
+      ],
+      constraints: [
+        { id: 'live', type: 'distance', a: 'a', b: 'b', orientation: 'horizontal' },
+        { id: 'ghost', type: 'distance', a: 'a', b: 'gone' },
+      ],
+    });
 
-    expect(properties?.dimensions).toEqual([
+    expect(entityProperties(document, 'l1')?.dimensions).toEqual([
       { id: 'live', entities: ['a', 'b'], value: 100, driven: true, orientation: 'horizontal' },
+    ]);
+    expect(entityProperties(document, 'broken')?.dimensions).toEqual([
       { id: 'ghost', entities: ['a', 'gone'], value: null, driven: true, orientation: 'aligned' },
     ]);
   });

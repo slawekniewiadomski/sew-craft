@@ -1171,7 +1171,7 @@ describe('EditorView', () => {
     await wrapper.find('[data-testid="entity-remove-constraint-h"]').trigger('click');
     await flushPromises();
     expect(store.document.constraints).toHaveLength(0);
-    expect(wrapper.text()).toContain('No related constraints.');
+    expect(wrapper.text()).toContain('No constraints on this line.');
   });
 
   it('relates a point selection to constraints on that point', async () => {
