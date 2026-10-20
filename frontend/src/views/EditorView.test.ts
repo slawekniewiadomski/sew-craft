@@ -261,7 +261,7 @@ describe('EditorView', () => {
     await nextTick();
     expect(wrapper.find('[data-testid="line-pending-point"]').exists()).toBe(true);
 
-    canvasDown(wrapper, 650, 450);
+    canvasDown(wrapper, 300, 200);
     await flushPromises();
 
     expect(store.document.entities).toHaveLength(before + 3);
