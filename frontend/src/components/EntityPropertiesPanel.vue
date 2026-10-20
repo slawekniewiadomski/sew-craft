@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { DimensionOrientation, Entity, EntityId, PatternDocument } from '@sewcraft/geometry';
+import { computed } from 'vue';
 
 import { Button } from '@/components/ui/button';
 import type { DimensionSummary, EntityProperties } from '@/lib/entity-properties';
@@ -30,6 +31,14 @@ const KIND_LABELS: Record<Entity['kind'], string> = {
   line: 'Line',
   curve: 'Curve',
 };
+
+const KIND_NOUNS: Record<Entity['kind'], string> = {
+  point: 'point',
+  line: 'line',
+  curve: 'curve',
+};
+
+const kindNoun = computed(() => KIND_NOUNS[props.entity.kind]);
 
 function kindLabel(kind: Entity['kind']): string {
   return KIND_LABELS[kind];
@@ -102,6 +111,14 @@ function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
         Construction
       </span>
     </header>
+
+    <p
+      v-if="props.entity.geometry.kind !== 'point'"
+      class="text-xs text-muted-foreground"
+      data-testid="entity-scope-hint"
+    >
+      Showing what acts on this {{ kindNoun }}. Select a point to see its constraints.
+    </p>
 
     <section aria-labelledby="entity-geometry-heading">
       <h3
@@ -231,7 +248,7 @@ function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
           </label>
         </li>
       </ul>
-      <p v-else class="mt-1 text-xs text-muted-foreground">No related dimensions.</p>
+      <p v-else class="mt-1 text-xs text-muted-foreground">No dimensions on this {{ kindNoun }}.</p>
     </section>
 
     <section aria-labelledby="entity-constraints-heading">
@@ -270,7 +287,9 @@ function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
           </Button>
         </li>
       </ul>
-      <p v-else class="mt-1 text-xs text-muted-foreground">No related constraints.</p>
+      <p v-else class="mt-1 text-xs text-muted-foreground">
+        No constraints on this {{ kindNoun }}.
+      </p>
     </section>
 
     <section
