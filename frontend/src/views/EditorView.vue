@@ -23,6 +23,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import ConstraintPromptBar from '@/components/ConstraintPromptBar.vue';
 import EditorRibbon from '@/components/EditorRibbon.vue';
 import EditorSidebar from '@/components/EditorSidebar.vue';
+import EntityPropertiesPanel from '@/components/EntityPropertiesPanel.vue';
 import PatternCanvas from '@/components/PatternCanvas.vue';
 import { Button } from '@/components/ui/button';
 import { useCommandBus } from '@/composables/use-command-bus';
@@ -49,6 +50,7 @@ import {
 import { downloadSvgFile } from '@/lib/download';
 import type { RibbonAction } from '@/lib/editor-ribbon';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
+import { entityProperties } from '@/lib/entity-properties';
 import { parseSeamWidth } from '@/lib/seam-width';
 
 const props = defineProps<{ id: string }>();
@@ -99,6 +101,9 @@ const edges = computed(() =>
 );
 
 const cutEdgeCount = computed(() => cutEdges(pattern.value).length);
+
+/** The selection inspector view model; `null` falls back to the workspace summary. */
+const selectedEntity = computed(() => entityProperties(pattern.value, selectedId.value));
 
 /**
  * Distance constraints are the driving dimensions; the sidebar edits their
@@ -287,6 +292,11 @@ function onUpdateDimension(id: EntityId, patch: DimensionPatch): void {
       params: { id, ...patch },
     }),
   );
+}
+
+/** The inspector edits a value only; placement stays in the Dimensions drawer. */
+function onInspectorDimensionValue(id: EntityId, value: number): void {
+  onUpdateDimension(id, { value });
 }
 
 function onDimensionValueEdit(id: EntityId, event: Event): void {
@@ -531,22 +541,46 @@ onBeforeUnmount(() => {
         @update:collapsed="collapsed = $event"
       >
         <template #properties>
-          <dl class="space-y-1 text-sm">
-            <div class="flex items-center justify-between gap-2">
-              <dt class="text-muted-foreground">Tool</dt>
-              <dd data-testid="active-tool">{{ activeToolLabel }}</dd>
-            </div>
-            <div class="flex items-center justify-between gap-2">
-              <dt class="text-muted-foreground">Selection</dt>
-              <dd data-testid="active-selection">{{ selectedId ?? 'None' }}</dd>
-            </div>
-            <div class="flex items-center justify-between gap-2">
-              <dt class="text-muted-foreground">Project</dt>
-              <dd>#{{ props.id }}</dd>
-            </div>
-          </dl>
-          <p class="mt-2 text-xs text-muted-foreground">{{ journal.length }} command(s)</p>
-          <p class="text-xs text-muted-foreground">{{ cutEdgeCount }} cut edge(s)</p>
+          <EntityPropertiesPanel
+            v-if="selectedEntity"
+            :document="pattern"
+            :entity="selectedEntity"
+            @set-construction="convert"
+            @add-seam="onAddAllowance"
+            @set-seam-width="setSeamWidth"
+            @remove-seam="removeSeam"
+            @update-dimension="onInspectorDimensionValue"
+            @remove-constraint="removeConstraint"
+          />
+
+          <section
+            class="space-y-1 text-sm"
+            :class="selectedEntity ? 'mt-3 border-t pt-3' : ''"
+            aria-label="Workspace"
+            data-testid="workspace-summary"
+          >
+            <h3
+              class="text-xs font-semibold uppercase text-muted-foreground"
+              :class="selectedEntity ? '' : 'sr-only'"
+            >
+              Workspace
+            </h3>
+            <dl class="space-y-1">
+              <div class="flex items-center justify-between gap-2">
+                <dt class="text-muted-foreground">Tool</dt>
+                <dd data-testid="active-tool">{{ activeToolLabel }}</dd>
+              </div>
+              <div class="flex items-center justify-between gap-2">
+                <dt class="text-muted-foreground">Project</dt>
+                <dd>#{{ props.id }}</dd>
+              </div>
+            </dl>
+            <p class="text-xs text-muted-foreground">{{ journal.length }} command(s)</p>
+            <p class="text-xs text-muted-foreground">{{ cutEdgeCount }} cut edge(s)</p>
+            <p v-if="!selectedEntity" class="pt-1 text-xs text-muted-foreground">
+              Select a point, line or curve to inspect it.
+            </p>
+          </section>
         </template>
 
         <template #outline>
