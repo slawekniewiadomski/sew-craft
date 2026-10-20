@@ -293,7 +293,7 @@ No command or endpoint is added or removed.
       placement.
 - [ ] The dimension line and value label are easy to grab, show a move cursor,
       and the line's hit strip is 24 px wide without changing at zoom.
-- [ ] Dragging moved out or in — including across the span to a negative
+- [ ] Dragging out or in — including across the span to a negative
       offset — updates the constraint through `update_constraint` with a
       lossless inverse.
 - [ ] A click without movement still emits nothing and double-click value
