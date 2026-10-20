@@ -146,7 +146,9 @@ function move(x: number, y: number): void {
 function pointerMove(wrapper: VueWrapper, x: number, y: number): void {
   wrapper
     .find('svg')
-    .element.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: x, clientY: y }));
+    .element.dispatchEvent(
+      new MouseEvent('pointermove', { bubbles: true, clientX: x, clientY: y }),
+    );
 }
 
 /** The snapped world position a bare-canvas click at these screen coords resolves to. */
@@ -777,6 +779,19 @@ describe('PatternCanvas', () => {
     down(pointCircle(wrapper, 'd').element, 400, 300);
 
     expect(wrapper.emitted('add-curve')).toEqual([[['a', 'b', 'c', 'd']]]);
+  });
+
+  it('resets pending curve points when a click is not on a point', () => {
+    const wrapper = mountCanvas({ tool: 'add_curve' });
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, 600, 400);
+    down(pointCircle(wrapper, 'b').element, 400, 300);
+    down(wrapper.find('[data-testid="grid"]').element, 600, 400);
+    down(pointCircle(wrapper, 'c').element, 400, 300);
+    down(pointCircle(wrapper, 'd').element, 400, 300);
+
+    expect(wrapper.emitted('add-curve')).toBeUndefined();
   });
 
   it('clears a pending selection when the tool changes', async () => {

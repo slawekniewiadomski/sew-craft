@@ -60,8 +60,16 @@ import { parseSeamWidth } from '@/lib/seam-width';
 
 const props = defineProps<{ id: string }>();
 
-const { document: pattern, journal, canUndo, canRedo, dispatch, dispatchGroup, undo, redo } =
-  useCommandBus();
+const {
+  document: pattern,
+  journal,
+  canUndo,
+  canRedo,
+  dispatch,
+  dispatchGroup,
+  undo,
+  redo,
+} = useCommandBus();
 const { width, collapsed, setWidth } = useSidebarLayout(window.localStorage);
 
 const error = ref<string | null>(null);

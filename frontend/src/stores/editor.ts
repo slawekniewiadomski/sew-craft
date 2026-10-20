@@ -25,10 +25,7 @@ export interface JournalEntry {
 
 function replay(document: PatternDocument, entry: JournalEntry): PatternDocument {
   const commands = entry.commands ?? [entry.command];
-  return commands.reduce(
-    (current, command) => executeCommand(current, command).document,
-    document,
-  );
+  return commands.reduce((current, command) => executeCommand(current, command).document, document);
 }
 
 export const useEditorStore = defineStore('editor', () => {

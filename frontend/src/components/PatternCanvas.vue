@@ -40,11 +40,7 @@ import {
   type DimensionSegment,
 } from '@/lib/dimensions';
 import type { EditorTool } from '@/lib/editor-tools';
-import {
-  resolveLineEndpoint,
-  sameEndpoint,
-  type LineEndpoint,
-} from '@/lib/line-tool';
+import { resolveLineEndpoint, sameEndpoint, type LineEndpoint } from '@/lib/line-tool';
 import { snapPoint, snapToGrid } from '@/lib/snap';
 import {
   fitToBounds,

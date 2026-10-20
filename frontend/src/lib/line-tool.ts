@@ -15,9 +15,7 @@ export const ENDPOINT_TOLERANCE = 0.001;
  * One end of a line being drawn: a document point reused by id, or a snapped
  * coordinate that only becomes a point when the line commits.
  */
-export type LineEndpoint =
-  | { kind: 'point'; id: EntityId }
-  | { kind: 'new'; x: number; y: number };
+export type LineEndpoint = { kind: 'point'; id: EntityId } | { kind: 'new'; x: number; y: number };
 
 /**
  * Resolve a bare-canvas click: the snapped position is reused when it coincides
@@ -40,9 +38,7 @@ export function resolveLineEndpoint(document: PatternDocument, world: Vec2): Lin
 export function sameEndpoint(a: LineEndpoint, b: LineEndpoint): boolean {
   if (a.kind === 'point' && b.kind === 'point') return a.id === b.id;
   if (a.kind === 'new' && b.kind === 'new') {
-    return (
-      Math.abs(a.x - b.x) <= ENDPOINT_TOLERANCE && Math.abs(a.y - b.y) <= ENDPOINT_TOLERANCE
-    );
+    return Math.abs(a.x - b.x) <= ENDPOINT_TOLERANCE && Math.abs(a.y - b.y) <= ENDPOINT_TOLERANCE;
   }
   return false;
 }
