@@ -4,7 +4,9 @@ import {
   constraintOffset,
   constraintOrientation,
   cutEdges,
+  dimensionValue,
   findDistanceConstraint,
+  isDrivenDimension,
   measureLinearDimension,
   seamForEdge,
   toSvg,
@@ -41,7 +43,7 @@ import { constraintLabel } from '@/lib/constraint-view';
 import {
   DIMENSION_ORIENTATION_OPTIONS,
   formatDimensionValue,
-  isValidDimensionValue,
+  parseDimensionEdit,
   parseDimensionValue,
   type DimensionPatch,
   type DimensionPlacement,
@@ -108,11 +110,14 @@ const cutEdgeCount = computed(() => cutEdges(pattern.value).length);
 const dimensions = computed(() =>
   pattern.value.constraints.flatMap((constraint) => {
     if (constraint.type !== 'distance') return [];
+    // Point deletion cascades to constraints, so a surviving dimension resolves.
+    const measured = dimensionValue(pattern.value, constraint)!;
     return [
       {
         id: constraint.id,
         entities: [constraint.a, constraint.b],
-        value: formatDimensionValue(constraint.value),
+        value: formatDimensionValue(measured),
+        driven: isDrivenDimension(constraint),
         orientation: constraintOrientation(constraint),
         offset: formatDimensionValue(constraintOffset(constraint)),
       },
@@ -239,9 +244,10 @@ function onAddCurve(points: [EntityId, EntityId, EntityId, EntityId]): void {
 }
 
 /**
- * Place a dimension as a driving distance constraint. Reusing an existing
- * distance between the same two points avoids duplicate equations; the
- * placement then only updates the dimension's presentation.
+ * Place a dimension as a driven distance constraint: it measures the span and
+ * adds no equation. Reusing an existing distance between the same two points
+ * avoids duplicates and keeps that dimension's driven/set state; the placement
+ * then only updates its presentation.
  */
 function onAddDimension(placement: DimensionPlacement): void {
   const existing = findDistanceConstraint(pattern.value, placement.a, placement.b);
@@ -256,13 +262,13 @@ function onAddDimension(placement: DimensionPlacement): void {
     return;
   }
 
-  const value = measureLinearDimension(
+  const measured = measureLinearDimension(
     pattern.value,
     placement.a,
     placement.b,
     placement.orientation,
   )!;
-  if (value <= 0) return;
+  if (measured <= 0) return;
 
   run(() =>
     dispatch({
@@ -271,7 +277,6 @@ function onAddDimension(placement: DimensionPlacement): void {
       params: {
         type: 'distance',
         entities: [placement.a, placement.b],
-        value,
         orientation: placement.orientation,
         offset: placement.offset,
       },
@@ -290,9 +295,9 @@ function onUpdateDimension(id: EntityId, patch: DimensionPatch): void {
 }
 
 function onDimensionValueEdit(id: EntityId, event: Event): void {
-  const value = parseDimensionValue((event.target as HTMLInputElement).value);
-  if (!isValidDimensionValue(value)) return;
-  onUpdateDimension(id, { value });
+  const edit = parseDimensionEdit((event.target as HTMLInputElement).value);
+  if (edit.kind === 'invalid') return;
+  onUpdateDimension(id, edit.kind === 'driven' ? { value: null } : { value: edit.value });
 }
 
 function onDimensionOrientationEdit(id: EntityId, event: Event): void {
@@ -636,11 +641,21 @@ onBeforeUnmount(() => {
                   step="0.1"
                   class="w-20 rounded-md border px-2 py-1 text-sm"
                   :value="dimension.value"
-                  :aria-label="`Value for ${dimension.id}`"
+                  :aria-label="
+                    dimension.driven
+                      ? `Value for ${dimension.id} (driven measurement)`
+                      : `Value for ${dimension.id}`
+                  "
                   :data-testid="`dimension-value-${dimension.id}`"
                   @change="onDimensionValueEdit(dimension.id, $event)"
                 />
                 <span class="text-xs text-muted-foreground">mm</span>
+                <span
+                  class="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
+                  :data-testid="`dimension-state-${dimension.id}`"
+                >
+                  {{ dimension.driven ? 'Driven' : 'Set' }}
+                </span>
 
                 <select
                   class="rounded-md border px-2 py-1 text-sm"

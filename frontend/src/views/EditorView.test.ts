@@ -645,6 +645,8 @@ describe('EditorView', () => {
     expect(
       (wrapper.find('[data-testid="dimension-offset-width"]').element as HTMLInputElement).value,
     ).toBe('12');
+    expect(wrapper.find('[data-testid="dimension-state-width"]').text()).toBe('Set');
+    expect(wrapper.find('[data-testid="dimension-state-height"]').text()).toBe('Set');
 
     await wrapper.find('[data-testid="dimension-value-width"]').setValue('200');
     await wrapper.find('[data-testid="dimension-value-width"]').trigger('change');
@@ -684,6 +686,69 @@ describe('EditorView', () => {
 
     expect(store.document.constraints.some((constraint) => constraint.id === 'height')).toBe(false);
     expect(wrapper.findAll('[aria-label="Dimensions"] li')).toHaveLength(1);
+  });
+
+  it('clears a set dimension to driven from the sidebar and undoes it', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      constraints: [{ id: 'w', type: 'distance', a: 'a', b: 'b', value: 100 }],
+    });
+
+    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await nextTick();
+
+    const input = wrapper.find('[data-testid="dimension-value-w"]');
+    expect((input.element as HTMLInputElement).value).toBe('100');
+    expect(input.attributes('aria-label')).toBe('Value for w');
+
+    await input.setValue('');
+    await flushPromises();
+
+    expect(store.document.constraints[0]).not.toHaveProperty('value');
+    expect(wrapper.find('[data-testid="dimension-state-w"]').text()).toBe('Driven');
+    expect(
+      (wrapper.find('[data-testid="dimension-value-w"]').element as HTMLInputElement).value,
+    ).toBe('100');
+    expect(wrapper.find('[data-testid="dimension-value-w"]').attributes('aria-label')).toBe(
+      'Value for w (driven measurement)',
+    );
+    expect(
+      store.document.entities.find((entity) => entity.id === 'b'),
+    ).toMatchObject({ x: 100, y: 0 });
+
+    await wrapper.find('[data-testid="undo"]').trigger('click');
+    await nextTick();
+    expect(store.document.constraints[0]).toMatchObject({ value: 100 });
+    expect(wrapper.find('[data-testid="dimension-state-w"]').text()).toBe('Set');
+
+    await wrapper.find('[data-testid="redo"]').trigger('click');
+    await nextTick();
+    expect(store.document.constraints[0]).not.toHaveProperty('value');
+  });
+
+  it('sets a driven dimension from the sidebar', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      constraints: [{ id: 'm', type: 'distance', a: 'a', b: 'b' }],
+    });
+
+    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="dimension-state-m"]').text()).toBe('Driven');
+    expect(
+      (wrapper.find('[data-testid="dimension-value-m"]').element as HTMLInputElement).value,
+    ).toBe('100');
+
+    await wrapper.find('[data-testid="dimension-value-m"]').setValue('150');
+    await wrapper.find('[data-testid="dimension-value-m"]').trigger('change');
+    await flushPromises();
+
+    expect(store.document.constraints[0]).toMatchObject({ value: 150 });
+    expect(wrapper.find('[data-testid="dimension-state-m"]').text()).toBe('Set');
+    expect(wrapper.find('[data-testid="dimension-value-m"]').attributes('aria-label')).toBe(
+      'Value for m',
+    );
   });
 
   it('shows empty states when the document has no constraints or dimensions', async () => {
@@ -1013,22 +1078,26 @@ describe('EditorView', () => {
     expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(true);
     expect(
       wrapper.find('[data-testid="dimension-label-dimension-preview"]').find('text').text(),
-    ).toBe('100');
+    ).toBe('(100)');
+    expect(
+      store.document.entities.find((entity) => entity.id === 'b'),
+    ).toMatchObject({ x: 100, y: 0 });
 
     canvasDown(wrapper, 400, 300);
     await flushPromises();
 
-    expect(store.document.constraints).toEqual([
-      {
-        id: expect.any(String),
-        type: 'distance',
-        a: 'a',
-        b: 'b',
-        value: 100,
-        orientation: 'aligned',
-        offset: 12,
-      },
-    ]);
+    const constraint = store.document.constraints[0]!;
+    expect(constraint).toMatchObject({
+      type: 'distance',
+      a: 'a',
+      b: 'b',
+      orientation: 'aligned',
+      offset: 12,
+    });
+    expect(constraint).not.toHaveProperty('value');
+    expect(
+      store.document.entities.find((entity) => entity.id === 'b'),
+    ).toMatchObject({ x: 100, y: 0 });
     expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(false);
   });
 
@@ -1045,8 +1114,9 @@ describe('EditorView', () => {
     await flushPromises();
 
     expect(store.document.constraints).toEqual([
-      expect.objectContaining({ type: 'distance', a: 'p', b: 'q', value: 50 }),
+      expect.objectContaining({ type: 'distance', a: 'p', b: 'q' }),
     ]);
+    expect(store.document.constraints[0]).not.toHaveProperty('value');
   });
 
   it('updates an existing distance instead of duplicating it', async () => {
@@ -1062,6 +1132,38 @@ describe('EditorView', () => {
 
     expect(store.document.constraints).toHaveLength(1);
     expect(store.document.constraints[0]).toMatchObject({ id: 'w', value: 100, offset: 12 });
+  });
+
+  it('keeps a re-placed driven dimension driven', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      constraints: [{ id: 'm', type: 'distance', a: 'a', b: 'b', offset: 3 }],
+    });
+
+    await wrapper.find('[data-testid="tool-dimension"]').trigger('click');
+    entityDown(wrapper, 'line', 'ab');
+    canvasDown(wrapper, 400, 300);
+    await flushPromises();
+
+    expect(store.document.constraints).toHaveLength(1);
+    expect(store.document.constraints[0]).toMatchObject({ id: 'm', offset: 12 });
+    expect(store.document.constraints[0]).not.toHaveProperty('value');
+  });
+
+  it('clears a set dimension inline on the canvas', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      constraints: [{ id: 'w', type: 'distance', a: 'a', b: 'b', value: 100 }],
+    });
+
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await nextTick();
+    await wrapper.find('[data-testid="dimension-editor"]').setValue('');
+    await wrapper.find('[data-testid="dimension-editor"]').trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+
+    expect(store.document.constraints[0]).not.toHaveProperty('value');
+    expect(wrapper.find('[data-testid="dimension-label-w"]').find('text').text()).toBe('(100)');
   });
 
   it('ignores a zero-length dimension placement', async () => {

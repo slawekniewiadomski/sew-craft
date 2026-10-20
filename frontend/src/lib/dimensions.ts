@@ -10,7 +10,8 @@ export interface DimensionPlacement {
 
 /** A partial change to a dimension constraint, driven from the canvas or sidebar. */
 export interface DimensionPatch {
-  value?: number;
+  /** A number sets the value; `null` clears it back to driven. */
+  value?: number | null;
   orientation?: DimensionOrientation;
   offset?: number;
 }
@@ -44,6 +45,28 @@ export function parseDimensionValue(input: string): number | null {
 /** Mirror of the command's rule: a distance dimension must be finite and > 0. */
 export function isValidDimensionValue(value: number | null): value is number {
   return value !== null && Number.isFinite(value) && value > 0;
+}
+
+/**
+ * One edit of a dimension value, shared by the canvas and sidebar: empty text
+ * means driven, a finite positive number means set, anything else is a typo.
+ */
+export type DimensionEdit =
+  | { kind: 'set'; value: number }
+  | { kind: 'driven' }
+  | { kind: 'invalid' };
+
+/** Parse a dimension edit into the command intent it represents. */
+export function parseDimensionEdit(input: string): DimensionEdit {
+  if (input.trim() === '') return { kind: 'driven' };
+  const value = parseDimensionValue(input);
+  return isValidDimensionValue(value) ? { kind: 'set', value } : { kind: 'invalid' };
+}
+
+/** The canvas label text: parentheses distinguish a driven measurement. */
+export function formatDimensionLabel(value: number, driven: boolean): string {
+  const formatted = formatDimensionValue(value);
+  return driven ? `(${formatted})` : formatted;
 }
 
 /** Approximate width of the screen-space value label, in pixels. */
