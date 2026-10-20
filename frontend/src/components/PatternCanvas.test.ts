@@ -995,17 +995,19 @@ describe('PatternCanvas', () => {
     expect(moved()).toBeUndefined();
 
     const panning = mountCanvas({ document: dimensionDoc });
+    const beforePan = transformOf(panning);
     down(panning.find('[data-testid="grid"]').element, 300, 200);
     move(360, 260);
     await nextTick();
     const panned = transformOf(panning);
+    expect(panned).not.toBe(beforePan);
+
     window.dispatchEvent(new MouseEvent('pointercancel'));
     await nextTick();
     move(500, 400);
     await nextTick();
 
     expect(transformOf(panning)).toBe(panned);
-    expect(transformOf(panning)).not.toBe(transformOf(dragging));
   });
 
   it('cancels a dimension drag when the tool switches mid-drag', async () => {

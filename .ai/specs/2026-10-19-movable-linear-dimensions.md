@@ -1,6 +1,6 @@
 # Movable linear dimensions
 
-Status: proposed
+Status: done
 Implements: [#30 — Dimensions should be movable](https://github.com/slawekniewiadomski/sew-craft/issues/30)
 Depends on: spec 003 (constraint solver), spec 005 (canvas editor interactions), spec 009 (command spec API)
 
