@@ -1,6 +1,6 @@
 # Line tool creates its own points
 
-Status: draft design (awaiting Q1)
+Status: implemented (2026-10-20); Q1 resolved as lazy commit with one grouped undo
 Refs #42
 Related: 005 (canvas editor interactions), 004 (command core and undo)
 

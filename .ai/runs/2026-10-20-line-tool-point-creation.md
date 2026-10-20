@@ -35,12 +35,12 @@ green under the 100% coverage gate.
 
 ## Evidence
 
-| Conclusion | Drawn from | Confidence |
-|---|---|---|
-| The goal is the three click cases in issue #42 | Issue body and spec Behaviour section | high |
-| Q1 is decided as lazy commit with one grouped undo | Spec Open Questions Q1 recommended answer; `spec-ready` applied by the maintainer | high |
-| Only frontend files change | Spec Data Model, API Contracts, Edited modules | high |
-| Tests belong in the existing Vitest suites | Spec Phasing and `AGENTS.md` 100% coverage gate | high |
+| Conclusion                                         | Drawn from                                                                        | Confidence |
+| -------------------------------------------------- | --------------------------------------------------------------------------------- | ---------- |
+| The goal is the three click cases in issue #42     | Issue body and spec Behaviour section                                             | high       |
+| Q1 is decided as lazy commit with one grouped undo | Spec Open Questions Q1 recommended answer; `spec-ready` applied by the maintainer | high       |
+| Only frontend files change                         | Spec Data Model, API Contracts, Edited modules                                    | high       |
+| Tests belong in the existing Vitest suites         | Spec Phasing and `AGENTS.md` 100% coverage gate                                   | high       |
 
 ## Assumptions
 
@@ -68,24 +68,24 @@ green under the 100% coverage gate.
 
 ### Phase 1: Endpoint resolution and command composition
 
-- [ ] 1.1 Add `line-tool.ts` with `LineEndpoint`, `resolveLineEndpoint`, `sameEndpoint` and `buildLineCommands`
-- [ ] 1.2 Cover every click case, snapping and identical endpoints in `line-tool.test.ts`
+- [x] 1.1 Add `line-tool.ts` with `LineEndpoint`, `resolveLineEndpoint`, `sameEndpoint` and `buildLineCommands` — 09db8ec
+- [x] 1.2 Cover every click case, snapping and identical endpoints in `line-tool.test.ts` — 09db8ec
 
 ### Phase 2: Grouped dispatch
 
-- [ ] 2.1 Add `dispatchGroup` and grouped journal replay to the editor store and command bus
-- [ ] 2.2 Test one entry per batch, undo, redo, empty batch and mid-batch failure
+- [x] 2.1 Add `dispatchGroup` and grouped journal replay to the editor store and command bus — 09db8ec
+- [x] 2.2 Test one entry per batch, undo, redo, empty batch and mid-batch failure — 09db8ec
 
 ### Phase 3: Canvas interaction
 
-- [ ] 3.1 Replace line pending ids with one `LineEndpoint` and emit the new `add-line` payload
-- [ ] 3.2 Render the provisional point and dashed preview, and clear them on completion, tool change and doc change
-- [ ] 3.3 Test the click combinations, identical-endpoint guard, cancellation and preview test ids
+- [x] 3.1 Replace line pending ids with one `LineEndpoint` and emit the new `add-line` payload — 4ddfae0
+- [x] 3.2 Render the provisional point and dashed preview, and clear them on completion, tool change and doc change — 4ddfae0
+- [x] 3.3 Test the click combinations, identical-endpoint guard, cancellation and preview test ids — 66bd368
 
 ### Phase 4: Editor wiring and verification
 
-- [ ] 4.1 Wire `EditorView.onAddLine` to `buildLineCommands` + `dispatchGroup`
-- [ ] 4.2 Test the resulting document and one-step undo in `EditorView.test.ts`
+- [x] 4.1 Wire `EditorView.onAddLine` to `buildLineCommands` + `dispatchGroup` — 4ddfae0
+- [x] 4.2 Test the resulting document and one-step undo in `EditorView.test.ts` — 66bd368
 - [ ] 4.3 Mark the spec implemented and run the full validation gate
 - [ ] 4.4 Run `om-auto-review-pr 44 --autofix` and resolve findings
 - [ ] 4.5 Retitle the PR, normalize labels, promote it to ready and report
