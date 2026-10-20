@@ -238,7 +238,7 @@ below.
 
 | # | Assumption | Why | Status |
 | - | ---------- | --- | ------ |
-| R1 | Related = the constraint's referenced segment matches the selected line's endpoint pair, per the matrix above; not "any shared endpoint". | Fixes #41 without touching the model. | Reversible |
+| R1 | Related = the constraint's referenced segment matches the selected line's endpoint pair, per the matrix above; not "any shared endpoint". | Addresses #41 without touching the model. | Reversible |
 | R2 | `angle`, `equal` and `point_on_line` appear on both edges/segments they reference. | They genuinely constrain both; the model has no provenance to pick one owner, and option B cannot represent multi-edge ownership with a single id. | Reversible |
 | R3 | Point selection keeps "any constraint referencing the point". | A point has no segment; this is the escape hatch for endpoint constraints and the current behaviour. | Reversible |
 | R4 | Curve selection keeps "any control point" for v1. | A cubic has no edge segment; #41 reports lines; a curve-specific rule would be a second unvalidated design. | Reversible; follow-up if reported |

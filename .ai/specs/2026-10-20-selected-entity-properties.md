@@ -243,7 +243,7 @@ design review.
 | R2 | Single selection only, matching `selectedId` | Multi-select is a separate interaction change | Reversible |
 | R3 | Show all three entity kinds; allow construction toggles on all, seams on line/curve only | Matches what the document and commands support | Reversible |
 | R4 | Editable v1: construction toggle, seam add/edit/remove, dimension value, remove dimension/constraint. Read-only: coordinates, endpoints, fixed flag | Reuses existing commands; avoids inventing a re-point command | Reversible (pending Q1) |
-| R5 | Related dimensions/constraints = those whose referenced segment acts on the selected entity (line endpoint pair; curve control-point reference); point selections keep any constraint referencing the point. Amended by #41's scope spec | Fixes the adjacent-edge clutter reported in #41; dimensions stay listed separately | Reversible |
+| R5 | Related dimensions/constraints = those whose referenced segment acts on the selected entity (line endpoint pair; curve control-point reference); point selections keep any constraint referencing the point. Amended by #41's scope spec | Addresses the adjacent-edge clutter reported in #41; dimensions stay listed separately | Reversible |
 | R6 | Workspace summary stays below the inspector | Keeps tool/project/command counts visible, no information removed | Reversible |
 | R7 | No new command, geometry export, schema, API or database change | Everything needed already exists | Reversible |
 | R8 | Reuse `constraintLabel`, `measureLinearDimension`, `constraintOrientation`, `seamForEdge` and `parseSeamWidth` | Canonical helpers; no parallel logic | Reversible |
