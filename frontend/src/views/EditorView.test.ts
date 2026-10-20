@@ -712,9 +712,10 @@ describe('EditorView', () => {
     expect(wrapper.find('[data-testid="dimension-value-w"]').attributes('aria-label')).toBe(
       'Value for w (driven measurement)',
     );
-    expect(
-      store.document.entities.find((entity) => entity.id === 'b'),
-    ).toMatchObject({ x: 100, y: 0 });
+    expect(store.document.entities.find((entity) => entity.id === 'b')).toMatchObject({
+      x: 100,
+      y: 0,
+    });
 
     await wrapper.find('[data-testid="undo"]').trigger('click');
     await nextTick();
@@ -1079,9 +1080,10 @@ describe('EditorView', () => {
     expect(
       wrapper.find('[data-testid="dimension-label-dimension-preview"]').find('text').text(),
     ).toBe('(100)');
-    expect(
-      store.document.entities.find((entity) => entity.id === 'b'),
-    ).toMatchObject({ x: 100, y: 0 });
+    expect(store.document.entities.find((entity) => entity.id === 'b')).toMatchObject({
+      x: 100,
+      y: 0,
+    });
 
     canvasDown(wrapper, 400, 300);
     await flushPromises();
@@ -1095,9 +1097,10 @@ describe('EditorView', () => {
       offset: 12,
     });
     expect(constraint).not.toHaveProperty('value');
-    expect(
-      store.document.entities.find((entity) => entity.id === 'b'),
-    ).toMatchObject({ x: 100, y: 0 });
+    expect(store.document.entities.find((entity) => entity.id === 'b')).toMatchObject({
+      x: 100,
+      y: 0,
+    });
     expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(false);
   });
 

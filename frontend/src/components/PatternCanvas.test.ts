@@ -797,9 +797,7 @@ describe('PatternCanvas', () => {
       wrapper.find('[data-testid="dimension-label-dimension-preview"]').find('text').text(),
     ).toBe('(100)');
     expect(
-      wrapper
-        .find('[data-testid="dimension-label-dimension-preview"]')
-        .attributes('aria-label'),
+      wrapper.find('[data-testid="dimension-label-dimension-preview"]').attributes('aria-label'),
     ).toBe('Driven dimension, measured 100 millimetres');
 
     const target = worldToScreen(vp, { x: 50, y: 40 });

@@ -815,9 +815,10 @@ describe('update_constraint', () => {
   });
 
   it('restores driven state after a presentation-only edit', () => {
-    const driven = documentOf([point('a', 0, 0), point('b', 10, 0)], [
-      { id: 'm', type: 'distance', a: 'a', b: 'b' },
-    ]);
+    const driven = documentOf(
+      [point('a', 0, 0), point('b', 10, 0)],
+      [{ id: 'm', type: 'distance', a: 'a', b: 'b' }],
+    );
 
     const applied = applyCommand(
       driven,

@@ -52,9 +52,7 @@ export function isValidDimensionValue(value: number | null): value is number {
  * means driven, a finite positive number means set, anything else is a typo.
  */
 export type DimensionEdit =
-  | { kind: 'set'; value: number }
-  | { kind: 'driven' }
-  | { kind: 'invalid' };
+  { kind: 'set'; value: number } | { kind: 'driven' } | { kind: 'invalid' };
 
 /** Parse a dimension edit into the command intent it represents. */
 export function parseDimensionEdit(input: string): DimensionEdit {
