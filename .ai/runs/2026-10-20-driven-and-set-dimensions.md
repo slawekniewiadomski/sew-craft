@@ -92,5 +92,5 @@ moving geometry. Ships on this PR, on the same branch as the spec.
 
 ### Phase 5: Documentation and verification
 
-- [ ] 5.1 Update the geometry, data-model and glossary docs
+- [x] 5.1 Update the geometry, data-model and glossary docs — 9f4e7f9
 - [ ] 5.2 Run the full validation gate and the automated review pass
