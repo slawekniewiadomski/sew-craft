@@ -70,8 +70,22 @@ export type DistanceConstraint = {
    * Driving length in millimetres. Absent means **driven**: the dimension is a
    * reference measurement with no solver residual. A present value makes it a
    * **set** dimension that drives the sketch.
+   *
+   * Mutually exclusive with `reference`: a referenced dimension derives its value
+   * from its source and stores no literal.
    */
   value?: number;
+  /**
+   * Id of the `distance` constraint this dimension copies its value from. The
+   * effective value is resolved from the source chain on every read, so a source
+   * edit moves every dependent in one solve.
+   */
+  reference?: EntityId;
+  /**
+   * Last resolved value, kept only so a **broken** reference (missing, driven or
+   * cyclic source) can still show a number. Never read by the solver.
+   */
+  lastKnownValue?: number;
   /** Measurement axis; omitted means `aligned`. */
   orientation?: DimensionOrientation;
   /** Signed millimetres from the measured span to the dimension line. */

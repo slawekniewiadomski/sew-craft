@@ -743,7 +743,7 @@ describe('EditorView', () => {
 
     const input = wrapper.find('[data-testid="dimension-value-w"]');
     expect((input.element as HTMLInputElement).value).toBe('100');
-    expect(input.attributes('aria-label')).toBe('Value for w');
+    expect(input.attributes('aria-label')).toBe('Value for w (set)');
 
     await input.setValue('');
     await flushPromises();
@@ -754,7 +754,7 @@ describe('EditorView', () => {
       (wrapper.find('[data-testid="dimension-value-w"]').element as HTMLInputElement).value,
     ).toBe('100');
     expect(wrapper.find('[data-testid="dimension-value-w"]').attributes('aria-label')).toBe(
-      'Value for w (driven measurement)',
+      'Value for w (driven)',
     );
     expect(store.document.entities.find((entity) => entity.id === 'b')).toMatchObject({
       x: 100,
@@ -792,7 +792,7 @@ describe('EditorView', () => {
     expect(store.document.constraints[0]).toMatchObject({ value: 150 });
     expect(wrapper.find('[data-testid="dimension-state-m"]').text()).toBe('Set');
     expect(wrapper.find('[data-testid="dimension-value-m"]').attributes('aria-label')).toBe(
-      'Value for m',
+      'Value for m (set)',
     );
   });
 
@@ -811,6 +811,125 @@ describe('EditorView', () => {
 
     expect(wrapper.text()).toContain('No dimensions yet.');
     expect(wrapper.text()).toContain('No constraints yet.');
+  });
+
+  it('relinks a broken dimension from the drawer and removes the reference again', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      constraints: [
+        { id: 'w', type: 'distance', a: 'a', b: 'b', reference: 'gone', lastKnownValue: 80 },
+        { id: 'h', type: 'distance', a: 'b', b: 'c', value: 60 },
+      ],
+    });
+
+    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await nextTick();
+
+    const input = wrapper.find('[data-testid="dimension-value-w"]');
+    expect(wrapper.find('[data-testid="dimension-state-w"]').text()).toBe('Broken');
+    expect((input.element as HTMLInputElement).value).toBe('80');
+    expect(wrapper.find('[data-testid="dimension-broken-w"]').text()).toBe(
+      'Source gone is missing. Type a value or press # to re-link.',
+    );
+    expect(wrapper.find('[data-testid="dimension-reference-w"]').text()).toBe('Re-link');
+
+    await wrapper.find('[data-testid="dimension-reference-w"]').trigger('click');
+    expect(wrapper.find('[data-testid="dimension-reference-option-h"]').text()).toBe(
+      'h · 60 mm · b → c · Aligned',
+    );
+    await input.trigger('keydown', { key: 'ArrowDown' });
+    await input.trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+
+    expect(store.document.constraints.find((constraint) => constraint.id === 'w')).toMatchObject({
+      reference: 'h',
+    });
+    expect(wrapper.find('[data-testid="dimension-state-w"]').text()).toBe('Referenced');
+    expect(
+      (wrapper.find('[data-testid="dimension-value-w"]').element as HTMLInputElement).value,
+    ).toBe('#h');
+    expect(wrapper.find('[data-testid="dimension-source-w"]').text()).toContain('Source: h');
+
+    await wrapper.find('[data-testid="dimension-unlink-w"]').trigger('click');
+    await flushPromises();
+
+    expect(store.document.constraints.find((constraint) => constraint.id === 'w')).toMatchObject({
+      value: 60,
+    });
+    expect(wrapper.find('[data-testid="dimension-state-w"]').text()).toBe('Set');
+  });
+
+  it('opens the drawer picker from #, filters it and closes it with Escape or a value', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      constraints: [
+        { id: 'w', type: 'distance', a: 'a', b: 'b', value: 100 },
+        { id: 'h', type: 'distance', a: 'b', b: 'c', value: 60 },
+      ],
+    });
+
+    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await nextTick();
+
+    const input = wrapper.find('[data-testid="dimension-value-w"]');
+    await input.trigger('keydown', { key: 'ArrowDown' });
+    (input.element as HTMLInputElement).value = '#';
+    await input.trigger('input');
+    expect(wrapper.find('[data-testid="dimension-reference-option-h"]').exists()).toBe(true);
+    expect(input.attributes('aria-expanded')).toBe('true');
+
+    const heightInput = wrapper.find('[data-testid="dimension-value-h"]');
+    await heightInput.trigger('keydown', { key: 'ArrowDown' });
+    expect(wrapper.find('[data-testid="dimension-reference-picker"]').exists()).toBe(true);
+    expect(input.attributes('aria-activedescendant')).toBe('dimension-drawer-reference-list-w-h');
+
+    await input.trigger('keydown', { key: 'ArrowUp' });
+    await input.trigger('keydown', { key: 'Escape' });
+    expect(wrapper.find('[data-testid="dimension-reference-picker"]').exists()).toBe(false);
+
+    (input.element as HTMLInputElement).value = '#zzz';
+    await input.trigger('input');
+    expect(wrapper.find('[data-testid="dimension-reference-empty"]').text()).toBe(
+      'No other dimensions can be referenced.',
+    );
+    await input.trigger('keydown', { key: 'ArrowDown' });
+    await input.trigger('keydown', { key: 'Enter' });
+    expect(store.journal).toHaveLength(0);
+
+    await input.trigger('keydown', { key: 'Escape' });
+    (input.element as HTMLInputElement).value = '#zzz';
+    await input.trigger('change');
+    expect((input.element as HTMLInputElement).value).toBe('100');
+    expect(store.journal).toHaveLength(0);
+
+    (input.element as HTMLInputElement).value = '#';
+    await input.trigger('input');
+    (input.element as HTMLInputElement).value = '120';
+    await input.trigger('input');
+    expect(wrapper.find('[data-testid="dimension-reference-picker"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="dimension-reference-w"]').trigger('click');
+    await wrapper.find('[data-testid="dimension-reference-option-h"]').trigger('click');
+    await flushPromises();
+
+    expect(store.document.constraints.find((constraint) => constraint.id === 'w')).toMatchObject({
+      reference: 'h',
+    });
+  });
+
+  it('keeps an unmeasurable driven dimension in the drawer', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      constraints: [{ id: 'ghost', type: 'distance', a: 'a', b: 'missing' }],
+    });
+
+    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await nextTick();
+
+    expect(
+      (wrapper.find('[data-testid="dimension-value-ghost"]').element as HTMLInputElement).value,
+    ).toBe('');
+    expect(store.journal).toHaveLength(0);
   });
 
   it('shows the constraints group and arms a mode with its prompt', async () => {

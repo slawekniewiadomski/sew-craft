@@ -1,21 +1,32 @@
 <script setup lang="ts">
 import type {
   DimensionOrientation,
+  DistanceConstraint,
   Entity,
   EntityId,
   PatternDocument,
   SeamSide,
 } from '@sewcraft/geometry';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 
 import { Button } from '@/components/ui/button';
 import type { DimensionSummary, EntityProperties } from '@/lib/entity-properties';
 import {
   DIMENSION_ORIENTATION_OPTIONS,
+  dimensionPatchForEdit,
+  dimensionStateLabel,
+  filterReferenceOptions,
+  formatDimensionField,
   formatDimensionValue,
+  isReferenceEditText,
   parseDimensionEdit,
+  referenceOptions,
+  referenceSearchText,
+  type DimensionPatch,
+  type DimensionReferenceOption,
 } from '@/lib/dimensions';
 import { parseSeamWidth } from '@/lib/seam-width';
+import DimensionReferencePicker from './DimensionReferencePicker.vue';
 
 const props = defineProps<{
   /** The live document; the panel never copies it, every render re-reads props. */
@@ -29,9 +40,103 @@ const emit = defineEmits<{
   'set-seam-width': [id: EntityId, width: number];
   'flip-seam': [id: EntityId, side: SeamSide];
   'remove-seam': [id: EntityId];
-  'update-dimension': [id: EntityId, value: number | null];
+  'update-dimension': [id: EntityId, patch: DimensionPatch];
   'remove-constraint': [id: EntityId];
 }>();
+
+/** The `#` picker open in the inspector, if any. */
+const picker = ref<{ id: EntityId; text: string; activeIndex: number } | null>(null);
+
+function distanceConstraint(id: EntityId): DistanceConstraint | null {
+  const constraint = props.document.constraints.find((entry) => entry.id === id);
+  return constraint !== undefined && constraint.type === 'distance' ? constraint : null;
+}
+
+/** Filtered rows for the open inspector picker. */
+const pickerOptions = computed<DimensionReferenceOption[]>(() => {
+  const current = picker.value!;
+  const constraint = distanceConstraint(current.id);
+  return constraint === null
+    ? []
+    : filterReferenceOptions(referenceOptions(props.document, constraint), current.text);
+});
+
+/** The row Enter would pick, or `null` for an empty list. */
+const activePickerOption = computed<DimensionReferenceOption | null>(() => {
+  const current = picker.value;
+  if (current === null || pickerOptions.value.length === 0) return null;
+  return pickerOptions.value[Math.min(current.activeIndex, pickerOptions.value.length - 1)]!;
+});
+
+/** The highlighted row, clamped to the filtered list. */
+const activePickerIndex = computed<number>(() =>
+  activePickerOption.value === null
+    ? -1
+    : pickerOptions.value.findIndex((option) => option.id === activePickerOption.value!.id),
+);
+
+function optionsFor(id: EntityId): DimensionReferenceOption[] {
+  const constraint = distanceConstraint(id);
+  return constraint === null ? [] : referenceOptions(props.document, constraint);
+}
+
+function openPicker(id: EntityId, text = ''): void {
+  picker.value = { id, text, activeIndex: 0 };
+}
+
+function closePicker(): void {
+  picker.value = null;
+}
+
+function movePicker(step: number): void {
+  const current = picker.value!;
+  const count = pickerOptions.value.length;
+  if (count === 0) return;
+  picker.value = {
+    id: current.id,
+    text: current.text,
+    activeIndex: (current.activeIndex + step + count) % count,
+  };
+}
+
+function onPickerInput(id: EntityId, event: Event): void {
+  const value = (event.target as HTMLInputElement).value;
+  if (isReferenceEditText(value)) {
+    openPicker(id, referenceSearchText(value));
+  } else if (picker.value?.id === id) {
+    closePicker();
+  }
+}
+
+function onPickerKeydown(id: EntityId, event: KeyboardEvent): void {
+  const current = picker.value;
+  if (current === null || current.id !== id) return;
+
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    movePicker(1);
+    return;
+  }
+  if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    movePicker(-1);
+    return;
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closePicker();
+    return;
+  }
+  if (event.key === 'Enter' && activePickerOption.value !== null) {
+    event.preventDefault();
+    linkDimension(id, activePickerOption.value.id);
+  }
+}
+
+function linkDimension(id: EntityId, reference: EntityId): void {
+  closePicker();
+  emit('update-dimension', id, { reference });
+}
 
 const KIND_LABELS: Record<Entity['kind'], string> = {
   point: 'Point',
@@ -75,28 +180,45 @@ function onSeamWidthEdit(id: EntityId, current: number, event: Event): void {
   emit('set-seam-width', id, width);
 }
 
-/** Millimetre text for a dimension, or empty when it cannot be measured. */
-function dimensionValueText(value: number | null): string {
-  return value === null ? '' : formatDimensionValue(value);
+/** The value field's text: `#source` for a live link, its number otherwise. */
+function dimensionFieldText(dimension: DimensionSummary): string {
+  const constraint = distanceConstraint(dimension.id);
+  return constraint === null
+    ? dimension.value === null
+      ? ''
+      : formatDimensionValue(dimension.value)
+    : formatDimensionField(constraint, dimension.value, dimension.state);
 }
 
 /** Empty text clears the value back to driven; invalid or unchanged text snaps back. */
 function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
   const input = event.target as HTMLInputElement;
   const edit = parseDimensionEdit(input.value);
-  const unchanged =
-    edit.kind === 'invalid'
-      ? true
-      : edit.kind === 'driven'
-        ? dimension.driven
-        : !dimension.driven && edit.value === dimension.value;
-
-  if (edit.kind === 'invalid' || unchanged) {
-    input.value = dimensionValueText(dimension.value);
+  if (edit.kind === 'invalid') {
+    input.value = dimensionFieldText(dimension);
     return;
   }
 
-  emit('update-dimension', dimension.id, edit.kind === 'driven' ? null : edit.value);
+  const constraint = distanceConstraint(dimension.id);
+  const unchangedSet =
+    edit.kind === 'set' &&
+    dimension.state === 'set' &&
+    constraint !== null &&
+    constraint.value === edit.value;
+  const unchangedDriven = edit.kind === 'driven' && dimension.state === 'driven';
+  if (unchangedSet || unchangedDriven) {
+    input.value = dimensionFieldText(dimension);
+    return;
+  }
+
+  const patch = dimensionPatchForEdit(edit, optionsFor(dimension.id));
+  if (patch === null) {
+    input.value = dimensionFieldText(dimension);
+    return;
+  }
+
+  closePicker();
+  emit('update-dimension', dimension.id, patch);
 }
 </script>
 
@@ -233,26 +355,82 @@ function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
             </Button>
           </div>
 
-          <label class="flex flex-wrap items-center gap-2">
+          <label class="relative flex flex-wrap items-center gap-2">
             <span class="text-xs text-muted-foreground">Value</span>
             <input
-              type="number"
-              min="0.001"
-              step="0.1"
+              type="text"
+              inputmode="decimal"
               class="w-20 rounded-md border px-2 py-1"
-              :value="dimensionValueText(dimension.value)"
-              :aria-label="`Value for dimension ${dimension.id} on ${props.entity.id}`"
+              :value="dimensionFieldText(dimension)"
+              :aria-label="`Value for dimension ${dimension.id} on ${props.entity.id} (${dimensionStateLabel(dimension.state).toLowerCase()})`"
               :data-testid="`entity-dimension-value-${dimension.id}`"
+              role="combobox"
+              aria-autocomplete="list"
+              :aria-expanded="picker?.id === dimension.id"
+              :aria-controls="
+                picker?.id === dimension.id
+                  ? `entity-dimension-reference-list-${dimension.id}`
+                  : undefined
+              "
+              :aria-activedescendant="
+                picker?.id === dimension.id && activePickerOption !== null
+                  ? `entity-dimension-reference-list-${dimension.id}-${activePickerOption.id}`
+                  : undefined
+              "
+              @input="onPickerInput(dimension.id, $event)"
+              @keydown="onPickerKeydown(dimension.id, $event)"
               @change="onDimensionValueEdit(dimension, $event)"
             />
             <span class="text-xs text-muted-foreground">mm</span>
             <span
               class="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
+              :data-dimension-state="dimension.state"
               :data-testid="`entity-dimension-state-${dimension.id}`"
             >
-              {{ dimension.driven ? 'Driven' : 'Set' }}
+              {{ dimensionStateLabel(dimension.state) }}
             </span>
+            <Button
+              variant="outline"
+              size="sm"
+              :data-testid="`entity-dimension-reference-${dimension.id}`"
+              @click="openPicker(dimension.id)"
+            >
+              {{ dimension.state === 'broken' ? 'Re-link' : 'Reference' }}
+            </Button>
+            <Button
+              v-if="dimension.sourceId !== null"
+              variant="outline"
+              size="sm"
+              :data-testid="`entity-dimension-unlink-${dimension.id}`"
+              @click="emit('update-dimension', dimension.id, { reference: null })"
+            >
+              Remove reference
+            </Button>
+
+            <DimensionReferencePicker
+              v-if="picker?.id === dimension.id"
+              :list-id="`entity-dimension-reference-list-${dimension.id}`"
+              class="left-0 top-full mt-1"
+              :options="pickerOptions"
+              :active-index="activePickerIndex"
+              @select="linkDimension(dimension.id, $event)"
+            />
           </label>
+
+          <p
+            v-if="dimension.state === 'referenced'"
+            class="text-xs text-muted-foreground"
+            :data-testid="`entity-dimension-source-${dimension.id}`"
+          >
+            Source: <span class="font-mono">{{ dimension.sourceId }}</span>
+          </p>
+          <p
+            v-else-if="dimension.state === 'broken'"
+            class="text-xs text-destructive"
+            :data-testid="`entity-dimension-broken-${dimension.id}`"
+          >
+            Source {{ dimension.sourceId }} is missing. Type a value or press # to re-link.
+          </p>
         </li>
       </ul>
       <p v-else class="mt-1 text-xs text-muted-foreground">No dimensions on this {{ kindNoun }}.</p>

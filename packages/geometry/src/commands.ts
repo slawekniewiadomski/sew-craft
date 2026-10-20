@@ -6,7 +6,12 @@ import {
   getSeam,
   seamForEdge,
 } from './document.js';
-import { constraintOffset, constraintOrientation } from './dimension.js';
+import {
+  constraintOffset,
+  constraintOrientation,
+  createsReferenceCycle,
+  resolveSetValue,
+} from './dimension.js';
 import { solve } from './solver.js';
 import type { SolveOptions, SolveResult } from './solver.js';
 import {
@@ -75,6 +80,8 @@ export interface AddConstraintParams {
   type: ConstraintType;
   entities: EntityId[];
   value?: number;
+  /** Source dimension id for a `distance` constraint; exclusive with `value`. */
+  reference?: EntityId;
   /** Measurement axis for `distance` constraints; ignored for other types. */
   orientation?: DimensionOrientation;
   /** Placement offset for `distance` constraints; ignored for other types. */
@@ -85,6 +92,8 @@ export interface UpdateConstraintParams {
   id: EntityId;
   /** A number sets the value; `null` clears a distance to driven. */
   value?: number | null;
+  /** A source dimension id links; `null` unlinks and keeps the current value. */
+  reference?: EntityId | null;
   orientation?: DimensionOrientation;
   offset?: number;
 }
@@ -448,8 +457,9 @@ function applyDeleteEntity(
   }
 
   const entities = document.entities.filter((entity) => entity.id !== id);
-  const constraints = document.constraints.filter(
-    (constraint) => !constraintEntityIds(constraint).includes(id),
+  const constraints = captureBrokenDependents(
+    document.constraints,
+    document.constraints.filter((constraint) => !constraintEntityIds(constraint).includes(id)),
   );
   const seams = document.seams.filter((seam) => seam.edge !== id);
 
@@ -458,11 +468,70 @@ function applyDeleteEntity(
   return { document: { ...document, entities, constraints, seams }, inverse: null };
 }
 
+/**
+ * Keep a dependent honest when its source disappears: record the value it last
+ * drove with, keep the dangling `reference`, and leave the constraint in place.
+ * Broken dependents are never deleted as a side effect.
+ */
+function captureBrokenDependents(previous: Constraint[], next: Constraint[]): Constraint[] {
+  return next.map((constraint) => {
+    if (constraint.type !== 'distance' || constraint.reference === undefined) return constraint;
+    const before = resolveSetValue(previous, constraint);
+    if (before === null || resolveSetValue(next, constraint) !== null) return constraint;
+    return { ...constraint, lastKnownValue: before };
+  });
+}
+
+/** Order-insensitive comparison of a dimension's point pair with another pair. */
+function samePointPair(constraint: DistanceConstraint, a: EntityId, b: EntityId): boolean {
+  return (constraint.a === a && constraint.b === b) || (constraint.a === b && constraint.b === a);
+}
+
+/**
+ * Validate a link and return the source's resolved value. Rejects a missing or
+ * non-distance source, a self link, the same point pair, a driven or broken
+ * source, and a link that would close a cycle. Never mutates the document.
+ */
+function validateReference(
+  document: PatternDocument,
+  commandType: CommandType,
+  dependent: { id: EntityId; a: EntityId; b: EntityId },
+  reference: EntityId,
+): number {
+  const source = getConstraint(document, reference);
+  if (source === undefined || source.type !== 'distance') {
+    throw new CommandValidationError(
+      commandType,
+      `reference ${reference} is not an existing distance dimension`,
+    );
+  }
+  if (source.id === dependent.id) {
+    throw new CommandValidationError(commandType, 'a dimension cannot reference itself');
+  }
+  if (samePointPair(source, dependent.a, dependent.b)) {
+    throw new CommandValidationError(
+      commandType,
+      `reference ${reference} measures the same point pair`,
+    );
+  }
+  const value = resolveSetValue(document.constraints, source);
+  if (value === null) {
+    throw new CommandValidationError(
+      commandType,
+      `reference ${reference} is driven or broken and has no value`,
+    );
+  }
+  if (createsReferenceCycle(document.constraints, dependent.id, reference)) {
+    throw new CommandValidationError(commandType, `reference ${reference} would create a cycle`);
+  }
+  return value;
+}
+
 function applyAddConstraint(
   document: PatternDocument,
   command: CommandOf<'add_constraint'>,
 ): CommandApplication {
-  const { type, entities, value, orientation, offset } = command.params;
+  const { type, entities, value, reference, orientation, offset } = command.params;
   if (!CONSTRAINT_TYPES.includes(type)) {
     throw new CommandValidationError('add_constraint', `unknown constraint type: ${String(type)}`);
   }
@@ -491,6 +560,20 @@ function applyAddConstraint(
   if (type === 'angle' && (typeof value !== 'number' || !Number.isFinite(value))) {
     throw new CommandValidationError('add_constraint', 'angle requires a finite value');
   }
+  if (reference !== undefined) {
+    if (type !== 'distance') {
+      throw new CommandValidationError(
+        'add_constraint',
+        'reference applies only to distance constraints',
+      );
+    }
+    if (value !== undefined) {
+      throw new CommandValidationError(
+        'add_constraint',
+        'a distance dimension takes a value or a reference, not both',
+      );
+    }
+  }
 
   if (type !== 'distance' && (orientation !== undefined || offset !== undefined)) {
     throw new CommandValidationError(
@@ -512,7 +595,21 @@ function applyAddConstraint(
     return noOp(document);
   }
 
-  const constraint = buildConstraint(command.id, type, entities, value, orientation, offset);
+  const [a, b] = entities;
+  const resolved =
+    reference === undefined
+      ? undefined
+      : validateReference(document, 'add_constraint', { id: command.id, a: a!, b: b! }, reference);
+  const constraint = buildConstraint(
+    command.id,
+    type,
+    entities,
+    value,
+    orientation,
+    offset,
+    reference,
+    resolved,
+  );
 
   return {
     document: { ...document, constraints: [...document.constraints, constraint] },
@@ -530,7 +627,7 @@ function applyUpdateConstraint(
   document: PatternDocument,
   command: CommandOf<'update_constraint'>,
 ): CommandApplication {
-  const { id, value, orientation, offset } = command.params;
+  const { id, value, reference, orientation, offset } = command.params;
   const constraint = getConstraint(document, id);
   if (constraint === undefined) {
     throw new CommandValidationError('update_constraint', `unknown constraint: ${id}`);
@@ -541,8 +638,25 @@ function applyUpdateConstraint(
       `constraint ${id} is a ${constraint.type}, expected distance or angle`,
     );
   }
-  if (value === undefined && orientation === undefined && offset === undefined) {
-    throw new CommandValidationError('update_constraint', 'provide value, orientation or offset');
+  if (value !== undefined && reference !== undefined) {
+    throw new CommandValidationError('update_constraint', 'provide value or reference, not both');
+  }
+  if (
+    value === undefined &&
+    reference === undefined &&
+    orientation === undefined &&
+    offset === undefined
+  ) {
+    throw new CommandValidationError(
+      'update_constraint',
+      'provide value, reference, orientation or offset',
+    );
+  }
+  if (reference !== undefined && constraint.type !== 'distance') {
+    throw new CommandValidationError(
+      'update_constraint',
+      'reference applies only to distance constraints',
+    );
   }
 
   if (value === null) {
@@ -586,7 +700,7 @@ function applyUpdateConstraint(
     }
   }
 
-  const updated = updatedConstraint(constraint, value, orientation, offset);
+  const updated = updatedConstraint(document, constraint, value, reference, orientation, offset);
   if (updated === null) {
     return noOp(document);
   }
@@ -596,24 +710,46 @@ function applyUpdateConstraint(
   );
 
   return {
-    document: { ...document, constraints },
-    inverse: {
-      id: command.id,
-      type: 'update_constraint',
-      params: updated.inverse,
+    document: {
+      ...document,
+      constraints: captureBrokenDependents(document.constraints, constraints),
     },
+    // A previous broken link cannot be expressed as a command param, so undo
+    // falls back to the journal snapshot for that transition.
+    inverse:
+      updated.inverse === null
+        ? null
+        : { id: command.id, type: 'update_constraint', params: updated.inverse },
   };
 }
 
 interface UpdatedConstraint {
   constraint: Constraint;
-  inverse: UpdateConstraintParams;
+  /** `null` when undo has to restore a state the command params cannot express. */
+  inverse: UpdateConstraintParams | null;
+}
+
+/** The params that restore a dimension's previous state, or `null` for a broken link. */
+function previousStateParams(
+  document: PatternDocument,
+  constraint: DistanceConstraint,
+  orientation: DimensionOrientation,
+  offset: number,
+): UpdateConstraintParams | null {
+  const base = { id: constraint.id, orientation, offset };
+  if (constraint.value !== undefined) return { ...base, value: constraint.value };
+  if (constraint.reference === undefined) return { ...base, value: null };
+  // A dangling or unresolvable reference cannot be re-linked by a command.
+  if (resolveSetValue(document.constraints, constraint) === null) return null;
+  return { ...base, reference: constraint.reference };
 }
 
 /** Build the next constraint plus the params that restore its previous values. */
 function updatedConstraint(
+  document: PatternDocument,
   constraint: DistanceConstraint | Extract<Constraint, { type: 'angle' }>,
   value: number | null | undefined,
+  reference: EntityId | null | undefined,
   orientation: DimensionOrientation | undefined,
   offset: number | undefined,
 ): UpdatedConstraint | null {
@@ -629,13 +765,50 @@ function updatedConstraint(
 
   const previousOrientation = constraintOrientation(constraint);
   const previousOffset = constraintOffset(constraint);
-  // `null` clears the value; omitting it leaves the current state untouched.
-  const nextValue = value === null ? undefined : (value ?? constraint.value);
   const nextOrientation = orientation ?? previousOrientation;
   const nextOffset = offset ?? previousOffset;
 
+  let nextValue = constraint.value;
+  let nextReference = constraint.reference;
+  let nextLastKnown = constraint.lastKnownValue;
+
+  if (reference === null) {
+    // Unlink: keep the current effective value so the sketch does not move.
+    if (constraint.reference !== undefined) {
+      // A referenced dimension resolves to its source; a broken one keeps the
+      // last reading. Both are the value the label currently shows.
+      const effective =
+        resolveSetValue(document.constraints, constraint) ?? constraint.lastKnownValue ?? null;
+      if (effective === null) {
+        throw new CommandValidationError(
+          'update_constraint',
+          `dimension ${constraint.id} has no value to keep when unlinking`,
+        );
+      }
+      nextValue = effective;
+      nextReference = undefined;
+      nextLastKnown = undefined;
+    }
+  } else if (reference !== undefined) {
+    const resolved = validateReference(
+      document,
+      'update_constraint',
+      { id: constraint.id, a: constraint.a, b: constraint.b },
+      reference,
+    );
+    nextValue = undefined;
+    nextReference = reference;
+    nextLastKnown = resolved;
+  } else if (value !== undefined) {
+    // A manual value (or `null`) breaks any existing link.
+    nextValue = value === null ? undefined : value;
+    nextReference = undefined;
+    nextLastKnown = undefined;
+  }
+
   if (
     nextValue === constraint.value &&
+    nextReference === constraint.reference &&
     nextOrientation === previousOrientation &&
     nextOffset === previousOffset
   ) {
@@ -651,16 +824,12 @@ function updatedConstraint(
     offset: nextOffset,
   };
   if (nextValue !== undefined) next.value = nextValue;
+  if (nextReference !== undefined) next.reference = nextReference;
+  if (nextLastKnown !== undefined) next.lastKnownValue = nextLastKnown;
 
   return {
     constraint: next,
-    inverse: {
-      id: constraint.id,
-      // A driven constraint is restored by clearing the value again.
-      value: constraint.value === undefined ? null : constraint.value,
-      orientation: previousOrientation,
-      offset: previousOffset,
-    },
+    inverse: previousStateParams(document, constraint, previousOrientation, previousOffset),
   };
 }
 
@@ -674,11 +843,20 @@ function applyRemoveConstraint(
     return noOp(document);
   }
 
-  const constraints = document.constraints.filter((candidate) => candidate.id !== id);
+  const constraints = captureBrokenDependents(
+    document.constraints,
+    document.constraints.filter((candidate) => candidate.id !== id),
+  );
 
   return {
     document: { ...document, constraints },
-    inverse: { id: constraint.id, type: 'add_constraint', params: constraintToParams(constraint) },
+    // A broken dimension's dangling reference cannot be re-linked by the inverse.
+    inverse:
+      constraint.type === 'distance' &&
+      constraint.reference !== undefined &&
+      resolveSetValue(document.constraints, constraint) === null
+        ? null
+        : { id: constraint.id, type: 'add_constraint', params: constraintToParams(constraint) },
   };
 }
 
@@ -818,6 +996,8 @@ function buildConstraint(
   value: number | undefined,
   orientation: DimensionOrientation | undefined,
   offset: number | undefined,
+  reference?: EntityId,
+  resolvedReference?: number,
 ): Constraint {
   const [a, b, c, d] = entities;
 
@@ -837,6 +1017,8 @@ function buildConstraint(
         a: a!,
         b: b!,
         ...(value === undefined ? {} : { value }),
+        ...(reference === undefined ? {} : { reference }),
+        ...(resolvedReference === undefined ? {} : { lastKnownValue: resolvedReference }),
         ...(orientation === undefined ? {} : { orientation }),
         ...(offset === undefined ? {} : { offset }),
       };
@@ -860,6 +1042,7 @@ function constraintToParams(constraint: Constraint): AddConstraintParams {
         type: 'distance',
         entities: [constraint.a, constraint.b],
         ...(constraint.value === undefined ? {} : { value: constraint.value }),
+        ...(constraint.reference === undefined ? {} : { reference: constraint.reference }),
         ...(constraint.orientation === undefined ? {} : { orientation: constraint.orientation }),
         ...(constraint.offset === undefined ? {} : { offset: constraint.offset }),
       };

@@ -787,6 +787,34 @@ describe('PatternCanvas', () => {
     expect(wrapper.find('[data-testid="dimension-label-ghost"]').exists()).toBe(false);
   });
 
+  it('renders referenced and broken dimensions with distinct shapes and colors', () => {
+    const linkedDoc: PatternDocument = {
+      ...baseDoc,
+      constraints: [
+        { id: 'A', type: 'distance', a: 'a', b: 'b', value: 100 },
+        { id: 'R', type: 'distance', a: 'b', b: 'c', reference: 'A' },
+        { id: 'B', type: 'distance', a: 'c', b: 'd', reference: 'gone', lastKnownValue: 75 },
+      ],
+    };
+    const wrapper = mountCanvas({ document: linkedDoc });
+
+    const referenced = wrapper.find('[data-testid="dimension-label-R"]');
+    expect(referenced.find('text').text()).toBe('[100]');
+    expect(referenced.find('text').classes()).toContain('fill-dimension-reference');
+    expect(referenced.attributes('aria-label')).toBe(
+      'Referenced dimension, 100 millimetres, from dimension A',
+    );
+    expect(referenced.find('[data-testid="dimension-broken-glyph"]').exists()).toBe(false);
+
+    const broken = wrapper.find('[data-testid="dimension-label-B"]');
+    expect(broken.find('text[data-dimension-state]').text()).toBe('[75]');
+    expect(broken.find('text[data-dimension-state]').classes()).toContain('fill-destructive');
+    expect(broken.attributes('aria-label')).toBe(
+      'Broken reference, last known 75 millimetres; source dimension gone is missing',
+    );
+    expect(broken.find('[data-testid="dimension-broken-glyph"]').text()).toBe('⚠');
+  });
+
   it('hides dimension lines and labels when the toggle is off', () => {
     const wrapper = mountCanvas({ document: dimensionDoc, showDimensions: false });
 
@@ -807,10 +835,10 @@ describe('PatternCanvas', () => {
     ).toBe('(100)');
     expect(
       wrapper.find('[data-testid="dimension-label-dimension-preview"]').find('text').classes(),
-    ).toContain('fill-foreground');
+    ).toContain('fill-muted-foreground');
     expect(
       wrapper.find('[data-testid="dimension-label-dimension-preview"]').find('text').classes(),
-    ).not.toContain('fill-muted-foreground');
+    ).not.toContain('fill-foreground');
     expect(
       wrapper.find('[data-testid="dimension-label-dimension-preview"]').attributes('aria-label'),
     ).toBe('Driven dimension, measured 100 millimetres');
@@ -944,6 +972,23 @@ describe('PatternCanvas', () => {
       ['w', { value: 120 }],
       ['w', { value: null }],
     ]);
+
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await flushPromises();
+    const invalid = wrapper.find('[data-testid="dimension-editor"]');
+    await invalid.setValue('0');
+    await invalid.trigger('blur');
+    expect(wrapper.emitted('update-dimension')).toEqual([
+      ['w', { value: 120 }],
+      ['w', { value: null }],
+    ]);
+
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await flushPromises();
+    const twice = wrapper.find('[data-testid="dimension-editor"]');
+    await twice.trigger('blur');
+    await twice.trigger('blur');
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(false);
   });
 
   it('prefills a driven measurement and clears it on Enter', async () => {
@@ -962,6 +1007,83 @@ describe('PatternCanvas', () => {
     await editor.setValue('   ');
     await editor.trigger('keydown', { key: 'Enter' });
     expect(wrapper.emitted('update-dimension')).toEqual([['m', { value: null }]]);
+  });
+
+  it('opens the reference picker from # and links the highlighted row with Enter', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc });
+
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await flushPromises();
+
+    const editor = wrapper.find('[data-testid="dimension-editor"]');
+    await editor.setValue('#');
+
+    const picker = wrapper.find('[data-testid="dimension-reference-picker"]');
+    expect(picker.exists()).toBe(true);
+    expect(picker.find('[data-testid="dimension-reference-option-h"]').text()).toBe(
+      'h · 100 mm · b → c · Vertical',
+    );
+    expect(editor.attributes('aria-expanded')).toBe('true');
+    expect(editor.attributes('aria-controls')).toBe('dimension-reference-list');
+    expect(editor.attributes('aria-activedescendant')).toBe('dimension-reference-list-h');
+
+    await editor.trigger('keydown', { key: 'ArrowDown' });
+    expect(editor.attributes('aria-activedescendant')).toBe('dimension-reference-list-ghost');
+    await editor.trigger('keydown', { key: 'ArrowUp' });
+    expect(editor.attributes('aria-activedescendant')).toBe('dimension-reference-list-h');
+
+    await editor.trigger('keydown', { key: 'Enter' });
+    expect(wrapper.emitted('update-dimension')).toEqual([['w', { reference: 'h' }]]);
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-reference-picker"]').exists()).toBe(false);
+  });
+
+  it('filters the inline picker, links a clicked row and commits a valid blur', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc });
+
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await flushPromises();
+    const editor = wrapper.find('[data-testid="dimension-editor"]');
+
+    await editor.setValue('#zzz');
+    expect(wrapper.find('[data-testid="dimension-reference-empty"]').text()).toBe(
+      'No other dimensions can be referenced.',
+    );
+    await editor.trigger('keydown', { key: 'ArrowDown' });
+    await editor.trigger('keydown', { key: 'Enter' });
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(true);
+    expect(wrapper.emitted('update-dimension')).toBeUndefined();
+
+    await editor.trigger('keydown', { key: 'Escape' });
+    expect(wrapper.find('[data-testid="dimension-reference-picker"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(true);
+    await editor.trigger('keydown', { key: 'Escape' });
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await flushPromises();
+    await wrapper.find('[data-testid="dimension-editor"]').setValue('#h');
+    expect(wrapper.find('[data-testid="dimension-reference-option-h"]').exists()).toBe(true);
+    await wrapper.find('[data-testid="dimension-reference-option-h"]').trigger('click');
+    expect(wrapper.emitted('update-dimension')).toEqual([['w', { reference: 'h' }]]);
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await flushPromises();
+    await wrapper.find('[data-testid="dimension-editor"]').setValue('#h');
+    await wrapper.find('[data-testid="dimension-editor"]').trigger('blur');
+    expect(wrapper.emitted('update-dimension')).toEqual([
+      ['w', { reference: 'h' }],
+      ['w', { reference: 'h' }],
+    ]);
+
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await flushPromises();
+    const reopened = wrapper.find('[data-testid="dimension-editor"]');
+    await reopened.setValue('#');
+    expect(wrapper.find('[data-testid="dimension-reference-picker"]').exists()).toBe(true);
+    await reopened.setValue('100');
+    expect(wrapper.find('[data-testid="dimension-reference-picker"]').exists()).toBe(false);
   });
 
   it('ignores double-click on a preview label and closes the editor when hidden', async () => {

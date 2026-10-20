@@ -1,3 +1,4 @@
+import { resolveSetValue } from './dimension.js';
 import { constraintEntityIds } from './document.js';
 import type { Constraint, EntityId, PointEntity } from './types.js';
 import { cross, dot, sub, type Vec2 } from './vector.js';
@@ -55,6 +56,10 @@ export function solve(
     }
   }
 
+  // Referenced dimensions follow a source chain, so resolve every driving value
+  // once per solve instead of once per residual (and per solver iteration).
+  const drivingValues = resolvedDrivingValues(constraints);
+
   const readState = (x: Float64Array): Map<EntityId, Vec2> => {
     const state = new Map<EntityId, Vec2>();
     for (const point of points) {
@@ -68,7 +73,7 @@ export function solve(
 
   const residualVector = (x: Float64Array): Float64Array => {
     const state = readState(x);
-    return residuals(constraints, (id) => {
+    return residuals(constraints, drivingValues, (id) => {
       // Unreachable: every referenced id is validated and seeded in `state`.
       /* v8 ignore next */
       if (!state.has(id)) throw new Error(`Unknown point referenced by constraint: ${id}`);
@@ -127,8 +132,10 @@ export function solve(
 
   return {
     // A document with no driving constraints is converged by definition; driven
-    // dimensions measure the sketch without adding an equation.
-    converged: !constraints.some(isDrivingConstraint) || norm <= tolerance,
+    // and broken dimensions measure the sketch without adding an equation.
+    converged:
+      !constraints.some((constraint) => hasDrivingValue(constraint, drivingValues)) ||
+      norm <= tolerance,
     iterations,
     residualNorm: norm,
     coordinates: readState(x),
@@ -136,11 +143,30 @@ export function solve(
 }
 
 /** Whether a constraint adds an equation the solver must satisfy. */
-function isDrivingConstraint(constraint: Constraint): boolean {
-  return constraint.type !== 'distance' || constraint.value !== undefined;
+function hasDrivingValue(constraint: Constraint, drivingValues: Map<EntityId, number>): boolean {
+  return constraint.type !== 'distance' || drivingValues.has(constraint.id);
 }
 
-function residuals(constraints: Constraint[], point: (id: EntityId) => Vec2): Float64Array {
+/**
+ * Resolve every dimension that drives the sketch into one map. Set dimensions
+ * contribute their literal; referenced ones their resolved source value; driven
+ * and broken ones are absent, so they add no residual.
+ */
+function resolvedDrivingValues(constraints: Constraint[]): Map<EntityId, number> {
+  const values = new Map<EntityId, number>();
+  for (const constraint of constraints) {
+    if (constraint.type !== 'distance') continue;
+    const value = resolveSetValue(constraints, constraint);
+    if (value !== null) values.set(constraint.id, value);
+  }
+  return values;
+}
+
+function residuals(
+  constraints: Constraint[],
+  drivingValues: Map<EntityId, number>,
+  point: (id: EntityId) => Vec2,
+): Float64Array {
   const values: number[] = [];
 
   for (const constraint of constraints) {
@@ -173,21 +199,22 @@ function residuals(constraints: Constraint[], point: (id: EntityId) => Vec2): Fl
         break;
       }
       case 'distance': {
-        // A driven dimension has no value and contributes no residual.
-        if (constraint.value === undefined) break;
+        // Driven and broken dimensions add no equation.
+        const value = drivingValues.get(constraint.id);
+        if (value === undefined) break;
         const a = point(constraint.a);
         const b = point(constraint.b);
         // A dimension measures along `orientation`; the default preserves the
         // original Euclidean distance constraint exactly.
         switch (constraint.orientation ?? 'aligned') {
           case 'horizontal':
-            values.push(Math.abs(b.x - a.x) - constraint.value);
+            values.push(Math.abs(b.x - a.x) - value);
             break;
           case 'vertical':
-            values.push(Math.abs(b.y - a.y) - constraint.value);
+            values.push(Math.abs(b.y - a.y) - value);
             break;
           case 'aligned':
-            values.push(Math.hypot(b.x - a.x, b.y - a.y) - constraint.value);
+            values.push(Math.hypot(b.x - a.x, b.y - a.y) - value);
             break;
         }
         break;

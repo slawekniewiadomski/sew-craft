@@ -9,13 +9,20 @@ import {
   DIMENSION_EXTENSION_GAP,
   DIMENSION_EXTENSION_OVERSHOOT,
   DIMENSION_LABEL_GAP,
+  createsReferenceCycle,
   dimensionGeometry,
   dimensionOffsetForPointer,
+  dimensionState,
   dimensionValue,
   findDistanceConstraint,
   inferDimensionOrientation,
+  isBrokenDimension,
   isDrivenDimension,
+  isReferencedDimension,
   measureLinearDimension,
+  referenceCandidates,
+  resolveDimensionValue,
+  resolveSetValue,
   createEmptyDocument,
   type Constraint,
   type DistanceConstraint,
@@ -358,5 +365,173 @@ describe('dimensionGeometry', () => {
     expect(
       dimensionGeometry(document, distance('d', 'a', 'a', 10, { orientation: 'vertical' })),
     ).toBeNull();
+  });
+});
+
+describe('dimension references', () => {
+  const withConstraints = (constraints: Constraint[]): PatternDocument => ({
+    ...documentOf(basePoints),
+    constraints,
+  });
+
+  const set = (id: string, a: EntityId, b: EntityId, value: number): DistanceConstraint => ({
+    id,
+    type: 'distance',
+    a,
+    b,
+    value,
+  });
+
+  const driven = (id: string, a: EntityId, b: EntityId): DistanceConstraint => ({
+    id,
+    type: 'distance',
+    a,
+    b,
+  });
+
+  const link = (
+    id: string,
+    a: EntityId,
+    b: EntityId,
+    reference: EntityId,
+    lastKnownValue?: number,
+  ): DistanceConstraint => ({
+    id,
+    type: 'distance',
+    a,
+    b,
+    reference,
+    ...(lastKnownValue === undefined ? {} : { lastKnownValue }),
+  });
+
+  it('classifies set, driven, referenced and broken dimensions', () => {
+    const document = withConstraints([
+      set('source', 'a', 'b', 120),
+      driven('measure', 'b', 'c'),
+      link('reference', 'c', 'd', 'source'),
+      link('dangling', 'd', 'a', 'missing'),
+    ]);
+
+    expect(dimensionState(document, document.constraints[0] as DistanceConstraint)).toBe('set');
+    expect(dimensionState(document, document.constraints[1] as DistanceConstraint)).toBe('driven');
+    expect(isDrivenDimension(document.constraints[1] as DistanceConstraint)).toBe(true);
+    expect(dimensionState(document, document.constraints[2] as DistanceConstraint)).toBe(
+      'referenced',
+    );
+    expect(dimensionState(document, document.constraints[3] as DistanceConstraint)).toBe('broken');
+  });
+
+  it('never treats a driven source as a resolved reference', () => {
+    const document = withConstraints([
+      driven('measure', 'a', 'b'),
+      link('dep', 'c', 'd', 'measure'),
+    ]);
+    const dependent = document.constraints[1] as DistanceConstraint;
+
+    expect(dimensionState(document, dependent)).toBe('broken');
+    expect(isReferencedDimension(document, dependent)).toBe(false);
+    expect(isBrokenDimension(document, dependent)).toBe(true);
+    expect(resolveSetValue(document.constraints, dependent)).toBeNull();
+  });
+
+  it('reports the resolved value through a chain', () => {
+    const document = withConstraints([
+      set('a', 'a', 'b', 120),
+      link('b', 'b', 'c', 'a'),
+      link('c', 'c', 'd', 'b'),
+    ]);
+    const [first, second, third] = document.constraints as DistanceConstraint[];
+
+    expect(resolveSetValue(document.constraints, first!)).toBe(120);
+    expect(resolveSetValue(document.constraints, second!)).toBe(120);
+    expect(resolveSetValue(document.constraints, third!)).toBe(120);
+    expect(dimensionValue(document, third!)).toBe(120);
+  });
+
+  it('shows a driven measurement for a driven dimension and the last known value when broken', () => {
+    const document = withConstraints([
+      driven('measure', 'a', 'b'),
+      link('broken', 'c', 'd', 'missing', 42),
+      link('broken-without-value', 'd', 'a', 'missing'),
+    ]);
+
+    expect(dimensionValue(document, document.constraints[0] as DistanceConstraint)).toBe(100);
+    expect(resolveDimensionValue(document, document.constraints[1] as DistanceConstraint)).toBe(42);
+    expect(
+      resolveDimensionValue(document, document.constraints[2] as DistanceConstraint),
+    ).toBeNull();
+  });
+
+  it('returns null when a referenced point is missing', () => {
+    const document = withConstraints([driven('measure', 'a', 'missing')]);
+
+    expect(dimensionValue(document, document.constraints[0] as DistanceConstraint)).toBeNull();
+  });
+
+  it('treats a hand-edited cycle as broken without recursing forever', () => {
+    const document = withConstraints([
+      link('one', 'a', 'b', 'two'),
+      link('two', 'b', 'c', 'one'),
+      link('three', 'c', 'd', 'one', 30),
+    ]);
+    const [one, two, three] = document.constraints as DistanceConstraint[];
+
+    expect(dimensionState(document, one!)).toBe('broken');
+    expect(dimensionState(document, two!)).toBe('broken');
+    expect(dimensionValue(document, three!)).toBe(30);
+    expect(resolveSetValue(document.constraints, one!)).toBeNull();
+  });
+
+  it('rejects an unusable literal as a source value', () => {
+    const document = withConstraints([
+      { id: 'zero', type: 'distance', a: 'a', b: 'b', value: 0 },
+      link('dep', 'c', 'd', 'zero'),
+    ]);
+
+    expect(
+      resolveSetValue(document.constraints, document.constraints[0] as DistanceConstraint),
+    ).toBeNull();
+    expect(dimensionState(document, document.constraints[1] as DistanceConstraint)).toBe('broken');
+  });
+
+  it('detects self, direct and indirect cycles', () => {
+    const constraints: Constraint[] = [
+      set('a', 'a', 'b', 10),
+      link('b', 'b', 'c', 'a'),
+      link('c', 'c', 'd', 'b'),
+    ];
+
+    expect(createsReferenceCycle(constraints, 'b', 'b')).toBe(true);
+    expect(createsReferenceCycle(constraints, 'a', 'b')).toBe(true);
+    expect(createsReferenceCycle(constraints, 'a', 'c')).toBe(true);
+    expect(createsReferenceCycle(constraints, 'd', 'a')).toBe(false);
+    expect(createsReferenceCycle(constraints, 'd', 'missing')).toBe(false);
+    expect(
+      createsReferenceCycle([link('x', 'a', 'b', 'y'), link('y', 'b', 'c', 'x')], 'z', 'x'),
+    ).toBe(true);
+  });
+
+  it('offers only resolvable, distinct, non-cyclic sources', () => {
+    const document = withConstraints([
+      set('source', 'a', 'b', 120),
+      driven('measure', 'b', 'c'),
+      link('chain', 'c', 'd', 'source'),
+      link('dangling', 'd', 'a', 'missing', 10),
+      set('same-pair', 'c', 'd', 50),
+      set('other', 'b', 'c', 30),
+      link('loop', 'b', 'c', 'chain'),
+    ]);
+    const chain = document.constraints[2] as DistanceConstraint;
+    const source = document.constraints[0] as DistanceConstraint;
+
+    // Self, driven, broken, same-pair and cycle-creating rows are absent.
+    expect(referenceCandidates(document, chain).map((entry) => entry.id)).toEqual([
+      'source',
+      'other',
+    ]);
+    expect(referenceCandidates(document, source).map((entry) => entry.id)).toEqual([
+      'same-pair',
+      'other',
+    ]);
   });
 });

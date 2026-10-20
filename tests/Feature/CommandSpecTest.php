@@ -3,7 +3,7 @@
 it('exposes the command spec', function () {
     $this->getJson('/api/commands')
         ->assertOk()
-        ->assertJsonPath('version', '0.6.0')
+        ->assertJsonPath('version', '0.7.0')
         ->assertJsonStructure([
             'version',
             'commands' => [
