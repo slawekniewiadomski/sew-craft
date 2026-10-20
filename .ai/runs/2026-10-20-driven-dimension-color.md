@@ -75,10 +75,10 @@ glossary wording and a green validation gate.
 
 ### Phase 2: Implement the canvas label
 
-- [ ] 2.1 Bind `fill-muted-foreground` on a committed driven dimension label
-- [ ] 2.2 Extend the PatternCanvas render tests for driven, set and preview labels
-- [ ] 2.3 Record the muted-gray rendering in the domain glossary
-- [ ] 2.4 Answer Q1 (option A) in the spec and mark it implemented
+- [x] 2.1 Bind `fill-muted-foreground` on a committed driven dimension label — 1964af6
+- [x] 2.2 Extend the PatternCanvas render tests for driven, set and preview labels — 1964af6
+- [x] 2.3 Record the muted-gray rendering in the domain glossary — 1964af6
+- [x] 2.4 Answer Q1 (option A) in the spec and mark it implemented — 1964af6
 
 ### Phase 3: Verification and handoff
 
