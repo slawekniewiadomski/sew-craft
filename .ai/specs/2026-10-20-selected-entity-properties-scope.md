@@ -179,6 +179,11 @@ list and the right panel keeps only the rows that act on `ab`:
 The mockup is illustrative, not evidence of working behaviour. It uses the app's
 palette and the seeded rectangle, and shows the intended copy.
 
+**Implemented state** — the same selection after the change: the hint is visible
+and the list stops at `width` and `bottom`:
+
+![Implemented Properties inspector for line ab](./assets/selected-entity-properties-scope/current-02-selected-line-ab-after.png)
+
 **Accessibility:** the hint is a plain paragraph announced with the panel; no new
 focusable element, shortcut or live region. Existing list `aria-label`s already
 name the entity id, and the edit controls keep their labels.

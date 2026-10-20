@@ -79,17 +79,17 @@ without the neighbouring edges' rows (#41), implemented on this branch with the
 
 ### Phase 2: Relation predicate
 
-- [ ] 2.1 Add `samePair` and `constraintActsOnEntity`; use the predicate in `entityProperties`
-- [ ] 2.2 Replace the selector tests with the relation matrix, rectangle and broken-line cases
+- [x] 2.1 Add `samePair` and `constraintActsOnEntity`; use the predicate in `entityProperties` — 0f369a8
+- [x] 2.2 Replace the selector tests with the relation matrix, rectangle and broken-line cases — 0f369a8
 
 ### Phase 3: Panel copy and states
 
-- [ ] 3.1 Add the per-kind hint and entity-named empty states
-- [ ] 3.2 Cover the hint and empty-state copy in the panel tests
-- [ ] 3.3 Mark the scope spec implemented
+- [x] 3.1 Add the per-kind hint and entity-named empty states — 644f55a
+- [x] 3.2 Cover the hint and empty-state copy in the panel tests — 644f55a
+- [x] 3.3 Mark the scope spec implemented — b033cd1
 
 ### Phase 4: Verification and handoff
 
-- [ ] 4.1 Run the full validation gate
+- [x] 4.1 Run the full validation gate — b033cd1
 - [ ] 4.2 Run `om-auto-review-pr 45 --autofix` and resolve findings
 - [ ] 4.3 Retitle the PR, normalize labels, promote it to ready and report
