@@ -484,8 +484,6 @@ function updateDimensionPlacement(screen: Vec2): void {
 }
 
 function beginDimensionDrag(constraint: DistanceConstraint, event: PointerEvent): void {
-  if (!dimensionDragEnabled.value) return;
-
   event.stopPropagation();
   event.preventDefault();
   const offset = constraintOffset(constraint);

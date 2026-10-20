@@ -953,6 +953,63 @@ describe('EditorView', () => {
     expect(store.document.constraints[0]).toMatchObject({ id: 'w', value: 100, offset: 20 });
   });
 
+  it('drags an existing dimension and restores the offset with undo', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      constraints: [{ id: 'w', type: 'distance', a: 'a', b: 'b', value: 100, offset: 3 }],
+    });
+
+    wrapper
+      .find('[data-testid="dimension-drag-w"]')
+      .element.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, clientX: 300, clientY: 200, button: 0 }),
+      );
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 300, clientY: 120 }));
+    window.dispatchEvent(new MouseEvent('pointerup'));
+    await flushPromises();
+
+    const dragged = store.document.constraints[0]!.offset;
+    expect(dragged).not.toBe(3);
+
+    const entry = store.journal.at(-1)!;
+    expect(entry.command).toMatchObject({
+      type: 'update_constraint',
+      params: { id: 'w', offset: dragged },
+    });
+    expect(entry.inverse).toMatchObject({
+      type: 'update_constraint',
+      params: { id: 'w', offset: 3 },
+    });
+
+    await wrapper.find('[data-testid="undo"]').trigger('click');
+    await flushPromises();
+
+    expect(store.document.constraints[0]!.offset).toBe(3);
+  });
+
+  it('keeps the dimension tool active after dragging a dimension', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      constraints: [{ id: 'w', type: 'distance', a: 'a', b: 'b', value: 100, offset: 3 }],
+    });
+
+    await wrapper.find('[data-testid="tool-dimension"]').trigger('click');
+    expect(wrapper.find('[data-testid="tool-dimension"]').attributes('aria-pressed')).toBe('true');
+
+    wrapper
+      .find('[data-testid="dimension-drag-w"]')
+      .element.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, clientX: 300, clientY: 200, button: 0 }),
+      );
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 300, clientY: 120 }));
+    window.dispatchEvent(new MouseEvent('pointerup'));
+    await flushPromises();
+
+    expect(store.document.constraints[0]!.offset).not.toBe(3);
+    expect(wrapper.find('[data-testid="tool-dimension"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(false);
+  });
+
   it('ignores a zero-length dimension placement', async () => {
     const { wrapper, store } = await mountLoaded({
       ...createEmptyDocument(),
