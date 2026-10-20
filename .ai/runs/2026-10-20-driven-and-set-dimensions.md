@@ -74,9 +74,9 @@ moving geometry. Ships on this PR, on the same branch as the spec.
 
 ### Phase 2: Command contract
 
-- [ ] 2.1 Allow `add_constraint` to create a driven distance when `value` is omitted (tests)
-- [ ] 2.2 Let `update_constraint` clear to driven with `value: null`, with state-precise inverses (tests)
-- [ ] 2.3 Round-trip driven constraints through `constraintToParams` and sync the command spec at `0.5.0` (tests)
+- [x] 2.1 Allow `add_constraint` to create a driven distance when `value` is omitted (tests) — 7e1b1e1
+- [x] 2.2 Let `update_constraint` clear to driven with `value: null`, with state-precise inverses (tests) — 7e1b1e1
+- [x] 2.3 Round-trip driven constraints through `constraintToParams` and sync the command spec at `0.5.0` (tests) — 7e1b1e1
 
 ### Phase 3: Rendering
 
