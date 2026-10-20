@@ -1,4 +1,9 @@
-import { createEmptyDocument, type EntityId, type PatternDocument } from '@sewcraft/geometry';
+import {
+  createEmptyDocument,
+  type Constraint,
+  type EntityId,
+  type PatternDocument,
+} from '@sewcraft/geometry';
 import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { createPinia, setActivePinia, type Pinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -70,6 +75,11 @@ function pointDown(wrapper: VueWrapper, id: EntityId): void {
 
 function keydown(key: string): void {
   window.dispatchEvent(new KeyboardEvent('keydown', { key, cancelable: true }));
+}
+
+/** Presentation offset of a distance constraint, or undefined for other kinds. */
+function distanceOffset(constraint: Constraint | undefined): number | undefined {
+  return constraint?.type === 'distance' ? constraint.offset : undefined;
 }
 
 function points(wrapper: VueWrapper) {
@@ -644,7 +654,7 @@ describe('EditorView', () => {
     ).toBe('aligned');
     expect(
       (wrapper.find('[data-testid="dimension-offset-width"]').element as HTMLInputElement).value,
-    ).toBe('12');
+    ).toBe('20');
 
     await wrapper.find('[data-testid="dimension-value-width"]').setValue('200');
     await wrapper.find('[data-testid="dimension-value-width"]').trigger('change');
@@ -1026,7 +1036,7 @@ describe('EditorView', () => {
         b: 'b',
         value: 100,
         orientation: 'aligned',
-        offset: 12,
+        offset: 20,
       },
     ]);
     expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(false);
@@ -1061,7 +1071,64 @@ describe('EditorView', () => {
     await flushPromises();
 
     expect(store.document.constraints).toHaveLength(1);
-    expect(store.document.constraints[0]).toMatchObject({ id: 'w', value: 100, offset: 12 });
+    expect(store.document.constraints[0]).toMatchObject({ id: 'w', value: 100, offset: 20 });
+  });
+
+  it('drags an existing dimension and restores the offset with undo', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      constraints: [{ id: 'w', type: 'distance', a: 'a', b: 'b', value: 100, offset: 3 }],
+    });
+
+    wrapper
+      .find('[data-testid="dimension-drag-w"]')
+      .element.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, clientX: 300, clientY: 200, button: 0 }),
+      );
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 300, clientY: 120 }));
+    window.dispatchEvent(new MouseEvent('pointerup'));
+    await flushPromises();
+
+    const dragged = distanceOffset(store.document.constraints[0]);
+    expect(dragged).not.toBe(3);
+
+    const entry = store.journal.at(-1)!;
+    expect(entry.command).toMatchObject({
+      type: 'update_constraint',
+      params: { id: 'w', offset: dragged },
+    });
+    expect(entry.inverse).toMatchObject({
+      type: 'update_constraint',
+      params: { id: 'w', offset: 3 },
+    });
+
+    await wrapper.find('[data-testid="undo"]').trigger('click');
+    await flushPromises();
+
+    expect(distanceOffset(store.document.constraints[0])).toBe(3);
+  });
+
+  it('keeps the dimension tool active after dragging a dimension', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      constraints: [{ id: 'w', type: 'distance', a: 'a', b: 'b', value: 100, offset: 3 }],
+    });
+
+    await wrapper.find('[data-testid="tool-dimension"]').trigger('click');
+    expect(wrapper.find('[data-testid="tool-dimension"]').attributes('aria-pressed')).toBe('true');
+
+    wrapper
+      .find('[data-testid="dimension-drag-w"]')
+      .element.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, clientX: 300, clientY: 200, button: 0 }),
+      );
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 300, clientY: 120 }));
+    window.dispatchEvent(new MouseEvent('pointerup'));
+    await flushPromises();
+
+    expect(distanceOffset(store.document.constraints[0])).not.toBe(3);
+    expect(wrapper.find('[data-testid="tool-dimension"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(false);
   });
 
   it('ignores a zero-length dimension placement', async () => {

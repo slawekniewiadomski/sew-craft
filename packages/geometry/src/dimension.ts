@@ -9,7 +9,7 @@ import type {
 import { add, dot, magnitude, normalize, scale, sub, type Vec2 } from './vector.js';
 
 /** Default signed offset of a placed dimension line, in millimetres. */
-export const DEFAULT_DIMENSION_OFFSET = 12;
+export const DEFAULT_DIMENSION_OFFSET = 20;
 /** Gap between a measured point and the start of its extension line. */
 export const DIMENSION_EXTENSION_GAP = 1.5;
 /** How far an extension line runs past the dimension line. */

@@ -81,7 +81,7 @@ A linear dimension is not an entity: it is the CAD rendering of a driving
 - `dimensionGeometry(document, constraint)` — extension lines, dimension line,
   end chevrons and a rotated value label for a `distance` constraint, or `null`
   when its points are missing. Honors `orientation` and `offset`
-  (`DEFAULT_DIMENSION_OFFSET` is `12` mm).
+  (`DEFAULT_DIMENSION_OFFSET` is `20` mm).
 - `measureLinearDimension(document, a, b, orientation)` — the span the constraint
   would drive, or `null` when a point is missing.
 - `inferDimensionOrientation(document, a, b, pointer)` — pick the axis from a
