@@ -1,6 +1,6 @@
 # Selected entity properties: only what acts on this edge
 
-Status: proposed — draft; Q1 open on #41
+Status: proposed — spec-ready; Q1 resolved (hide endpoint-anchoring constraints)
 Refs #41
 Amends in part: `.ai/specs/2026-10-20-selected-entity-properties.md` (the relation
 rule only; the inspector's layout and editing paths are unchanged)
@@ -13,7 +13,9 @@ on `bc` and the vertical constraints on `bc` and `da`. Proposed future behaviour
 the Properties inspector lists only the constraints and dimensions that act on
 the **selected edge's own endpoint pair**, while selecting a point still shows
 everything that touches that point. The change is a pure selector rule in the
-frontend — no schema, command, API or persistence change.
+frontend — no schema, command, API or persistence change. Endpoint-anchoring
+constraints that involve only one endpoint are hidden on the line for v1 (Q1,
+decided); selecting the point reveals them.
 
 ## 📝 Problem Statement
 
@@ -189,7 +191,7 @@ name the entity id, and the edit controls keep their labels.
 | `bc` selected | Dimensions: `height` only. Constraints: `right` only. |
 | Point `b` selected | Lists every constraint referencing `b` (`width`, `height`, `bottom`, `right`); the hint is absent. |
 | Constraint authored from two points that are the line's endpoints | Shown on the line; matching is by ids, not by how it was authored. |
-| Constraint between one endpoint and an outside point (`coincident a–x`, `distance a–x`, `horizontal a–x`) | Not shown on the line; select `a` or `x` to inspect it. Q1 asks whether a collapsed endpoint section should list these. |
+| Constraint between one endpoint and an outside point (`coincident a–x`, `distance a–x`, `horizontal a–x`) | Not shown on the line (Q1: hide for v1); select `a` or `x` to inspect it. |
 | `angle a–b–c` (arms `ab`, `bc`) | Shown on both `ab` and `bc`. |
 | `equal ab–cd` | Shown on both `ab` and `cd`. |
 | `point_on_line p–ab` | Shown on `ab`; not on an unrelated line. |
@@ -202,11 +204,13 @@ name the entity id, and the edit controls keep their labels.
 
 ## 📝 Risks & Impact Review
 
-- **Hidden endpoint constraints (medium, product).** Strict matching hides a
-  `coincident` that anchors an edge to its neighbour when the rectangle uses
-  separate corner points. The point inspector and the document-wide constraints
-  drawer still show it, and Q1 asks whether v1 needs a collapsed endpoint
-  section. This is the one deliberate information loss; it is why Q1 is open.
+- **Hidden endpoint constraints (medium, product — accepted).** Strict matching
+  hides a `coincident` that anchors an edge to its neighbour when the rectangle
+  uses separate corner points. Q1 decided to hide these for v1: the point
+  inspector and the document-wide constraints drawer still show them, and
+  selecting the point is the escape hatch. The copy makes the scope explicit.
+  This is the one deliberate information loss; a collapsed **Endpoint
+  constraints** section stays a follow-up only if use shows it is needed.
 - **Curves stay broad (low).** A curve sharing control points with a line lists
   constraints that also touch the line. Issue #41 is about lines; narrowing
   curves without a report would be speculative. Documented as a known
@@ -226,13 +230,13 @@ name the entity id, and the edit controls keep their labels.
 
 ## ❓ Open Questions
 
-Asked on issue #41. Q1 is blocking for the v1 UI scope; the draft PR stays draft
-until it is answered. The rest of the design reads coherently under the v1 choice
-below.
+None. Q1 was answered by the maintainer on #41 (2026-10-20).
 
-| # | Question | Why it matters | Recommended answer |
-| - | -------- | -------------- | ------------------ |
-| Q1 | **Endpoint-anchoring constraints.** With the strict rule, a line hides constraints that involve only one of its endpoints (`coincident a–x`, `distance a–x`, `horizontal/vertical a–x`). In a rectangle drawn as separate corner points joined by coincident constraints, the panel would show the edge's own dimension/constraint but not the coincident that anchors it. Should v1 (a) hide them and rely on selecting the point, or (b) add a collapsed **Endpoint constraints** section under the line/curve lists? | (a) is the smallest change and exactly matches "only what relates to ab"; (b) preserves discoverability but adds a section, count logic, empty state and tests, and must decide whether the section lists constraints that also involve a neighbouring edge. This is a product/UX call, not a code detail. | **(a) hide them for v1**; select the point for the rest. Add (b) as a follow-up only if the issue author wants the anchor visible without changing selection. |
+## ✅ Resolved questions
+
+| # | Question | Decision | Status |
+| - | -------- | -------- | ------ |
+| Q1 | **Endpoint-anchoring constraints.** Should v1 hide constraints that involve only one of the selected line's endpoints (`coincident a–x`, `distance a–x`, `horizontal/vertical a–x`), or add a collapsed **Endpoint constraints** section? | **Hide them for v1** (the recommended option). Selecting the point shows the full set; the document-wide Constraints drawer still lists them. No collapsed section in this design; revisit as a follow-up only if use shows the anchor needs to be visible without changing selection. | Decided on #41, 2026-10-20 |
 
 ## ✅ Resolved assumptions (autonomous defaults)
 
@@ -318,6 +322,8 @@ below.
 - [ ] Selecting `bc` lists exactly `height` and `right`.
 - [ ] Selecting point `b` is unchanged and lists every constraint touching it.
 - [ ] `angle`, `equal` and `point_on_line` appear on both segments they reference.
+- [ ] A constraint between one endpoint and an outside point is absent from the
+      line and present on the point (Q1 decision).
 - [ ] A line/curve selection shows the hint; a point selection does not; empty
       states name the entity.
 - [ ] No schema, command, API, database, package-version or export change.
