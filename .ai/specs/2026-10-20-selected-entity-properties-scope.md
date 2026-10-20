@@ -9,7 +9,7 @@ rule only; the inspector's layout and editing paths are unchanged)
 
 Selecting a line currently lists every dimension and constraint that references
 either of its endpoints, so a rectangle's bottom edge `ab` also shows the height
-on `bc` and the vertical constraints on `bc` and `da`. Proposed future behaviour:
+on `bc` and the vertical constraints on `bc` and `da`. Implemented behaviour:
 the Properties inspector lists only the constraints and dimensions that act on
 the **selected edge's own endpoint pair**, while selecting a point still shows
 everything that touches that point. The change is a pure selector rule in the
@@ -150,7 +150,7 @@ consumer of the inspector stay untouched.
   the new empty-state copy.
 - `.ai/specs/2026-10-20-selected-entity-properties.md` — update the relation
   rule, the edge case and R5/Q2 so the earlier spec no longer contradicts this
-  one. No production code in this PR.
+  one. The implementation ships in the same combined PR.
 
 ## 📝 Data Model
 
