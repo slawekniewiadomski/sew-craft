@@ -75,7 +75,7 @@ Remove an entity and cascade-remove constraints that reference it.
 - `value` is required for `distance` (mm) and `angle` (radians).
 - `orientation` and `offset` apply only to `distance`; they are presentation for
   the linear dimension that renders the constraint. `orientation` defaults to
-  `aligned`, `offset` to `12` mm (signed, measured from the span).
+  `aligned`, `offset` to `20` mm (signed, measured from the span).
 - inverse: `remove_constraint`
 
 Constraint param mapping:

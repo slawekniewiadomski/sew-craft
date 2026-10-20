@@ -76,7 +76,7 @@ can be written when it changes.
       "b": "p2",
       "value": 120,
       "orientation": "horizontal", // aligned (default) | horizontal | vertical
-      "offset": 12, // dimension line offset in mm; presentation only
+      "offset": 20, // dimension line offset in mm; presentation only
     },
   ],
   "seams": [{ "id": "s1", "edge": "l1", "width": 10 }],
