@@ -6,6 +6,7 @@ import {
   isDrivenDimension,
   measureLinearDimension,
   seamForEdge,
+  type Constraint,
   type ConstraintType,
   type DimensionOrientation,
   type Entity,
@@ -32,7 +33,7 @@ export type CurveGeometry = {
 
 export type EntityGeometry = PointGeometry | LineGeometry | CurveGeometry;
 
-/** A dimension that references at least one of the entity's own points. */
+/** A dimension that acts on the selected entity. */
 export type DimensionSummary = {
   id: EntityId;
   entities: [EntityId, EntityId];
@@ -42,7 +43,7 @@ export type DimensionSummary = {
   orientation: DimensionOrientation;
 };
 
-/** A non-dimension constraint that references at least one of the entity's points. */
+/** A non-dimension constraint that acts on the selected entity. */
 export type ConstraintSummary = {
   id: EntityId;
   type: Exclude<ConstraintType, 'distance'>;
@@ -76,21 +77,46 @@ function geometryOf(entity: Entity): EntityGeometry {
   }
 }
 
-/**
- * The points a constraint must reference to be related to the selected entity.
- * Missing references are skipped so a partially hidden document never throws.
- */
-function ownPointIds(document: PatternDocument, entity: Entity): EntityId[] {
-  if (entity.kind === 'point') return [entity.id];
+/** Order-insensitive endpoint comparison: `{a,b}` equals `{s,e}`. */
+function samePair(a: EntityId, b: EntityId, s: EntityId, e: EntityId): boolean {
+  return (a === s && b === e) || (a === e && b === s);
+}
 
-  const ids =
-    entity.kind === 'line'
-      ? [entity.start, entity.end]
-      : [entity.p0, entity.p1, entity.p2, entity.p3];
-  return ids.filter((id) => {
-    const referenced = getEntity(document, id);
-    return referenced !== undefined && referenced.kind === 'point';
-  });
+/**
+ * Whether a constraint acts on the selected entity's own segment. A line matches
+ * only its endpoint pair, so a neighbouring edge sharing a corner does not pull
+ * its constraints in; points and curves keep the broader any-reference rule.
+ * Matching reads the stored ids without resolving them, so a dangling reference
+ * still lists on the line that stores it and never throws.
+ */
+function constraintActsOnEntity(constraint: Constraint, entity: Entity): boolean {
+  if (entity.kind === 'point') {
+    return constraintEntityIds(constraint).includes(entity.id);
+  }
+
+  if (entity.kind === 'curve') {
+    const controlPoints = [entity.p0, entity.p1, entity.p2, entity.p3];
+    return constraintEntityIds(constraint).some((id) => controlPoints.includes(id));
+  }
+
+  switch (constraint.type) {
+    case 'coincident':
+    case 'horizontal':
+    case 'vertical':
+    case 'distance':
+    case 'point_on_line':
+      return samePair(constraint.a, constraint.b, entity.start, entity.end);
+    case 'angle':
+      return (
+        samePair(constraint.a, constraint.b, entity.start, entity.end) ||
+        samePair(constraint.b, constraint.c, entity.start, entity.end)
+      );
+    case 'equal':
+      return (
+        samePair(constraint.a1, constraint.a2, entity.start, entity.end) ||
+        samePair(constraint.b1, constraint.b2, entity.start, entity.end)
+      );
+  }
 }
 
 /**
@@ -108,13 +134,12 @@ export function entityProperties(
   const entity = getEntity(document, id);
   if (entity === undefined) return null;
 
-  const pointIds = new Set(ownPointIds(document, entity));
   const dimensions: DimensionSummary[] = [];
   const constraints: ConstraintSummary[] = [];
 
   for (const constraint of document.constraints) {
+    if (!constraintActsOnEntity(constraint, entity)) continue;
     const entities = constraintEntityIds(constraint);
-    if (!entities.some((entityId) => pointIds.has(entityId))) continue;
 
     if (constraint.type === 'distance') {
       dimensions.push({
