@@ -60,15 +60,15 @@ constraints, and seam allowance, editing them through the existing commands.
 
 ### Phase 2: Selector
 
-- [ ] 2.1 Add `entity-properties.ts` with typed geometry, seam, dimension and constraint summaries plus unit tests
+- [x] 2.1 Add `entity-properties.ts` with typed geometry, seam, dimension and constraint summaries plus unit tests — adfe0e5
 
 ### Phase 3: Panel
 
-- [ ] 3.1 Add `EntityPropertiesPanel.vue` with sections, empty/degenerate states, accessible labels and component tests
+- [x] 3.1 Add `EntityPropertiesPanel.vue` with sections, empty/degenerate states, accessible labels and component tests — 76480f1
 
 ### Phase 4: Wiring and editing
 
-- [ ] 4.1 Render the panel in `EditorView.vue`, keep the workspace summary below it and dispatch existing commands; cover selection and dispatch in view tests
+- [x] 4.1 Render the panel in `EditorView.vue`, keep the workspace summary below it and dispatch existing commands; cover selection and dispatch in view tests — 6e0a2e5
 
 ### Phase 5: Verification
 
