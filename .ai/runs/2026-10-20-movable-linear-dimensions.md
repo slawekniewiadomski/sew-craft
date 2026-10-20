@@ -69,9 +69,9 @@ spec and the implementation on this single branch.
 
 ### Phase 2: Default offset and review nit
 
-- [ ] 2.1 Raise `DEFAULT_DIMENSION_OFFSET` to 20 mm and pin it with a test
-- [ ] 2.2 Update every hard-coded 12 mm assertion in the canvas and view tests
-- [ ] 2.3 Fix the "Dragging moved out or in" phrasing flagged at spec line 296
+- [x] 2.1 Raise `DEFAULT_DIMENSION_OFFSET` to 20 mm and pin it with a test — d7ec579
+- [x] 2.2 Update every hard-coded 12 mm assertion in the canvas and view tests — d7ec579
+- [x] 2.3 Fix the "Dragging moved out or in" phrasing flagged at spec line 296 — ccdb011
 
 ### Phase 3: Canvas drag eligibility and affordance
 
