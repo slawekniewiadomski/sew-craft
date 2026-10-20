@@ -74,7 +74,7 @@ can be written when it changes.
       "type": "distance",
       "a": "p1",
       "b": "p2",
-      "value": 120,
+      "value": 120, // omitted makes the dimension driven (measurement only)
       "orientation": "horizontal", // aligned (default) | horizontal | vertical
       "offset": 12, // dimension line offset in mm; presentation only
     },
@@ -83,6 +83,9 @@ can be written when it changes.
 }
 ```
 
+A `distance` constraint without `value` is a **driven** dimension: it reports
+the live measurement and adds no solver equation. The schema stays
+`sewcraft.pattern/0.1`; the field is additive, so older documents load unchanged.
 See `docs/architecture/geometry-core.md` for entity semantics and
 `docs/domain/command-spec.json` for the machine-readable command schema.
 
