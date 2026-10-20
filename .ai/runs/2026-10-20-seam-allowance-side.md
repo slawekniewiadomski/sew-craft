@@ -55,18 +55,18 @@ Store a per-edge seam allowance side (`left`/`right`, default `left`) and expose
 
 ### Phase 2: Geometry model
 
-- [ ] 2.1 Add `SeamSide`, optional `Seam.side`, `seamSide()` and tests
-- [ ] 2.2 Sign the seam offset by side, expose `side` on `SeamAllowancePath`, tests, docs
+- [x] 2.1 Add `SeamSide`, optional `Seam.side`, `seamSide()` and tests — 8b1811f
+- [x] 2.2 Sign the seam offset by side, expose `side` on `SeamAllowancePath`, tests, docs — 8b1811f
 
 ### Phase 3: Commands and contract
 
-- [ ] 3.1 Extend add/set params with validated `side`, carry it through inverses, command tests
-- [ ] 3.2 Bump command spec 0.6.0 across PHP, Markdown and JSON; bump geometry package to 0.6.0
+- [x] 3.1 Extend add/set params with validated `side`, carry it through inverses, command tests — 73a152a
+- [x] 3.2 Bump command spec 0.6.0 across PHP, Markdown and JSON; bump geometry package to 0.6.0 — 73a152a
 
 ### Phase 4: UI
 
-- [ ] 4.1 Add `flipSeam` in `EditorView` and the Flip side buttons in drawer and inspector, with tests
-- [ ] 4.2 Expose the resolved side in the entity-properties view model and update its tests
+- [x] 4.1 Add `flipSeam` in `EditorView` and the Flip side buttons in drawer and inspector, with tests — 35307c4
+- [x] 4.2 Expose the resolved side in the entity-properties view model and update its tests — 35307c4
 
 ### Phase 5: Verification
 
