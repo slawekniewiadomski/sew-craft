@@ -1,6 +1,6 @@
 # Selected entity properties: only what acts on this edge
 
-Status: proposed — spec-ready; Q1 resolved (hide endpoint-anchoring constraints)
+Status: implemented — Q1 resolved (hide endpoint-anchoring constraints)
 Refs #41
 Amends in part: `.ai/specs/2026-10-20-selected-entity-properties.md` (the relation
 rule only; the inspector's layout and editing paths are unchanged)
