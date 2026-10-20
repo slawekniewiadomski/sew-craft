@@ -112,6 +112,12 @@ const removeSeamCommand = (id: string): Command => ({
   params: { id },
 });
 
+const setSeamCommand = (id: string, width: number): Command => ({
+  id: 'set',
+  type: 'set_seam_allowance',
+  params: { id, width },
+});
+
 const solveCommand = (id: string): Command => ({ id, type: 'solve', params: {} });
 
 const unchanged = (document: PatternDocument, command: Command): void => {
@@ -953,6 +959,58 @@ describe('remove_seam_allowance', () => {
 
     expect(applied.document).toBe(withSeam);
     expect(applied.inverse).toBeNull();
+  });
+});
+
+describe('set_seam_allowance', () => {
+  const withSeams = documentOf(
+    [
+      point('a', 0, 0),
+      point('b', 10, 0),
+      { id: 'l1', kind: 'line', start: 'a', end: 'b', construction: false },
+      { id: 'l2', kind: 'line', start: 'b', end: 'a', construction: false },
+    ],
+    [{ id: 'h', type: 'horizontal', a: 'a', b: 'b' }],
+    [
+      { id: 's1', edge: 'l1', width: 8 },
+      { id: 's2', edge: 'l2', width: 12 },
+    ],
+  );
+
+  it('updates only the target seam and reverses through its inverse', () => {
+    const applied = applyCommand(withSeams, setSeamCommand('s1', 15));
+
+    expect(getSeam(applied.document, 's1')).toEqual({ id: 's1', edge: 'l1', width: 15 });
+    expect(getSeam(applied.document, 's2')).toEqual({ id: 's2', edge: 'l2', width: 12 });
+    expect(applied.document.entities).toBe(withSeams.entities);
+    expect(applied.document.constraints).toBe(withSeams.constraints);
+    expect(applied.inverse).toEqual(setSeamCommand('s1', 8));
+    expect(applyCommand(applied.document, applied.inverse!).document.seams).toEqual(
+      withSeams.seams,
+    );
+  });
+
+  it('is a no-op when the width is unchanged', () => {
+    const applied = applyCommand(withSeams, setSeamCommand('s1', 8));
+
+    expect(applied.document).toBe(withSeams);
+    expect(applied.inverse).toBeNull();
+  });
+
+  it('rejects unknown seams and invalid widths without mutating', () => {
+    unchanged(withSeams, setSeamCommand('missing', 10));
+    unchanged(withSeams, setSeamCommand('s1', Number.NaN));
+    unchanged(withSeams, setSeamCommand('s1', Number.POSITIVE_INFINITY));
+    unchanged(withSeams, setSeamCommand('s1', 0));
+    unchanged(withSeams, setSeamCommand('s1', -1));
+  });
+
+  it('runs through executeCommand and returns a converged result', () => {
+    const result = executeCommand(withSeams, setSeamCommand('s1', 15));
+
+    expect(result.solveResult.converged).toBe(true);
+    expect(getSeam(result.document, 's1')).toMatchObject({ width: 15 });
+    expect(result.inverse).toEqual(setSeamCommand('s1', 8));
   });
 });
 
