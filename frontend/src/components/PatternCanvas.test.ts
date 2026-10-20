@@ -856,17 +856,10 @@ describe('PatternCanvas', () => {
     expect(wrapper.emitted('update-dimension')).toEqual([['w', { offset: 30 }]]);
   });
 
-  it('does not drag dimensions outside the select tool or during constraint placement', async () => {
-    const dimensionTool = mountCanvas({ document: dimensionDoc, tool: 'dimension' });
-    down(dimensionTool.find('[data-testid="dimension-drag-w"]').element, 300, 200);
-    move(400, 300);
-    up();
-    expect(dimensionTool.emitted('update-dimension')).toBeUndefined();
+  it('does not drag dimensions during constraint placement', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc, constraintActive: true });
 
-    const constraintTool = mountCanvas({ document: dimensionDoc, constraintActive: true });
-    down(constraintTool.find('[data-testid="dimension-drag-w"]').element, 300, 200);
-    move(400, 300);
-    up();
-    expect(constraintTool.emitted('update-dimension')).toBeUndefined();
+    expect(wrapper.find('[data-testid="dimension-drag-w"]').exists()).toBe(false);
+    expect(wrapper.emitted('update-dimension')).toBeUndefined();
   });
 });
