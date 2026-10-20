@@ -91,5 +91,5 @@ without the neighbouring edges' rows (#41), implemented on this branch with the
 ### Phase 4: Verification and handoff
 
 - [x] 4.1 Run the full validation gate — b033cd1
-- [ ] 4.2 Run `om-auto-review-pr 45 --autofix` and resolve findings
-- [ ] 4.3 Retitle the PR, normalize labels, promote it to ready and report
+- [x] 4.2 Run `om-auto-review-pr 45 --autofix` and resolve findings — 5893eb9
+- [x] 4.3 Retitle the PR, normalize labels, promote it to ready and report — 5893eb9
