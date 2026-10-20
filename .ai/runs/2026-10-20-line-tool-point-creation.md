@@ -86,6 +86,6 @@ green under the 100% coverage gate.
 
 - [x] 4.1 Wire `EditorView.onAddLine` to `buildLineCommands` + `dispatchGroup` — 4ddfae0
 - [x] 4.2 Test the resulting document and one-step undo in `EditorView.test.ts` — 66bd368
-- [ ] 4.3 Mark the spec implemented and run the full validation gate
+- [x] 4.3 Mark the spec implemented and run the full validation gate — 8fc280a
 - [ ] 4.4 Run `om-auto-review-pr 44 --autofix` and resolve findings
 - [ ] 4.5 Retitle the PR, normalize labels, promote it to ready and report
