@@ -1,4 +1,9 @@
-import { createEmptyDocument, type EntityId, type PatternDocument } from '@sewcraft/geometry';
+import {
+  createEmptyDocument,
+  type Constraint,
+  type EntityId,
+  type PatternDocument,
+} from '@sewcraft/geometry';
 import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { createPinia, setActivePinia, type Pinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -70,6 +75,11 @@ function pointDown(wrapper: VueWrapper, id: EntityId): void {
 
 function keydown(key: string): void {
   window.dispatchEvent(new KeyboardEvent('keydown', { key, cancelable: true }));
+}
+
+/** Presentation offset of a distance constraint, or undefined for other kinds. */
+function distanceOffset(constraint: Constraint | undefined): number | undefined {
+  return constraint?.type === 'distance' ? constraint.offset : undefined;
 }
 
 function points(wrapper: VueWrapper) {
@@ -968,7 +978,7 @@ describe('EditorView', () => {
     window.dispatchEvent(new MouseEvent('pointerup'));
     await flushPromises();
 
-    const dragged = store.document.constraints[0]!.offset;
+    const dragged = distanceOffset(store.document.constraints[0]);
     expect(dragged).not.toBe(3);
 
     const entry = store.journal.at(-1)!;
@@ -984,7 +994,7 @@ describe('EditorView', () => {
     await wrapper.find('[data-testid="undo"]').trigger('click');
     await flushPromises();
 
-    expect(store.document.constraints[0]!.offset).toBe(3);
+    expect(distanceOffset(store.document.constraints[0])).toBe(3);
   });
 
   it('keeps the dimension tool active after dragging a dimension', async () => {
@@ -1005,7 +1015,7 @@ describe('EditorView', () => {
     window.dispatchEvent(new MouseEvent('pointerup'));
     await flushPromises();
 
-    expect(store.document.constraints[0]!.offset).not.toBe(3);
+    expect(distanceOffset(store.document.constraints[0])).not.toBe(3);
     expect(wrapper.find('[data-testid="tool-dimension"]').attributes('aria-pressed')).toBe('true');
     expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(false);
   });
