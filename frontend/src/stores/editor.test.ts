@@ -186,9 +186,9 @@ describe('editor store', () => {
     const store = useEditorStore();
     const document = store.document;
 
-    expect(() =>
-      store.dispatchGroup([addPoint('a', 0, 0), addLine('l', 'a', 'missing')]),
-    ).toThrow(CommandValidationError);
+    expect(() => store.dispatchGroup([addPoint('a', 0, 0), addLine('l', 'a', 'missing')])).toThrow(
+      CommandValidationError,
+    );
 
     expect(store.document).toBe(document);
     expect(store.journal).toHaveLength(0);
