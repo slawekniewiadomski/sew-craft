@@ -1081,7 +1081,14 @@ watch(
             rx="2"
             class="fill-background"
           />
-          <text text-anchor="middle" dominant-baseline="middle" class="fill-foreground text-[11px]">
+          <text
+            text-anchor="middle"
+            dominant-baseline="middle"
+            :class="[
+              label.driven && !label.preview ? 'fill-muted-foreground' : 'fill-foreground',
+              'text-[11px]',
+            ]"
+          >
             {{ label.value }}
           </text>
         </g>
