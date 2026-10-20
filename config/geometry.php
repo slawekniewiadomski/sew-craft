@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.3.0',
+    'spec_version' => '0.4.0',
 
     /*
     |--------------------------------------------------------------------------
@@ -137,6 +137,14 @@ return [
                 'id' => 'entity_id',
             ],
             'inverse' => 'add_seam_allowance',
+        ],
+        'set_seam_allowance' => [
+            'description' => 'Change the width of an attached seam allowance (mm).',
+            'params' => [
+                'id' => 'entity_id',
+                'width' => 'number',
+            ],
+            'inverse' => 'set_seam_allowance',
         ],
         'solve' => [
             'description' => 'Rebuild the sketch by running the constraint solver.',
