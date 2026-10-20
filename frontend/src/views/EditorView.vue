@@ -55,11 +55,21 @@ import { downloadSvgFile } from '@/lib/download';
 import type { RibbonAction } from '@/lib/editor-ribbon';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 import { entityProperties } from '@/lib/entity-properties';
+import { buildLineCommands, type LineEndpoint } from '@/lib/line-tool';
 import { parseSeamWidth } from '@/lib/seam-width';
 
 const props = defineProps<{ id: string }>();
 
-const { document: pattern, journal, canUndo, canRedo, dispatch, undo, redo } = useCommandBus();
+const {
+  document: pattern,
+  journal,
+  canUndo,
+  canRedo,
+  dispatch,
+  dispatchGroup,
+  undo,
+  redo,
+} = useCommandBus();
 const { width, collapsed, setWidth } = useSidebarLayout(window.localStorage);
 
 const error = ref<string | null>(null);
@@ -237,8 +247,9 @@ function onAddPoint(x: number, y: number): void {
   run(() => dispatch({ id: nextCommandId('point'), type: 'add_point', params: { x, y } }));
 }
 
-function onAddLine(start: EntityId, end: EntityId): void {
-  run(() => dispatch({ id: nextCommandId('line'), type: 'add_line', params: { start, end } }));
+/** One gesture: new endpoints become points, then the line, as a single entry. */
+function onAddLine(start: LineEndpoint, end: LineEndpoint): void {
+  run(() => dispatchGroup(buildLineCommands(start, end, nextCommandId)));
 }
 
 function onAddCurve(points: [EntityId, EntityId, EntityId, EntityId]): void {

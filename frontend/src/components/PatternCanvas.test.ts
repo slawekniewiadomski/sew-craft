@@ -9,6 +9,7 @@ import {
   type PatternDocument,
   type PointEntity,
   seamAllowancePaths,
+  type Vec2,
 } from '@sewcraft/geometry';
 import {
   enableAutoUnmount,
@@ -140,6 +141,22 @@ function down(el: Element, x: number, y: number, button = 0): void {
 
 function move(x: number, y: number): void {
   window.dispatchEvent(new MouseEvent('pointermove', { clientX: x, clientY: y }));
+}
+
+function pointerMove(wrapper: VueWrapper, x: number, y: number): void {
+  wrapper
+    .find('svg')
+    .element.dispatchEvent(
+      new MouseEvent('pointermove', { bubbles: true, clientX: x, clientY: y }),
+    );
+}
+
+/** The snapped world position a bare-canvas click at these screen coords resolves to. */
+function snappedAt(x: number, y: number): Vec2 {
+  const candidates = baseDoc.entities
+    .filter((entity): entity is PointEntity => entity.kind === 'point')
+    .map((point) => ({ x: point.x, y: point.y }));
+  return snapPoint(screenToWorld(fittedViewport(baseDoc), { x, y }), candidates);
 }
 
 function up(): void {
@@ -572,7 +589,7 @@ describe('PatternCanvas', () => {
     expect(wrapper.emitted('add-point')).toEqual([[expected.x, expected.y]]);
   });
 
-  it('commits a line after two distinct points with the add_line tool', async () => {
+  it('commits a line between two existing points as endpoints', async () => {
     const wrapper = mountCanvas({ tool: 'add_line' });
 
     down(pointCircle(wrapper, 'a').element, 400, 300);
@@ -581,18 +598,175 @@ describe('PatternCanvas', () => {
     expect(pointCircle(wrapper, 'a').classes()).toContain('fill-accent');
 
     down(pointCircle(wrapper, 'b').element, 400, 300);
-    expect(wrapper.emitted('add-line')).toEqual([['a', 'b']]);
+    expect(wrapper.emitted('add-line')).toEqual([
+      [
+        { kind: 'point', id: 'a' },
+        { kind: 'point', id: 'b' },
+      ],
+    ]);
   });
 
-  it('resets pending points when the add_line tool hits empty space or a line', () => {
+  it('creates both endpoints when a line starts and ends on empty canvas', async () => {
+    const wrapper = mountCanvas({ tool: 'add_line' });
+    const start = snappedAt(600, 400);
+    const end = snappedAt(300, 500);
+
+    down(wrapper.find('[data-testid="grid"]').element, 600, 400);
+    await nextTick();
+    expect(wrapper.find('[data-testid="line-pending-point"]').exists()).toBe(true);
+
+    down(wrapper.find('[data-testid="grid"]').element, 300, 500);
+    expect(wrapper.emitted('add-line')).toEqual([
+      [
+        { kind: 'new', x: start.x, y: start.y },
+        { kind: 'new', x: end.x, y: end.y },
+      ],
+    ]);
+    await nextTick();
+    expect(wrapper.find('[data-testid="line-pending-point"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="line-preview"]').exists()).toBe(false);
+  });
+
+  it('creates only the end point when the line starts on an existing point', () => {
+    const wrapper = mountCanvas({ tool: 'add_line' });
+    const end = snappedAt(600, 400);
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    down(wrapper.find('[data-testid="grid"]').element, 600, 400);
+
+    expect(wrapper.emitted('add-line')).toEqual([
+      [
+        { kind: 'point', id: 'a' },
+        { kind: 'new', x: end.x, y: end.y },
+      ],
+    ]);
+  });
+
+  it('creates only the start point when the line ends on an existing point', () => {
+    const wrapper = mountCanvas({ tool: 'add_line' });
+    const start = snappedAt(600, 400);
+
+    down(wrapper.find('[data-testid="grid"]').element, 600, 400);
+    down(pointCircle(wrapper, 'c').element, 400, 300);
+
+    expect(wrapper.emitted('add-line')).toEqual([
+      [
+        { kind: 'new', x: start.x, y: start.y },
+        { kind: 'point', id: 'c' },
+      ],
+    ]);
+  });
+
+  it('reuses an existing point when the snapped click lands on it', () => {
+    const wrapper = mountCanvas({ tool: 'add_line' });
+    const nearC = worldToScreen(fittedViewport(baseDoc), { x: 103, y: 98 });
+
+    down(wrapper.find('[data-testid="grid"]').element, nearC.x, nearC.y);
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+
+    expect(wrapper.emitted('add-line')).toEqual([
+      [
+        { kind: 'point', id: 'c' },
+        { kind: 'point', id: 'a' },
+      ],
+    ]);
+  });
+
+  it('ignores a second click on the same point or coordinate', () => {
     const wrapper = mountCanvas({ tool: 'add_line' });
 
     down(pointCircle(wrapper, 'a').element, 400, 300);
-    down(wrapper.find('[data-kind="line"]').element, 400, 300);
-    down(wrapper.find('[data-testid="grid"]').element, 400, 300);
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    expect(wrapper.emitted('add-line')).toBeUndefined();
+
+    down(pointCircle(wrapper, 'b').element, 400, 300);
+    expect(wrapper.emitted('add-line')).toEqual([
+      [
+        { kind: 'point', id: 'a' },
+        { kind: 'point', id: 'b' },
+      ],
+    ]);
+
+    const grid = wrapper.find('[data-testid="grid"]').element;
+    down(grid, 600, 400);
+    down(grid, 600, 400);
+    expect(wrapper.emitted('add-line')).toHaveLength(1);
+  });
+
+  it('previews the pending start and a dashed line to the snapped pointer', async () => {
+    const wrapper = mountCanvas({ tool: 'add_line' });
+    const start = snappedAt(600, 400);
+    const target = snappedAt(700, 500);
+
+    down(wrapper.find('[data-testid="grid"]').element, 600, 400);
+    await nextTick();
+    pointerMove(wrapper, 700, 500);
+    await nextTick();
+
+    const preview = wrapper.find('[data-testid="line-preview"]');
+    expect(preview.exists()).toBe(true);
+    expect(preview.attributes('x1')).toBe(String(start.x));
+    expect(preview.attributes('y1')).toBe(String(start.y));
+    expect(preview.attributes('x2')).toBe(String(target.x));
+    expect(preview.attributes('y2')).toBe(String(target.y));
+    expect(preview.attributes('stroke-dasharray')).toBe('4 4');
+  });
+
+  it('previews from an existing point without a provisional point', async () => {
+    const wrapper = mountCanvas({ tool: 'add_line' });
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    await nextTick();
+    expect(wrapper.find('[data-testid="line-pending-point"]').exists()).toBe(false);
+
+    pointerMove(wrapper, 700, 500);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="line-preview"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="line-preview"]').attributes('x1')).toBe('0');
+    expect(wrapper.find('[data-testid="line-preview"]').attributes('y1')).toBe('0');
+  });
+
+  it('treats a click on a line as bare canvas and creates a free endpoint', () => {
+    const wrapper = mountCanvas({ tool: 'add_line' });
+
+    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, 600, 400);
     down(pointCircle(wrapper, 'b').element, 400, 300);
 
-    expect(wrapper.emitted('add-line')).toBeUndefined();
+    const emitted = wrapper.emitted('add-line')![0]!;
+    expect(emitted[0]).toMatchObject({ kind: 'new' });
+    expect(emitted[1]).toEqual({ kind: 'point', id: 'b' });
+  });
+
+  it('clears the pending line when the tool changes', async () => {
+    const wrapper = mountCanvas({ tool: 'add_line' });
+
+    down(wrapper.find('[data-testid="grid"]').element, 600, 400);
+    await nextTick();
+    pointerMove(wrapper, 700, 500);
+    await nextTick();
+    expect(wrapper.find('[data-testid="line-pending-point"]').exists()).toBe(true);
+
+    wrapper.setProps({ tool: 'select' });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="line-pending-point"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="line-preview"]').exists()).toBe(false);
+  });
+
+  it('clears a pending point start when that point disappears', async () => {
+    const wrapper = mountCanvas({ tool: 'add_line' });
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    await nextTick();
+    expect(pointCircle(wrapper, 'a').classes()).toContain('fill-accent');
+
+    wrapper.setProps({ document: doc([pt('b', 100, 0), pt('c', 100, 100)]) });
+    await nextTick();
+    pointerMove(wrapper, 700, 500);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="line-preview"]').exists()).toBe(false);
   });
 
   it('ignores a repeated point when collecting a curve', () => {
@@ -605,6 +779,19 @@ describe('PatternCanvas', () => {
     down(pointCircle(wrapper, 'd').element, 400, 300);
 
     expect(wrapper.emitted('add-curve')).toEqual([[['a', 'b', 'c', 'd']]]);
+  });
+
+  it('resets pending curve points when a click is not on a point', () => {
+    const wrapper = mountCanvas({ tool: 'add_curve' });
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, 600, 400);
+    down(pointCircle(wrapper, 'b').element, 400, 300);
+    down(wrapper.find('[data-testid="grid"]').element, 600, 400);
+    down(pointCircle(wrapper, 'c').element, 400, 300);
+    down(pointCircle(wrapper, 'd').element, 400, 300);
+
+    expect(wrapper.emitted('add-curve')).toBeUndefined();
   });
 
   it('clears a pending selection when the tool changes', async () => {

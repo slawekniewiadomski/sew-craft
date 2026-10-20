@@ -40,6 +40,7 @@ import {
   type DimensionSegment,
 } from '@/lib/dimensions';
 import type { EditorTool } from '@/lib/editor-tools';
+import { resolveLineEndpoint, sameEndpoint, type LineEndpoint } from '@/lib/line-tool';
 import { snapPoint, snapToGrid } from '@/lib/snap';
 import {
   fitToBounds,
@@ -142,7 +143,7 @@ const emit = defineEmits<{
   'update:selectedId': [id: EntityId | null];
   'move-point': [id: EntityId, x: number, y: number];
   'add-point': [x: number, y: number];
-  'add-line': [start: EntityId, end: EntityId];
+  'add-line': [start: LineEndpoint, end: LineEndpoint];
   'add-curve': [points: [EntityId, EntityId, EntityId, EntityId]];
   'constraint-pick': [pick: ConstraintPick];
   'add-dimension': [placement: DimensionPlacement];
@@ -158,6 +159,10 @@ let resizeObserver: ResizeObserver | null = null;
 const dragState = ref<{ id: EntityId; x: number; y: number; origin: Vec2 } | null>(null);
 const panState = ref<{ start: Vec2; origin: Viewport } | null>(null);
 const pending = ref<EntityId[]>([]);
+/** The line gesture's first endpoint; `null` until the first click. */
+const lineStart = ref<LineEndpoint | null>(null);
+/** The snapped pointer position while a line gesture is pending. */
+const linePreview = ref<Vec2 | null>(null);
 const spaceHeld = ref(false);
 
 /** Points picked for a dimension that has not yet been placed. */
@@ -268,6 +273,22 @@ const constraintLayer = computed<ConstraintMarker[]>(() => {
 });
 
 const pendingIds = computed(() => new Set(pending.value));
+/** The document point reused as the line start, highlighted while pending. */
+const pendingLineStartId = computed(() =>
+  lineStart.value?.kind === 'point' ? lineStart.value.id : null,
+);
+/**
+ * World position of the pending start. An id is always current because the
+ * document watcher clears a start whose point disappeared.
+ */
+const pendingLineStart = computed<Vec2 | null>(() => {
+  const start = lineStart.value;
+  if (start === null) return null;
+  if (start.kind === 'new') return { x: start.x, y: start.y };
+
+  const point = pointById.value.get(start.id)!;
+  return { x: point.x, y: point.y };
+});
 const gridStep = computed(() => niceStep(viewport.value.scale));
 const gridPath = computed(() => `M ${gridStep.value} 0 L 0 0 0 ${gridStep.value}`);
 const transform = computed(() => viewportTransform(viewport.value));
@@ -412,7 +433,9 @@ function yTickPosition(value: number): number {
 function pointClass(point: PointEntity): string {
   if (pickedPointIds.value.has(point.id)) return 'fill-primary stroke-primary-foreground';
   if (point.id === props.selectedId) return 'fill-primary stroke-primary-foreground';
-  if (pendingIds.value.has(point.id)) return 'fill-accent stroke-accent-foreground';
+  if (pendingIds.value.has(point.id) || point.id === pendingLineStartId.value) {
+    return 'fill-accent stroke-accent-foreground';
+  }
   return point.construction ? 'fill-muted-foreground' : 'fill-foreground';
 }
 
@@ -640,7 +663,7 @@ function onPointerDown(event: PointerEvent): void {
       emitAddPoint(screen);
       break;
     case 'add_line':
-      selectPendingPoint(hit, 2);
+      onLinePointer(hit, screen);
       break;
     case 'add_curve':
       selectPendingPoint(hit, 4);
@@ -685,6 +708,10 @@ function onPointerMove(event: PointerEvent): void {
 function onCanvasPointerMove(event: PointerEvent): void {
   if (dimensionPlacement.value !== null && dimensionDrag.value === null) {
     updateDimensionPlacement(screenPoint(event));
+  }
+
+  if (props.tool === 'add_line' && lineStart.value !== null) {
+    linePreview.value = snappedPoint(screenToWorld(viewport.value, screenPoint(event)));
   }
 }
 
@@ -760,11 +787,33 @@ function selectPendingPoint(hit: Hit | null, required: number): void {
 
 function commitPending(ids: EntityId[]): void {
   pending.value = [];
-  if (ids.length === 2) {
-    emit('add-line', ids[0]!, ids[1]!);
-  } else {
-    emit('add-curve', [ids[0]!, ids[1]!, ids[2]!, ids[3]!]);
+  emit('add-curve', [ids[0]!, ids[1]!, ids[2]!, ids[3]!]);
+}
+
+/**
+ * The line gesture: a point hit is reused by id, a bare canvas resolves to the
+ * snapped position (which may coincide with an existing point). The first click
+ * only stores a provisional start; the second emits both endpoints so the
+ * editor can commit the points and the line as one undoable gesture.
+ */
+function onLinePointer(hit: Hit | null, screen: Vec2): void {
+  const endpoint: LineEndpoint =
+    hit !== null && hit.kind === 'point'
+      ? { kind: 'point', id: hit.id }
+      : resolveLineEndpoint(props.document, screenToWorld(viewport.value, screen));
+
+  const start = lineStart.value;
+  if (start === null) {
+    lineStart.value = endpoint;
+    linePreview.value = null;
+    return;
   }
+
+  if (sameEndpoint(start, endpoint)) return;
+
+  lineStart.value = null;
+  linePreview.value = null;
+  emit('add-line', start, endpoint);
 }
 
 function beginPan(screen: Vec2): void {
@@ -827,6 +876,8 @@ watch(
   () => props.tool,
   () => {
     pending.value = [];
+    lineStart.value = null;
+    linePreview.value = null;
     dimensionPending.value = [];
     dimensionPlacement.value = null;
     editingDimension.value = null;
@@ -837,12 +888,17 @@ watch(
 );
 
 // Any document edit invalidates the inline editor: the constraint may have
-// moved, been removed, or been undone underneath it.
+// moved, been removed, or been undone underneath it. A pending line start that
+// referenced a point also disappears when that point does.
 watch(
   () => props.document,
   () => {
     editingDimension.value = null;
     editingSeam.value = null;
+    if (pendingLineStartId.value !== null && !pointById.value.has(pendingLineStartId.value)) {
+      lineStart.value = null;
+      linePreview.value = null;
+    }
   },
 );
 
@@ -975,6 +1031,31 @@ watch(
             vector-effect="non-scaling-stroke"
             :data-entity-id="entry.curve.id"
             data-kind="curve"
+          />
+        </g>
+
+        <g v-if="pendingLineStart !== null" class="pointer-events-none" aria-hidden="true">
+          <line
+            v-if="linePreview !== null"
+            :x1="pendingLineStart.x"
+            :y1="pendingLineStart.y"
+            :x2="linePreview.x"
+            :y2="linePreview.y"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-dasharray="4 4"
+            vector-effect="non-scaling-stroke"
+            class="text-muted-foreground"
+            data-testid="line-preview"
+          />
+          <circle
+            v-if="lineStart?.kind === 'new'"
+            :cx="pendingLineStart.x"
+            :cy="pendingLineStart.y"
+            r="4"
+            class="fill-accent stroke-accent-foreground"
+            stroke-width="1"
+            data-testid="line-pending-point"
           />
         </g>
 
