@@ -84,10 +84,10 @@ spec and the implementation on this single branch.
 
 ### Phase 5: Tests
 
-- [ ] 5.1 Canvas tests for Dimension-tool dragging, hit strip, cursors, cancellation and listener cleanup
-- [ ] 5.2 EditorView tests for Dimension-tool dragging and the 20 mm offset
+- [x] 5.1 Canvas tests for Dimension-tool dragging, hit strip, cursors, cancellation and listener cleanup — 5a09a2f
+- [x] 5.2 EditorView tests for Dimension-tool dragging and the 20 mm offset — 5a09a2f
 
 ### Phase 6: Docs and gate
 
-- [ ] 6.1 Correct the 12 mm default in geometry-core, data-model and command-spec docs
+- [x] 6.1 Correct the 12 mm default in geometry-core, data-model and command-spec docs — 3bdada9
 - [ ] 6.2 Run the full validation gate and the automated review, then finalize the PR
