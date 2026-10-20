@@ -70,5 +70,5 @@ Store a per-edge seam allowance side (`left`/`right`, default `left`) and expose
 
 ### Phase 5: Verification
 
-- [ ] 5.1 Run the full validation gate and fix any failures
-- [ ] 5.2 Run `om-auto-review-pr`, address findings, finalize labels and PR state
+- [x] 5.1 Run the full validation gate and fix any failures — 53bea86
+- [x] 5.2 Run `om-auto-review-pr`, address findings, finalize labels and PR state — 348ae7f
