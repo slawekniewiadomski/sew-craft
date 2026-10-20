@@ -83,5 +83,5 @@ glossary wording and a green validation gate.
 ### Phase 3: Verification and handoff
 
 - [x] 3.1 Run the full validation gate — b33f531
-- [ ] 3.2 Run `om-auto-review-pr 40 --autofix` and resolve findings
-- [ ] 3.3 Retitle the PR, normalize labels, promote it to ready and report
+- [x] 3.2 Run `om-auto-review-pr 40 --autofix` and resolve findings — 1964af6
+- [x] 3.3 Retitle the PR, normalize labels, promote it to ready and report — 1964af6
