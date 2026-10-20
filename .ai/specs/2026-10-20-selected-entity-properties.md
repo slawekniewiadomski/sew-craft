@@ -4,6 +4,10 @@ Status: proposed
 Refs #35
 Soft dependency: #34 (driven and set dimensions) for the driven/set value
 presentation. This spec works without it and shows the stored value until it lands.
+Relation rule amended by `.ai/specs/2026-10-20-selected-entity-properties-scope.md`
+(#41): the inspector lists constraints that act on the selected entity's own
+segment, not every constraint that shares one of its points. Layout, editing paths
+and the rest of this spec still apply.
 
 ## 📝 TLDR
 
@@ -62,19 +66,28 @@ The panel replaces the current selection rows while keeping a compact
 Remove; if absent on a cut edge, Add allowance (default 10 mm); a construction
 edge explains that allowances apply to cut edges only.
 
-**Related dimensions** — distance constraints that reference any point of the
-selected entity. Each row shows the id, effective value (`(120)` driven / `120`
-set once #34 lands), orientation, endpoints, and actions to set/clear the value
-(shared with #34's rules) and Remove.
+**Related dimensions** — distance constraints whose measured segment acts on the
+selected entity. For a line that is its endpoint pair; for a curve it is any pair
+of its control points; a point selection keeps every dimension that references the
+point. The exact relation matrix is in
+`.ai/specs/2026-10-20-selected-entity-properties-scope.md` (#41). Each row shows
+the id, effective value (`(120)` driven / `120` set once #34 lands), orientation,
+endpoints, and actions to set/clear the value (shared with #34's rules) and
+Remove.
 
-**Related constraints** — every other constraint type that references those
-points. Each row shows the id, the human label from `constraintLabel`
-(`frontend/src/lib/constraint-view.ts:49-58`), its entity ids, and Remove.
+**Related constraints** — every other constraint type whose referenced segment
+acts on the selected entity, using the same rule. Each row shows the id, the human
+label from `constraintLabel` (`frontend/src/lib/constraint-view.ts:49-58`), its
+entity ids, and Remove.
 
-**Why "own points" and not neighbours:** a selected line is held by constraints on
-its two endpoints (horizontal, coincident, distance, …). A constraint on a point
-two hops away does not explain the selected line and would make the list
-unbounded. This is asked as a decision on #35.
+**Why segments and not just shared points:** #35 originally chose "any own point"
+so a selected line would include constraints on its endpoints. Issue #41 showed
+that this also pulls in every adjacent edge sharing a corner: selecting `ab` in a
+rectangle listed the height on `bc` and the vertical constraints on `bc` and
+`da`. The inspector now lists only constraints that act on the selected entity's
+own segment; endpoint-only constraints remain reachable by selecting the point,
+and constraints that genuinely span two edges (`angle`, `equal`, `point_on_line`)
+appear on both.
 
 ### Interaction rules
 
@@ -185,7 +198,7 @@ introducing another contract.
 | Construction edge selected | Seam actions hidden/disabled with an explanation, construction toggle available |
 | Point selected | No seam section; constraints and dimensions referencing the point |
 | Line with a distance between its endpoints | Appears as a dimension row with the measured length |
-| Dimension between the line's start and an unrelated point | Shown as related (it references one of the entity's points) with both ids, so the scope is explicit |
+| Dimension or constraint between the line's start and an unrelated point | Not shown on the line; select the point to inspect it. Cross-edge constraints (`angle`, `equal`, `point_on_line`) still appear on both referenced segments. See #41's scope spec. |
 | Seam width `0`, negative or text | Reuse `parseSeamWidth`; invalid edit snaps back, no command |
 | Dimension value invalid | Shared parser rejects; no command |
 | Solver rejects a value | Error banner; panel shows the unchanged document |
@@ -218,7 +231,7 @@ design review.
 | # | Question | Why it matters | Recommended answer |
 | - | -------- | -------------- | ------------------ |
 | Q1 | Should point coordinates (and line/curve control-point references) be **editable** in the inspector, or read-only with canvas dragging as the edit path? | Editable coordinates are a second drafting surface and need new commands/tests; read-only keeps v1 small | Read-only in v1; drag on canvas |
-| Q2 | Does "related" mean constraints on the entity's **own points**, or a wider neighbourhood (e.g. constraints on adjacent edges)? | Determines how large and explainable the lists are | Own points only; show the referenced ids so the scope is visible |
+| Q2 | Does "related" mean constraints on the entity's **own points**, or a wider neighbourhood (e.g. constraints on adjacent edges)? | Determines how large and explainable the lists are | Resolved by #41: match the constraint's referenced segment to the selected entity, not any shared point. Point selections keep any constraint that references the point. See `.ai/specs/2026-10-20-selected-entity-properties-scope.md`. |
 | Q3 | Should dimensions be editable in this panel, or only listed with an action that jumps to the Dimensions drawer? | Duplicate edit surfaces vs. extra navigation | Editable inline — the issue asks to edit related properties, and one command serves both |
 | Q4 | Is multi-selection in scope? | The editor holds a single `selectedId`; multi-select is a separate interaction and model change | No — single selection now, multi-select as separate work |
 
@@ -230,7 +243,7 @@ design review.
 | R2 | Single selection only, matching `selectedId` | Multi-select is a separate interaction change | Reversible |
 | R3 | Show all three entity kinds; allow construction toggles on all, seams on line/curve only | Matches what the document and commands support | Reversible |
 | R4 | Editable v1: construction toggle, seam add/edit/remove, dimension value, remove dimension/constraint. Read-only: coordinates, endpoints, fixed flag | Reuses existing commands; avoids inventing a re-point command | Reversible (pending Q1) |
-| R5 | Related dimensions/constraints = those referencing any point of the selected entity; dimensions listed separately | Answers the issue directly and stays bounded | Reversible (pending Q2) |
+| R5 | Related dimensions/constraints = those whose referenced segment acts on the selected entity (line endpoint pair; curve control-point pair); point selections keep any constraint referencing the point. Amended by #41's scope spec | Fixes the adjacent-edge clutter reported in #41; dimensions stay listed separately | Reversible |
 | R6 | Workspace summary stays below the inspector | Keeps tool/project/command counts visible, no information removed | Reversible |
 | R7 | No new command, geometry export, schema, API or database change | Everything needed already exists | Reversible |
 | R8 | Reuse `constraintLabel`, `measureLinearDimension`, `constraintOrientation`, `seamForEdge` and `parseSeamWidth` | Canonical helpers; no parallel logic | Reversible |
