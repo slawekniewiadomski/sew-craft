@@ -149,10 +149,7 @@ export function entityProperties(
       entity.kind === 'line'
         ? measureLinearDimension(document, entity.start, entity.end, 'aligned')
         : null,
-    seam:
-      seam === undefined
-        ? null
-        : { id: seam.id, width: seam.width, side: seamSide(seam) },
+    seam: seam === undefined ? null : { id: seam.id, width: seam.width, side: seamSide(seam) },
     dimensions,
     constraints,
   };

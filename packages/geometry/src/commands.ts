@@ -776,9 +776,7 @@ function applySetSeamAllowance(
     );
   }
   const side =
-    requestedSide === undefined
-      ? undefined
-      : requireSeamSide('set_seam_allowance', requestedSide);
+    requestedSide === undefined ? undefined : requireSeamSide('set_seam_allowance', requestedSide);
 
   const seam = getSeam(document, id);
   if (seam === undefined) {

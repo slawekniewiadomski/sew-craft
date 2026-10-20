@@ -1,5 +1,11 @@
 import { entityPoints, getEntity } from './document.js';
-import { seamSide, type EntityId, type PatternDocument, type Seam, type SeamSide } from './types.js';
+import {
+  seamSide,
+  type EntityId,
+  type PatternDocument,
+  type Seam,
+  type SeamSide,
+} from './types.js';
 import { add, cross, dot, magnitude, normalize, scale, sub, type Vec2 } from './vector.js';
 
 export type JoinStyle = 'miter' | 'round';
