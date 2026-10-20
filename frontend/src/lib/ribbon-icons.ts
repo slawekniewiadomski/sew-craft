@@ -12,6 +12,7 @@ export type RibbonIconName =
   | 'line'
   | 'curve'
   | 'dimension'
+  | 'allowance'
   | 'undo'
   | 'redo'
   | 'delete'
@@ -35,6 +36,9 @@ const ACTION_ICONS: Record<ActionIconName, RibbonIcon> = {
       'M4.5 4.2 L2.5 6 L4.5 7.8',
       'M7.5 4.2 L9.5 6 L7.5 7.8',
     ],
+  },
+  allowance: {
+    paths: ['M1.8 3.2 H10.2', 'M1.8 8.8 H10.2', 'M1.8 3.2 V8.8', 'M10.2 3.2 V8.8'],
   },
   undo: { paths: ['M4.4 3.6 L1.8 6 L4.4 8.4', 'M1.8 6 H7.3 A2.5 2.5 0 0 1 7.3 11 H6'] },
   redo: { paths: ['M7.6 3.6 L10.2 6 L7.6 8.4', 'M10.2 6 H4.7 A2.5 2.5 0 0 0 4.7 11 H6'] },
