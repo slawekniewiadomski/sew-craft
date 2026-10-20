@@ -73,5 +73,5 @@ removed source leaves dependents visibly broken and repairable.
 ### Phase 2: Verification and review
 
 - [x] 2.1 Full validation gate: format, typecheck, lint, format:check, coverage (100 %), build, Pest coverage, Pint
-- [ ] 2.2 `om-auto-review-pr` review with autofix until merge-ready
-- [ ] 2.3 Normalize labels, retitle to the implementation title, flip draft → ready
+- [x] 2.2 `om-auto-review-pr` review with autofix until merge-ready — approve; four non-blocking minors recorded on the PR
+- [x] 2.3 Normalize labels, retitle to the implementation title, flip draft → ready — finalization commit
