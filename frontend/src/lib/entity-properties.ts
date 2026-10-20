@@ -6,12 +6,14 @@ import {
   isDrivenDimension,
   measureLinearDimension,
   seamForEdge,
+  seamSide,
   type Constraint,
   type ConstraintType,
   type DimensionOrientation,
   type Entity,
   type EntityId,
   type PatternDocument,
+  type SeamSide,
 } from '@sewcraft/geometry';
 
 import { constraintLabel } from './constraint-view';
@@ -61,7 +63,7 @@ export type EntityProperties = {
   geometry: EntityGeometry;
   /** Measured length in millimetres for lines only. */
   length: number | null;
-  seam: { id: EntityId; width: number } | null;
+  seam: { id: EntityId; width: number; side: SeamSide } | null;
   dimensions: DimensionSummary[];
   constraints: ConstraintSummary[];
 };
@@ -172,7 +174,7 @@ export function entityProperties(
       entity.kind === 'line'
         ? measureLinearDimension(document, entity.start, entity.end, 'aligned')
         : null,
-    seam: seam === undefined ? null : { id: seam.id, width: seam.width },
+    seam: seam === undefined ? null : { id: seam.id, width: seam.width, side: seamSide(seam) },
     dimensions,
     constraints,
   };

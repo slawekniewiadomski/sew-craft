@@ -305,6 +305,7 @@ describe('PatternCanvas', () => {
       {
         edge: 'ab',
         width: 10,
+        side: 'left',
         join: 'miter',
         path: [
           { x: 0, y: 0 },

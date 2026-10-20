@@ -15,7 +15,7 @@ runtime source of truth is `config/geometry.php`, exposed at `GET /api/commands`
 }
 ```
 
-## Commands (v0.5)
+## Commands (v0.6)
 
 ### `add_point`
 
@@ -122,8 +122,11 @@ and generated as a true offset of that edge (see `@sewcraft/geometry`'s
 an edge. Construction guides (`add_construction_line`) are not cut edges and are
 rejected.
 
-- params: `edge: entity_id`, `width?: number` (mm; defaults to `10`)
+- params: `edge: entity_id`, `width?: number` (mm; defaults to `10`),
+  `side?: left|right` (defaults to `left`)
 - `width` must be finite and greater than `0`.
+- `side` selects the offset side relative to the edge's start→end direction. An
+  omitted side stores `left`, which is the original rendering.
 - inverse: `remove_seam_allowance` (targets the created seam id)
 
 ### `remove_seam_allowance`
@@ -131,18 +134,32 @@ rejected.
 Detach the seam allowance from an edge.
 
 - params: `id: entity_id` (the seam id, i.e. the `add_seam_allowance` command id)
-- inverse: `add_seam_allowance` (params rebuilt from the removed seam, keeping its id)
+- inverse: `add_seam_allowance` (params rebuilt from the removed seam, keeping its
+  id, width and stored side)
 
 ### `set_seam_allowance`
 
-Change the width of an attached seam allowance without detaching it.
+Change the width or side of an attached seam allowance without detaching it.
 
-- params: `id: entity_id` (an existing seam id), `width: number` (mm)
+- params: `id: entity_id` (an existing seam id), `width?: number` (mm),
+  `side?: left|right`
+- At least one of `width` and `side` is required.
 - `width` follows the `add_seam_allowance` rule: finite and greater than `0`.
-- An unknown seam is a validation error. Re-applying the current width is a
+- `side` must be `left` or `right`; an unknown value is a validation error.
+- An unknown seam is a validation error. Re-applying the current values is a
   no-op with `inverse: null`.
-- inverse: `set_seam_allowance` (restores the previous width, keeping the command id)
-- additive: v0.3 payloads still apply; `spec_version` is bumped to `0.4.0`.
+- inverse: `set_seam_allowance` (restores the previous width and, when it was
+  stored or changed, the previous side; keeping the command id)
+- additive: v0.5 payloads still apply; `spec_version` is bumped to `0.6.0`.
+
+### Migration from spec 0.5.0
+
+`add_seam_allowance` and `set_seam_allowance` accept an optional `side`
+(`left` or `right`) for the offset relative to the edge direction. An omitted
+side on `add_seam_allowance` means `left`, so existing payloads render exactly as
+before. `set_seam_allowance.width` becomes optional because a payload may change
+only the side (the Flip side action); every payload with a width still applies
+unchanged. Both changes are additive — `spec_version` is bumped to `0.6.0`.
 
 ### Migration from spec 0.4.0
 

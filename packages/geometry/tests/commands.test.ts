@@ -21,6 +21,7 @@ import {
   type PatternDocument,
   type PointEntity,
   type Seam,
+  type SeamSide,
 } from '../src/index.js';
 
 const point = (
@@ -101,10 +102,15 @@ const updateConstraintCommand = (
   params: { value?: number | null; orientation?: DimensionOrientation; offset?: number },
 ): Command => ({ id: 'update', type: 'update_constraint', params: { id, ...params } });
 
-const seamCommand = (id: string, edge: string, width?: number): Command =>
-  width === undefined
-    ? { id, type: 'add_seam_allowance', params: { edge } }
-    : { id, type: 'add_seam_allowance', params: { edge, width } };
+const seamCommand = (id: string, edge: string, width?: number, side?: SeamSide): Command => ({
+  id,
+  type: 'add_seam_allowance',
+  params: {
+    edge,
+    ...(width === undefined ? {} : { width }),
+    ...(side === undefined ? {} : { side }),
+  },
+});
 
 const removeSeamCommand = (id: string): Command => ({
   id,
@@ -112,10 +118,16 @@ const removeSeamCommand = (id: string): Command => ({
   params: { id },
 });
 
-const setSeamCommand = (id: string, width: number): Command => ({
+const setSeamCommand = (id: string, width: number, side?: SeamSide): Command => ({
   id: 'set',
   type: 'set_seam_allowance',
-  params: { id, width },
+  params: { id, width, ...(side === undefined ? {} : { side }) },
+});
+
+const setSeamSideCommand = (id: string, side: SeamSide): Command => ({
+  id: 'set',
+  type: 'set_seam_allowance',
+  params: { id, side },
 });
 
 const solveCommand = (id: string): Command => ({ id, type: 'solve', params: {} });
@@ -1036,22 +1048,23 @@ describe('add_seam_allowance', () => {
     { id: 'l1', kind: 'line', start: 'a', end: 'b', construction: false },
   ]);
 
-  it('attaches a seam to an edge with the default width', () => {
+  it('attaches a seam to an edge with the default width and left side', () => {
     const applied = applyCommand(withLine, seamCommand('s', 'l1'));
 
     expect(getSeam(applied.document, 's')).toEqual({
       id: 's',
       edge: 'l1',
       width: DEFAULT_SEAM_ALLOWANCE,
+      side: 'left',
     });
     expect(seamForEdge(applied.document, 'l1')).toEqual(getSeam(applied.document, 's'));
     expect(applied.inverse).toEqual(removeSeamCommand('s'));
   });
 
-  it('honours an explicit width', () => {
-    const applied = applyCommand(withLine, seamCommand('s', 'l1', 15));
+  it('honours an explicit width and side', () => {
+    const applied = applyCommand(withLine, seamCommand('s', 'l1', 15, 'right'));
 
-    expect(getSeam(applied.document, 's')).toMatchObject({ width: 15 });
+    expect(getSeam(applied.document, 's')).toMatchObject({ width: 15, side: 'right' });
   });
 
   it('is idempotent', () => {
@@ -1062,10 +1075,11 @@ describe('add_seam_allowance', () => {
     expect(second.inverse).toBeNull();
   });
 
-  it('rejects invalid width, missing edges, point edges and duplicate edges', () => {
+  it('rejects invalid width, side, missing edges, point edges and duplicate edges', () => {
     unchanged(withLine, seamCommand('s', 'l1', Number.NaN));
     unchanged(withLine, seamCommand('s', 'l1', 0));
     unchanged(withLine, seamCommand('s', 'l1', -5));
+    unchanged(withLine, seamCommand('s', 'l1', 10, 'middle' as SeamSide));
     unchanged(withLine, seamCommand('s', 'missing-edge', 10));
     unchanged(withLine, seamCommand('s', 'a', 10));
 
@@ -1100,6 +1114,23 @@ describe('remove_seam_allowance', () => {
 
     expect(applied.document.seams).toEqual([]);
     expect(applied.inverse).toEqual(seamCommand('s', 'l1', 8));
+  });
+
+  it('re-adds the removed side through its inverse', () => {
+    const sided = documentOf(
+      [
+        point('a', 0, 0),
+        point('b', 10, 0),
+        { id: 'l1', kind: 'line', start: 'a', end: 'b', construction: false },
+      ],
+      [],
+      [{ id: 's', edge: 'l1', width: 8, side: 'right' }],
+    );
+
+    const applied = applyCommand(sided, removeSeamCommand('s'));
+
+    expect(applied.inverse).toEqual(seamCommand('s', 'l1', 8, 'right'));
+    expect(applyCommand(applied.document, applied.inverse!).document.seams).toEqual(sided.seams);
   });
 
   it('is a no-op for an unknown seam', () => {
@@ -1138,11 +1169,73 @@ describe('set_seam_allowance', () => {
     );
   });
 
+  it('changes only the side when the width is omitted and restores both through the inverse', () => {
+    const applied = applyCommand(withSeams, setSeamSideCommand('s1', 'right'));
+
+    expect(getSeam(applied.document, 's1')).toEqual({
+      id: 's1',
+      edge: 'l1',
+      width: 8,
+      side: 'right',
+    });
+    expect(applied.inverse).toEqual({
+      id: 'set',
+      type: 'set_seam_allowance',
+      params: { id: 's1', width: 8, side: 'left' },
+    });
+    expect(applyCommand(applied.document, applied.inverse!).document.seams).toEqual([
+      { id: 's1', edge: 'l1', width: 8, side: 'left' },
+      { id: 's2', edge: 'l2', width: 12 },
+    ]);
+  });
+
+  it('changes width and side in one command', () => {
+    const sided = documentOf(
+      [
+        point('a', 0, 0),
+        point('b', 10, 0),
+        { id: 'l1', kind: 'line', start: 'a', end: 'b', construction: false },
+      ],
+      [],
+      [{ id: 's1', edge: 'l1', width: 8, side: 'left' }],
+    );
+
+    const applied = applyCommand(sided, setSeamCommand('s1', 15, 'right'));
+
+    expect(getSeam(applied.document, 's1')).toEqual({
+      id: 's1',
+      edge: 'l1',
+      width: 15,
+      side: 'right',
+    });
+    expect(applied.inverse).toEqual(setSeamCommand('s1', 8, 'left'));
+    expect(applyCommand(applied.document, applied.inverse!).document.seams).toEqual(sided.seams);
+  });
+
+  it('flips twice through the inverse rather than collapsing to a no-op', () => {
+    const first = applyCommand(withSeams, setSeamSideCommand('s1', 'right'));
+    const second = applyCommand(first.document, first.inverse!);
+
+    expect(getSeam(second.document, 's1')).toMatchObject({ side: 'left', width: 8 });
+  });
+
   it('is a no-op when the width is unchanged', () => {
     const applied = applyCommand(withSeams, setSeamCommand('s1', 8));
 
     expect(applied.document).toBe(withSeams);
     expect(applied.inverse).toBeNull();
+  });
+
+  it('is a no-op when the requested side already applies', () => {
+    const applied = applyCommand(withSeams, setSeamSideCommand('s1', 'left'));
+
+    expect(applied.document).toBe(withSeams);
+    expect(applied.inverse).toBeNull();
+  });
+
+  it('rejects an unknown side and a command with neither width nor side', () => {
+    unchanged(withSeams, setSeamSideCommand('s1', 'middle' as SeamSide));
+    unchanged(withSeams, { id: 'set', type: 'set_seam_allowance', params: { id: 's1' } });
   });
 
   it('rejects unknown seams and invalid widths without mutating', () => {

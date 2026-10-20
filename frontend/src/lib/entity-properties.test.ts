@@ -78,8 +78,17 @@ describe('entityProperties', () => {
       fixed: null,
       geometry: { kind: 'line', start: 'a', end: 'b' },
       length: 100,
-      seam: { id: 's1', width: 12 },
+      seam: { id: 's1', width: 12, side: 'left' },
     });
+  });
+
+  it('reports a stored right side', () => {
+    const properties = entityProperties(
+      doc({ seams: [{ id: 's1', edge: 'l1', width: 12, side: 'right' }] }),
+      'l1',
+    );
+
+    expect(properties?.seam).toEqual({ id: 's1', width: 12, side: 'right' });
   });
 
   it('describes a curve with all four control points and no length', () => {
@@ -101,7 +110,7 @@ describe('entityProperties', () => {
     );
 
     expect(properties?.construction).toBe(true);
-    expect(properties?.seam).toEqual({ id: 's1', width: 10 });
+    expect(properties?.seam).toEqual({ id: 's1', width: 10, side: 'left' });
   });
 
   it('degrades length and relations when a referenced point is missing', () => {

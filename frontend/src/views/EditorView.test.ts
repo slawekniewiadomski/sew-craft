@@ -488,6 +488,7 @@ describe('EditorView', () => {
 
     expect(wrapper.text()).toContain('Only cut edges can carry a seam allowance');
     expect(store.document.seams).toHaveLength(0);
+    expect(wrapper.find('[data-testid="flip-seam-l1"]').exists()).toBe(false);
   });
 
   it('does nothing when clicking an edge that already has an allowance', async () => {
@@ -561,12 +562,37 @@ describe('EditorView', () => {
     expect(store.document.seams[0]).toMatchObject({ width: 22 });
   });
 
+  it('flips a seam side from the outline twice and undoes one flip', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...edgeDoc,
+      seams: [{ id: 's1', edge: 'l1', width: 10 }],
+    });
+    const flip = () => wrapper.find('[data-testid="flip-seam-l1"]');
+
+    expect(flip().attributes('aria-label')).toBe('Flip side of the seam allowance for l1');
+
+    await flip().trigger('click');
+    await flushPromises();
+    expect(store.document.seams[0]).toMatchObject({ id: 's1', side: 'right' });
+
+    await flip().trigger('click');
+    await flushPromises();
+    expect(store.document.seams[0]).toMatchObject({ side: 'left' });
+    expect(store.journal).toHaveLength(2);
+
+    await wrapper.find('[data-testid="undo"]').trigger('click');
+    await flushPromises();
+    expect(store.document.seams[0]).toMatchObject({ side: 'right' });
+    expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(true);
+  });
+
   it('shows No allowance for an unattached edge with no add control', async () => {
     const { wrapper } = await mountLoaded(edgeDoc);
 
     expect(wrapper.find('[data-testid="seam-empty-l1"]').text()).toBe('No allowance');
     expect(wrapper.find('[data-testid="add-seam-l1"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="seam-width-l1"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="flip-seam-l1"]').exists()).toBe(false);
   });
 
   it('removes an allowance and its dashed path', async () => {
@@ -1081,7 +1107,9 @@ describe('EditorView', () => {
 
     await wrapper.find('[data-testid="entity-add-seam"]').trigger('click');
     await flushPromises();
-    expect(store.document.seams).toEqual([{ id: expect.any(String), edge: 'l1', width: 10 }]);
+    expect(store.document.seams).toEqual([
+      { id: expect.any(String), edge: 'l1', width: 10, side: 'left' },
+    ]);
 
     const width = wrapper.find('[data-testid="entity-seam-width"]');
     expect((width.element as HTMLInputElement).value).toBe('10');
@@ -1089,10 +1117,15 @@ describe('EditorView', () => {
     await flushPromises();
     expect(store.document.seams[0]).toMatchObject({ width: 15 });
 
+    await wrapper.find('[data-testid="entity-flip-seam"]').trigger('click');
+    await flushPromises();
+    expect(store.document.seams[0]).toMatchObject({ width: 15, side: 'right' });
+
     await wrapper.find('[data-testid="entity-remove-seam"]').trigger('click');
     await flushPromises();
     expect(store.document.seams).toHaveLength(0);
     expect(wrapper.find('[data-testid="entity-add-seam"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="entity-flip-seam"]').exists()).toBe(false);
   });
 
   it('converts the selection between construction and cut from the inspector', async () => {

@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import type { DimensionOrientation, Entity, EntityId, PatternDocument } from '@sewcraft/geometry';
+import type {
+  DimensionOrientation,
+  Entity,
+  EntityId,
+  PatternDocument,
+  SeamSide,
+} from '@sewcraft/geometry';
 import { computed } from 'vue';
 
 import { Button } from '@/components/ui/button';
@@ -21,6 +27,7 @@ const emit = defineEmits<{
   'set-construction': [id: EntityId, construction: boolean];
   'add-seam': [id: EntityId];
   'set-seam-width': [id: EntityId, width: number];
+  'flip-seam': [id: EntityId, side: SeamSide];
   'remove-seam': [id: EntityId];
   'update-dimension': [id: EntityId, value: number | null];
   'remove-constraint': [id: EntityId];
@@ -319,6 +326,29 @@ function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
           />
           mm
         </label>
+        <Button
+          variant="outline"
+          size="sm"
+          :aria-label="`Flip side of the seam allowance for ${props.entity.id}`"
+          data-testid="entity-flip-seam"
+          @click="emit('flip-seam', props.entity.seam!.id, props.entity.seam!.side)"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M2.5 5.5h10M10 3l2.5 2.5L10 8" />
+            <path d="M13.5 10.5h-10M6 8l-2.5 2.5L6 13" />
+          </svg>
+          Flip side
+        </Button>
         <Button
           variant="outline"
           size="sm"

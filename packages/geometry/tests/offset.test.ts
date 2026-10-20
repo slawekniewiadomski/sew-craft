@@ -226,9 +226,48 @@ describe('seamAllowancePath', () => {
   it('offsets a seam edge and reports no self-intersections', () => {
     const result = seamAllowancePath(document, { id: 's', edge: 'l', width: 1 });
 
-    expect(result).toMatchObject({ edge: 'l', width: 1, join: 'miter' });
+    expect(result).toMatchObject({ edge: 'l', width: 1, side: 'left', join: 'miter' });
     expect(result?.path).toEqual([p(0, 1), p(10, 1)]);
     expect(result?.selfIntersections).toEqual([]);
+  });
+
+  it('mirrors the offset to the edge-relative right side', () => {
+    const result = seamAllowancePath(document, { id: 's', edge: 'l', width: 1, side: 'right' });
+
+    expect(result).toMatchObject({ edge: 'l', width: 1, side: 'right' });
+    expect(result?.path).toEqual([p(0, -1), p(10, -1)]);
+  });
+
+  it('flips a curve allowance to the other side of its flattened edge', () => {
+    const curveDocument = documentOf(
+      [
+        point('a', 0, 0),
+        point('b', 0, 1),
+        point('c', 1, 1),
+        point('d', 1, 0),
+        {
+          id: 'curve',
+          kind: 'curve',
+          p0: 'a',
+          p1: 'b',
+          p2: 'c',
+          p3: 'd',
+          construction: false,
+        },
+      ],
+      [],
+    );
+
+    const left = seamAllowancePath(curveDocument, { id: 's', edge: 'curve', width: 0.1 });
+    const right = seamAllowancePath(curveDocument, {
+      id: 's',
+      edge: 'curve',
+      width: 0.1,
+      side: 'right',
+    });
+
+    expect(left?.path[0]!.y).toBeGreaterThan(0);
+    expect(right?.path[0]!.y).toBeLessThan(0);
   });
 
   it('returns null when the edge is missing', () => {

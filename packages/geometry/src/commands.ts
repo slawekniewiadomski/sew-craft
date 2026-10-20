@@ -12,6 +12,8 @@ import type { SolveOptions, SolveResult } from './solver.js';
 import {
   CONSTRAINT_TYPES,
   DIMENSION_ORIENTATIONS,
+  SEAM_SIDES,
+  seamSide,
   type Constraint,
   type ConstraintType,
   type CurveEntity,
@@ -23,6 +25,7 @@ import {
   type PatternDocument,
   type PointEntity,
   type Seam,
+  type SeamSide,
 } from './types.js';
 
 /** Seam allowance applied to an edge when the command omits an explicit width. */
@@ -93,6 +96,7 @@ export interface RemoveConstraintParams {
 export interface AddSeamAllowanceParams {
   edge: EntityId;
   width?: number;
+  side?: SeamSide;
 }
 
 export interface RemoveSeamAllowanceParams {
@@ -101,7 +105,8 @@ export interface RemoveSeamAllowanceParams {
 
 export interface SetSeamAllowanceParams {
   id: EntityId;
-  width: number;
+  width?: number;
+  side?: SeamSide;
 }
 
 export type SolveParams = Record<string, never>;
@@ -677,6 +682,16 @@ function applyRemoveConstraint(
   };
 }
 
+function requireSeamSide(
+  commandType: 'add_seam_allowance' | 'set_seam_allowance',
+  side: unknown,
+): SeamSide {
+  if (!SEAM_SIDES.includes(side as SeamSide)) {
+    throw new CommandValidationError(commandType, "side must be 'left' or 'right'");
+  }
+  return side as SeamSide;
+}
+
 function applyAddSeamAllowance(
   document: PatternDocument,
   command: CommandOf<'add_seam_allowance'>,
@@ -689,6 +704,10 @@ function applyAddSeamAllowance(
       'width must be a finite number greater than 0',
     );
   }
+  const side =
+    command.params.side === undefined
+      ? 'left'
+      : requireSeamSide('add_seam_allowance', command.params.side);
 
   const edgeEntity = getEntity(document, edge);
   if (edgeEntity === undefined || edgeEntity.kind === 'point' || edgeEntity.construction) {
@@ -708,7 +727,7 @@ function applyAddSeamAllowance(
     );
   }
 
-  const seam: Seam = { id: command.id, edge, width };
+  const seam: Seam = { id: command.id, edge, width, side };
 
   return {
     document: { ...document, seams: [...document.seams, seam] },
@@ -733,7 +752,11 @@ function applyRemoveSeamAllowance(
     inverse: {
       id: seam.id,
       type: 'add_seam_allowance',
-      params: { edge: seam.edge, width: seam.width },
+      params: {
+        edge: seam.edge,
+        width: seam.width,
+        ...(seam.side === undefined ? {} : { side: seam.side }),
+      },
     },
   };
 }
@@ -742,32 +765,48 @@ function applySetSeamAllowance(
   document: PatternDocument,
   command: CommandOf<'set_seam_allowance'>,
 ): CommandApplication {
-  const { id, width } = command.params;
-  if (!Number.isFinite(width) || width <= 0) {
+  const { id, width, side: requestedSide } = command.params;
+  if (width === undefined && requestedSide === undefined) {
+    throw new CommandValidationError('set_seam_allowance', 'width or side is required');
+  }
+  if (width !== undefined && (!Number.isFinite(width) || width <= 0)) {
     throw new CommandValidationError(
       'set_seam_allowance',
       'width must be a finite number greater than 0',
     );
   }
+  const side =
+    requestedSide === undefined ? undefined : requireSeamSide('set_seam_allowance', requestedSide);
 
   const seam = getSeam(document, id);
   if (seam === undefined) {
     throw new CommandValidationError('set_seam_allowance', `seam ${id} does not exist`);
   }
-  if (seam.width === width) {
+
+  const nextWidth = width ?? seam.width;
+  const nextSide = side ?? seamSide(seam);
+  if (seam.width === nextWidth && seamSide(seam) === nextSide) {
     return noOp(document);
   }
 
   const seams = document.seams.map((candidate) =>
-    candidate.id === id ? { ...candidate, width } : candidate,
+    candidate.id === id
+      ? { ...candidate, width: nextWidth, ...(side === undefined ? {} : { side }) }
+      : candidate,
   );
+
+  const inverseSide = seam.side ?? (side === undefined ? undefined : seamSide(seam));
 
   return {
     document: { ...document, seams },
     inverse: {
       id: command.id,
       type: 'set_seam_allowance',
-      params: { id, width: seam.width },
+      params: {
+        id,
+        width: seam.width,
+        ...(inverseSide === undefined ? {} : { side: inverseSide }),
+      },
     },
   };
 }
