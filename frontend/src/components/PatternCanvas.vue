@@ -585,7 +585,7 @@ function finishDimensionEdit(): void {
   }
 }
 
-/** Turning an already-driven dimension driven again is a harmless no-op command. */
+/** Map a parsed edit to the command patch: driven clears the value with `null`. */
 function dimensionPatchFor(edit: Exclude<DimensionEdit, { kind: 'invalid' }>): DimensionPatch {
   return edit.kind === 'driven' ? { value: null } : { value: edit.value };
 }

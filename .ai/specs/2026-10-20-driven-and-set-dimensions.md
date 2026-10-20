@@ -152,8 +152,9 @@ already exists and keeps one code path.
     live `measureLinearDimension` result; `null` when a referenced point is
     missing.
 - `commands.ts` — see **Contract changes**.
-- Package version: bump the minor from the current `@sewcraft/geometry` version
-  (`0.4.0` after PR #32; `0.3.0` on `develop` today) and update the lockfile.
+- Package version: bump the minor above `develop`'s `@sewcraft/geometry` version
+  (`0.4.0` after the seam-allowance merge) — this branch ships `0.5.0` — and
+  update the lockfile.
 
 ### Frontend
 
@@ -237,6 +238,9 @@ export does not serialize dimensions (`packages/geometry/src/export.ts`).
 - **Dimensions drawer.** Each row: value input, `Driven` / `Set` badge,
   orientation select, offset input, Remove. A driven row's input reflects the live
   measurement and is labelled "Value for `<id>` (driven measurement)".
+- **Inspector.** A selected entity lists the dimensions on its points with the
+  same effective value and `Driven` / `Set` badge; clearing that field returns the
+  dimension to driven, so every value surface dispatches the same command.
 - **Empty/zero spans.** A degenerate or missing span renders no dimension
   (`dimensionGeometry` already returns `null`), so there is no label to edit; the
   sidebar row stays and reports the state.
@@ -270,8 +274,9 @@ export does not serialize dimensions (`packages/geometry/src/export.ts`).
 - **Downgrade.** A build without this change cannot read a driven document
   correctly. Pre-release, single-user, no published package — accepted and noted
   in the PR body.
-- **Two edit paths.** Canvas and sidebar must dispatch identical commands; no
-  local mutable copy of the value. A shared parser keeps their rules aligned.
+- **Two edit paths.** Canvas, drawer and inspector must dispatch identical
+  commands; no local mutable copy of the value. A shared parser keeps their rules
+  aligned.
 - **Perceived data loss.** Clearing a set value does not restore earlier geometry.
   That is deliberate and stated in the UI copy; the alternative (snapshot restore)
   would make clearing unpredictable.
