@@ -11,10 +11,14 @@ steps:
 
       This is a feature request, so the run differs from a plain task in one way:
       start by authoring a design spec and commit it as the first commit on the
-      run's branch. Write it to `specs/<NNN>-<kebab-slug>.md` using the next free
-      number and the existing spec template, and keep the
-      `.ai/specs/<NNN>-<kebab-slug>.md` mirror identical — this repository keeps
-      both directories in sync.
+      run's branch. Write it to `.ai/specs/<NNN>-<kebab-slug>.md` using the next
+      free number and the existing spec template. `.ai/specs/` is the source of
+      truth; do not mirror the file into the legacy `specs/` directory.
+
+      If the issue is ambiguous, explore the problem and the realistic options
+      before committing the spec, and record the options, trade-offs and resolved
+      assumptions in it. Leave blocking product decisions under Open Questions
+      rather than defaulting them silently.
 
       The spec, the execution plan and the implementation all ship together on
       the same branch and the same pull request: there is no separate spec-only
