@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  applyCommand,
   createEmptyDocument,
   PATTERN_SCHEMA,
   toSvg,
@@ -108,6 +109,26 @@ describe('toSvg', () => {
     const svg = toSvg(square(), { construction: true });
 
     expect(svg).not.toContain('data-layer="construction"');
+  });
+
+  it('exports a rounded corner as trimmed cut lines and a cut arc', () => {
+    const rounded = applyCommand(
+      documentOf([
+        point('c', 0, 0),
+        point('a', 100, 0),
+        point('b', 0, 100),
+        line('l1', 'c', 'a'),
+        line('l2', 'c', 'b'),
+      ]),
+      { id: 'r1', type: 'add_corner_round', params: { first: 'l1', second: 'l2', radius: 10 } },
+    ).document;
+    const svg = toSvg(rounded);
+
+    expect(svg).toContain('<g data-layer="cut" fill="none"');
+    expect(svg).toContain('data-entity-id="l1"');
+    expect(svg).toContain('data-entity-id="l2"');
+    expect(svg).toContain('data-entity-id="r1:arc"');
+    expect(svg).toContain('<path d="M 10 0 C');
   });
 
   it('renders curves as cubic Bézier paths', () => {
