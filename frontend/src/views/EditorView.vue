@@ -7,6 +7,8 @@ import {
   dimensionState,
   dimensionValue,
   findDistanceConstraint,
+  getEntity,
+  isDrivenDimension,
   measureLinearDimension,
   seamForEdge,
   seamSide,
@@ -31,6 +33,7 @@ import EditorRibbon from '@/components/EditorRibbon.vue';
 import EditorSidebar from '@/components/EditorSidebar.vue';
 import EntityPropertiesPanel from '@/components/EntityPropertiesPanel.vue';
 import PatternCanvas from '@/components/PatternCanvas.vue';
+import SelectionSummary from '@/components/SelectionSummary.vue';
 import { Button } from '@/components/ui/button';
 import { useCommandBus } from '@/composables/use-command-bus';
 import { useSidebarLayout } from '@/composables/use-sidebar-layout';
@@ -67,6 +70,7 @@ import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 import { entityProperties } from '@/lib/entity-properties';
 import { buildLineCommands, type LineEndpoint } from '@/lib/line-tool';
 import { parseSeamWidth } from '@/lib/seam-width';
+import { orphanedEdges } from '@/lib/selection';
 
 const props = defineProps<{ id: string }>();
 
@@ -84,7 +88,10 @@ const { width, collapsed, setWidth } = useSidebarLayout(window.localStorage);
 
 const error = ref<string | null>(null);
 const activeTool = ref<EditorTool>('select');
-const selectedId = ref<EntityId | null>(null);
+/** Ordered, ephemeral selection: never written to the document or journal. */
+const selectedEntityIds = ref<EntityId[]>([]);
+/** True while a marquee owns the pointer, so Delete/Escape defer to the canvas. */
+const marqueeActive = ref(false);
 const fitToken = ref(0);
 const showConstruction = ref(true);
 const includeConstruction = ref(false);
@@ -127,8 +134,39 @@ const edges = computed(() =>
 
 const cutEdgeCount = computed(() => cutEdges(pattern.value).length);
 
-/** The selection inspector view model; `null` falls back to the workspace summary. */
-const selectedEntity = computed(() => entityProperties(pattern.value, selectedId.value));
+/** The single-entity inspector view model; `null` for zero or many selected. */
+const selectedEntity = computed(() =>
+  selectedEntityIds.value.length === 1
+    ? entityProperties(pattern.value, selectedEntityIds.value[0]!)
+    : null,
+);
+
+/** The selected entities in selection order, for the multi-selection summary. */
+const selectedEntities = computed(() =>
+  selectedEntityIds.value.flatMap((id) => {
+    const entity = getEntity(pattern.value, id);
+    return entity === undefined ? [] : [entity];
+  }),
+);
+
+/** Edges a bulk Delete would orphan; a non-empty list disables the action. */
+const orphanCandidates = computed(() => orphanedEdges(pattern.value, selectedEntityIds.value));
+
+/** The Delete tooltip that explains a refused bulk delete. */
+const orphanHint = computed(() =>
+  orphanCandidates.value.length === 0
+    ? undefined
+    : `Include ${orphanCandidates.value.join(', ')} in the selection to delete these points.`,
+);
+
+const hasSelection = computed(() => selectedEntityIds.value.length > 0);
+
+/** Live-region text, announced whenever the selection count changes. */
+const selectionStatus = computed(() =>
+  selectedEntityIds.value.length === 1
+    ? '1 entity selected'
+    : `${selectedEntityIds.value.length} entities selected`,
+);
 
 /**
  * Distance constraints are the driving dimensions; the sidebar edits their
@@ -304,7 +342,7 @@ function selectConstraint(type: ConstraintType): void {
 
   activeConstraint.value = type;
   activeTool.value = 'select';
-  selectedId.value = null;
+  selectedEntityIds.value = [];
   constraintPicks.value = [];
   pendingConstraint.value = null;
   constraintRejectionMessage.value = null;
@@ -322,11 +360,23 @@ function downloadSvg(): void {
 }
 
 function deleteSelected(): void {
-  const id = selectedId.value;
-  if (id === null) return;
+  const ids = selectedEntityIds.value;
+  if (ids.length === 0 || marqueeActive.value) return;
 
-  run(() => dispatch({ id: nextCommandId('delete'), type: 'delete_entity', params: { id } }));
-  selectedId.value = null;
+  const orphans = orphanCandidates.value;
+  if (orphans.length > 0) {
+    error.value = `Cannot delete this selection: ${orphans.join(', ')} would lose a point. Include the edge${
+      orphans.length === 1 ? '' : 's'
+    } in the selection first.`;
+    return;
+  }
+
+  const commands: Command[] = ids.map((id) => ({
+    id: nextCommandId('delete'),
+    type: 'delete_entity',
+    params: { id },
+  }));
+  if (run(() => dispatchGroup(commands))) selectedEntityIds.value = [];
 }
 
 function onRibbonAction(action: RibbonAction): void {
@@ -569,6 +619,14 @@ function isEditing(target: EventTarget | null): boolean {
 }
 
 function onKeyDown(event: KeyboardEvent): void {
+  // The canvas owns Escape/Delete while a marquee gesture is in flight.
+  if (
+    marqueeActive.value &&
+    (event.key === 'Escape' || event.key === 'Delete' || event.key === 'Backspace')
+  ) {
+    return;
+  }
+
   if (event.key === 'Escape' && activeConstraint.value !== null) {
     event.preventDefault();
     exitConstraint();
@@ -590,6 +648,12 @@ function onKeyDown(event: KeyboardEvent): void {
 }
 
 watch(pattern, (next) => {
+  // Undo, redo or a load can remove a selected entity; keep only live ids.
+  const surviving = selectedEntityIds.value.filter((id) => getEntity(next, id) !== undefined);
+  if (surviving.length !== selectedEntityIds.value.length) {
+    selectedEntityIds.value = surviving;
+  }
+
   if (activeConstraint.value === null) return;
 
   const pruned = prunePicks(constraintPicks.value, next);
@@ -648,7 +712,7 @@ onBeforeUnmount(() => {
       :active-constraint="activeConstraint"
       :can-undo="canUndo"
       :can-redo="canRedo"
-      :can-delete="selectedId !== null"
+      :can-delete="selectedEntityIds.length > 0"
       @select-tool="selectTool"
       @select-constraint="selectConstraint"
       @action="onRibbonAction"
@@ -667,10 +731,14 @@ onBeforeUnmount(() => {
 
     <p v-if="error" class="border-b px-3 py-1 text-sm text-destructive">{{ error }}</p>
 
+    <p class="sr-only" aria-live="polite" data-testid="selection-status">
+      {{ selectionStatus }}
+    </p>
+
     <div class="flex min-h-0 flex-1">
       <div class="min-h-0 flex-1 p-2">
         <PatternCanvas
-          v-model:selected-id="selectedId"
+          v-model:selected-entity-ids="selectedEntityIds"
           :document="visibleDocument"
           :tool="activeTool"
           :fit-token="fitToken"
@@ -688,6 +756,7 @@ onBeforeUnmount(() => {
           @update-dimension="onUpdateDimension"
           @add-allowance="onAddAllowance"
           @set-seam-width="setSeamWidth"
+          @marquee-change="marqueeActive = $event"
         />
       </div>
 
@@ -698,8 +767,16 @@ onBeforeUnmount(() => {
         @update:collapsed="collapsed = $event"
       >
         <template #properties>
+          <SelectionSummary
+            v-if="selectedEntityIds.length > 1"
+            :entities="selectedEntities"
+            :delete-disabled="orphanCandidates.length > 0"
+            :delete-hint="orphanHint"
+            @delete="deleteSelected"
+          />
+
           <EntityPropertiesPanel
-            v-if="selectedEntity"
+            v-else-if="selectedEntity"
             :document="pattern"
             :entity="selectedEntity"
             @set-construction="convert"
@@ -713,13 +790,13 @@ onBeforeUnmount(() => {
 
           <section
             class="space-y-1 text-sm"
-            :class="selectedEntity ? 'mt-3 border-t pt-3' : ''"
+            :class="hasSelection ? 'mt-3 border-t pt-3' : ''"
             aria-label="Workspace"
             data-testid="workspace-summary"
           >
             <h3
               class="text-xs font-semibold uppercase text-muted-foreground"
-              :class="selectedEntity ? '' : 'sr-only'"
+              :class="hasSelection ? '' : 'sr-only'"
             >
               Workspace
             </h3>
@@ -735,7 +812,7 @@ onBeforeUnmount(() => {
             </dl>
             <p class="text-xs text-muted-foreground">{{ journal.length }} command(s)</p>
             <p class="text-xs text-muted-foreground">{{ cutEdgeCount }} cut edge(s)</p>
-            <p v-if="!selectedEntity" class="pt-1 text-xs text-muted-foreground">
+            <p v-if="!hasSelection" class="pt-1 text-xs text-muted-foreground">
               Select a point, line or curve to inspect it.
             </p>
           </section>

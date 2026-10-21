@@ -5,6 +5,7 @@ import {
   type CurveEntity,
   type Entity,
   type EntityId,
+  entitiesInRect,
   type LineEntity,
   type PatternDocument,
   type PointEntity,
@@ -101,7 +102,7 @@ function mountCanvas(
   overrides: Partial<{
     document: PatternDocument;
     tool: 'select' | 'add_point' | 'add_line' | 'add_curve' | 'dimension' | 'add_allowance';
-    selectedId: EntityId | null;
+    selectedEntityIds: EntityId[];
     fitToken: number;
     showSeamAllowance: boolean;
     showConstraints: boolean;
@@ -114,7 +115,7 @@ function mountCanvas(
     props: {
       document: baseDoc,
       tool: 'select',
-      selectedId: null,
+      selectedEntityIds: [],
       fitToken: 0,
       ...overrides,
     },
@@ -133,9 +134,15 @@ function pointCircle(wrapper: VueWrapper, id: EntityId): DOMWrapper<Element> {
   return wrapper.find(`[data-kind="point"][data-entity-id="${id}"]`);
 }
 
-function down(el: Element, x: number, y: number, button = 0): void {
+function down(el: Element, x: number, y: number, button = 0, init: MouseEventInit = {}): void {
   el.dispatchEvent(
-    new MouseEvent('pointerdown', { bubbles: true, clientX: x, clientY: y, button }),
+    new MouseEvent('pointerdown', {
+      bubbles: true,
+      clientX: x,
+      clientY: y,
+      button,
+      ...init,
+    }),
   );
 }
 
@@ -242,7 +249,7 @@ describe('PatternCanvas', () => {
 
     down(wrapper.find('[data-seam-hit="ab"]').element, 300, 200);
 
-    expect(wrapper.emitted('update:selectedId')).toEqual([['ab']]);
+    expect(wrapper.emitted('update:selectedEntityIds')).toEqual([[['ab']]]);
   });
 
   it('opens the seam width editor on double-click and commits a valid width', async () => {
@@ -437,7 +444,7 @@ describe('PatternCanvas', () => {
   });
 
   it('styles points by selection, construction and cut state', () => {
-    const wrapper = mountCanvas({ selectedId: 'a' });
+    const wrapper = mountCanvas({ selectedEntityIds: ['a'] });
 
     expect(pointCircle(wrapper, 'a').classes()).toContain('fill-primary');
     expect(pointCircle(wrapper, 'd').classes()).toContain('fill-muted-foreground');
@@ -448,11 +455,11 @@ describe('PatternCanvas', () => {
   });
 
   it('applies the selected stroke width to lines and curves', () => {
-    const lineWrapper = mountCanvas({ selectedId: 'ab' });
+    const lineWrapper = mountCanvas({ selectedEntityIds: ['ab'] });
     expect(lineWrapper.find('[data-entity-id="ab"]').attributes('stroke-width')).toBe('3');
     expect(lineWrapper.find('[data-kind="curve"]').attributes('stroke-width')).toBe('2');
 
-    const curveWrapper = mountCanvas({ selectedId: 'curve' });
+    const curveWrapper = mountCanvas({ selectedEntityIds: ['curve'] });
     expect(curveWrapper.find('[data-kind="curve"]').attributes('stroke-width')).toBe('3');
   });
 
@@ -462,7 +469,7 @@ describe('PatternCanvas', () => {
     const a = pointCircle(wrapper, 'a').element;
 
     down(a, 600, 400);
-    expect(wrapper.emitted('update:selectedId')).toEqual([['a']]);
+    expect(wrapper.emitted('update:selectedEntityIds')).toEqual([[['a']]]);
     await nextTick();
     expect(pointCircle(wrapper, 'a').attributes('cx')).toBe('0');
     expect(pointCircle(wrapper, 'a').attributes('cy')).toBe('0');
@@ -483,7 +490,7 @@ describe('PatternCanvas', () => {
     down(pointCircle(wrapper, 'a').element, 600, 400);
     up();
 
-    expect(wrapper.emitted('update:selectedId')).toEqual([['a']]);
+    expect(wrapper.emitted('update:selectedEntityIds')).toEqual([[['a']]]);
     expect(wrapper.emitted('move-point')).toBeUndefined();
   });
 
@@ -506,12 +513,13 @@ describe('PatternCanvas', () => {
     const wrapper = mountCanvas();
 
     down(wrapper.find('[data-kind="line"]').element, 500, 300);
-    expect(wrapper.emitted('update:selectedId')).toEqual([['ab']]);
+    expect(wrapper.emitted('update:selectedEntityIds')).toEqual([[['ab']]]);
     up();
 
     down(wrapper.find('[data-testid="grid"]').element, 500, 300);
-    expect(wrapper.emitted('update:selectedId')).toEqual([['ab'], [null]]);
+    expect(wrapper.emitted('update:selectedEntityIds')).toEqual([[['ab']]]);
     up();
+    expect(wrapper.emitted('update:selectedEntityIds')).toEqual([[['ab']], [[]]]);
   });
 
   it('emits constraint picks for points, lines and curves without selecting', () => {
@@ -526,7 +534,7 @@ describe('PatternCanvas', () => {
       [{ id: 'ab', kind: 'line' }],
       [{ id: 'curve', kind: 'curve' }],
     ]);
-    expect(wrapper.emitted('update:selectedId')).toBeUndefined();
+    expect(wrapper.emitted('update:selectedEntityIds')).toBeUndefined();
   });
 
   it('ignores an empty canvas click while a constraint is active', () => {
@@ -562,17 +570,177 @@ describe('PatternCanvas', () => {
     expect(wrapper.classes()).toContain('cursor-default');
   });
 
-  it('pans the viewport when dragging the background', async () => {
+  it('pans the viewport when dragging the background with the middle button', async () => {
     const wrapper = mountCanvas();
     const vp = fittedViewport(baseDoc);
     const before = transformOf(wrapper);
 
-    down(wrapper.find('[data-testid="grid"]').element, 500, 300);
+    down(wrapper.find('[data-testid="grid"]').element, 500, 300, 1);
     move(520, 330);
     await nextTick();
 
     expect(transformOf(wrapper)).toBe(viewportTransform(panBy(vp, 20, 30)));
     expect(transformOf(wrapper)).not.toBe(before);
+    up();
+  });
+
+  it('selects entities that overlap a marquee and highlights candidates live', async () => {
+    const wrapper = mountCanvas();
+    const vp = fittedViewport(baseDoc);
+    const start = worldToScreen(vp, { x: -5, y: -5 });
+    const end = worldToScreen(vp, { x: 105, y: 5 });
+
+    down(wrapper.find('[data-testid="grid"]').element, start.x, start.y);
+    move(end.x, end.y);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="selection-marquee"]').exists()).toBe(true);
+    expect(pointCircle(wrapper, 'a').classes()).toContain('opacity-60');
+
+    up();
+
+    const hits = entitiesInRect(baseDoc, { minX: -5, minY: -5, maxX: 105, maxY: 5 }, 'crossing');
+    expect(hits).toContain('a');
+    expect(wrapper.emitted('update:selectedEntityIds')).toEqual([[hits]]);
+  });
+
+  it('adds with Ctrl-click and subtracts with Ctrl+Shift-click', () => {
+    const add = mountCanvas({ selectedEntityIds: ['a'] });
+    down(add.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200, 0, {
+      ctrlKey: true,
+    });
+    expect(add.emitted('update:selectedEntityIds')).toEqual([[['a', 'ab']]]);
+
+    const subtract = mountCanvas({ selectedEntityIds: ['a', 'ab'] });
+    down(pointCircle(subtract, 'a').element, 300, 200, 0, {
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    expect(subtract.emitted('update:selectedEntityIds')).toEqual([[['ab']]]);
+  });
+
+  it('selects only fully contained entities when dragging right to left', async () => {
+    const wrapper = mountCanvas();
+    const vp = fittedViewport(baseDoc);
+    const start = worldToScreen(vp, { x: 5, y: 5 });
+    const end = worldToScreen(vp, { x: -5, y: -5 });
+
+    down(wrapper.find('[data-testid="grid"]').element, start.x, start.y);
+    move(end.x, end.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="selection-marquee"]').exists()).toBe(true);
+
+    up();
+
+    expect(wrapper.emitted('update:selectedEntityIds')).toEqual([[['a']]]);
+  });
+
+  it('adds and subtracts marquee hits with Ctrl and Ctrl+Shift', () => {
+    const vp = fittedViewport(baseDoc);
+    const start = worldToScreen(vp, { x: -5, y: -5 });
+    const end = worldToScreen(vp, { x: 5, y: 5 });
+    const marquee = (wrapper: VueWrapper, init: MouseEventInit): void => {
+      down(wrapper.find('[data-testid="grid"]').element, start.x, start.y, 0, init);
+      move(end.x, end.y);
+      up();
+    };
+
+    const add = mountCanvas({ selectedEntityIds: ['b'] });
+    marquee(add, { ctrlKey: true });
+    const added = add.emitted('update:selectedEntityIds')![0]![0] as EntityId[];
+    expect(added).toEqual(expect.arrayContaining(['b', 'a']));
+
+    const subtract = mountCanvas({ selectedEntityIds: ['a', 'b'] });
+    marquee(subtract, { ctrlKey: true, shiftKey: true });
+    const removed = subtract.emitted('update:selectedEntityIds')![0]![0] as EntityId[];
+    expect(removed).toContain('b');
+    expect(removed).not.toContain('a');
+  });
+
+  it('keeps a touch tap on empty space as a pan without a marquee', () => {
+    const wrapper = mountCanvas({ selectedEntityIds: ['a'] });
+    const grid = wrapper.find('[data-testid="grid"]').element;
+    const tap = (init: MouseEventInit): void => {
+      const event = new MouseEvent('pointerdown', {
+        bubbles: true,
+        clientX: 500,
+        clientY: 300,
+        button: 0,
+        ...init,
+      });
+      Object.defineProperty(event, 'pointerType', { value: 'touch' });
+      grid.dispatchEvent(event);
+    };
+
+    tap({});
+    expect(wrapper.emitted('update:selectedEntityIds')).toEqual([[[]]]);
+    expect(wrapper.find('[data-testid="selection-marquee"]').exists()).toBe(false);
+    up();
+
+    tap({ ctrlKey: true });
+    expect(wrapper.emitted('update:selectedEntityIds')).toEqual([[[]]]);
+    up();
+  });
+
+  it('cancels a marquee on Escape and leaves the selection untouched', async () => {
+    const wrapper = mountCanvas({ selectedEntityIds: ['a'] });
+    const vp = fittedViewport(baseDoc);
+
+    down(wrapper.find('[data-testid="grid"]').element, 500, 300);
+    move(worldToScreen(vp, { x: 40, y: 40 }).x, worldToScreen(vp, { x: 40, y: 40 }).y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="selection-marquee"]').exists()).toBe(true);
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="selection-marquee"]').exists()).toBe(false);
+    expect(wrapper.emitted('update:selectedEntityIds')).toBeUndefined();
+  });
+
+  it('cancels an in-flight marquee when the window loses focus', async () => {
+    const wrapper = mountCanvas();
+
+    down(wrapper.find('[data-testid="grid"]').element, 500, 300);
+    move(560, 340);
+    await nextTick();
+    expect(wrapper.find('[data-testid="selection-marquee"]').exists()).toBe(true);
+
+    window.dispatchEvent(new Event('blur'));
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="selection-marquee"]').exists()).toBe(false);
+    expect(wrapper.emitted('update:selectedEntityIds')).toBeUndefined();
+  });
+
+  it('ignores a non-primary button press', () => {
+    const wrapper = mountCanvas({ selectedEntityIds: ['a'] });
+    const before = transformOf(wrapper);
+
+    down(wrapper.find('[data-testid="grid"]').element, 500, 300, 2);
+
+    expect(transformOf(wrapper)).toBe(before);
+    expect(wrapper.emitted('update:selectedEntityIds')).toBeUndefined();
+    expect(wrapper.find('[data-testid="selection-marquee"]').exists()).toBe(false);
+  });
+
+  it('ignores the wheel while a marquee is in flight', async () => {
+    const wrapper = mountCanvas();
+
+    down(wrapper.find('[data-testid="grid"]').element, 500, 300);
+    move(560, 340);
+    await nextTick();
+    expect(wrapper.find('[data-testid="selection-marquee"]').exists()).toBe(true);
+    const before = transformOf(wrapper);
+
+    wrapper
+      .find('svg')
+      .element.dispatchEvent(
+        new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -100 }),
+      );
+    await nextTick();
+
+    expect(transformOf(wrapper)).toBe(before);
     up();
   });
 
@@ -817,7 +985,7 @@ describe('PatternCanvas', () => {
     const vp = fittedViewport(baseDoc);
 
     down(pointCircle(wrapper, 'a').element, 500, 300, 1);
-    expect(wrapper.emitted('update:selectedId')).toBeUndefined();
+    expect(wrapper.emitted('update:selectedEntityIds')).toBeUndefined();
 
     move(520, 330);
     await nextTick();
@@ -835,7 +1003,7 @@ describe('PatternCanvas', () => {
     pressSpace();
 
     down(pointCircle(wrapper, 'a').element, 500, 300);
-    expect(wrapper.emitted('update:selectedId')).toBeUndefined();
+    expect(wrapper.emitted('update:selectedEntityIds')).toBeUndefined();
     move(520, 330);
     await nextTick();
     expect(transformOf(wrapper)).toBe(viewportTransform(panBy(vp, 20, 30)));
@@ -845,7 +1013,7 @@ describe('PatternCanvas', () => {
     window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyA' }));
 
     down(pointCircle(wrapper, 'a').element, 500, 300);
-    expect(wrapper.emitted('update:selectedId')).toEqual([['a']]);
+    expect(wrapper.emitted('update:selectedEntityIds')).toEqual([[['a']]]);
     up();
   });
 
@@ -1103,7 +1271,7 @@ describe('PatternCanvas', () => {
 
     down(wrapper.find('[data-testid="grid"]').element, 400, 300);
     expect(wrapper.emitted('add-dimension')).toBeUndefined();
-    expect(wrapper.emitted('update:selectedId')).toBeUndefined();
+    expect(wrapper.emitted('update:selectedEntityIds')).toBeUndefined();
   });
 
   it('opens the inline editor on double-click and commits a valid value', async () => {

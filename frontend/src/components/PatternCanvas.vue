@@ -14,12 +14,14 @@ import {
   dimensionValue,
   type DimensionState,
   type DistanceConstraint,
+  entitiesInRect,
   type EntityId,
   inferDimensionOrientation,
   type LineEntity,
   measureLinearDimension,
   type PatternDocument,
   type PointEntity,
+  type Rect,
   seamAllowancePaths,
   seamForEdge,
   type Vec2,
@@ -49,6 +51,13 @@ import {
 } from '@/lib/dimensions';
 import type { EditorTool } from '@/lib/editor-tools';
 import { resolveLineEndpoint, sameEndpoint, type LineEndpoint } from '@/lib/line-tool';
+import {
+  applySelection,
+  rectMode,
+  selectionModeFrom,
+  toggleSelection,
+  type SelectionMode,
+} from '@/lib/selection';
 import { snapPoint, snapToGrid } from '@/lib/snap';
 import {
   fitToBounds,
@@ -82,6 +91,17 @@ interface Hit {
   id: EntityId;
   kind: string;
 }
+
+/** A bare-canvas drag that may become a rectangular selection. */
+interface MarqueeState {
+  start: Vec2;
+  current: Vec2;
+  mode: SelectionMode;
+  latched: boolean;
+}
+
+/** Screen pixels the pointer must travel before a click becomes a marquee. */
+const MARQUEE_THRESHOLD = 4;
 
 interface SeamView {
   id: EntityId;
@@ -135,7 +155,7 @@ const props = withDefaults(
   defineProps<{
     document: PatternDocument;
     tool: EditorTool;
-    selectedId?: EntityId | null;
+    selectedEntityIds?: EntityId[];
     fitToken?: number;
     showSeamAllowance?: boolean;
     showConstraints?: boolean;
@@ -144,7 +164,7 @@ const props = withDefaults(
     constraintPicks?: ConstraintPick[];
   }>(),
   {
-    selectedId: null,
+    selectedEntityIds: () => [],
     fitToken: 0,
     showSeamAllowance: true,
     showConstraints: false,
@@ -155,7 +175,8 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  'update:selectedId': [id: EntityId | null];
+  'update:selectedEntityIds': [ids: EntityId[]];
+  'marquee-change': [active: boolean];
   'move-point': [id: EntityId, x: number, y: number];
   'add-point': [x: number, y: number];
   'add-line': [start: LineEndpoint, end: LineEndpoint];
@@ -173,6 +194,7 @@ const size = ref<Size>({ width: 800, height: 600 });
 let resizeObserver: ResizeObserver | null = null;
 const dragState = ref<{ id: EntityId; x: number; y: number; origin: Vec2 } | null>(null);
 const panState = ref<{ start: Vec2; origin: Viewport } | null>(null);
+const marqueeState = ref<MarqueeState | null>(null);
 const pending = ref<EntityId[]>([]);
 /** The line gesture's first endpoint; `null` until the first click. */
 const lineStart = ref<LineEndpoint | null>(null);
@@ -208,6 +230,43 @@ const points = computed(() =>
 );
 
 const pointById = computed(() => new Map(points.value.map((point) => [point.id, point])));
+
+/** Membership test for every selected entity's highlight. */
+const selectedIds = computed(() => new Set(props.selectedEntityIds));
+
+/** The marquee's screen-space rectangle, live while the pointer moves. */
+const marqueeRect = computed(() => {
+  const state = marqueeState.value;
+  if (state === null) return null;
+  return {
+    x: Math.min(state.start.x, state.current.x),
+    y: Math.min(state.start.y, state.current.y),
+    width: Math.abs(state.current.x - state.start.x),
+    height: Math.abs(state.current.y - state.start.y),
+  };
+});
+
+/** The marquee in world coordinates, used for hit-testing and preview. */
+const marqueeWorldRect = computed<Rect | null>(() => {
+  const state = marqueeState.value;
+  if (state === null) return null;
+  const start = screenToWorld(viewport.value, state.start);
+  const end = screenToWorld(viewport.value, state.current);
+  return {
+    minX: Math.min(start.x, end.x),
+    minY: Math.min(start.y, end.y),
+    maxX: Math.max(start.x, end.x),
+    maxY: Math.max(start.y, end.y),
+  };
+});
+
+/** Entities the latched marquee would select with the captured mode. */
+const marqueeCandidates = computed(() => {
+  const state = marqueeState.value;
+  const rect = marqueeWorldRect.value;
+  if (state === null || rect === null || !state.latched) return new Set<EntityId>();
+  return new Set(entitiesInRect(props.document, rect, rectMode(state.start.x, state.current.x)));
+});
 
 const lines = computed(() =>
   props.document.entities
@@ -509,7 +568,10 @@ function yTickPosition(value: number): number {
 
 function pointClass(point: PointEntity): string {
   if (pickedPointIds.value.has(point.id)) return 'fill-primary stroke-primary-foreground';
-  if (point.id === props.selectedId) return 'fill-primary stroke-primary-foreground';
+  if (selectedIds.value.has(point.id)) return 'fill-primary stroke-primary-foreground';
+  if (marqueeCandidates.value.has(point.id)) {
+    return 'fill-primary stroke-primary-foreground opacity-60';
+  }
   if (pendingIds.value.has(point.id) || point.id === pendingLineStartId.value) {
     return 'fill-accent stroke-accent-foreground';
   }
@@ -517,12 +579,17 @@ function pointClass(point: PointEntity): string {
 }
 
 function entityClass(entity: { id: EntityId; construction: boolean }): string {
-  if (pickedLineIds.value.has(entity.id) || entity.id === props.selectedId) return 'text-primary';
+  if (pickedLineIds.value.has(entity.id) || selectedIds.value.has(entity.id)) {
+    return 'text-primary';
+  }
+  if (marqueeCandidates.value.has(entity.id)) return 'text-primary opacity-60';
   return entity.construction ? 'text-muted-foreground' : 'text-foreground';
 }
 
 function lineWidth(id: EntityId): number {
-  return pickedLineIds.value.has(id) || id === props.selectedId ? 3 : 2;
+  return pickedLineIds.value.has(id) || selectedIds.value.has(id) || marqueeCandidates.value.has(id)
+    ? 3
+    : 2;
 }
 
 function svgRect(): DOMRect {
@@ -781,6 +848,7 @@ function onPointerDown(event: PointerEvent): void {
     beginPan(screen);
     return;
   }
+  if (event.button !== 0) return;
 
   const hit = hitEntity(event);
   if (props.constraintActive) {
@@ -791,15 +859,28 @@ function onPointerDown(event: PointerEvent): void {
   }
 
   switch (props.tool) {
-    case 'select':
-      if (hit && hit.kind === 'point') {
-        emit('update:selectedId', hit.id);
+    case 'select': {
+      const mode = selectionModeFrom(event);
+      if (hit === null) {
+        // Touch keeps its single tap/pan; a mouse or pen drag is a marquee.
+        if (event.pointerType === 'touch') {
+          if (mode === 'replace') emit('update:selectedEntityIds', []);
+          beginPan(screen);
+        } else {
+          startMarquee(screen, mode);
+        }
+        break;
+      }
+
+      selectEntity(hit.id, mode);
+      if (mode !== 'replace') break;
+      if (hit.kind === 'point') {
         beginDrag(hit.id, pointById.value.get(hit.id)!);
       } else {
-        emit('update:selectedId', hit ? hit.id : null);
         beginPan(screen);
       }
       break;
+    }
     case 'add_point':
       emitAddPoint(screen);
       break;
@@ -823,7 +904,9 @@ function onPointerDown(event: PointerEvent): void {
 function onPointerMove(event: PointerEvent): void {
   const screen = screenPoint(event);
 
-  if (dimensionDrag.value) {
+  if (marqueeState.value) {
+    updateMarquee(screen);
+  } else if (dimensionDrag.value) {
     const drag = dimensionDrag.value;
     dimensionDrag.value = {
       ...drag,
@@ -858,6 +941,7 @@ function onCanvasPointerMove(event: PointerEvent): void {
 
 /** Drop every in-flight pointer interaction without emitting a command. */
 function cancelPointerInteraction(): void {
+  cancelMarquee();
   dimensionDrag.value = null;
   dragState.value = null;
   panState.value = null;
@@ -869,6 +953,12 @@ function onPointerCancel(): void {
 }
 
 function onPointerUp(): void {
+  if (marqueeState.value) {
+    finishMarquee();
+    removePointerListeners();
+    return;
+  }
+
   if (dimensionDrag.value) {
     const { id, offset, startOffset } = dimensionDrag.value;
     dimensionDrag.value = null;
@@ -890,11 +980,19 @@ function onPointerUp(): void {
 }
 
 function onWheel(event: WheelEvent): void {
+  // The rectangle must not change scale under the pointer mid-gesture.
+  if (marqueeState.value !== null) return;
   const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
   viewport.value = zoomAt(viewport.value, screenPoint(event), factor);
 }
 
 function onKeyDown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && marqueeState.value !== null) {
+    event.preventDefault();
+    cancelPointerInteraction();
+    return;
+  }
+
   if (event.code === 'Space') {
     event.preventDefault();
     spaceHeld.value = true;
@@ -957,6 +1055,60 @@ function onLinePointer(hit: Hit | null, screen: Vec2): void {
   emit('add-line', start, endpoint);
 }
 
+/** Combine one clicked entity with the current selection under `mode`. */
+function selectEntity(id: EntityId, mode: SelectionMode): void {
+  const current = props.selectedEntityIds;
+  if (mode === 'replace') {
+    emit('update:selectedEntityIds', [id]);
+  } else if (mode === 'add') {
+    emit('update:selectedEntityIds', toggleSelection(current, id));
+  } else {
+    emit('update:selectedEntityIds', applySelection(current, [id], 'subtract'));
+  }
+}
+
+function startMarquee(screen: Vec2, mode: SelectionMode): void {
+  marqueeState.value = { start: screen, current: screen, mode, latched: false };
+  emit('marquee-change', true);
+  addPointerListeners();
+}
+
+/** Move the rectangle and latch it once the pointer has travelled far enough. */
+function updateMarquee(screen: Vec2): void {
+  const state = marqueeState.value!;
+  const distance = Math.hypot(screen.x - state.start.x, screen.y - state.start.y);
+  marqueeState.value = {
+    ...state,
+    current: screen,
+    latched: state.latched || distance >= MARQUEE_THRESHOLD,
+  };
+}
+
+/** Commit a latched rectangle, or treat a sub-threshold drag as a click. */
+function finishMarquee(): void {
+  const state = marqueeState.value!;
+  const rect = marqueeWorldRect.value!;
+  const hits = state.latched
+    ? entitiesInRect(props.document, rect, rectMode(state.start.x, state.current.x))
+    : [];
+  marqueeState.value = null;
+  emit('marquee-change', false);
+
+  if (!state.latched) {
+    if (state.mode === 'replace') emit('update:selectedEntityIds', []);
+    return;
+  }
+
+  emit('update:selectedEntityIds', applySelection(props.selectedEntityIds, hits, state.mode));
+}
+
+/** Discard the rectangle and leave the previous selection untouched. */
+function cancelMarquee(): void {
+  if (marqueeState.value === null) return;
+  marqueeState.value = null;
+  emit('marquee-change', false);
+}
+
 function beginPan(screen: Vec2): void {
   panState.value = { start: screen, origin: viewport.value };
   addPointerListeners();
@@ -987,10 +1139,15 @@ function fit(): void {
   }
 }
 
+function onWindowBlur(): void {
+  cancelPointerInteraction();
+}
+
 onMounted(() => {
   updateSize();
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
+  window.addEventListener('blur', onWindowBlur);
   window.addEventListener('resize', updateSize);
   if (typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver(updateSize);
@@ -1002,6 +1159,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown);
   window.removeEventListener('keyup', onKeyUp);
+  window.removeEventListener('blur', onWindowBlur);
   window.removeEventListener('resize', updateSize);
   resizeObserver?.disconnect();
   resizeObserver = null;
@@ -1167,7 +1325,7 @@ watch(
             fill="none"
             :class="entityClass(entry.curve)"
             :stroke-dasharray="entry.curve.construction ? '4 4' : undefined"
-            :stroke-width="entry.curve.id === selectedId ? 3 : 2"
+            :stroke-width="lineWidth(entry.curve.id)"
             stroke="currentColor"
             vector-effect="non-scaling-stroke"
             :data-entity-id="entry.curve.id"
@@ -1211,7 +1369,7 @@ watch(
             data-kind="point"
           />
           <circle
-            v-if="point.id === selectedId"
+            v-if="selectedIds.has(point.id)"
             :cx="point.x"
             :cy="point.y"
             r="7"
@@ -1401,6 +1559,22 @@ watch(
             vector-effect="non-scaling-stroke"
           />
         </g>
+      </g>
+
+      <g v-if="marqueeRect !== null" class="pointer-events-none" data-testid="selection-marquee">
+        <rect
+          :x="marqueeRect.x"
+          :y="marqueeRect.y"
+          :width="marqueeRect.width"
+          :height="marqueeRect.height"
+          fill="currentColor"
+          fill-opacity="0.1"
+          stroke="currentColor"
+          stroke-width="1"
+          stroke-dasharray="4 4"
+          vector-effect="non-scaling-stroke"
+          class="text-primary"
+        />
       </g>
     </svg>
 
