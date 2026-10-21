@@ -7,7 +7,7 @@ UI copy and specs.
 | ------------------------- | ---------------------------------------------------------------------------------------------- |
 | **Block / sloper**        | A basic fitted pattern with no design ease, used as a base to modify.                          |
 | **Piece**                 | A closed region of a pattern cut from fabric (e.g. bodice front). Referenced by ordered edges. |
-| **Edge**                  | A single line or curve that forms part of a piece boundary.                                    |
+| **Edge**                  | A single line, curve or circle that forms part of a piece boundary.                            |
 | **Construction geometry** | Guide points/lines used to build the pattern; never cut or exported as a cut edge.             |
 | **Seam allowance**        | Extra material beyond the stitch line added to edges before cutting (commonly 1–1.5 cm).       |
 | **Stitch line**           | The line the seam is actually sewn along, inside the seam allowance.                           |
@@ -24,7 +24,7 @@ UI copy and specs.
 
 | Term                     | Meaning                                                                                                                                                                                                                  |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Entity**               | A point, line or curve in the geometry document.                                                                                                                                                                         |
+| **Entity**               | A point, line, curve or circle in the geometry document.                                                                                                                                                                 |
 | **Constraint**           | A relation the solver must satisfy (coincident, distance, …).                                                                                                                                                            |
 | **Dimension**            | The CAD rendering of a `distance` constraint: extension lines, a chevron line, and an editable value.                                                                                                                    |
 | **Set dimension**        | A dimension with a literal `value`: the solver drives the span and the label renders without parentheses.                                                                                                                |
