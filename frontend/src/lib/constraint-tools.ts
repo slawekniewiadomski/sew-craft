@@ -30,7 +30,7 @@ export const CONSTRAINT_TOOLS: ConstraintTool[] = CONSTRAINT_TYPES.map((type) =>
   label: CONSTRAINT_LABELS[type],
 }));
 
-export type ConstraintPickKind = 'point' | 'line' | 'curve';
+export type ConstraintPickKind = 'point' | 'line' | 'curve' | 'arc';
 
 /** One canvas click made while a constraint mode is armed. */
 export interface ConstraintPick {
@@ -200,7 +200,7 @@ export function applyConstraintPick(
   pick: ConstraintPick,
   document: PatternDocument,
 ): ConstraintPickResult {
-  if (pick.kind === 'curve') {
+  if (pick.kind === 'curve' || pick.kind === 'arc') {
     return { status: 'rejected', picks: placement.picks, reason: 'curve' };
   }
 
@@ -275,7 +275,7 @@ export function constraintPrompt(type: ConstraintType, picks: ConstraintPick[]):
 export function constraintRejection(reason: ConstraintRejectionReason): string {
   switch (reason) {
     case 'curve':
-      return 'Curves are not supported yet; pick a point or a line.';
+      return 'Curves and arcs are not supported yet; pick a point or a line.';
     case 'point':
       return 'Pick a point.';
     case 'distinct':
@@ -297,7 +297,7 @@ export function prunePicks(picks: ConstraintPick[], document: PatternDocument): 
 
   return picks.filter((pick) => {
     if (pick.kind === 'point') return points.has(pick.id);
-    if (pick.kind === 'curve') return false;
+    if (pick.kind === 'curve' || pick.kind === 'arc') return false;
 
     const line = lines.get(pick.id);
     return line !== undefined && points.has(line.start) && points.has(line.end);

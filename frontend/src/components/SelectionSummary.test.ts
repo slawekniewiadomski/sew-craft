@@ -30,6 +30,14 @@ const curve = (id: string, points: [string, string, string, string]): Entity => 
   p3: points[3],
   construction: false,
 });
+const arc = (id: string, start: string, end: string, through: string): Entity => ({
+  id,
+  kind: 'arc',
+  start,
+  end,
+  through,
+  construction: false,
+});
 
 function mountSummary(
   entities: Entity[],
@@ -88,5 +96,17 @@ describe('SelectionSummary', () => {
     ]);
 
     expect(wrapper.find('[data-testid="selection-breakdown"]').text()).toBe('2 curves');
+  });
+
+  it('counts a selected arc after the other edge kinds', () => {
+    const wrapper = mountSummary([arc('arc-a', 'a', 'b', 'c'), line('ab', 'a', 'b')]);
+
+    expect(wrapper.find('[data-testid="selection-breakdown"]').text()).toBe('1 line · 1 arc');
+  });
+
+  it('pluralizes arcs', () => {
+    const wrapper = mountSummary([arc('arc-a', 'a', 'b', 'c'), arc('arc-b', 'b', 'c', 'd')]);
+
+    expect(wrapper.find('[data-testid="selection-breakdown"]').text()).toBe('2 arcs');
   });
 });

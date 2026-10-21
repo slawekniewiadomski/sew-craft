@@ -1265,7 +1265,7 @@ describe('EditorView', () => {
 
     expect(store.document.constraints).toHaveLength(0);
     expect(wrapper.find('[data-testid="constraint-rejection"]').text()).toBe(
-      'Curves are not supported yet; pick a point or a line.',
+      'Curves and arcs are not supported yet; pick a point or a line.',
     );
     expect(wrapper.findComponent(PatternCanvas).props('constraintPicks')).toEqual([]);
   });

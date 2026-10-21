@@ -22,14 +22,15 @@ const counts = computed(() => {
   const points = props.entities.filter((entity) => entity.kind === 'point').length;
   const lines = props.entities.filter((entity) => entity.kind === 'line').length;
   const curves = props.entities.filter((entity) => entity.kind === 'curve').length;
-  return { points, lines, curves };
+  const arcs = props.entities.filter((entity) => entity.kind === 'arc').length;
+  return { points, lines, curves, arcs };
 });
 
 const countLabel = computed(() =>
   props.entities.length === 1 ? '1 entity selected' : `${props.entities.length} entities selected`,
 );
 
-/** “2 lines · 1 curve · 1 point”, omitting kinds that are not selected. */
+/** “2 lines · 1 curve · 1 arc · 1 point”, omitting kinds that are not selected. */
 const breakdown = computed(() => {
   const parts: string[] = [];
   if (counts.value.points > 0) {
@@ -40,6 +41,9 @@ const breakdown = computed(() => {
   }
   if (counts.value.curves > 0) {
     parts.push(`${counts.value.curves} curve${counts.value.curves === 1 ? '' : 's'}`);
+  }
+  if (counts.value.arcs > 0) {
+    parts.push(`${counts.value.arcs} arc${counts.value.arcs === 1 ? '' : 's'}`);
   }
   return parts.join(' · ');
 });

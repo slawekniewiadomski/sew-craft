@@ -65,6 +65,10 @@ function curve(id: string): ConstraintPick {
   return { id, kind: 'curve' };
 }
 
+function arc(id: string): ConstraintPick {
+  return { id, kind: 'arc' };
+}
+
 function placement(
   type: Parameters<typeof applyConstraintPick>[0]['type'],
   picks: ConstraintPick[],
@@ -237,9 +241,16 @@ describe('applyConstraintPick', () => {
     ).toMatchObject({ status: 'ready' });
   });
 
-  it('rejects a curve without changing the picks', () => {
+  it('rejects a curve or an arc without changing the picks', () => {
     expect(
       applyConstraintPick(placement('horizontal', [point('a')]), curve('curve'), document),
+    ).toEqual({
+      status: 'rejected',
+      picks: [point('a')],
+      reason: 'curve',
+    });
+    expect(
+      applyConstraintPick(placement('horizontal', [point('a')]), arc('arc'), document),
     ).toEqual({
       status: 'rejected',
       picks: [point('a')],
@@ -394,7 +405,7 @@ describe('constraintPrompt', () => {
 describe('constraintRejection', () => {
   it('explains each rejection', () => {
     expect(constraintRejection('curve')).toBe(
-      'Curves are not supported yet; pick a point or a line.',
+      'Curves and arcs are not supported yet; pick a point or a line.',
     );
     expect(constraintRejection('point')).toBe('Pick a point.');
     expect(constraintRejection('distinct')).toBe('Pick distinct points.');
@@ -406,9 +417,12 @@ describe('prunePicks', () => {
     expect(prunePicks([point('a'), line('ab')], document)).toEqual([point('a'), line('ab')]);
   });
 
-  it('drops missing points, lines, curves and lines without endpoints', () => {
+  it('drops missing points, lines, curves, arcs and lines without endpoints', () => {
     expect(
-      prunePicks([point('missing'), line('bad'), line('missing'), curve('curve')], document),
+      prunePicks(
+        [point('missing'), line('bad'), line('missing'), curve('curve'), arc('arc')],
+        document,
+      ),
     ).toEqual([]);
   });
 });
