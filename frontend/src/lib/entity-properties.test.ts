@@ -41,6 +41,22 @@ const rectangle = (constraints: Constraint[]): PatternDocument =>
     constraints,
   });
 
+/**
+ * A half circle from `a` to `b` through `p` (the circle's top), plus a `flat` arc
+ * whose through point sits on its chord so it no longer defines a circle.
+ */
+const arcDocument = (constraints: Constraint[] = []): PatternDocument =>
+  doc({
+    entities: [
+      ...entities.filter((entity) => entity.kind === 'point'),
+      { id: 'p', kind: 'point', x: 50, y: 50, construction: false, fixed: false },
+      { id: 'mid', kind: 'point', x: 50, y: 0, construction: false, fixed: false },
+      { id: 'arc', kind: 'arc', start: 'a', end: 'b', through: 'p', construction: false },
+      { id: 'flat', kind: 'arc', start: 'a', end: 'b', through: 'mid', construction: false },
+    ],
+    constraints,
+  });
+
 describe('entityProperties', () => {
   it('returns null without a selection or for an id that no longer exists', () => {
     const document = doc();
@@ -59,6 +75,7 @@ describe('entityProperties', () => {
       fixed: true,
       geometry: { kind: 'point', x: 100, y: 0 },
       length: null,
+      arc: null,
       seam: null,
       rounds: [],
       dimensions: [],
@@ -100,8 +117,39 @@ describe('entityProperties', () => {
       fixed: null,
       geometry: { kind: 'curve', p0: 'a', p1: 'b', p2: 'c', p3: 'd' },
       length: null,
+      arc: null,
       seam: null,
     });
+  });
+
+  it('describes an arc with its three points and derived measurements', () => {
+    const properties = entityProperties(arcDocument(), 'arc');
+
+    expect(properties?.kind).toBe('arc');
+    expect(properties?.geometry).toEqual({ kind: 'arc', start: 'a', end: 'b', through: 'p' });
+    expect(properties?.length).toBeNull();
+    expect(properties?.arc).not.toBeNull();
+    expect(properties?.arc?.radius).toBeCloseTo(50);
+    expect(properties?.arc?.includedAngle).toBeCloseTo(180);
+    expect(properties?.arc?.length).toBeCloseTo(50 * Math.PI);
+  });
+
+  it('reports no measurements for an arc whose points became collinear', () => {
+    const properties = entityProperties(arcDocument(), 'flat');
+
+    expect(properties?.kind).toBe('arc');
+    expect(properties?.arc).toBeNull();
+  });
+
+  it("lists constraints on any of an arc's three points", () => {
+    const document = arcDocument([
+      { id: 'pin', type: 'horizontal', a: 'p', b: 'c' },
+      { id: 'elsewhere', type: 'vertical', a: 'c', b: 'd' },
+    ]);
+
+    expect(entityProperties(document, 'arc')?.constraints).toEqual([
+      { id: 'pin', type: 'horizontal', label: 'Horizontal', entities: ['p', 'c'] },
+    ]);
   });
 
   it('reports construction geometry and a seam allowance on a guide edge', () => {

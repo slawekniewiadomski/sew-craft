@@ -149,15 +149,37 @@ const KIND_LABELS: Record<Entity['kind'], string> = {
   point: 'Point',
   line: 'Line',
   curve: 'Curve',
+  arc: 'Arc',
 };
 
 const KIND_NOUNS: Record<Entity['kind'], string> = {
   point: 'point',
   line: 'line',
   curve: 'curve',
+  arc: 'arc',
 };
 
 const kindNoun = computed(() => KIND_NOUNS[props.entity.kind]);
+
+/**
+ * The read-only derived arc values. Empty for every other kind and for an arc
+ * whose points no longer define a circle, which is exactly when the panel shows
+ * its invalid state instead.
+ */
+const arcRows = computed(() => {
+  const arc = props.entity.arc;
+  if (arc === null) return [];
+
+  return [
+    { key: 'radius', label: 'Radius', value: `${formatDimensionValue(arc.radius)} mm` },
+    {
+      key: 'angle',
+      label: 'Included angle',
+      value: `${formatDimensionValue(arc.includedAngle)}°`,
+    },
+    { key: 'length', label: 'Arc length', value: `${formatDimensionValue(arc.length)} mm` },
+  ];
+});
 
 function kindLabel(kind: Entity['kind']): string {
   return KIND_LABELS[kind];
@@ -309,6 +331,37 @@ function onCornerRadiusEdit(round: CornerRoundSummary, event: Event): void {
             <dt class="text-muted-foreground">Length</dt>
             <dd data-testid="entity-length">{{ lengthText(props.entity.length) }}</dd>
           </div>
+        </template>
+
+        <template v-else-if="props.entity.geometry.kind === 'arc'">
+          <div class="flex items-center justify-between gap-2">
+            <dt class="text-muted-foreground">Start</dt>
+            <dd class="font-mono">{{ props.entity.geometry.start }}</dd>
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <dt class="text-muted-foreground">End</dt>
+            <dd class="font-mono">{{ props.entity.geometry.end }}</dd>
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <dt class="text-muted-foreground">Through</dt>
+            <dd class="font-mono">{{ props.entity.geometry.through }}</dd>
+          </div>
+          <div
+            v-for="row in arcRows"
+            :key="row.key"
+            class="flex items-center justify-between gap-2"
+            :data-testid="`entity-arc-${row.key}`"
+          >
+            <dt class="text-muted-foreground">{{ row.label }}</dt>
+            <dd>{{ row.value }}</dd>
+          </div>
+          <p
+            v-if="arcRows.length === 0"
+            class="text-xs text-destructive"
+            data-testid="entity-arc-invalid"
+          >
+            Invalid: the three points are collinear.
+          </p>
         </template>
 
         <template v-else>

@@ -75,6 +75,46 @@ describe('EntityPropertiesPanel', () => {
     );
   });
 
+  it('renders an arc with its read-only derived measurements', () => {
+    const document = doc({
+      entities: [
+        { id: 'a', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+        { id: 'b', kind: 'point', x: 100, y: 0, construction: false, fixed: false },
+        { id: 'p', kind: 'point', x: 50, y: 50, construction: false, fixed: false },
+        { id: 'arc', kind: 'arc', start: 'a', end: 'b', through: 'p', construction: false },
+      ],
+      constraints: [],
+    });
+    const { wrapper } = panel(document, 'arc');
+
+    expect(wrapper.find('[data-testid="entity-kind"]').text()).toBe('Arc');
+    expect(wrapper.find('[data-testid="entity-arc-radius"]').text()).toContain('50 mm');
+    expect(wrapper.find('[data-testid="entity-arc-angle"]').text()).toContain('180°');
+    expect(wrapper.find('[data-testid="entity-arc-length"]').text()).toContain('157.08 mm');
+    expect(wrapper.find('[data-testid="entity-arc-invalid"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="entity-scope-hint"]').text()).toBe(
+      'Showing what acts on this arc. Select a point to see its constraints.',
+    );
+  });
+
+  it('reports an arc whose three points became collinear as invalid', () => {
+    const document = doc({
+      entities: [
+        { id: 'a', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+        { id: 'b', kind: 'point', x: 100, y: 0, construction: false, fixed: false },
+        { id: 'mid', kind: 'point', x: 50, y: 0, construction: false, fixed: false },
+        { id: 'flat', kind: 'arc', start: 'a', end: 'b', through: 'mid', construction: false },
+      ],
+      constraints: [],
+    });
+    const { wrapper } = panel(document, 'flat');
+
+    expect(wrapper.find('[data-testid="entity-arc-radius"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="entity-arc-invalid"]').text()).toBe(
+      'Invalid: the three points are collinear.',
+    );
+  });
+
   it('names the entity in the empty states', () => {
     const document = doc({ constraints: [] });
 
