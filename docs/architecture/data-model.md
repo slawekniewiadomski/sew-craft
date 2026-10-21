@@ -66,6 +66,8 @@ can be written when it changes.
     { "id": "p1", "kind": "point", "x": 0, "y": 0, "construction": true, "fixed": true },
     { "id": "p2", "kind": "point", "x": 120, "y": 0, "construction": false, "fixed": false },
     { "id": "l1", "kind": "line", "start": "p1", "end": "p2", "construction": false },
+    { "id": "p3", "kind": "point", "x": 120, "y": 90, "construction": false, "fixed": false },
+    { "id": "l2", "kind": "line", "start": "p2", "end": "p3", "construction": false },
   ],
   "constraints": [
     { "id": "c1", "type": "horizontal", "a": "p1", "b": "p2" },
@@ -80,8 +82,29 @@ can be written when it changes.
     },
   ],
   "seams": [{ "id": "s1", "edge": "l1", "width": 10 }],
+  "cornerRounds": [
+    {
+      "id": "r1",
+      "corner": "p2",
+      "ends": [
+        { "line": "l1", "anchor": "p1", "tangent": "r1:a" },
+        { "line": "l2", "anchor": "p3", "tangent": "r1:b" },
+      ],
+      "radius": 8,
+      "arc": "r1:arc",
+      "controls": ["r1:c1", "r1:c2"],
+      "cornerConstruction": false,
+    },
+  ],
 }
 ```
+
+`cornerRounds` is optional, so documents written before the feature load
+unchanged. A round is a live feature: it stores the sharp corner, both line
+anchors and the radius, while its derived entities (tangent points `r1:a`,
+`r1:b`, controls `r1:c1`, `r1:c2`, and the cubic arc `r1:arc`) live in
+`entities` and are omitted from the snippet. `l1` and `l2` are trimmed to the
+tangent points, and `p2` stays as a construction point.
 
 A `distance` constraint without `value` is a **driven** dimension: it reports
 the live measurement and adds no solver equation. The schema stays

@@ -32,6 +32,9 @@ UI copy and specs.
 | **DOF**              | Degrees of freedom left in a sketch.                                                                                     |
 | **Converged**        | The solver reduced all residuals below tolerance.                                                                        |
 | **Residual**         | The signed error of one constraint at the current coordinates.                                                           |
+| **Corner round**     | A tangent arc (fillet) replacing a sharp corner between two lines; both lines are trimmed to their tangent points.       |
+| **Tangent point**    | The point where a line ends and a corner round's arc begins.                                                             |
+| **Sharp corner**     | The original intersection of two lines, kept as a construction point while a corner round references it.                 |
 
 ## Units
 

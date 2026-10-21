@@ -1,7 +1,8 @@
 # Corner rounding tool
 
-Status: draft — design only
+Status: implemented
 Refs #46
+Closes #46
 Builds on: `.ai/specs/006-construction-geometry.md` (cut vs construction
 entities) and the curve primitive in `packages/geometry/src/types.ts`.
 
@@ -553,11 +554,12 @@ branch and note the migration.
 ## ❓ Open Questions
 
 These are blocking product/architecture decisions, not implementation details.
-They are asked on issue #46; the draft PR stays draft until they are answered.
+The `spec-ready` approval on #46 adopted the recommended answers below; no
+option changed during implementation.
 
-| # | Question | Why it blocks | Recommended answer |
-| - | -------- | ------------- | ------------------ |
-| Q1 | Should the round be a **live parametric feature** (regenerates when the radius or the lines change) or a **static bake** (simpler, but the radius is only editable until the lines move)? | It decides the document collection, the post-solve pass and the undo model. A static bake is much smaller but conflicts with "radius should remain editable" as soon as the pattern is edited. | **Live parametric feature (A).** The sharp corner, opposite anchors and radius are the source of truth; the arc is regenerated. |
+| # | Question | Why it blocked | Adopted answer |
+| - | -------- | -------------- | -------------- |
+| Q1 | Should the round be a **live parametric feature** (regenerates when the radius or the lines change) or a **static bake** (simpler, but the radius is only editable until the lines move)? | It decides the document collection, the post-solve pass and the undo model. A static bake is much smaller but conflicts with "radius should remain editable" as soon as the pattern is edited. | **Live parametric feature (A).** The sharp corner, opposite anchors and radius are the source of truth; the arc is regenerated. Shipped in `packages/geometry/src/corner-round.ts`. |
 | Q2 | Should constraints and dimensions on the **sharp corner** be kept and allowed to drive it, or should the tool require them removed or retargeted? | Keeping the corner as construction geometry is what lets existing width/height dimensions survive; blocking it would make the tool unusable on a dimensioned pattern, while retargeting changes user intent. | **Keep them.** The sharp corner remains the theoretical corner; a constraint that makes the fillet degenerate fails the command with a clear error. |
 | Q3 | How should **seam allowances** behave on a rounded edge in v1: reject them, allow them with a documented gap at the arc, or make the offset follow the arc now? | The offset layer is per edge; a trimmed line's allowance stops at the tangent point. Making it wrap the arc is a real offset-algorithm change, not a UI toggle. | **Reject in v1.** Round first, then add allowances only where a straight offset is correct; wrapping the arc is a follow-up spec. |
 
@@ -565,7 +567,7 @@ They are asked on issue #46; the draft PR stays draft until they are answered.
 
 | # | Assumption | Why | Status |
 | - | ---------- | --- | ------ |
-| R1 | Represent the arc as a cubic Bézier `CurveEntity`, not a new arc entity | Reuses the renderer, exporter and entity model; error is far below sewing tolerance. Option B remains the exact-arc path. | ⚠ NEEDS HUMAN CONFIRMATION — tied to Q1/option B |
+| R1 | Represent the arc as a cubic Bézier `CurveEntity`, not a new arc entity | Reuses the renderer, exporter and entity model; error is far below sewing tolerance. Option B remains the exact-arc path. | ✅ Adopted (Q1) |
 | R2 | Keep the sharp corner as a construction point and retain its constraints | Existing dimensions keep defining the theoretical corner; the fillet is derived from it | Reversible |
 | R3 | Derived tangent/control points are `fixed` and regenerated after each solve; they are not direct edit targets | One authority for derived geometry; prevents the radius from silently drifting | Reversible |
 | R4 | A radius that does not fit is rejected with the computed maximum; no clamping | The user set a number; silently changing it is worse than an error | Reversible |
@@ -691,27 +693,27 @@ They are asked on issue #46; the draft PR stays draft until they are answered.
 
 ## ✅ Acceptance criteria
 
-- [ ] Selecting two lines that meet at a corner and entering a radius creates a
+- [x] Selecting two lines that meet at a corner and entering a radius creates a
       tangent arc and trims both lines to their tangent points.
-- [ ] The radius remains editable from the Properties panel, by double-clicking
+- [x] The radius remains editable from the Properties panel, by double-clicking
       the `R` label, and by dragging a tangent handle.
-- [ ] The original sharp corner is retained as a construction point and
+- [x] The original sharp corner is retained as a construction point and
       existing dimensions/constraints on it still drive the pattern.
-- [ ] A line can carry one round at each end; all four corners of a rectangle can
+- [x] A line can carry one round at each end; all four corners of a rectangle can
       be rounded with fitting radii.
-- [ ] Changing a radius, moving an anchor or moving the sharp corner regenerates
+- [x] Changing a radius, moving an anchor or moving the sharp corner regenerates
       the fillet; an edit that no longer fits fails cleanly and leaves the
       document unchanged.
-- [ ] A too-large or sub-0.001 mm radius, a straight/spike/zero-length corner, a
+- [x] A too-large or sub-0.001 mm radius, a straight/spike/zero-length corner, a
       third cut edge, mixed construction flags, a seam allowance, a duplicate
       round and a curve pick are rejected with a concrete reason.
-- [ ] Derived points are fixed, hidden from normal editing, and rejected as
+- [x] Derived points are fixed, hidden from normal editing, and rejected as
       line/curve/constraint/seam anchors.
-- [ ] Remove restores the sharp corner and both lines; undo restores the round,
+- [x] Remove restores the sharp corner and both lines; undo restores the round,
       the radius and the derived geometry.
-- [ ] SVG export contains the trimmed lines and the arc in the cut layer.
-- [ ] The command spec is synced at `0.7.0`; existing payloads still apply.
-- [ ] The full validation gate passes and coverage stays at 100 %.
+- [x] SVG export contains the trimmed lines and the arc in the cut layer.
+- [x] The command spec is synced at `0.7.0`; existing payloads still apply.
+- [x] The full validation gate passes and coverage stays at 100 %.
 
 ## Out of scope
 
