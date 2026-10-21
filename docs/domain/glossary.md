@@ -22,16 +22,18 @@ UI copy and specs.
 
 ## Geometry terms
 
-| Term                 | Meaning                                                                                                                  |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| **Entity**           | A point, line or curve in the geometry document.                                                                         |
-| **Constraint**       | A relation the solver must satisfy (coincident, distance, …).                                                            |
-| **Dimension**        | The CAD rendering of a `distance` constraint: extension lines, a chevron line, and an editable value.                    |
-| **Driven dimension** | A dimension with no `value`: it measures the sketch, renders in parentheses and muted gray, and adds no solver equation. |
-| **Set dimension**    | A dimension with a `value`: the solver drives the span and the label renders without parentheses.                        |
-| **DOF**              | Degrees of freedom left in a sketch.                                                                                     |
-| **Converged**        | The solver reduced all residuals below tolerance.                                                                        |
-| **Residual**         | The signed error of one constraint at the current coordinates.                                                           |
+| Term                     | Meaning                                                                                                                                                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Entity**               | A point, line or curve in the geometry document.                                                                                                                                                                         |
+| **Constraint**           | A relation the solver must satisfy (coincident, distance, …).                                                                                                                                                            |
+| **Dimension**            | The CAD rendering of a `distance` constraint: extension lines, a chevron line, and an editable value.                                                                                                                    |
+| **Set dimension**        | A dimension with a literal `value`: the solver drives the span and the label renders without parentheses.                                                                                                                |
+| **Driven dimension**     | A dimension with no `value` and no `reference`: it measures the sketch, renders in parentheses and muted gray, and adds no solver equation.                                                                              |
+| **Referenced dimension** | A dimension whose `reference` names another dimension: its effective value is derived from that source, it renders in square brackets and blue, and it drives the span with the resolved number.                         |
+| **Broken dimension**     | A referenced dimension whose source is missing, driven or otherwise unresolvable: it keeps the last known reading, renders in square brackets with red and a warning glyph, and adds no solver equation until re-linked. |
+| **DOF**                  | Degrees of freedom left in a sketch.                                                                                                                                                                                     |
+| **Converged**            | The solver reduced all residuals below tolerance.                                                                                                                                                                        |
+| **Residual**             | The signed error of one constraint at the current coordinates.                                                                                                                                                           |
 
 ## Units
 

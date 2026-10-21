@@ -78,16 +78,28 @@ can be written when it changes.
       "orientation": "horizontal", // aligned (default) | horizontal | vertical
       "offset": 20, // dimension line offset in mm; presentation only
     },
+    {
+      "id": "c3",
+      "type": "distance",
+      "a": "p2",
+      "b": "p3",
+      "reference": "c2", // effective value is resolved through c2
+    },
   ],
   "seams": [{ "id": "s1", "edge": "l1", "width": 10 }],
 }
 ```
 
-A `distance` constraint without `value` is a **driven** dimension: it reports
-the live measurement and adds no solver equation. The schema stays
-`sewcraft.pattern/0.1`; the field is additive, so older documents load unchanged.
-See `docs/architecture/geometry-core.md` for entity semantics and
-`docs/domain/command-spec.json` for the machine-readable command schema.
+A `distance` constraint without `value` or `reference` is a **driven** dimension:
+it reports the live measurement and adds no solver equation. A `reference` links
+one dimension to another; the effective value is derived, so the constraint
+stores no duplicate `value`. When the source disappears, the dependent keeps its
+`reference`, stores the last resolved number in `lastKnownValue` and renders as
+**broken** until the user re-links it. At most one of `value` and `reference` is
+present. The schema stays `sewcraft.pattern/0.1`; the fields are additive, so
+older documents load unchanged. See `docs/architecture/geometry-core.md` for
+entity semantics and `docs/domain/command-spec.json` for the machine-readable
+command schema.
 
 ## Notes
 

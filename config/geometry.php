@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.6.0',
+    'spec_version' => '0.7.0',
 
     /*
     |--------------------------------------------------------------------------

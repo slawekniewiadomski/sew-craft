@@ -1,4 +1,13 @@
-import type { DimensionLayout, DimensionOrientation, EntityId } from '@sewcraft/geometry';
+import {
+  dimensionValue,
+  referenceCandidates,
+  type DimensionLayout,
+  type DimensionOrientation,
+  type DimensionState,
+  type DistanceConstraint,
+  type EntityId,
+  type PatternDocument,
+} from '@sewcraft/geometry';
 
 /** What the canvas emits when a dimension line is placed. */
 export interface DimensionPlacement {
@@ -12,8 +21,18 @@ export interface DimensionPlacement {
 export interface DimensionPatch {
   /** A number sets the value; `null` clears it back to driven. */
   value?: number | null;
+  /** A source dimension id links this one; `null` unlinks it. */
+  reference?: EntityId | null;
   orientation?: DimensionOrientation;
   offset?: number;
+}
+
+/** One row of the `#` reference picker: a dimension this one may link to. */
+export interface DimensionReferenceOption {
+  id: EntityId;
+  value: number;
+  entities: [EntityId, EntityId];
+  orientation: DimensionOrientation;
 }
 
 export interface DimensionOrientationOption {
@@ -49,22 +68,150 @@ export function isValidDimensionValue(value: number | null): value is number {
 
 /**
  * One edit of a dimension value, shared by the canvas and sidebar: empty text
- * means driven, a finite positive number means set, anything else is a typo.
+ * means driven, a leading `#` starts a reference, a finite positive number means
+ * set, `unlink` is the explicit Remove reference action, anything else is a typo.
  */
 export type DimensionEdit =
-  { kind: 'set'; value: number } | { kind: 'driven' } | { kind: 'invalid' };
+  | { kind: 'set'; value: number }
+  | { kind: 'driven' }
+  | { kind: 'reference'; text: string }
+  | { kind: 'unlink' }
+  | { kind: 'invalid' };
 
 /** Parse a dimension edit into the command intent it represents. */
 export function parseDimensionEdit(input: string): DimensionEdit {
-  if (input.trim() === '') return { kind: 'driven' };
-  const value = parseDimensionValue(input);
+  const trimmed = input.trim();
+  if (trimmed === '') return { kind: 'driven' };
+  if (trimmed.startsWith('#')) return { kind: 'reference', text: trimmed.slice(1).trim() };
+  const value = parseDimensionValue(trimmed);
   return isValidDimensionValue(value) ? { kind: 'set', value } : { kind: 'invalid' };
 }
 
-/** The canvas label text: parentheses distinguish a driven measurement. */
-export function formatDimensionLabel(value: number, driven: boolean): string {
+/** True when the picker should be open for this editable text. */
+export function isReferenceEditText(input: string): boolean {
+  return input.trim().startsWith('#');
+}
+
+/** The text typed after `#`, ready to filter the picker. */
+export function referenceSearchText(input: string): string {
+  const trimmed = input.trim();
+  return trimmed.startsWith('#') ? trimmed.slice(1).trim() : '';
+}
+
+/** The dimensions a dimension may link to, resolved for the picker. */
+export function referenceOptions(
+  document: PatternDocument,
+  constraint: DistanceConstraint,
+): DimensionReferenceOption[] {
+  return referenceCandidates(document, constraint).map((candidate) => ({
+    id: candidate.id,
+    // A candidate is eligible only when it resolves, so this is always a number.
+    value: dimensionValue(document, candidate)!,
+    entities: [candidate.a, candidate.b] as [EntityId, EntityId],
+    orientation: candidate.orientation ?? 'aligned',
+  }));
+}
+
+/** Filter picker rows by the id or the formatted value typed after `#`. */
+export function filterReferenceOptions(
+  options: DimensionReferenceOption[],
+  text: string,
+): DimensionReferenceOption[] {
+  const needle = text.trim().toLowerCase();
+  if (needle === '') return options;
+  return options.filter(
+    (option) =>
+      option.id.toLowerCase().includes(needle) ||
+      formatDimensionValue(option.value).includes(needle),
+  );
+}
+
+/** The label of one picker row: `A · 120 mm · p1 → p2 · Horizontal`. */
+export function referenceOptionLabel(option: DimensionReferenceOption): string {
+  const orientation = DIMENSION_ORIENTATION_OPTIONS.find(
+    (entry) => entry.value === option.orientation,
+  )!.label;
+  return `${option.id} · ${formatDimensionValue(option.value)} mm · ${option.entities[0]} → ${option.entities[1]} · ${orientation}`;
+}
+
+/** The value field's text: a link shows `#source`, everything else its number. */
+export function formatDimensionField(
+  constraint: DistanceConstraint,
+  value: number | null,
+  state: DimensionState,
+): string {
+  if (state === 'referenced' && constraint.reference !== undefined)
+    return `#${constraint.reference}`;
+  return value === null ? '' : formatDimensionValue(value);
+}
+
+/** The canvas label text: shape, not color, distinguishes each state. */
+export function formatDimensionLabel(value: number, state: DimensionState): string {
   const formatted = formatDimensionValue(value);
-  return driven ? `(${formatted})` : formatted;
+  switch (state) {
+    case 'driven':
+      return `(${formatted})`;
+    case 'referenced':
+    case 'broken':
+      return `[${formatted}]`;
+    case 'set':
+      return formatted;
+  }
+}
+
+/** Human name of a dimension state, used by badges and selectors. */
+export function dimensionStateLabel(state: DimensionState): string {
+  switch (state) {
+    case 'set':
+      return 'Set';
+    case 'driven':
+      return 'Driven';
+    case 'referenced':
+      return 'Referenced';
+    case 'broken':
+      return 'Broken';
+  }
+}
+
+/** The accessible name of a label: the state is never conveyed by color alone. */
+export function dimensionAccessibleName(
+  value: number,
+  state: DimensionState,
+  sourceId?: EntityId,
+): string {
+  const formatted = formatDimensionValue(value);
+  switch (state) {
+    case 'set':
+      return `Dimension ${formatted} millimetres`;
+    case 'driven':
+      return `Driven dimension, measured ${formatted} millimetres`;
+    case 'referenced':
+      return `Referenced dimension, ${formatted} millimetres, from dimension ${sourceId}`;
+    case 'broken':
+      return `Broken reference, last known ${formatted} millimetres; source dimension ${sourceId} is missing`;
+  }
+}
+
+/**
+ * Map a parsed edit to the command patch. `null` means the text cannot be
+ * applied yet: an invalid number, or a `#text` that names no eligible row.
+ */
+export function dimensionPatchForEdit(
+  edit: Exclude<DimensionEdit, { kind: 'invalid' }>,
+  options: DimensionReferenceOption[],
+): DimensionPatch | null {
+  switch (edit.kind) {
+    case 'set':
+      return { value: edit.value };
+    case 'driven':
+      return { value: null };
+    case 'unlink':
+      return { reference: null };
+    case 'reference': {
+      const match = options.find((option) => option.id === edit.text);
+      return match === undefined ? null : { reference: match.id };
+    }
+  }
 }
 
 /** Approximate width of the screen-space value label, in pixels. */

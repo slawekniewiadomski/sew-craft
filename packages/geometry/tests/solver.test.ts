@@ -271,3 +271,83 @@ describe('solve', () => {
     expect(result.residualNorm).toBeCloseTo(expected.residualNorm, 12);
   });
 });
+
+describe('solve with referenced dimensions', () => {
+  const span = (result: ReturnType<typeof solve>, a: string, b: string): number =>
+    distance(result.coordinates.get(a)!, result.coordinates.get(b)!);
+
+  it('drives a dependent from its source value', () => {
+    const points = [
+      point('a', 0, 0, true),
+      point('b', 3, 0),
+      point('c', 0, 10, true),
+      point('d', 3, 10),
+    ];
+    const constraints: Constraint[] = [
+      { id: 'source', type: 'distance', a: 'a', b: 'b', value: 40 },
+      { id: 'dependent', type: 'distance', a: 'c', b: 'd', reference: 'source' },
+    ];
+
+    const result = solve(points, constraints);
+
+    expect(result.converged).toBe(true);
+    expect(span(result, 'a', 'b')).toBeCloseTo(40, 6);
+    expect(span(result, 'c', 'd')).toBeCloseTo(40, 6);
+  });
+
+  it('resolves a chain once and applies the same value to every member', () => {
+    const points = [
+      point('a', 0, 0, true),
+      point('b', 1, 0),
+      point('c', 0, 10, true),
+      point('d', 1, 10),
+      point('e', 0, 20, true),
+      point('f', 1, 20),
+    ];
+    const constraints: Constraint[] = [
+      { id: 'one', type: 'distance', a: 'a', b: 'b', value: 25 },
+      { id: 'two', type: 'distance', a: 'c', b: 'd', reference: 'one' },
+      { id: 'three', type: 'distance', a: 'e', b: 'f', reference: 'two' },
+    ];
+
+    const result = solve(points, constraints);
+
+    expect(result.converged).toBe(true);
+    expect(span(result, 'a', 'b')).toBeCloseTo(25, 6);
+    expect(span(result, 'c', 'd')).toBeCloseTo(25, 6);
+    expect(span(result, 'e', 'f')).toBeCloseTo(25, 6);
+  });
+
+  it('adds no residual for a broken reference and stays converged', () => {
+    const points = [point('a', 0, 0, true), point('b', 3, 0)];
+    const constraints: Constraint[] = [
+      {
+        id: 'broken',
+        type: 'distance',
+        a: 'a',
+        b: 'b',
+        reference: 'missing',
+        lastKnownValue: 5,
+      },
+    ];
+
+    const result = solve(points, constraints);
+
+    expect(result.converged).toBe(true);
+    expect(result.residualNorm).toBe(0);
+    expect(span(result, 'a', 'b')).toBeCloseTo(3, 6);
+  });
+
+  it('treats a cyclic document as broken instead of hanging', () => {
+    const points = [point('a', 0, 0, true), point('b', 3, 0)];
+    const constraints: Constraint[] = [
+      { id: 'one', type: 'distance', a: 'a', b: 'b', reference: 'two' },
+      { id: 'two', type: 'distance', a: 'a', b: 'b', reference: 'one' },
+    ];
+
+    const result = solve(points, constraints, { maxIterations: 2 });
+
+    expect(result.converged).toBe(true);
+    expect(result.residualNorm).toBe(0);
+  });
+});

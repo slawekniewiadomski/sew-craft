@@ -1,15 +1,25 @@
-import type { DimensionLayout } from '@sewcraft/geometry';
+import type { DimensionLayout, DistanceConstraint, PatternDocument } from '@sewcraft/geometry';
 import { describe, expect, it } from 'vitest';
 
 import {
   DIMENSION_ORIENTATION_OPTIONS,
+  dimensionAccessibleName,
   dimensionLabelWidth,
+  dimensionPatchForEdit,
   dimensionSegments,
+  dimensionStateLabel,
+  filterReferenceOptions,
+  formatDimensionField,
   formatDimensionLabel,
   formatDimensionValue,
+  isReferenceEditText,
   isValidDimensionValue,
   parseDimensionEdit,
   parseDimensionValue,
+  referenceOptionLabel,
+  referenceOptions,
+  referenceSearchText,
+  type DimensionReferenceOption,
 } from './dimensions';
 
 const layout: DimensionLayout = {
@@ -90,12 +100,119 @@ describe('parseDimensionEdit', () => {
     expect(parseDimensionEdit('Infinity')).toEqual({ kind: 'invalid' });
     expect(parseDimensionEdit('abc')).toEqual({ kind: 'invalid' });
   });
+
+  it('maps a leading # to a reference search text', () => {
+    expect(parseDimensionEdit('#')).toEqual({ kind: 'reference', text: '' });
+    expect(parseDimensionEdit(' #A ')).toEqual({ kind: 'reference', text: 'A' });
+    expect(isReferenceEditText(' #width')).toBe(true);
+    expect(isReferenceEditText('100')).toBe(false);
+    expect(referenceSearchText('#width ')).toBe('width');
+    expect(referenceSearchText('100')).toBe('');
+  });
 });
 
 describe('formatDimensionLabel', () => {
-  it('wraps driven measurements in parentheses', () => {
-    expect(formatDimensionLabel(100.1234, true)).toBe('(100.123)');
-    expect(formatDimensionLabel(100.1234, false)).toBe('100.123');
+  it('distinguishes each state by shape', () => {
+    expect(formatDimensionLabel(100.1234, 'set')).toBe('100.123');
+    expect(formatDimensionLabel(100.1234, 'driven')).toBe('(100.123)');
+    expect(formatDimensionLabel(100.1234, 'referenced')).toBe('[100.123]');
+    expect(formatDimensionLabel(100.1234, 'broken')).toBe('[100.123]');
+  });
+});
+
+describe('dimension state presentation', () => {
+  it('names every state', () => {
+    expect(dimensionStateLabel('set')).toBe('Set');
+    expect(dimensionStateLabel('driven')).toBe('Driven');
+    expect(dimensionStateLabel('referenced')).toBe('Referenced');
+    expect(dimensionStateLabel('broken')).toBe('Broken');
+  });
+
+  it('builds an accessible name that does not rely on color', () => {
+    expect(dimensionAccessibleName(120, 'set')).toBe('Dimension 120 millimetres');
+    expect(dimensionAccessibleName(120, 'driven')).toBe(
+      'Driven dimension, measured 120 millimetres',
+    );
+    expect(dimensionAccessibleName(120, 'referenced', 'A')).toBe(
+      'Referenced dimension, 120 millimetres, from dimension A',
+    );
+    expect(dimensionAccessibleName(120, 'broken', 'A')).toBe(
+      'Broken reference, last known 120 millimetres; source dimension A is missing',
+    );
+  });
+
+  it('shows a link as #source and everything else as its number', () => {
+    const linked = {
+      id: 'd',
+      type: 'distance',
+      a: 'p1',
+      b: 'p2',
+      reference: 'A',
+    } as const;
+
+    expect(formatDimensionField(linked, 120, 'referenced')).toBe('#A');
+    expect(formatDimensionField(linked, 100, 'broken')).toBe('100');
+    expect(
+      formatDimensionField({ id: 'd', type: 'distance', a: 'p1', b: 'p2' }, 100, 'driven'),
+    ).toBe('100');
+    expect(
+      formatDimensionField({ id: 'd', type: 'distance', a: 'p1', b: 'p2' }, null, 'driven'),
+    ).toBe('');
+  });
+
+  it('maps an edit to a command patch and refuses a missing target', () => {
+    const options: DimensionReferenceOption[] = [
+      { id: 'A', value: 120, entities: ['p1', 'p2'], orientation: 'horizontal' },
+    ];
+
+    expect(dimensionPatchForEdit({ kind: 'set', value: 10 }, options)).toEqual({ value: 10 });
+    expect(dimensionPatchForEdit({ kind: 'driven' }, options)).toEqual({ value: null });
+    expect(dimensionPatchForEdit({ kind: 'unlink' }, options)).toEqual({ reference: null });
+    expect(dimensionPatchForEdit({ kind: 'reference', text: 'A' }, options)).toEqual({
+      reference: 'A',
+    });
+    expect(dimensionPatchForEdit({ kind: 'reference', text: 'B' }, options)).toBeNull();
+  });
+});
+
+describe('reference options', () => {
+  const document: PatternDocument = {
+    schema: 'sewcraft.pattern/0.1',
+    units: 'mm',
+    entities: [
+      { id: 'p1', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+      { id: 'p2', kind: 'point', x: 120, y: 0, construction: false, fixed: false },
+      { id: 'p3', kind: 'point', x: 0, y: 50, construction: false, fixed: false },
+      { id: 'p4', kind: 'point', x: 80, y: 50, construction: false, fixed: false },
+    ],
+    constraints: [
+      { id: 'A', type: 'distance', a: 'p1', b: 'p2', value: 120, orientation: 'horizontal' },
+      { id: 'B', type: 'distance', a: 'p3', b: 'p4', value: 80 },
+      { id: 'measure', type: 'distance', a: 'p2', b: 'p3' },
+    ],
+    seams: [],
+  };
+  const edited = document.constraints[1] as DistanceConstraint;
+
+  it('lists only eligible sources with their resolved value', () => {
+    expect(referenceOptions(document, edited)).toEqual([
+      { id: 'A', value: 120, entities: ['p1', 'p2'], orientation: 'horizontal' },
+    ]);
+  });
+
+  it('filters by id or formatted value', () => {
+    const options = referenceOptions(document, edited);
+
+    expect(filterReferenceOptions(options, '')).toHaveLength(1);
+    expect(filterReferenceOptions(options, 'a')).toHaveLength(1);
+    expect(filterReferenceOptions(options, '120')).toHaveLength(1);
+    expect(filterReferenceOptions(options, '999')).toHaveLength(0);
+  });
+
+  it('labels a row with its value, span and orientation', () => {
+    const option = referenceOptions(document, edited)[0]!;
+
+    expect(referenceOptionLabel(option)).toBe('A · 120 mm · p1 → p2 · Horizontal');
   });
 });
 

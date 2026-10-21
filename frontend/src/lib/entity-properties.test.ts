@@ -138,14 +138,28 @@ describe('entityProperties', () => {
     const document = rectangle(rectangleConstraints);
 
     expect(entityProperties(document, 'ab')?.dimensions).toEqual([
-      { id: 'width', entities: ['a', 'b'], value: 160, driven: false, orientation: 'aligned' },
+      {
+        id: 'width',
+        entities: ['a', 'b'],
+        value: 160,
+        state: 'set',
+        sourceId: null,
+        orientation: 'aligned',
+      },
     ]);
     expect(entityProperties(document, 'ab')?.constraints).toEqual([
       { id: 'bottom', type: 'horizontal', label: 'Horizontal', entities: ['a', 'b'] },
     ]);
 
     expect(entityProperties(document, 'bc')?.dimensions).toEqual([
-      { id: 'height', entities: ['b', 'c'], value: 90, driven: false, orientation: 'aligned' },
+      {
+        id: 'height',
+        entities: ['b', 'c'],
+        value: 90,
+        state: 'set',
+        sourceId: null,
+        orientation: 'aligned',
+      },
     ]);
     expect(entityProperties(document, 'bc')?.constraints).toEqual([
       { id: 'right', type: 'vertical', label: 'Vertical', entities: ['b', 'c'] },
@@ -166,7 +180,14 @@ describe('entityProperties', () => {
     );
 
     expect(properties?.dimensions).toEqual([
-      { id: 'width', entities: ['b', 'a'], value: 100, driven: false, orientation: 'aligned' },
+      {
+        id: 'width',
+        entities: ['b', 'a'],
+        value: 100,
+        state: 'set',
+        sourceId: null,
+        orientation: 'aligned',
+      },
     ]);
   });
 
@@ -268,10 +289,24 @@ describe('entityProperties', () => {
     });
 
     expect(entityProperties(document, 'l1')?.dimensions).toEqual([
-      { id: 'live', entities: ['a', 'b'], value: 100, driven: true, orientation: 'horizontal' },
+      {
+        id: 'live',
+        entities: ['a', 'b'],
+        value: 100,
+        state: 'driven',
+        sourceId: null,
+        orientation: 'horizontal',
+      },
     ]);
     expect(entityProperties(document, 'broken')?.dimensions).toEqual([
-      { id: 'ghost', entities: ['a', 'gone'], value: null, driven: true, orientation: 'aligned' },
+      {
+        id: 'ghost',
+        entities: ['a', 'gone'],
+        value: null,
+        state: 'driven',
+        sourceId: null,
+        orientation: 'aligned',
+      },
     ]);
   });
 
@@ -287,7 +322,14 @@ describe('entityProperties', () => {
     );
 
     expect(properties?.dimensions).toEqual([
-      { id: 'width', entities: ['b', 'a'], value: 100, driven: false, orientation: 'aligned' },
+      {
+        id: 'width',
+        entities: ['b', 'a'],
+        value: 100,
+        state: 'set',
+        sourceId: null,
+        orientation: 'aligned',
+      },
     ]);
     expect(properties?.constraints).toEqual([
       { id: 'angle', type: 'angle', label: 'Angle 90°', entities: ['a', 'b', 'c'] },
