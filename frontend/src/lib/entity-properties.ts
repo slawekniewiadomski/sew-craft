@@ -1,5 +1,4 @@
 import {
-  circleGeometry,
   constraintEntityIds,
   constraintOrientation,
   cornerRoundsForEntity,
@@ -9,6 +8,7 @@ import {
   measureLinearDimension,
   seamForEdge,
   seamSide,
+  type CircleEntity,
   type Constraint,
   type ConstraintType,
   type DimensionOrientation,
@@ -102,6 +102,20 @@ function geometryOf(entity: Entity): EntityGeometry {
     case 'circle':
       return { kind: 'circle', center: entity.center, rim: entity.rim };
   }
+}
+
+/**
+ * The circle's derived radius in millimetres, or `null` when a referenced point
+ * is missing or is not a point. Unlike `circleGeometry`, a collapsed circle
+ * still reports its (near-)zero radius so the inspector can show it.
+ */
+function circleRadius(document: PatternDocument, circle: CircleEntity): number | null {
+  const center = getEntity(document, circle.center);
+  const rim = getEntity(document, circle.rim);
+  if (center?.kind !== 'point' || rim?.kind !== 'point') return null;
+
+  const radius = Math.hypot(rim.x - center.x, rim.y - center.y);
+  return Number.isFinite(radius) ? radius : null;
 }
 
 /** Order-insensitive endpoint comparison: `{a,b}` equals `{s,e}`. */
@@ -223,7 +237,7 @@ export function entityProperties(
       entity.kind === 'line'
         ? measureLinearDimension(document, entity.start, entity.end, 'aligned')
         : null,
-    radius: entity.kind === 'circle' ? (circleGeometry(document, entity)?.radius ?? null) : null,
+    radius: entity.kind === 'circle' ? circleRadius(document, entity) : null,
     seam: seam === undefined ? null : { id: seam.id, width: seam.width, side: seamSide(seam) },
     rounds,
     dimensions,

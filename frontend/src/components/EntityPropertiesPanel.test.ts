@@ -132,7 +132,7 @@ describe('EntityPropertiesPanel', () => {
     expect(wrapper.emitted('set-circle-radius')).toEqual([['k1', 25]]);
   });
 
-  it('shows an empty radius field for a degenerate circle', async () => {
+  it('shows a zero radius field for a collapsed circle', async () => {
     const { wrapper } = panel(
       doc({
         entities: [
@@ -141,6 +141,25 @@ describe('EntityPropertiesPanel', () => {
         ],
       }),
       'zero',
+    );
+
+    const input = wrapper.find('[data-testid="entity-circle-radius"]');
+    expect((input.element as HTMLInputElement).value).toBe('0');
+
+    await input.setValue('0');
+    expect((input.element as HTMLInputElement).value).toBe('0');
+    expect(wrapper.emitted('set-circle-radius')).toBeUndefined();
+  });
+
+  it('shows an empty radius field for a circle whose point is missing', async () => {
+    const { wrapper } = panel(
+      doc({
+        entities: [
+          ...doc().entities,
+          { id: 'lost', kind: 'circle', center: 'a', rim: 'gone', construction: false },
+        ],
+      }),
+      'lost',
     );
 
     const input = wrapper.find('[data-testid="entity-circle-radius"]');

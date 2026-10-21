@@ -126,17 +126,31 @@ describe('entityProperties', () => {
     });
   });
 
-  it('reports a null radius for a degenerate or dangling circle', () => {
+  it('reports a collapsed circle as zero and a dangling circle as null', () => {
     const document = doc({
       entities: [
         ...entities,
+        {
+          id: 'far',
+          kind: 'point',
+          x: Number.MAX_VALUE,
+          y: Number.MAX_VALUE,
+          construction: false,
+          fixed: false,
+        },
         { id: 'zero', kind: 'circle', center: 'a', rim: 'a', construction: false },
         { id: 'dangling', kind: 'circle', center: 'a', rim: 'gone', construction: false },
+        { id: 'nonPointRim', kind: 'circle', center: 'a', rim: 'l1', construction: false },
+        { id: 'nonPointCenter', kind: 'circle', center: 'l1', rim: 'a', construction: false },
+        { id: 'huge', kind: 'circle', center: 'a', rim: 'far', construction: false },
       ],
     });
 
-    expect(entityProperties(document, 'zero')?.radius).toBeNull();
+    expect(entityProperties(document, 'zero')?.radius).toBe(0);
     expect(entityProperties(document, 'dangling')?.radius).toBeNull();
+    expect(entityProperties(document, 'nonPointRim')?.radius).toBeNull();
+    expect(entityProperties(document, 'nonPointCenter')?.radius).toBeNull();
+    expect(entityProperties(document, 'huge')?.radius).toBeNull();
   });
 
   it('relates a circle to constraints on its centre and rim points', () => {

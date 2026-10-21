@@ -698,8 +698,9 @@ function setCornerRoundRadius(id: EntityId, radius: number): void {
 /**
  * Edit a circle's radius. A driving centre↔rim dimension is updated in place so
  * the solver stays authoritative; otherwise the rim point moves along the
- * current centre→rim direction, keeping the centre fixed. A degenerate or
- * dangling circle is left untouched.
+ * current centre→rim direction, keeping the centre fixed. A collapsed circle has
+ * no direction, so its rim is placed due east; a dangling circle is left
+ * untouched.
  */
 function onSetCircleRadius(id: EntityId, radius: number): void {
   const entity = getEntity(pattern.value, id);
@@ -712,7 +713,13 @@ function onSetCircleRadius(id: EntityId, radius: number): void {
   }
 
   const geometry = circleGeometry(pattern.value, entity);
-  if (geometry === null) return;
+  if (geometry === null) {
+    const center = getEntity(pattern.value, entity.center);
+    const rim = getEntity(pattern.value, entity.rim);
+    if (center?.kind !== 'point' || rim?.kind !== 'point') return;
+    onMovePoint(entity.rim, center.x + radius, center.y);
+    return;
+  }
 
   const { center, rim, radius: current } = geometry;
   onMovePoint(

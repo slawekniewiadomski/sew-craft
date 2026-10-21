@@ -495,7 +495,7 @@ describe('EditorView', () => {
     });
   });
 
-  it('ignores a radius edit on a degenerate circle', async () => {
+  it('places the rim due east when editing a collapsed circle radius', async () => {
     const { wrapper, store } = await mountLoaded(circleDoc);
 
     entityDown(wrapper, 'circle', 'k1');
@@ -503,9 +503,28 @@ describe('EditorView', () => {
 
     store.dispatch({ id: 'collapse', type: 'move_point', params: { id: 'c', x: 0, y: 0 } });
     await nextTick();
-    const journal = store.journal.length;
 
     await wrapper.find('[data-testid="entity-circle-radius"]').setValue('25');
+    await flushPromises();
+
+    expect(store.journal.at(-1)!.command).toMatchObject({
+      type: 'move_point',
+      params: { id: 'c', x: 25, y: 0 },
+    });
+  });
+
+  it('ignores a circle radius edit when a referenced point is missing', async () => {
+    const { wrapper, store } = await mountLoaded(circleDoc);
+
+    entityDown(wrapper, 'circle', 'k1');
+    await nextTick();
+
+    store.dispatch({ id: 'drop-rim', type: 'delete_entity', params: { id: 'c' } });
+    await nextTick();
+    const journal = store.journal.length;
+
+    const panel = wrapper.findComponent(EntityPropertiesPanel);
+    panel.vm.$emit('set-circle-radius', 'k1', 50);
     await flushPromises();
 
     expect(store.journal).toHaveLength(journal);
