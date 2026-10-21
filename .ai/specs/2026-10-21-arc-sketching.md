@@ -1,6 +1,6 @@
 # Arc sketching (arc tool)
 
-Status: draft — design review; Q1–Q2 open
+Status: implemented — Q1 (three-point arc) and Q2 (a separate `arc` kind) resolved as recommended
 Refs #53
 Related: 002 (geometry core primitives), 005 (canvas editor interactions), 008 (SVG
 export), 2026-10-20-corner-rounding-tool (derived Bézier arcs), 2026-10-21-circle-sketching (#52)

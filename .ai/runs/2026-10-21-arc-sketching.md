@@ -77,13 +77,13 @@ through three points and the pattern renders and exports it as one SVG `A` comma
 
 ### Phase 4: Canvas interaction
 
-- [ ] 4.1 Extract `drafting.ts` from `line-tool.ts` and add the Arc tool, ribbon item and glyph
-- [ ] 4.2 Add `arc-tool.ts` endpoint resolution and grouped command batch with tests
-- [ ] 4.3 Wire the three-click canvas gesture, chord/arc preview, collinear hint, hit target and component tests
+- [x] 4.1 Extract `drafting.ts` from `line-tool.ts` and add the Arc tool, ribbon item and glyph — f0edc95, 95e68df
+- [x] 4.2 Add `arc-tool.ts` endpoint resolution and grouped command batch with tests — 95e68df
+- [x] 4.3 Wire the three-click canvas gesture, chord/arc preview, collinear hint, hit target and component tests — 95e68df
 
 ### Phase 5: Properties and verification
 
-- [ ] 5.1 Add the arc properties measurements and "Arc" noun with tests
-- [ ] 5.2 Wire `EditorView.onAddArc` through `dispatchGroup` with view tests
+- [x] 5.1 Add the arc properties measurements and "Arc" noun with tests — c000f7d
+- [x] 5.2 Wire `EditorView.onAddArc` through `dispatchGroup` with view tests — 95e68df
 - [ ] 5.3 Run the full validation gate and `om-auto-review-pr --autofix`
 - [ ] 5.4 Retitle the PR, normalize labels, flip to ready and release the lock
