@@ -70,7 +70,14 @@ can be written when it changes.
     { "id": "l2", "kind": "line", "start": "p2", "end": "p3", "construction": false },
     { "id": "p4", "kind": "point", "x": 130, "y": 40, "construction": false, "fixed": false },
     { "id": "p5", "kind": "point", "x": 110, "y": 50, "construction": false, "fixed": false },
-    { "id": "ar1", "kind": "arc", "start": "p2", "end": "p4", "through": "p5", "construction": false },
+    {
+      "id": "ar1",
+      "kind": "arc",
+      "start": "p2",
+      "end": "p4",
+      "through": "p5",
+      "construction": false,
+    },
   ],
   "constraints": [
     { "id": "c1", "type": "horizontal", "a": "p1", "b": "p2" },

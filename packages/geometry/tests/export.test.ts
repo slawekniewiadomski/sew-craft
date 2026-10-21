@@ -171,7 +171,9 @@ describe('toSvg', () => {
       ]),
     );
 
-    expect(svg).toContain('<path d="M -10 0 A 10 10 0 0 0 10 0" data-entity-id="a1" data-kind="arc" />');
+    expect(svg).toContain(
+      '<path d="M -10 0 A 10 10 0 0 0 10 0" data-entity-id="a1" data-kind="arc" />',
+    );
   });
 
   it('sets the large-arc flag for an arc that sweeps more than half the circle', () => {

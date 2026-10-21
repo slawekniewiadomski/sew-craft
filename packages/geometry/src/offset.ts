@@ -281,7 +281,9 @@ export function edgePolyline(
 
   if (entity.kind === 'arc') {
     const geometry = arcThroughPoints(referenced[0]!, referenced[2]!, referenced[1]!);
-    return geometry === null ? null : flattenArc(geometry, referenced[0]!, referenced[2]!, segments);
+    return geometry === null
+      ? null
+      : flattenArc(geometry, referenced[0]!, referenced[2]!, segments);
   }
 
   return curvePoints(referenced[0]!, referenced[1]!, referenced[2]!, referenced[3]!, segments);

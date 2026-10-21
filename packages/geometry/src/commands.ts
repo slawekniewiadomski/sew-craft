@@ -547,10 +547,7 @@ function applyAddCurve(
   };
 }
 
-function applyAddArc(
-  document: PatternDocument,
-  command: CommandOf<'add_arc'>,
-): CommandApplication {
+function applyAddArc(document: PatternDocument, command: CommandOf<'add_arc'>): CommandApplication {
   const { start, end, through } = command.params;
   if (new Set([start, end, through]).size !== 3) {
     throw new CommandValidationError('add_arc', 'start, end and through must be distinct points');

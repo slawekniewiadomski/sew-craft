@@ -74,8 +74,12 @@ export function arcThroughPoints(start: Vec2, end: Vec2, through: Vec2): ArcGeom
   const e2 = end.x * end.x + end.y * end.y;
   const t2 = through.x * through.x + through.y * through.y;
   const center: Vec2 = {
-    x: (s2 * (end.y - through.y) + e2 * (through.y - start.y) + t2 * (start.y - end.y)) / determinant,
-    y: (s2 * (through.x - end.x) + e2 * (start.x - through.x) + t2 * (end.x - start.x)) / determinant,
+    x:
+      (s2 * (end.y - through.y) + e2 * (through.y - start.y) + t2 * (start.y - end.y)) /
+      determinant,
+    y:
+      (s2 * (through.x - end.x) + e2 * (start.x - through.x) + t2 * (end.x - start.x)) /
+      determinant,
   };
   const radius = Math.hypot(start.x - center.x, start.y - center.y);
   if (!Number.isFinite(center.x) || !Number.isFinite(center.y) || !Number.isFinite(radius)) {

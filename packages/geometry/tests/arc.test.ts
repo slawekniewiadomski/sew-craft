@@ -117,12 +117,8 @@ describe('arcThroughPoints', () => {
   });
 
   it('returns null when a coordinate makes the geometry non-finite', () => {
-    expect(
-      arcThroughPoints({ x: 0, y: 0 }, { x: Number.NaN, y: 0 }, { x: 1, y: 1 }),
-    ).toBeNull();
-    expect(
-      arcThroughPoints({ x: 0, y: 0 }, { x: 10, y: 0 }, { x: Number.NaN, y: 1 }),
-    ).toBeNull();
+    expect(arcThroughPoints({ x: 0, y: 0 }, { x: Number.NaN, y: 0 }, { x: 1, y: 1 })).toBeNull();
+    expect(arcThroughPoints({ x: 0, y: 0 }, { x: 10, y: 0 }, { x: Number.NaN, y: 1 })).toBeNull();
     expect(
       arcThroughPoints({ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 5, y: Number.MAX_VALUE }),
     ).toBeNull();

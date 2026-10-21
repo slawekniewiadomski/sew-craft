@@ -17,12 +17,12 @@ flip. Pattern drafting origin is per-piece; a global origin is not assumed.
 
 ## Entities
 
-| Kind    | References  | Notes                                                             |
-| ------- | ----------- | ----------------------------------------------------------------- |
-| `point` | —           | the only solver variable in v0.1                                  |
-| `line`  | two points  | straight segment / edge                                           |
-| `curve` | four points | cubic Bézier (p0, p1, p2, p3)                                     |
-| `arc`   | three points| true circular arc: start, end, and a through point that fixes the bulge and sweep; centre, radius and angles are derived |
+| Kind    | References   | Notes                                                                                                                    |
+| ------- | ------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `point` | —            | the only solver variable in v0.1                                                                                         |
+| `line`  | two points   | straight segment / edge                                                                                                  |
+| `curve` | four points  | cubic Bézier (p0, p1, p2, p3)                                                                                            |
+| `arc`   | three points | true circular arc: start, end, and a through point that fixes the bulge and sweep; centre, radius and angles are derived |
 
 Every entity has an `id` (string) and a `construction: boolean`. Construction
 geometry is drawn as a guide and is **never** part of a cut edge or export.
