@@ -38,6 +38,23 @@ export interface CurveEntity {
 }
 
 /**
+ * A true circular arc through three ordinary solver points: `start` and `end`
+ * bound it and `through` lies on it between them, so it fixes both the bulge and
+ * the sweep direction. The circle, radius, angles and extents are always derived.
+ */
+export interface ArcEntity {
+  id: EntityId;
+  kind: 'arc';
+  /** Start of the arc, in traversal order. */
+  start: EntityId;
+  /** End of the arc, in traversal order. */
+  end: EntityId;
+  /** A point on the arc between start and end; fixes the bulge and the sweep. */
+  through: EntityId;
+  construction: boolean;
+}
+
+/**
  * A true circle. The centre and a point on the rim are ordinary solver points;
  * the radius is always the distance between them and is never stored.
  */
@@ -49,7 +66,7 @@ export interface CircleEntity {
   construction: boolean;
 }
 
-export type Entity = PointEntity | LineEntity | CurveEntity | CircleEntity;
+export type Entity = PointEntity | LineEntity | CurveEntity | CircleEntity | ArcEntity;
 
 export const CONSTRAINT_TYPES = [
   'coincident',

@@ -1,4 +1,6 @@
+import { arcPoints as flattenArc, arcThroughPoints } from './arc.js';
 import { entityPoints, getEntity } from './document.js';
+import { FLATTEN_SEGMENTS } from './flatten.js';
 import {
   seamSide,
   type EntityId,
@@ -41,7 +43,6 @@ export interface SeamAllowancePath {
 
 const EPSILON = 1e-9;
 const DEFAULT_MITER_LIMIT = 4;
-const CURVE_SEGMENTS = 16;
 const ARC_STEP = Math.PI / 8;
 
 const leftNormal = (direction: Vec2): Vec2 => ({ x: -direction.y, y: direction.x });
@@ -249,7 +250,7 @@ export function curvePoints(
   p1: Vec2,
   p2: Vec2,
   p3: Vec2,
-  segments: number = CURVE_SEGMENTS,
+  segments: number = FLATTEN_SEGMENTS,
 ): Vec2[] {
   const points: Vec2[] = [];
   for (let i = 0; i <= segments; i += 1) {
@@ -259,13 +260,14 @@ export function curvePoints(
 }
 
 /**
- * The polyline a cut edge traces. Lines are two points; curves are flattened to
- * `segments` intervals. Returns `null` when the id is missing or is a point.
+ * The polyline a cut edge traces. Lines are two points; curves and arcs are
+ * flattened to `segments` intervals. Returns `null` when the id is missing, is a
+ * point, or is an arc that has become degenerate.
  */
 export function edgePolyline(
   document: PatternDocument,
   edge: EntityId,
-  segments: number = CURVE_SEGMENTS,
+  segments: number = FLATTEN_SEGMENTS,
 ): Vec2[] | null {
   const entity = getEntity(document, edge);
   if (entity === undefined || entity.kind === 'point' || entity.kind === 'circle') {
@@ -277,13 +279,21 @@ export function edgePolyline(
     return referenced;
   }
 
+  if (entity.kind === 'arc') {
+    const geometry = arcThroughPoints(referenced[0]!, referenced[2]!, referenced[1]!);
+    return geometry === null
+      ? null
+      : flattenArc(geometry, referenced[0]!, referenced[2]!, segments);
+  }
+
   return curvePoints(referenced[0]!, referenced[1]!, referenced[2]!, referenced[3]!, segments);
 }
 
 /**
  * The offset path for one edge's seam allowance, or `null` when the seam's edge
- * is missing or is not a line/curve. Self-intersections are reported rather than
- * hidden: a caller can flag an allowance that folds over itself.
+ * is missing, is not a line, curve or arc, or is an arc that has become
+ * degenerate. Self-intersections are reported rather than hidden: a caller can
+ * flag an allowance that folds over itself.
  */
 export function seamAllowancePath(
   document: PatternDocument,

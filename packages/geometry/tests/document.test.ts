@@ -11,6 +11,7 @@ import {
   PATTERN_SCHEMA,
   seamForEdge,
   seamSide,
+  type ArcEntity,
   type CircleEntity,
   type CurveEntity,
   type Entity,
@@ -37,6 +38,21 @@ const point = (
 const documentOf = (entities: Entity[]): PatternDocument => ({
   ...createEmptyDocument(),
   entities,
+});
+
+const arc = (
+  id: string,
+  start: string,
+  end: string,
+  through: string,
+  options: { construction?: boolean } = {},
+): ArcEntity => ({
+  id,
+  kind: 'arc',
+  start,
+  end,
+  through,
+  construction: options.construction ?? false,
 });
 
 const circle = (
@@ -151,6 +167,20 @@ describe('cutEdges', () => {
     expect(cutEdges(documentOf([point('a', 0, 0)]))).toEqual([]);
   });
 
+  it('includes non-construction arcs and excludes construction ones', () => {
+    const cut = arc('a1', 'a', 'b', 'c');
+    const guide = arc('a2', 'a', 'b', 'c', { construction: true });
+    const document = documentOf([
+      point('a', 0, 0),
+      point('b', 1, 0),
+      point('c', 0.5, 1),
+      cut,
+      guide,
+    ]);
+
+    expect(cutEdges(document)).toEqual([cut]);
+  });
+
   it('includes non-construction circles and excludes construction ones', () => {
     const cut = circle('c1', 'a', 'b');
     const guide = circle('c2', 'a', 'b', { construction: true });
@@ -193,6 +223,19 @@ describe('entityPoints', () => {
     expect(entityPoints(documentOf([p0, p1, p2, p3, curve]), curve)).toEqual([p0, p1, p2, p3]);
   });
 
+  it('resolves an arc as start, through, end so consumers keep the traversal order', () => {
+    const start = point('s', 0, 0);
+    const through = point('t', 5, 5);
+    const end = point('e', 10, 0);
+    const shape = arc('a1', 's', 'e', 't');
+
+    expect(entityPoints(documentOf([start, through, end, shape]), shape)).toEqual([
+      start,
+      through,
+      end,
+    ]);
+  });
+
   it('resolves the centre then the rim of a circle', () => {
     const center = point('c', 0, 0);
     const rim = point('r', 3, 4);
@@ -212,7 +255,6 @@ describe('entityPoints', () => {
 
     expect(() => entityPoints(documentOf([line]), line)).toThrow(/unknown point/i);
   });
-
   it('throws when a reference points at a non-point entity', () => {
     const inner: LineEntity = { id: 'l0', kind: 'line', start: 'a', end: 'a', construction: false };
     const outer: LineEntity = {
@@ -254,6 +296,21 @@ describe('bounds', () => {
     expect(bounds(document)).toEqual({ min: { x: 7, y: 8 }, max: { x: 7, y: 8 } });
   });
 
+  it('widens the box to the arc cardinal point that lies outside its three points', () => {
+    const document = documentOf([
+      point('s', 10 * Math.cos(0.3), 10 * Math.sin(0.3)),
+      point('e', 10 * Math.cos(2.8), 10 * Math.sin(2.8)),
+      point('t', 10 * Math.cos(1), 10 * Math.sin(1)),
+      arc('a1', 's', 'e', 't'),
+    ]);
+
+    const box = bounds(document)!;
+
+    // The apex (0, 10) is on the sweep but above every one of the three points.
+    expect(box.min.x).toBeCloseTo(10 * Math.cos(2.8));
+    expect(box.max.y).toBeCloseTo(10);
+  });
+
   it('widens the box by the circle radius for an axis-aligned rim', () => {
     const document = documentOf([point('c', 10, 10), point('r', 10, 4), circle('c1', 'c', 'r')]);
 
@@ -264,6 +321,25 @@ describe('bounds', () => {
     const document = documentOf([point('c', 0, 0), point('r', 3, 4), circle('c1', 'c', 'r')]);
 
     expect(bounds(document)).toEqual({ min: { x: -5, y: -5 }, max: { x: 5, y: 5 } });
+  });
+
+  it('leaves the box unchanged for a degenerate or unresolvable arc', () => {
+    const degenerate = documentOf([
+      point('s', 0, 0),
+      point('e', 10, 0),
+      point('t', 5, 0),
+      arc('a1', 's', 'e', 't'),
+    ]);
+    const missing = documentOf([point('s', 0, 0), arc('a2', 's', 'e', 't')]);
+    const nonPoint = documentOf([
+      point('s', 0, 0),
+      { id: 'l', kind: 'line', start: 's', end: 's', construction: false },
+      arc('a3', 's', 'l', 'l'),
+    ]);
+
+    expect(bounds(degenerate)).toEqual({ min: { x: 0, y: 0 }, max: { x: 10, y: 0 } });
+    expect(bounds(missing)).toEqual({ min: { x: 0, y: 0 }, max: { x: 0, y: 0 } });
+    expect(bounds(nonPoint)).toEqual({ min: { x: 0, y: 0 }, max: { x: 0, y: 0 } });
   });
 
   it('leaves the box unchanged for a degenerate or unresolvable circle', () => {

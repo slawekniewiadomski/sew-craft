@@ -1,3 +1,4 @@
+import { MIN_BULGE, arcThroughPoints } from './arc.js';
 import {
   allPoints,
   constraintEntityIds,
@@ -29,6 +30,7 @@ import {
   DIMENSION_ORIENTATIONS,
   SEAM_SIDES,
   seamSide,
+  type ArcEntity,
   type Constraint,
   type ConstraintType,
   type CornerRound,
@@ -71,6 +73,13 @@ export interface AddCurveParams {
   p1: EntityId;
   p2: EntityId;
   p3: EntityId;
+  construction?: boolean;
+}
+
+export interface AddArcParams {
+  start: EntityId;
+  end: EntityId;
+  through: EntityId;
   construction?: boolean;
 }
 
@@ -163,6 +172,7 @@ export type Command =
   | { id: EntityId; type: 'move_point'; params: MovePointParams; issuedAt?: string }
   | { id: EntityId; type: 'add_line'; params: AddLineParams; issuedAt?: string }
   | { id: EntityId; type: 'add_curve'; params: AddCurveParams; issuedAt?: string }
+  | { id: EntityId; type: 'add_arc'; params: AddArcParams; issuedAt?: string }
   | { id: EntityId; type: 'add_circle'; params: AddCircleParams; issuedAt?: string }
   | {
       id: EntityId;
@@ -276,6 +286,8 @@ export function applyCommand(document: PatternDocument, command: Command): Comma
       return applySetConstruction(document, command);
     case 'add_curve':
       return applyAddCurve(document, command);
+    case 'add_arc':
+      return applyAddArc(document, command);
     case 'add_circle':
       return applyAddCircle(document, command);
     case 'delete_entity':
@@ -542,6 +554,47 @@ function applyAddCurve(
 
   return {
     document: { ...document, entities: [...document.entities, curve] },
+    inverse: deleteEntityCommand(command.id),
+  };
+}
+
+function applyAddArc(document: PatternDocument, command: CommandOf<'add_arc'>): CommandApplication {
+  const { start, end, through } = command.params;
+  if (new Set([start, end, through]).size !== 3) {
+    throw new CommandValidationError('add_arc', 'start, end and through must be distinct points');
+  }
+
+  const startPoint = requireDraftingPoint(document, start, 'add_arc');
+  const endPoint = requireDraftingPoint(document, end, 'add_arc');
+  const throughPoint = requireDraftingPoint(document, through, 'add_arc');
+
+  const geometry = arcThroughPoints(
+    { x: startPoint.x, y: startPoint.y },
+    { x: endPoint.x, y: endPoint.y },
+    { x: throughPoint.x, y: throughPoint.y },
+  );
+  if (geometry === null) {
+    throw new CommandValidationError(
+      'add_arc',
+      `through must be at least ${MIN_BULGE} mm off the start-end chord`,
+    );
+  }
+
+  if (getEntity(document, command.id) !== undefined) {
+    return noOp(document);
+  }
+
+  const arc: ArcEntity = {
+    id: command.id,
+    kind: 'arc',
+    start,
+    end,
+    through,
+    construction: command.params.construction ?? false,
+  };
+
+  return {
+    document: { ...document, entities: [...document.entities, arc] },
     inverse: deleteEntityCommand(command.id),
   };
 }
@@ -1039,13 +1092,13 @@ function applyAddSeamAllowance(
   if (edgeEntity === undefined || edgeEntity.kind === 'point' || edgeEntity.construction) {
     throw new CommandValidationError(
       'add_seam_allowance',
-      `edge ${edge} is not a cut line or curve`,
+      `edge ${edge} is not a cut line, curve or arc`,
     );
   }
   if (edgeEntity.kind === 'circle') {
     throw new CommandValidationError(
       'add_seam_allowance',
-      'seam allowances need a line or curve edge',
+      'seam allowances need a line, curve or arc edge',
     );
   }
 

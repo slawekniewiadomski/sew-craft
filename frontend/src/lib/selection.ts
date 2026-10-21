@@ -43,7 +43,7 @@ export function toggleSelection(current: EntityId[], id: EntityId): EntityId[] {
 }
 
 /**
- * Edges that deleting `ids` would leave dangling: a line, curve or circle whose
+ * Edges that deleting `ids` would leave dangling: a line, curve, circle or arc whose
  * point is selected while the edge itself is not. Construction edges count,
  * because `delete_entity` does not remove them either.
  */
@@ -56,9 +56,11 @@ export function orphanedEdges(document: PatternDocument, ids: EntityId[]): Entit
     const points =
       entity.kind === 'line'
         ? [entity.start, entity.end]
-        : entity.kind === 'curve'
-          ? [entity.p0, entity.p1, entity.p2, entity.p3]
-          : [entity.center, entity.rim];
+        : entity.kind === 'circle'
+          ? [entity.center, entity.rim]
+          : entity.kind === 'arc'
+            ? [entity.start, entity.end, entity.through]
+            : [entity.p0, entity.p1, entity.p2, entity.p3];
     if (points.some((point) => selected.has(point))) orphans.push(entity.id);
   }
 

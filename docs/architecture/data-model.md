@@ -68,8 +68,18 @@ can be written when it changes.
     { "id": "l1", "kind": "line", "start": "p1", "end": "p2", "construction": false },
     { "id": "p3", "kind": "point", "x": 120, "y": 90, "construction": false, "fixed": false },
     { "id": "l2", "kind": "line", "start": "p2", "end": "p3", "construction": false },
-    { "id": "p4", "kind": "point", "x": 130, "y": 0, "construction": false, "fixed": false },
-    { "id": "ci1", "kind": "circle", "center": "p2", "rim": "p4", "construction": false },
+    { "id": "p4", "kind": "point", "x": 130, "y": 40, "construction": false, "fixed": false },
+    { "id": "p5", "kind": "point", "x": 110, "y": 50, "construction": false, "fixed": false },
+    {
+      "id": "ar1",
+      "kind": "arc",
+      "start": "p2",
+      "end": "p4",
+      "through": "p5",
+      "construction": false,
+    },
+    { "id": "p6", "kind": "point", "x": 130, "y": 0, "construction": false, "fixed": false },
+    { "id": "ci1", "kind": "circle", "center": "p2", "rim": "p6", "construction": false },
   ],
   "constraints": [
     { "id": "c1", "type": "horizontal", "a": "p1", "b": "p2" },
@@ -114,6 +124,17 @@ anchors and the radius, while its derived entities (tangent points `r1:a`,
 `r1:b`, controls `r1:c1`, `r1:c2`, and the cubic arc `r1:arc`) live in
 `entities` and are omitted from the snippet. `l1` and `l2` are trimmed to the
 tangent points, and `p2` stays as a construction point.
+
+An `arc` entity is a true circular arc referencing three ordinary points: `start`
+and `end` bound it and `through` lies on it between them, fixing both the bulge
+and the sweep direction. The circumcentre, radius, start/end angles, signed sweep,
+large-arc flag and extents are derived on read and never stored, so the three
+points remain the only solver variables and constraints on them move the arc. A
+`solve` can flatten the three points into collinearity, which makes the arc
+invalid: render, export and bounds skip it and the properties panel shows an
+"invalid" state rather than throwing. The entity kind is additive, so a document
+written before the feature loads unchanged and a document containing an arc is
+still valid JSON for older builds.
 
 A `circle` entity references its centre point and one point on the rim; the
 radius is derived as the distance between them and is never stored. Its bounding

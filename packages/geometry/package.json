@@ -1,6 +1,6 @@
 {
   "name": "@sewcraft/geometry",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Framework-agnostic 2D geometry model and constraint solver for SewCraft.",
   "private": true,
   "type": "module",

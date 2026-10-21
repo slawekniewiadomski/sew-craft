@@ -3,7 +3,7 @@
 it('exposes the command spec', function () {
     $this->getJson('/api/commands')
         ->assertOk()
-        ->assertJsonPath('version', '0.8.0')
+        ->assertJsonPath('version', '0.9.0')
         ->assertJsonStructure([
             'version',
             'commands' => [
@@ -55,6 +55,16 @@ it('exposes the corner round commands', function () {
         ->assertJsonPath('commands.set_corner_round_radius.inverse', 'set_corner_round_radius')
         ->assertJsonPath('commands.remove_corner_round.params.id', 'entity_id')
         ->assertJsonPath('commands.remove_corner_round.inverse', 'add_corner_round');
+});
+
+it('exposes the arc command', function () {
+    $this->getJson('/api/commands')
+        ->assertOk()
+        ->assertJsonPath('commands.add_arc.params.start', 'entity_id')
+        ->assertJsonPath('commands.add_arc.params.end', 'entity_id')
+        ->assertJsonPath('commands.add_arc.params.through', 'entity_id')
+        ->assertJsonPath('commands.add_arc.params.construction', 'bool?')
+        ->assertJsonPath('commands.add_arc.inverse', 'delete_entity');
 });
 
 it('exposes the circle command', function () {

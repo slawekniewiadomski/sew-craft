@@ -1,5 +1,7 @@
+import { arcExtents, arcGeometry } from './arc.js';
 import {
   PATTERN_SCHEMA,
+  type ArcEntity,
   type CircleEntity,
   type Constraint,
   type CornerRound,
@@ -55,13 +57,15 @@ export function allPoints(document: PatternDocument): PointEntity[] {
 }
 
 /**
- * Every line, curve or circle that is part of the cut pattern, in document
+ * Every line, curve, circle or arc that is part of the cut pattern, in document
  * order. Construction entities are guides and are never cut or exported, so
  * exports and the cut-edge layer both derive their contents from this selector.
  */
-export function cutEdges(document: PatternDocument): (LineEntity | CurveEntity | CircleEntity)[] {
+export function cutEdges(
+  document: PatternDocument,
+): (LineEntity | CurveEntity | CircleEntity | ArcEntity)[] {
   return document.entities.filter(
-    (entity): entity is LineEntity | CurveEntity | CircleEntity =>
+    (entity): entity is LineEntity | CurveEntity | CircleEntity | ArcEntity =>
       entity.kind !== 'point' && !entity.construction,
   );
 }
@@ -98,9 +102,11 @@ export function entityPoints(document: PatternDocument, entity: Entity): PointEn
   const ids: EntityId[] =
     entity.kind === 'line'
       ? [entity.start, entity.end]
-      : entity.kind === 'circle'
-        ? [entity.center, entity.rim]
-        : [entity.p0, entity.p1, entity.p2, entity.p3];
+      : entity.kind === 'arc'
+        ? [entity.start, entity.through, entity.end]
+        : entity.kind === 'circle'
+          ? [entity.center, entity.rim]
+          : [entity.p0, entity.p1, entity.p2, entity.p3];
 
   return ids.map((id) => {
     const referenced = getEntity(document, id);
@@ -113,8 +119,8 @@ export function entityPoints(document: PatternDocument, entity: Entity): PointEn
 
 /**
  * Axis-aligned bounding box of every point in the document, including
- * construction points, widened by each circle's radius. Returns `null` when the
- * document has no points.
+ * construction points, widened by each circle's radius and each arc's cardinal
+ * extents. Returns `null` when the document has no points.
  */
 export function bounds(document: PatternDocument): Bounds | null {
   const points = allPoints(document);
@@ -134,9 +140,23 @@ export function bounds(document: PatternDocument): Bounds | null {
     if (point.y > maxY) maxY = point.y;
   }
 
-  // A circle extends one radius beyond its centre in every direction, which is
-  // not covered by its centre and rim points alone.
+  // An arc can bulge past all three of its points and a circle extends one
+  // radius beyond its centre in every direction; neither is covered by the
+  // points alone, so both matter for a correct fit view and export viewBox. An
+  // invalid (collinear) arc has no extents and is skipped.
   for (const entity of document.entities) {
+    if (entity.kind === 'arc') {
+      const geometry = arcGeometry(document, entity);
+      if (geometry === null) continue;
+      for (const extent of arcExtents(geometry)) {
+        minX = Math.min(minX, extent.x);
+        minY = Math.min(minY, extent.y);
+        maxX = Math.max(maxX, extent.x);
+        maxY = Math.max(maxY, extent.y);
+      }
+      continue;
+    }
+
     if (entity.kind !== 'circle') continue;
     const center = getEntity(document, entity.center);
     const rim = getEntity(document, entity.rim);

@@ -1,5 +1,6 @@
 import {
   createEmptyDocument,
+  type ArcEntity,
   type CircleEntity,
   type CurveEntity,
   type Entity,
@@ -43,6 +44,16 @@ function cv(
 
 function doc(entities: Entity[]): PatternDocument {
   return { ...createEmptyDocument(), entities };
+}
+
+function arc(
+  id: string,
+  start: string,
+  end: string,
+  through: string,
+  construction = false,
+): ArcEntity {
+  return { id, kind: 'arc', start, end, through, construction };
 }
 
 function ci(id: string, center: string, rim: string, construction = false): CircleEntity {
@@ -132,5 +143,14 @@ describe('orphanedEdges', () => {
   it('reports nothing for an edge-only or empty selection', () => {
     expect(orphanedEdges(document, ['ab', 'curve'])).toEqual([]);
     expect(orphanedEdges(document, [])).toEqual([]);
+  });
+
+  it('names an arc that depends on a selected start, end or through point', () => {
+    const arcs = doc([pt('a'), pt('b'), pt('c'), arc('arc', 'a', 'b', 'c')]);
+
+    expect(orphanedEdges(arcs, ['a'])).toEqual(['arc']);
+    expect(orphanedEdges(arcs, ['b'])).toEqual(['arc']);
+    expect(orphanedEdges(arcs, ['c'])).toEqual(['arc']);
+    expect(orphanedEdges(arcs, ['arc'])).toEqual([]);
   });
 });

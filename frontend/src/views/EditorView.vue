@@ -77,6 +77,7 @@ import {
   type DimensionPlacement,
   type DimensionReferenceOption,
 } from '@/lib/dimensions';
+import { buildArcCommands, type ArcEndpoint } from '@/lib/arc-tool';
 import { downloadSvgFile } from '@/lib/download';
 import type { RibbonAction } from '@/lib/editor-ribbon';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
@@ -450,6 +451,11 @@ function onAddPoint(x: number, y: number): void {
 /** One gesture: new endpoints become points, then the line, as a single entry. */
 function onAddLine(start: LineEndpoint, end: LineEndpoint): void {
   run(() => dispatchGroup(buildLineCommands(start, end, nextCommandId)));
+}
+
+/** One gesture: new endpoints become points, then the arc, as a single entry. */
+function onAddArc(start: ArcEndpoint, end: ArcEndpoint, through: ArcEndpoint): void {
+  run(() => dispatchGroup(buildArcCommands(start, end, through, nextCommandId)));
 }
 
 /** One gesture: new endpoints become points, then the circle, as a single entry. */
@@ -906,6 +912,7 @@ onBeforeUnmount(() => {
           @add-point="onAddPoint"
           @add-line="onAddLine"
           @add-curve="onAddCurve"
+          @add-arc="onAddArc"
           @add-circle="onAddCircle"
           @constraint-pick="onConstraintPick"
           @round-corner-pick="onRoundCornerPick"

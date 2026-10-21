@@ -5,6 +5,7 @@ import {
   createEmptyDocument,
   PATTERN_SCHEMA,
   toSvg,
+  type ArcEntity,
   type CircleEntity,
   type CurveEntity,
   type Entity,
@@ -57,6 +58,21 @@ const curve = (
 const documentOf = (entities: Entity[]): PatternDocument => ({
   ...createEmptyDocument(),
   entities,
+});
+
+const arc = (
+  id: string,
+  start: string,
+  end: string,
+  through: string,
+  options: { construction?: boolean } = {},
+): ArcEntity => ({
+  id,
+  kind: 'arc',
+  start,
+  end,
+  through,
+  construction: options.construction ?? false,
 });
 
 const circle = (
@@ -159,6 +175,52 @@ describe('toSvg', () => {
     expect(svg).toContain('<path d="M 0 0 C 10 20 30 20 40 0" data-entity-id="c" />');
   });
 
+  it('renders a cut arc as one true SVG A command', () => {
+    const svg = toSvg(
+      documentOf([
+        point('s', -10, 0),
+        point('t', 0, 10),
+        point('e', 10, 0),
+        arc('a1', 's', 'e', 't'),
+      ]),
+    );
+
+    expect(svg).toContain(
+      '<path d="M -10 0 A 10 10 0 0 0 10 0" data-entity-id="a1" data-kind="arc" />',
+    );
+  });
+
+  it('sets the large-arc flag for an arc that sweeps more than half the circle', () => {
+    const svg = toSvg(
+      documentOf([
+        point('s', 10, 0),
+        point('t', 0, -10),
+        point('e', 0, 10),
+        arc('a1', 's', 'e', 't'),
+      ]),
+    );
+
+    expect(svg).toContain('A 10 10 0 1 0 0 10" data-entity-id="a1"');
+  });
+
+  it('renders a construction arc in the construction layer', () => {
+    const svg = toSvg(
+      documentOf([
+        point('s', -10, 0),
+        point('t', 0, 10),
+        point('e', 10, 0),
+        arc('guide', 's', 'e', 't', { construction: true }),
+      ]),
+      { construction: true },
+    );
+
+    expect(svg).toContain('<g data-layer="construction"');
+    expect(svg).toContain('data-entity-id="guide"');
+    expect(svg.indexOf('<g data-layer="construction"')).toBeLessThan(
+      svg.indexOf('data-entity-id="guide"'),
+    );
+  });
+
   it('renders a cut circle as a true SVG circle', () => {
     const svg = toSvg(documentOf([point('c', 10, 20), point('r', 13, 24), circle('c1', 'c', 'r')]));
 
@@ -182,6 +244,21 @@ describe('toSvg', () => {
     expect(svg.indexOf('<g data-layer="construction"')).toBeLessThan(
       svg.indexOf('data-entity-id="guide"'),
     );
+  });
+
+  it('skips a degenerate or unresolvable arc', () => {
+    const svg = toSvg(
+      documentOf([
+        point('s', 0, 0),
+        point('e', 10, 0),
+        point('t', 5, 0),
+        arc('flat', 's', 'e', 't'),
+        arc('dangling', 's', 'e', 'missing'),
+      ]),
+    );
+
+    expect(svg).not.toContain('data-entity-id="flat"');
+    expect(svg).not.toContain('data-entity-id="dangling"');
   });
 
   it('skips a degenerate or unresolvable circle', () => {

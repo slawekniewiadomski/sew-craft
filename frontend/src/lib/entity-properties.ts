@@ -1,4 +1,5 @@
 import {
+  arcGeometry,
   constraintEntityIds,
   constraintOrientation,
   cornerRoundsForEntity,
@@ -21,6 +22,8 @@ import {
 
 import { constraintLabel } from './constraint-view';
 
+const RADIANS_TO_DEGREES = 180 / Math.PI;
+
 /** Geometry a point contributes to the inspector. */
 export type PointGeometry = { kind: 'point'; x: number; y: number };
 
@@ -36,10 +39,32 @@ export type CurveGeometry = {
   p3: EntityId;
 };
 
+/** Geometry an arc contributes to the inspector. */
+export type ArcGeometry = {
+  kind: 'arc';
+  start: EntityId;
+  end: EntityId;
+  through: EntityId;
+};
+
 /** Geometry a circle contributes to the inspector. */
 export type CircleGeometry = { kind: 'circle'; center: EntityId; rim: EntityId };
 
-export type EntityGeometry = PointGeometry | LineGeometry | CurveGeometry | CircleGeometry;
+export type EntityGeometry =
+  PointGeometry | LineGeometry | CurveGeometry | CircleGeometry | ArcGeometry;
+
+/**
+ * The derived circle measurements of an arc, all recomputed from its three
+ * points: nothing here is stored on the entity.
+ */
+export type ArcMeasurement = {
+  /** Circle radius in millimetres. */
+  radius: number;
+  /** The swept angle in degrees, always positive. */
+  includedAngle: number;
+  /** Arc length in millimetres. */
+  length: number;
+};
 
 /** A dimension that acts on the selected entity. */
 export type DimensionSummary = {
@@ -82,6 +107,11 @@ export type EntityProperties = {
   geometry: EntityGeometry;
   /** Measured length in millimetres for lines only. */
   length: number | null;
+  /**
+   * Derived arc measurements, `null` for other kinds and for an arc whose three
+   * points no longer define a circle (collinear after a constraint solve).
+   */
+  arc: ArcMeasurement | null;
   /** Derived radius in millimetres for circles only. */
   radius: number | null;
   seam: { id: EntityId; width: number; side: SeamSide } | null;
@@ -99,9 +129,29 @@ function geometryOf(entity: Entity): EntityGeometry {
       return { kind: 'line', start: entity.start, end: entity.end };
     case 'curve':
       return { kind: 'curve', p0: entity.p0, p1: entity.p1, p2: entity.p2, p3: entity.p3 };
+    case 'arc':
+      return { kind: 'arc', start: entity.start, end: entity.end, through: entity.through };
     case 'circle':
       return { kind: 'circle', center: entity.center, rim: entity.rim };
   }
+}
+
+/**
+ * The derived radius, included angle and arc length of an arc, or `null` when it
+ * is not an arc or its three points no longer define a circle.
+ */
+function arcMeasurementOf(document: PatternDocument, entity: Entity): ArcMeasurement | null {
+  if (entity.kind !== 'arc') return null;
+
+  const geometry = arcGeometry(document, entity);
+  if (geometry === null) return null;
+
+  const sweep = Math.abs(geometry.sweep);
+  return {
+    radius: geometry.radius,
+    includedAngle: sweep * RADIANS_TO_DEGREES,
+    length: sweep * geometry.radius,
+  };
 }
 
 /**
@@ -126,9 +176,10 @@ function samePair(a: EntityId, b: EntityId, s: EntityId, e: EntityId): boolean {
 /**
  * Whether a constraint acts on the selected entity's own segment. A line matches
  * only its endpoint pair, so a neighbouring edge sharing a corner does not pull
- * its constraints in; points and curves keep the broader any-reference rule.
- * Matching reads the stored ids without resolving them, so a dangling reference
- * still lists on the line that stores it and never throws.
+ * its constraints in; points, curves and arcs keep the broader any-reference
+ * rule (an arc is defined by all three of its points). Matching reads the stored
+ * ids without resolving them, so a dangling reference still lists on the line
+ * that stores it and never throws.
  */
 function constraintActsOnEntity(constraint: Constraint, entity: Entity): boolean {
   if (entity.kind === 'point') {
@@ -138,6 +189,11 @@ function constraintActsOnEntity(constraint: Constraint, entity: Entity): boolean
   if (entity.kind === 'curve') {
     const controlPoints = [entity.p0, entity.p1, entity.p2, entity.p3];
     return constraintEntityIds(constraint).some((id) => controlPoints.includes(id));
+  }
+
+  if (entity.kind === 'arc') {
+    const points = [entity.start, entity.end, entity.through];
+    return constraintEntityIds(constraint).some((id) => points.includes(id));
   }
 
   if (entity.kind === 'circle') {
@@ -237,6 +293,7 @@ export function entityProperties(
       entity.kind === 'line'
         ? measureLinearDimension(document, entity.start, entity.end, 'aligned')
         : null,
+    arc: arcMeasurementOf(document, entity),
     radius: entity.kind === 'circle' ? circleRadius(document, entity) : null,
     seam: seam === undefined ? null : { id: seam.id, width: seam.width, side: seamSide(seam) },
     rounds,

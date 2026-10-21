@@ -9,6 +9,7 @@ import {
   offsetPolyline,
   seamAllowancePath,
   seamAllowancePaths,
+  type ArcEntity,
   type CurveEntity,
   type Entity,
   type LineEntity,
@@ -33,6 +34,15 @@ const line = (id: string, start: string, end: string): LineEntity => ({
   kind: 'line',
   start,
   end,
+  construction: false,
+});
+
+const arc = (id: string, start: string, end: string, through: string): ArcEntity => ({
+  id,
+  kind: 'arc',
+  start,
+  end,
+  through,
   construction: false,
 });
 
@@ -226,6 +236,46 @@ describe('edgePolyline', () => {
 
     expect(edgePolyline(document, 'curve', 2)).toHaveLength(3);
   });
+
+  it('flattens an arc along its true sweep, not its chord', () => {
+    const document = documentOf([
+      point('s', -10, 0),
+      point('t', 0, 10),
+      point('e', 10, 0),
+      arc('a1', 's', 'e', 't'),
+    ]);
+
+    const flattened = edgePolyline(document, 'a1', 4)!;
+
+    expect(flattened).toHaveLength(5);
+    expect(flattened[0]!).toEqual(p(-10, 0));
+    expect(flattened[4]!).toEqual(p(10, 0));
+    expect(flattened[2]!.x).toBeCloseTo(0);
+    expect(flattened[2]!.y).toBeCloseTo(10);
+  });
+
+  it('uses the shared flattening resolution by default', () => {
+    const document = documentOf([
+      point('s', -10, 0),
+      point('t', 0, 10),
+      point('e', 10, 0),
+      arc('a1', 's', 'e', 't'),
+    ]);
+
+    expect(edgePolyline(document, 'a1')).toHaveLength(17);
+  });
+
+  it('returns null for a degenerate arc so a seam allowance cannot wrap it', () => {
+    const document = documentOf([
+      point('s', 0, 0),
+      point('e', 10, 0),
+      point('t', 5, 0),
+      arc('a1', 's', 'e', 't'),
+    ]);
+
+    expect(edgePolyline(document, 'a1')).toBeNull();
+    expect(seamAllowancePath(document, { id: 's1', edge: 'a1', width: 1 })).toBeNull();
+  });
 });
 
 describe('seamAllowancePath', () => {
@@ -283,6 +333,29 @@ describe('seamAllowancePath', () => {
 
   it('returns null when the edge is missing', () => {
     expect(seamAllowancePath(document, { id: 's', edge: 'missing', width: 1 })).toBeNull();
+  });
+
+  it('offsets a seam allowance along an arc, with the side following start to end', () => {
+    const arcDocument = documentOf([
+      point('s', -10, 0),
+      point('t', 0, 10),
+      point('e', 10, 0),
+      arc('a1', 's', 'e', 't'),
+    ]);
+
+    const left = seamAllowancePath(arcDocument, { id: 's1', edge: 'a1', width: 1 });
+    const right = seamAllowancePath(arcDocument, {
+      id: 's1',
+      edge: 'a1',
+      width: 1,
+      side: 'right',
+    });
+
+    expect(left).toMatchObject({ edge: 'a1', width: 1, side: 'left' });
+    // 16 segments rasterise to 17 points; index 8 is the apex, which points upward.
+    expect(left!.path).toHaveLength(17);
+    expect(left!.path[8]!.y).toBeGreaterThan(10);
+    expect(right!.path[8]!.y).toBeLessThan(10);
   });
 
   it('honours a round join option', () => {

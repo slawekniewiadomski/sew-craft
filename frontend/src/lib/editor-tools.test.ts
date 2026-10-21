@@ -9,6 +9,7 @@ describe('EDITOR_TOOLS', () => {
       'add_point',
       'add_line',
       'add_curve',
+      'add_arc',
       'add_circle',
       'round_corner',
       'dimension',

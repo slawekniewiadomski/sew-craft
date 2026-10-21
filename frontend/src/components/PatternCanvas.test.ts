@@ -133,6 +133,7 @@ function mountCanvas(
       | 'add_point'
       | 'add_line'
       | 'add_curve'
+      | 'add_arc'
       | 'add_circle'
       | 'dimension'
       | 'add_allowance';
@@ -161,6 +162,11 @@ function mountCanvas(
 
 function fittedViewport(doc: PatternDocument): Viewport {
   return fitToBounds(bounds(doc)!, SIZE);
+}
+
+/** The screen position of a world point in the fitted base document. */
+function screenAt(world: Vec2): Vec2 {
+  return worldToScreen(fittedViewport(baseDoc), world);
 }
 
 function transformOf(wrapper: VueWrapper): string {
@@ -1007,6 +1013,178 @@ describe('PatternCanvas', () => {
     await nextTick();
 
     expect(wrapper.find('[data-testid="line-preview"]').exists()).toBe(false);
+  });
+
+  it('draws an arc through three reused points as one gesture', () => {
+    const wrapper = mountCanvas({ tool: 'add_arc' });
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    down(pointCircle(wrapper, 'b').element, 400, 300);
+    down(pointCircle(wrapper, 'c').element, 400, 300);
+
+    expect(wrapper.emitted('add-arc')).toEqual([
+      [
+        { kind: 'point', id: 'a' },
+        { kind: 'point', id: 'b' },
+        { kind: 'point', id: 'c' },
+      ],
+    ]);
+  });
+
+  it('marks provisional arc endpoints and previews the chord then the arc', async () => {
+    const wrapper = mountCanvas({ tool: 'add_arc' });
+
+    const first = screenAt({ x: 10, y: 40 });
+    down(wrapper.find('[data-testid="grid"]').element, first.x, first.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="arc-pending-start"]').exists()).toBe(true);
+
+    pointerMove(wrapper, 700, 500);
+    await nextTick();
+    expect(wrapper.find('[data-testid="arc-chord"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="arc-preview"]').exists()).toBe(false);
+
+    const second = screenAt({ x: 90, y: 40 });
+    down(wrapper.find('[data-testid="grid"]').element, second.x, second.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="arc-pending-end"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="arc-chord"]').exists()).toBe(false);
+
+    const through = screenAt({ x: 50, y: 90 });
+    pointerMove(wrapper, through.x, through.y);
+    await nextTick();
+
+    const preview = wrapper.find('[data-testid="arc-preview"]');
+    expect(preview.exists()).toBe(true);
+    expect(preview.attributes('fill')).toBe('none');
+    expect(preview.attributes('d')).toMatch(/^M .* A /);
+  });
+
+  it('ignores a collinear third click with a hint that clears off the chord', async () => {
+    const wrapper = mountCanvas({ tool: 'add_arc' });
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    down(pointCircle(wrapper, 'b').element, 400, 300);
+    await nextTick();
+
+    const onChord = screenAt({ x: 50, y: 0 });
+    pointerMove(wrapper, onChord.x, onChord.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="arc-preview"]').exists()).toBe(false);
+
+    down(wrapper.find('[data-testid="grid"]').element, onChord.x, onChord.y);
+    await nextTick();
+
+    expect(wrapper.emitted('add-arc')).toBeUndefined();
+    expect(wrapper.find('[data-testid="arc-hint"]').exists()).toBe(true);
+
+    const offChord = screenAt({ x: 50, y: 50 });
+    pointerMove(wrapper, offChord.x, offChord.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="arc-hint"]').exists()).toBe(false);
+
+    down(wrapper.find('[data-testid="grid"]').element, offChord.x, offChord.y);
+
+    const emitted = wrapper.emitted('add-arc')![0]!;
+    expect(emitted[0]).toEqual({ kind: 'point', id: 'a' });
+    expect(emitted[1]).toEqual({ kind: 'point', id: 'b' });
+    expect(emitted[2]).toEqual({ kind: 'new', x: 50, y: 50 });
+  });
+
+  it('ignores a repeated arc click without emitting', () => {
+    const wrapper = mountCanvas({ tool: 'add_arc' });
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    down(pointCircle(wrapper, 'b').element, 400, 300);
+    down(pointCircle(wrapper, 'b').element, 400, 300);
+
+    expect(wrapper.emitted('add-arc')).toBeUndefined();
+  });
+
+  it('clears the pending arc when the tool changes', async () => {
+    const wrapper = mountCanvas({ tool: 'add_arc' });
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    await nextTick();
+
+    wrapper.setProps({ tool: 'select' });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="arc-chord"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="arc-hint"]').exists()).toBe(false);
+  });
+
+  it('drops the arc gesture when its start point disappears', async () => {
+    const wrapper = mountCanvas({ tool: 'add_arc' });
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    wrapper.setProps({ document: doc([pt('b', 100, 0), pt('c', 100, 100)]) });
+    await nextTick();
+
+    pointerMove(wrapper, 700, 500);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="arc-chord"]').exists()).toBe(false);
+  });
+
+  it('drops the arc gesture when its end point disappears', async () => {
+    const wrapper = mountCanvas({ tool: 'add_arc' });
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    down(pointCircle(wrapper, 'b').element, 400, 300);
+    wrapper.setProps({ document: doc([pt('a', 0, 0), pt('c', 100, 100)]) });
+    await nextTick();
+
+    // A cleared gesture makes the next click a fresh start rather than a third click.
+    down(pointCircle(wrapper, 'c').element, 400, 300);
+    await nextTick();
+
+    expect(wrapper.emitted('add-arc')).toBeUndefined();
+    expect(wrapper.find('[data-testid="arc-hint"]').exists()).toBe(false);
+  });
+
+  it('renders committed arcs as stroke-only paths and skips invalid or broken ones', async () => {
+    const arcDoc = doc([
+      pt('a', 0, 0),
+      pt('b', 100, 0),
+      pt('p', 50, 50),
+      pt('mid', 50, 0),
+      { id: 'arc', kind: 'arc', start: 'a', end: 'b', through: 'p', construction: false },
+      { id: 'guide', kind: 'arc', start: 'a', end: 'b', through: 'p', construction: true },
+      { id: 'flat', kind: 'arc', start: 'a', end: 'b', through: 'mid', construction: false },
+      { id: 'lost', kind: 'arc', start: 'a', end: 'b', through: 'missing', construction: false },
+    ]);
+    const wrapper = mountCanvas({ document: arcDoc });
+
+    const arcs = wrapper.findAll('[data-kind="arc"]');
+    expect(arcs).toHaveLength(2);
+
+    const cut = arcs.find((arc) => arc.attributes('data-entity-id') === 'arc')!;
+    expect(cut.attributes('fill')).toBe('none');
+    expect(cut.attributes('d')).toMatch(/^M .* A /);
+    expect(cut.attributes('stroke-dasharray')).toBeUndefined();
+
+    const guide = arcs.find((arc) => arc.attributes('data-entity-id') === 'guide')!;
+    expect(guide.attributes('stroke-dasharray')).toBe('4 4');
+
+    await cut.trigger('pointerenter');
+    await cut.trigger('pointerleave');
+    expect(cut.classes()).toContain('text-foreground');
+  });
+
+  it('ignores an arc as a dimension pick', () => {
+    const arcDoc = doc([
+      pt('a', 0, 0),
+      pt('b', 100, 0),
+      pt('p', 50, 50),
+      { id: 'arc', kind: 'arc', start: 'a', end: 'b', through: 'p', construction: false },
+    ]);
+    const wrapper = mountCanvas({ document: arcDoc, tool: 'dimension' });
+
+    down(wrapper.find('[data-kind="arc"]').element, 400, 300);
+
+    expect(wrapper.emitted('add-dimension')).toBeUndefined();
   });
 
   it('commits a circle between two existing points', async () => {

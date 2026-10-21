@@ -3,7 +3,7 @@
   "$id": "https://sewcraft.local/schemas/command-spec-0.8.json",
   "title": "SewCraft Command Spec",
   "schema": "sewcraft.command-spec/0.8",
-  "spec_version": "0.8.0",
+  "spec_version": "0.9.0",
   "units": "mm",
   "envelope": {
     "id": "ULID string, client-generated, unique",
@@ -38,6 +38,16 @@
         "p1": "entity_id",
         "p2": "entity_id",
         "p3": "entity_id",
+        "construction": "bool?"
+      },
+      "inverse": "delete_entity"
+    },
+    "add_arc": {
+      "description": "Create a circular arc through three points: start, end and a point on the arc.",
+      "params": {
+        "start": "entity_id",
+        "end": "entity_id",
+        "through": "entity_id",
         "construction": "bool?"
       },
       "inverse": "delete_entity"
