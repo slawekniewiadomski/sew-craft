@@ -234,8 +234,9 @@ Create a circular arc through three existing points. `construction` defaults to
 - **Click feedback:** after click 1 a provisional start marker and a rubber-band
   chord; after click 2 the dashed arc preview follows the pointer, drawn from
   `arcGeometry` so the committed result matches exactly.
-- **Hint:** a collinear or repeated third click is ignored and the prompt bar shows
-  "pick a point off the line" until the pointer leaves the chord.
+- **Hint:** a collinear or repeated third click is ignored and a canvas-local
+  status overlay (`role="status"`, test id `arc-hint`) shows "pick a point off the
+  line" until the pointer leaves the chord.
 - **Commit feedback:** arc and any new points appear together; the tool stays
   active; the pending state clears.
 - **Selected state:** primary-colour stroke, thickened; construction arcs dashed and
