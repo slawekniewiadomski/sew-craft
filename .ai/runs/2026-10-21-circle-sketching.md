@@ -60,10 +60,10 @@ renders and exports it as one SVG circle.
 
 ### Phase 2: Geometry core
 
-- [ ] 2.1 Add `CircleEntity`, `circle.ts` helpers, `entityPoints` and tests
-- [ ] 2.2 Add `add_circle` validation, idempotence and inverse with tests
-- [ ] 2.3 Extend `bounds`, `cutEdges` and `entitiesInRect` with tests
-- [ ] 2.4 Render circles in SVG and guard offset/seam allowance with tests
+- [x] 2.1 Add `CircleEntity`, `circle.ts` helpers, `entityPoints` and tests — 5f746b8
+- [x] 2.2 Add `add_circle` validation, idempotence and inverse with tests — 5f746b8
+- [x] 2.3 Extend `bounds`, `cutEdges` and `entitiesInRect` with tests — 5f746b8
+- [x] 2.4 Render circles in SVG and guard offset/seam allowance with tests — 5f746b8
 
 ### Phase 3: Command contract
 
