@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.6.0',
+    'spec_version' => '0.7.0',
 
     /*
     |--------------------------------------------------------------------------
@@ -147,6 +147,30 @@ return [
                 'side' => 'left|right?',
             ],
             'inverse' => 'set_seam_allowance',
+        ],
+        'add_corner_round' => [
+            'description' => 'Round a corner between two lines, trimming both to a tangent arc while keeping the sharp corner as construction geometry.',
+            'params' => [
+                'first' => 'entity_id',
+                'second' => 'entity_id',
+                'radius' => 'number',
+            ],
+            'inverse' => 'remove_corner_round',
+        ],
+        'set_corner_round_radius' => [
+            'description' => 'Change the radius of a corner round and regenerate its tangent points and arc.',
+            'params' => [
+                'id' => 'entity_id',
+                'radius' => 'number',
+            ],
+            'inverse' => 'set_corner_round_radius',
+        ],
+        'remove_corner_round' => [
+            'description' => 'Restore a rounded corner: delete the arc and derived points and return both lines to the sharp corner.',
+            'params' => [
+                'id' => 'entity_id',
+            ],
+            'inverse' => 'add_corner_round',
         ],
         'solve' => [
             'description' => 'Rebuild the sketch by running the constraint solver.',
