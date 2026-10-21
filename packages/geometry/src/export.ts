@@ -1,6 +1,8 @@
+import { circleGeometry } from './circle.js';
 import { bounds, getEntity } from './document.js';
 import {
   PATTERN_SCHEMA,
+  type CircleEntity,
   type CurveEntity,
   type EntityId,
   type LineEntity,
@@ -92,7 +94,14 @@ function curveElement(document: PatternDocument, curve: CurveEntity): string | n
   return `<path d="${d}"${entityAttr(curve.id)} />`;
 }
 
-/** Split the document's line and curve entities into cut and construction layers. */
+function circleElement(document: PatternDocument, circle: CircleEntity): string | null {
+  const geometry = circleGeometry(document, circle);
+  if (geometry === null) return null;
+
+  return `<circle cx="${formatNumber(geometry.center.x)}" cy="${formatNumber(geometry.center.y)}" r="${formatNumber(geometry.radius)}"${entityAttr(circle.id)} data-kind="circle" />`;
+}
+
+/** Split the document's line, curve and circle entities into cut and construction layers. */
 function renderEntities(document: PatternDocument): { cut: string[]; construction: string[] } {
   const cut: string[] = [];
   const construction: string[] = [];
@@ -101,7 +110,11 @@ function renderEntities(document: PatternDocument): { cut: string[]; constructio
     if (entity.kind === 'point') continue;
 
     const element =
-      entity.kind === 'line' ? lineElement(document, entity) : curveElement(document, entity);
+      entity.kind === 'line'
+        ? lineElement(document, entity)
+        : entity.kind === 'circle'
+          ? circleElement(document, entity)
+          : curveElement(document, entity);
     if (element === null) continue;
 
     (entity.construction ? construction : cut).push(element);

@@ -2,6 +2,7 @@ import type * as Geometry from '@sewcraft/geometry';
 import {
   bounds,
   createEmptyDocument,
+  type CircleEntity,
   type CurveEntity,
   type Entity,
   type EntityId,
@@ -80,6 +81,10 @@ function doc(entities: Entity[]): PatternDocument {
   return { ...createEmptyDocument(), entities };
 }
 
+function ci(id: string, center: string, rim: string, construction = false): CircleEntity {
+  return { id, kind: 'circle', center, rim, construction };
+}
+
 const baseDoc = doc([
   pt('a', 0, 0),
   pt('b', 100, 0),
@@ -123,7 +128,14 @@ beforeEach(() => {
 function mountCanvas(
   overrides: Partial<{
     document: PatternDocument;
-    tool: 'select' | 'add_point' | 'add_line' | 'add_curve' | 'dimension' | 'add_allowance';
+    tool:
+      | 'select'
+      | 'add_point'
+      | 'add_line'
+      | 'add_curve'
+      | 'add_circle'
+      | 'dimension'
+      | 'add_allowance';
     selectedEntityIds: EntityId[];
     fitToken: number;
     showSeamAllowance: boolean;
@@ -213,6 +225,41 @@ describe('PatternCanvas', () => {
     expect(wrapper.find('[data-testid="grid"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="ruler-x"]').attributes('width')).toBe('800');
     expect(wrapper.find('[data-testid="ruler-y"]').attributes('height')).toBe('600');
+  });
+
+  it('renders a committed circle as a stroke-only element', () => {
+    const wrapper = mountCanvas({
+      document: doc([pt('a', 0, 0), pt('c', 100, 0), ci('k1', 'a', 'c')]),
+    });
+
+    const circle = wrapper.find('[data-kind="circle"][data-entity-id="k1"]');
+    expect(circle.exists()).toBe(true);
+    expect(circle.attributes('fill')).toBe('none');
+    expect(circle.attributes('cx')).toBe('0');
+    expect(circle.attributes('cy')).toBe('0');
+    expect(circle.attributes('r')).toBe('100');
+  });
+
+  it('highlights a selected circle and dashes a construction circle', () => {
+    const wrapper = mountCanvas({
+      document: doc([pt('a', 0, 0), pt('c', 100, 0), ci('k1', 'a', 'c'), ci('k2', 'a', 'c', true)]),
+      selectedEntityIds: ['k1'],
+    });
+
+    const cut = wrapper.find('[data-kind="circle"][data-entity-id="k1"]');
+    expect(cut.classes()).toContain('text-primary');
+    expect(cut.attributes('stroke-width')).toBe('3');
+
+    const guide = wrapper.find('[data-kind="circle"][data-entity-id="k2"]');
+    expect(guide.attributes('stroke-dasharray')).toBe('4 4');
+  });
+
+  it('skips a circle with a degenerate radius or a dangling reference', () => {
+    const wrapper = mountCanvas({
+      document: doc([pt('a', 0, 0), ci('zero', 'a', 'a'), ci('dangling', 'a', 'gone')]),
+    });
+
+    expect(wrapper.find('[data-kind="circle"]').exists()).toBe(false);
   });
 
   it('renders a dashed seam-allowance offset for a seam', () => {
@@ -960,6 +1007,132 @@ describe('PatternCanvas', () => {
     await nextTick();
 
     expect(wrapper.find('[data-testid="line-preview"]').exists()).toBe(false);
+  });
+
+  it('commits a circle between two existing points', async () => {
+    const wrapper = mountCanvas({ tool: 'add_circle' });
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    expect(wrapper.emitted('add-circle')).toBeUndefined();
+    await nextTick();
+    expect(pointCircle(wrapper, 'a').classes()).toContain('fill-accent');
+
+    down(pointCircle(wrapper, 'c').element, 400, 300);
+    expect(wrapper.emitted('add-circle')).toEqual([
+      [
+        { kind: 'point', id: 'a' },
+        { kind: 'point', id: 'c' },
+      ],
+    ]);
+  });
+
+  it('creates the centre and rim for an empty-canvas circle', async () => {
+    const wrapper = mountCanvas({ tool: 'add_circle' });
+    const center = snappedAt(600, 400);
+    const rim = snappedAt(300, 500);
+
+    down(wrapper.find('[data-testid="grid"]').element, 600, 400);
+    await nextTick();
+    expect(wrapper.find('[data-testid="circle-pending-center"]').exists()).toBe(true);
+
+    down(wrapper.find('[data-testid="grid"]').element, 300, 500);
+    expect(wrapper.emitted('add-circle')).toEqual([
+      [
+        { kind: 'new', x: center.x, y: center.y },
+        { kind: 'new', x: rim.x, y: rim.y },
+      ],
+    ]);
+    await nextTick();
+    expect(wrapper.find('[data-testid="circle-pending-center"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="circle-preview"]').exists()).toBe(false);
+  });
+
+  it('previews a dashed circle from the pending centre to the snapped pointer', async () => {
+    const wrapper = mountCanvas({ tool: 'add_circle' });
+    const center = snappedAt(600, 400);
+    const target = snappedAt(700, 500);
+
+    down(wrapper.find('[data-testid="grid"]').element, 600, 400);
+    await nextTick();
+    pointerMove(wrapper, 700, 500);
+    await nextTick();
+
+    const preview = wrapper.find('[data-testid="circle-preview"]');
+    expect(preview.exists()).toBe(true);
+    expect(preview.attributes('cx')).toBe(String(center.x));
+    expect(preview.attributes('cy')).toBe(String(center.y));
+    expect(preview.attributes('r')).toBe(
+      String(Math.hypot(target.x - center.x, target.y - center.y)),
+    );
+    expect(preview.attributes('stroke-dasharray')).toBe('4 4');
+  });
+
+  it('previews from an existing point without a provisional marker', async () => {
+    const wrapper = mountCanvas({ tool: 'add_circle' });
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    await nextTick();
+    expect(wrapper.find('[data-testid="circle-pending-center"]').exists()).toBe(false);
+
+    pointerMove(wrapper, 700, 500);
+    await nextTick();
+
+    const preview = wrapper.find('[data-testid="circle-preview"]');
+    expect(preview.exists()).toBe(true);
+    expect(preview.attributes('cx')).toBe('0');
+    expect(preview.attributes('cy')).toBe('0');
+  });
+
+  it('ignores a second click on the centre or the same coordinate', () => {
+    const wrapper = mountCanvas({ tool: 'add_circle' });
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    expect(wrapper.emitted('add-circle')).toBeUndefined();
+
+    down(pointCircle(wrapper, 'c').element, 400, 300);
+    expect(wrapper.emitted('add-circle')).toEqual([
+      [
+        { kind: 'point', id: 'a' },
+        { kind: 'point', id: 'c' },
+      ],
+    ]);
+
+    const grid = wrapper.find('[data-testid="grid"]').element;
+    down(grid, 600, 400);
+    down(grid, 600, 400);
+    expect(wrapper.emitted('add-circle')).toHaveLength(1);
+  });
+
+  it('clears the pending circle when the tool changes', async () => {
+    const wrapper = mountCanvas({ tool: 'add_circle' });
+
+    down(wrapper.find('[data-testid="grid"]').element, 600, 400);
+    await nextTick();
+    pointerMove(wrapper, 700, 500);
+    await nextTick();
+    expect(wrapper.find('[data-testid="circle-pending-center"]').exists()).toBe(true);
+
+    wrapper.setProps({ tool: 'select' });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="circle-pending-center"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="circle-preview"]').exists()).toBe(false);
+  });
+
+  it('clears a pending circle centre when that point disappears', async () => {
+    const wrapper = mountCanvas({ tool: 'add_circle' });
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    await nextTick();
+    expect(pointCircle(wrapper, 'a').classes()).toContain('fill-accent');
+
+    wrapper.setProps({ document: doc([pt('b', 100, 0), pt('c', 100, 100)]) });
+    await nextTick();
+    pointerMove(wrapper, 700, 500);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="circle-preview"]').exists()).toBe(false);
   });
 
   it('ignores a repeated point when collecting a curve', () => {

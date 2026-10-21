@@ -1,5 +1,6 @@
 import {
   PATTERN_SCHEMA,
+  type CircleEntity,
   type Constraint,
   type CornerRound,
   type CurveEntity,
@@ -54,13 +55,14 @@ export function allPoints(document: PatternDocument): PointEntity[] {
 }
 
 /**
- * Every line or curve that is part of the cut pattern, in document order.
- * Construction entities are guides and are never cut or exported, so exports
- * and the cut-edge layer both derive their contents from this selector.
+ * Every line, curve or circle that is part of the cut pattern, in document
+ * order. Construction entities are guides and are never cut or exported, so
+ * exports and the cut-edge layer both derive their contents from this selector.
  */
-export function cutEdges(document: PatternDocument): (LineEntity | CurveEntity)[] {
+export function cutEdges(document: PatternDocument): (LineEntity | CurveEntity | CircleEntity)[] {
   return document.entities.filter(
-    (entity): entity is LineEntity | CurveEntity => entity.kind !== 'point' && !entity.construction,
+    (entity): entity is LineEntity | CurveEntity | CircleEntity =>
+      entity.kind !== 'point' && !entity.construction,
   );
 }
 
@@ -96,7 +98,9 @@ export function entityPoints(document: PatternDocument, entity: Entity): PointEn
   const ids: EntityId[] =
     entity.kind === 'line'
       ? [entity.start, entity.end]
-      : [entity.p0, entity.p1, entity.p2, entity.p3];
+      : entity.kind === 'circle'
+        ? [entity.center, entity.rim]
+        : [entity.p0, entity.p1, entity.p2, entity.p3];
 
   return ids.map((id) => {
     const referenced = getEntity(document, id);
@@ -109,7 +113,8 @@ export function entityPoints(document: PatternDocument, entity: Entity): PointEn
 
 /**
  * Axis-aligned bounding box of every point in the document, including
- * construction points. Returns `null` when the document has no points.
+ * construction points, widened by each circle's radius. Returns `null` when the
+ * document has no points.
  */
 export function bounds(document: PatternDocument): Bounds | null {
   const points = allPoints(document);
@@ -127,6 +132,23 @@ export function bounds(document: PatternDocument): Bounds | null {
     if (point.y < minY) minY = point.y;
     if (point.x > maxX) maxX = point.x;
     if (point.y > maxY) maxY = point.y;
+  }
+
+  // A circle extends one radius beyond its centre in every direction, which is
+  // not covered by its centre and rim points alone.
+  for (const entity of document.entities) {
+    if (entity.kind !== 'circle') continue;
+    const center = getEntity(document, entity.center);
+    const rim = getEntity(document, entity.rim);
+    if (center?.kind !== 'point' || rim?.kind !== 'point') continue;
+
+    const radius = Math.hypot(rim.x - center.x, rim.y - center.y);
+    if (!Number.isFinite(radius)) continue;
+
+    minX = Math.min(minX, center.x - radius);
+    minY = Math.min(minY, center.y - radius);
+    maxX = Math.max(maxX, center.x + radius);
+    maxY = Math.max(maxY, center.y + radius);
   }
 
   return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };

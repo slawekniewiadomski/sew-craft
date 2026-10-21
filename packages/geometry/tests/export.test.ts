@@ -5,6 +5,7 @@ import {
   createEmptyDocument,
   PATTERN_SCHEMA,
   toSvg,
+  type CircleEntity,
   type CurveEntity,
   type Entity,
   type LineEntity,
@@ -56,6 +57,19 @@ const curve = (
 const documentOf = (entities: Entity[]): PatternDocument => ({
   ...createEmptyDocument(),
   entities,
+});
+
+const circle = (
+  id: string,
+  center: string,
+  rim: string,
+  options: { construction?: boolean } = {},
+): CircleEntity => ({
+  id,
+  kind: 'circle',
+  center,
+  rim,
+  construction: options.construction ?? false,
 });
 
 const square = (): PatternDocument =>
@@ -143,6 +157,48 @@ describe('toSvg', () => {
     );
 
     expect(svg).toContain('<path d="M 0 0 C 10 20 30 20 40 0" data-entity-id="c" />');
+  });
+
+  it('renders a cut circle as a true SVG circle', () => {
+    const svg = toSvg(documentOf([point('c', 10, 20), point('r', 13, 24), circle('c1', 'c', 'r')]));
+
+    expect(svg).toContain(
+      '<circle cx="10" cy="20" r="5" data-entity-id="c1" data-kind="circle" />',
+    );
+  });
+
+  it('renders a construction circle in the construction layer', () => {
+    const svg = toSvg(
+      documentOf([
+        point('c', 0, 0),
+        point('r', 0, 10),
+        circle('guide', 'c', 'r', { construction: true }),
+      ]),
+      { construction: true },
+    );
+
+    expect(svg).toContain('<g data-layer="construction"');
+    expect(svg).toContain('data-entity-id="guide"');
+    expect(svg.indexOf('<g data-layer="construction"')).toBeLessThan(
+      svg.indexOf('data-entity-id="guide"'),
+    );
+  });
+
+  it('skips a degenerate or unresolvable circle', () => {
+    const svg = toSvg(
+      documentOf([
+        point('c', 0, 0),
+        point('r', 0, 0),
+        circle('degenerate', 'c', 'r'),
+        circle('dangling', 'c', 'missing'),
+        circle('huge', 'c', 'big'),
+        point('big', Number.MAX_VALUE, Number.MAX_VALUE),
+      ]),
+    );
+
+    expect(svg).not.toContain('data-entity-id="degenerate"');
+    expect(svg).not.toContain('data-entity-id="dangling"');
+    expect(svg).not.toContain('data-entity-id="huge"');
   });
 
   it('skips entities whose referenced points are missing or not points', () => {

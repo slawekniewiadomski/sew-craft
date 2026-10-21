@@ -12,6 +12,7 @@ import { nextTick } from 'vue';
 
 import PatternCanvas from '@/components/PatternCanvas.vue';
 import CornerRoundPromptBar from '@/components/CornerRoundPromptBar.vue';
+import EntityPropertiesPanel from '@/components/EntityPropertiesPanel.vue';
 import { downloadSvgFile } from '@/lib/download';
 import { useEditorStore } from '@/stores/editor';
 
@@ -69,7 +70,7 @@ function canvasUp(): void {
 
 function entityDown(
   wrapper: VueWrapper,
-  kind: 'point' | 'line' | 'curve',
+  kind: 'point' | 'line' | 'curve' | 'circle',
   id: EntityId,
   init: MouseEventInit = {},
 ): void {
@@ -108,6 +109,16 @@ const simpleDoc: PatternDocument = {
     { id: 'q', kind: 'point', x: 50, y: 0, construction: false, fixed: false },
     { id: 'r', kind: 'point', x: 50, y: 50, construction: false, fixed: false },
     { id: 's', kind: 'point', x: 0, y: 50, construction: false, fixed: false },
+  ],
+};
+
+/** A circle of radius 100 centred on `a`, its rim on `c`. */
+const circleDoc: PatternDocument = {
+  ...createEmptyDocument(),
+  entities: [
+    { id: 'a', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+    { id: 'c', kind: 'point', x: 100, y: 0, construction: false, fixed: false },
+    { id: 'k1', kind: 'circle', center: 'a', rim: 'c', construction: false },
   ],
 };
 
@@ -385,6 +396,152 @@ describe('EditorView', () => {
     pointDown(wrapper, 's');
     await flushPromises();
     expect(wrapper.findAll('[data-kind="curve"]')).toHaveLength(1);
+  });
+
+  it('draws a circle through the canvas tool and undoes it in one step', async () => {
+    const { wrapper, store } = await mountLoaded(simpleDoc);
+
+    await wrapper.find('[data-testid="tool-add_circle"]').trigger('click');
+    pointDown(wrapper, 'p');
+    pointDown(wrapper, 'q');
+    await flushPromises();
+
+    const circle = store.document.entities.find((entity) => entity.kind === 'circle');
+    expect(circle).toMatchObject({ kind: 'circle', center: 'p', rim: 'q' });
+    expect(store.journal).toHaveLength(1);
+
+    store.undo();
+    await nextTick();
+    expect(store.document.entities.some((entity) => entity.kind === 'circle')).toBe(false);
+  });
+
+  it('draws a circle in empty space as one undoable gesture', async () => {
+    const { wrapper, store } = await mountLoaded(simpleDoc);
+    const before = store.document.entities.length;
+
+    await wrapper.find('[data-testid="tool-add_circle"]').trigger('click');
+    canvasDown(wrapper, 700, 500);
+    await nextTick();
+    expect(wrapper.find('[data-testid="circle-pending-center"]').exists()).toBe(true);
+
+    canvasDown(wrapper, 300, 200);
+    await flushPromises();
+
+    expect(store.document.entities).toHaveLength(before + 3);
+    expect(store.journal).toHaveLength(1);
+    expect(store.document.entities.filter((entity) => entity.kind === 'circle')).toHaveLength(1);
+
+    store.undo();
+    await nextTick();
+
+    expect(store.document.entities).toHaveLength(before);
+    expect(store.journal).toHaveLength(0);
+    expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Circle');
+  });
+
+  it('edits a circle radius from the inspector by moving the rim', async () => {
+    const { wrapper, store } = await mountLoaded(circleDoc);
+
+    entityDown(wrapper, 'circle', 'k1');
+    await nextTick();
+
+    const input = wrapper.find('[data-testid="entity-circle-radius"]');
+    expect((input.element as HTMLInputElement).value).toBe('100');
+
+    await input.setValue('50');
+    await flushPromises();
+
+    expect(store.journal.at(-1)!.command).toMatchObject({
+      type: 'move_point',
+      params: { id: 'c', x: 50, y: 0 },
+    });
+    const rim = store.document.entities.find((entity) => entity.id === 'c');
+    expect(rim).toMatchObject({ x: 50, y: 0 });
+  });
+
+  it('updates a driving centre-rim dimension when editing a circle radius', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...circleDoc,
+      constraints: [{ id: 'd1', type: 'distance', a: 'a', b: 'c', value: 100 }],
+    });
+
+    entityDown(wrapper, 'circle', 'k1');
+    await nextTick();
+
+    await wrapper.find('[data-testid="entity-circle-radius"]').setValue('30');
+    await flushPromises();
+
+    expect(store.journal.at(-1)!.command).toMatchObject({
+      type: 'update_constraint',
+      params: { id: 'd1', value: 30 },
+    });
+  });
+
+  it('moves the rim for a driven centre-rim dimension', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...circleDoc,
+      constraints: [{ id: 'd1', type: 'distance', a: 'a', b: 'c' }],
+    });
+
+    entityDown(wrapper, 'circle', 'k1');
+    await nextTick();
+
+    await wrapper.find('[data-testid="entity-circle-radius"]').setValue('25');
+    await flushPromises();
+
+    expect(store.journal.at(-1)!.command).toMatchObject({
+      type: 'move_point',
+      params: { id: 'c', x: 25, y: 0 },
+    });
+  });
+
+  it('places the rim due east when editing a collapsed circle radius', async () => {
+    const { wrapper, store } = await mountLoaded(circleDoc);
+
+    entityDown(wrapper, 'circle', 'k1');
+    await nextTick();
+
+    store.dispatch({ id: 'collapse', type: 'move_point', params: { id: 'c', x: 0, y: 0 } });
+    await nextTick();
+
+    await wrapper.find('[data-testid="entity-circle-radius"]').setValue('25');
+    await flushPromises();
+
+    expect(store.journal.at(-1)!.command).toMatchObject({
+      type: 'move_point',
+      params: { id: 'c', x: 25, y: 0 },
+    });
+  });
+
+  it('ignores a circle radius edit when a referenced point is missing', async () => {
+    const { wrapper, store } = await mountLoaded(circleDoc);
+
+    entityDown(wrapper, 'circle', 'k1');
+    await nextTick();
+
+    store.dispatch({ id: 'drop-rim', type: 'delete_entity', params: { id: 'c' } });
+    await nextTick();
+    const journal = store.journal.length;
+
+    const panel = wrapper.findComponent(EntityPropertiesPanel);
+    panel.vm.$emit('set-circle-radius', 'k1', 50);
+    await flushPromises();
+
+    expect(store.journal).toHaveLength(journal);
+  });
+
+  it('ignores a circle radius edit for a missing or non-circle entity', async () => {
+    const { wrapper, store } = await mountLoaded(circleDoc);
+
+    entityDown(wrapper, 'circle', 'k1');
+    await nextTick();
+
+    const panel = wrapper.findComponent(EntityPropertiesPanel);
+    panel.vm.$emit('set-circle-radius', 'missing', 50);
+    panel.vm.$emit('set-circle-radius', 'a', 50);
+    await flushPromises();
+
+    expect(store.journal).toHaveLength(0);
   });
 
   it('draws a line in empty space as one undoable gesture', async () => {

@@ -8,6 +8,7 @@ import {
   measureLinearDimension,
   seamForEdge,
   seamSide,
+  type CircleEntity,
   type Constraint,
   type ConstraintType,
   type DimensionOrientation,
@@ -35,7 +36,10 @@ export type CurveGeometry = {
   p3: EntityId;
 };
 
-export type EntityGeometry = PointGeometry | LineGeometry | CurveGeometry;
+/** Geometry a circle contributes to the inspector. */
+export type CircleGeometry = { kind: 'circle'; center: EntityId; rim: EntityId };
+
+export type EntityGeometry = PointGeometry | LineGeometry | CurveGeometry | CircleGeometry;
 
 /** A dimension that acts on the selected entity. */
 export type DimensionSummary = {
@@ -78,6 +82,8 @@ export type EntityProperties = {
   geometry: EntityGeometry;
   /** Measured length in millimetres for lines only. */
   length: number | null;
+  /** Derived radius in millimetres for circles only. */
+  radius: number | null;
   seam: { id: EntityId; width: number; side: SeamSide } | null;
   /** Rounds that reference the selected line or arc. */
   rounds: CornerRoundSummary[];
@@ -93,7 +99,23 @@ function geometryOf(entity: Entity): EntityGeometry {
       return { kind: 'line', start: entity.start, end: entity.end };
     case 'curve':
       return { kind: 'curve', p0: entity.p0, p1: entity.p1, p2: entity.p2, p3: entity.p3 };
+    case 'circle':
+      return { kind: 'circle', center: entity.center, rim: entity.rim };
   }
+}
+
+/**
+ * The circle's derived radius in millimetres, or `null` when a referenced point
+ * is missing or is not a point. Unlike `circleGeometry`, a collapsed circle
+ * still reports its (near-)zero radius so the inspector can show it.
+ */
+function circleRadius(document: PatternDocument, circle: CircleEntity): number | null {
+  const center = getEntity(document, circle.center);
+  const rim = getEntity(document, circle.rim);
+  if (center?.kind !== 'point' || rim?.kind !== 'point') return null;
+
+  const radius = Math.hypot(rim.x - center.x, rim.y - center.y);
+  return Number.isFinite(radius) ? radius : null;
 }
 
 /** Order-insensitive endpoint comparison: `{a,b}` equals `{s,e}`. */
@@ -116,6 +138,11 @@ function constraintActsOnEntity(constraint: Constraint, entity: Entity): boolean
   if (entity.kind === 'curve') {
     const controlPoints = [entity.p0, entity.p1, entity.p2, entity.p3];
     return constraintEntityIds(constraint).some((id) => controlPoints.includes(id));
+  }
+
+  if (entity.kind === 'circle') {
+    const referencePoints = [entity.center, entity.rim];
+    return constraintEntityIds(constraint).some((id) => referencePoints.includes(id));
   }
 
   switch (constraint.type) {
@@ -210,6 +237,7 @@ export function entityProperties(
       entity.kind === 'line'
         ? measureLinearDimension(document, entity.start, entity.end, 'aligned')
         : null,
+    radius: entity.kind === 'circle' ? circleRadius(document, entity) : null,
     seam: seam === undefined ? null : { id: seam.id, width: seam.width, side: seamSide(seam) },
     rounds,
     dimensions,

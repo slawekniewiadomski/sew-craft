@@ -1,3 +1,4 @@
+import { MIN_RADIUS } from './circle.js';
 import { allPoints } from './document.js';
 import type { EntityId, PatternDocument, PointEntity } from './types.js';
 
@@ -134,6 +135,33 @@ export function entitiesInRect(document: PatternDocument, rect: Rect, mode: Rect
   for (const entity of document.entities) {
     if (entity.kind === 'point') {
       if (pointInRect(entity, rect)) hits.push(entity.id);
+      continue;
+    }
+
+    if (entity.kind === 'circle') {
+      const center = points.get(entity.center);
+      const rim = points.get(entity.rim);
+      if (center === undefined || rim === undefined) continue;
+
+      const radius = Math.hypot(rim.x - center.x, rim.y - center.y);
+      if (!Number.isFinite(radius) || radius < MIN_RADIUS) continue;
+      const box = {
+        minX: center.x - radius,
+        minY: center.y - radius,
+        maxX: center.x + radius,
+        maxY: center.y + radius,
+      };
+      const hit =
+        mode === 'window'
+          ? box.minX >= rect.minX &&
+            box.maxX <= rect.maxX &&
+            box.minY >= rect.minY &&
+            box.maxY <= rect.maxY
+          : box.minX <= rect.maxX &&
+            box.maxX >= rect.minX &&
+            box.minY <= rect.maxY &&
+            box.maxY >= rect.minY;
+      if (hit) hits.push(entity.id);
       continue;
     }
 

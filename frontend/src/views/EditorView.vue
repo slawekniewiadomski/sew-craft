@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  circleGeometry,
   constraintEntityIds,
   constraintOffset,
   constraintOrientation,
@@ -38,6 +39,7 @@ import SelectionSummary from '@/components/SelectionSummary.vue';
 import { Button } from '@/components/ui/button';
 import { useCommandBus } from '@/composables/use-command-bus';
 import { useSidebarLayout } from '@/composables/use-sidebar-layout';
+import { buildCircleCommands, type CircleEndpoint } from '@/lib/circle-tool';
 import { nextCommandId } from '@/lib/command-ids';
 import {
   applyConstraintPick,
@@ -450,6 +452,11 @@ function onAddLine(start: LineEndpoint, end: LineEndpoint): void {
   run(() => dispatchGroup(buildLineCommands(start, end, nextCommandId)));
 }
 
+/** One gesture: new endpoints become points, then the circle, as a single entry. */
+function onAddCircle(center: CircleEndpoint, rim: CircleEndpoint): void {
+  run(() => dispatchGroup(buildCircleCommands(center, rim, nextCommandId)));
+}
+
 function onAddCurve(points: [EntityId, EntityId, EntityId, EntityId]): void {
   run(() =>
     dispatch({
@@ -688,6 +695,40 @@ function setCornerRoundRadius(id: EntityId, radius: number): void {
   );
 }
 
+/**
+ * Edit a circle's radius. A driving centre↔rim dimension is updated in place so
+ * the solver stays authoritative; otherwise the rim point moves along the
+ * current centre→rim direction, keeping the centre fixed. A collapsed circle has
+ * no direction, so its rim is placed due east; a dangling circle is left
+ * untouched.
+ */
+function onSetCircleRadius(id: EntityId, radius: number): void {
+  const entity = getEntity(pattern.value, id);
+  if (entity === undefined || entity.kind !== 'circle') return;
+
+  const dimension = findDistanceConstraint(pattern.value, entity.center, entity.rim);
+  if (dimension !== undefined && dimension.value !== undefined) {
+    onUpdateDimension(dimension.id, { value: radius });
+    return;
+  }
+
+  const geometry = circleGeometry(pattern.value, entity);
+  if (geometry === null) {
+    const center = getEntity(pattern.value, entity.center);
+    const rim = getEntity(pattern.value, entity.rim);
+    if (center?.kind !== 'point' || rim?.kind !== 'point') return;
+    onMovePoint(entity.rim, center.x + radius, center.y);
+    return;
+  }
+
+  const { center, rim, radius: current } = geometry;
+  onMovePoint(
+    entity.rim,
+    center.x + ((rim.x - center.x) / current) * radius,
+    center.y + ((rim.y - center.y) / current) * radius,
+  );
+}
+
 function removeCornerRound(id: EntityId): void {
   run(() =>
     dispatch({
@@ -865,6 +906,7 @@ onBeforeUnmount(() => {
           @add-point="onAddPoint"
           @add-line="onAddLine"
           @add-curve="onAddCurve"
+          @add-circle="onAddCircle"
           @constraint-pick="onConstraintPick"
           @round-corner-pick="onRoundCornerPick"
           @set-corner-round-radius="setCornerRoundRadius"
@@ -904,6 +946,7 @@ onBeforeUnmount(() => {
             @remove-constraint="removeConstraint"
             @set-corner-round-radius="setCornerRoundRadius"
             @remove-corner-round="removeCornerRound"
+            @set-circle-radius="onSetCircleRadius"
           />
 
           <section

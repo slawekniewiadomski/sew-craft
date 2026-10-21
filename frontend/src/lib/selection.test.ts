@@ -1,5 +1,6 @@
 import {
   createEmptyDocument,
+  type CircleEntity,
   type CurveEntity,
   type Entity,
   type LineEntity,
@@ -42,6 +43,10 @@ function cv(
 
 function doc(entities: Entity[]): PatternDocument {
   return { ...createEmptyDocument(), entities };
+}
+
+function ci(id: string, center: string, rim: string, construction = false): CircleEntity {
+  return { id, kind: 'circle', center, rim, construction };
 }
 
 const modifiers = (overrides: Partial<Record<string, boolean>> = {}) => ({
@@ -110,16 +115,18 @@ describe('orphanedEdges', () => {
     pt('d'),
     ln('ab', 'a', 'b'),
     cv('curve', ['a', 'b', 'c', 'd']),
+    ci('ring', 'a', 'd'),
     ln('guide', 'c', 'd', true),
     ln('other', 'b', 'c'),
   ]);
 
   it('names each unselected edge that depends on a selected point', () => {
-    expect(orphanedEdges(document, ['a', 'c'])).toEqual(['ab', 'curve', 'guide', 'other']);
+    expect(orphanedEdges(document, ['a', 'c'])).toEqual(['ab', 'curve', 'ring', 'guide', 'other']);
   });
 
   it('does not report an edge that is selected with its point', () => {
-    expect(orphanedEdges(document, ['a', 'ab'])).toEqual(['curve']);
+    expect(orphanedEdges(document, ['a', 'ab'])).toEqual(['curve', 'ring']);
+    expect(orphanedEdges(document, ['d', 'ring'])).toEqual(['curve', 'guide']);
   });
 
   it('reports nothing for an edge-only or empty selection', () => {
