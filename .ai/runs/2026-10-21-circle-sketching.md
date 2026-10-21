@@ -67,7 +67,7 @@ renders and exports it as one SVG circle.
 
 ### Phase 3: Command contract
 
-- [ ] 3.1 Add the command to `config/geometry.php`, bump `spec_version`, sync docs and backend test
+- [x] 3.1 Add the command to `config/geometry.php`, bump `spec_version`, sync docs and backend test — 0286a6b
 
 ### Phase 4: Canvas interaction
 
