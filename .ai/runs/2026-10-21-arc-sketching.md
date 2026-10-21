@@ -73,7 +73,7 @@ through three points and the pattern renders and exports it as one SVG `A` comma
 
 ### Phase 3: Command contract
 
-- [ ] 3.1 Add the command to `config/geometry.php`, bump `spec_version`, sync docs and backend test
+- [x] 3.1 Add the command to `config/geometry.php`, bump `spec_version`, sync docs and backend test — 9e220fa
 
 ### Phase 4: Canvas interaction
 
