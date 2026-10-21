@@ -175,6 +175,7 @@ interface CornerRoundHandleView {
 
 /** The `R 12` label of a selected round, positioned in screen space. */
 interface CornerRoundLabelView extends CornerRoundLabel {
+  round: CornerRound;
   screenX: number;
   screenY: number;
 }
@@ -374,6 +375,7 @@ const roundLabels = computed<CornerRoundLabelView[]>(() =>
     return [
       {
         ...label,
+        round,
         radius,
         text: `R ${text}`,
         accessible: `Corner radius ${text} millimetres`,
@@ -383,6 +385,13 @@ const roundLabels = computed<CornerRoundLabelView[]>(() =>
     ];
   }),
 );
+
+/** Rounds keyed by their arc, so a double-click on the arc can find its radius. */
+const roundsByArc = computed(() => {
+  const arcs = new Map<EntityId, CornerRound>();
+  for (const round of cornerRounds(props.document)) arcs.set(round.arc, round);
+  return arcs;
+});
 
 /** The dashed arc that follows a tangent-handle drag, before it is committed. */
 const tangentPreview = computed(() => {
@@ -1054,18 +1063,29 @@ function commitTangentDrag(): void {
   }
 }
 
-/** Double-click on `R 12` opens the same radius field as the inspector. */
-async function beginCornerRoundEdit(label: CornerRoundLabelView): Promise<void> {
+/** Open the inline radius field for a round, anchored at a screen position. */
+async function openCornerRoundEditor(round: CornerRound, x: number, y: number): Promise<void> {
   editingCornerRound.value = {
-    id: label.id,
-    value: formatCornerRadius(label.radius),
-    startRadius: label.radius,
-    x: label.screenX,
-    y: label.screenY,
+    id: round.id,
+    value: formatCornerRadius(round.radius),
+    startRadius: round.radius,
+    x,
+    y,
   };
   await nextTick();
   cornerRoundInput.value!.focus();
   cornerRoundInput.value!.select();
+}
+
+/** Double-clicking a rounded arc opens the same radius field as the `R` label. */
+function onCurveDoubleClick(id: EntityId, event: MouseEvent): void {
+  if (props.tool !== 'select' || props.constraintActive) return;
+
+  const round = roundsByArc.value.get(id);
+  if (round === undefined) return;
+
+  const point = screenPoint(event);
+  void openCornerRoundEditor(round, point.x, point.y);
 }
 
 function onCornerRoundEditInput(event: Event): void {
@@ -1090,7 +1110,10 @@ function applyCornerRoundEdit(): void {
 
 /** Blur: commit a valid edit and discard an invalid one. */
 function finishCornerRoundEdit(): void {
-  const editing = editingCornerRound.value!;
+  // Removing the focused input fires a final blur; there is nothing to commit.
+  if (editingCornerRound.value === null) return;
+
+  const editing = editingCornerRound.value;
   const radius = parseCornerRadius(editing.value);
   editingCornerRound.value = null;
   if (radius !== null && radius !== editing.startRadius) {
@@ -1623,6 +1646,7 @@ watch(
             data-kind="curve"
             @pointerenter="onEntityHover(entry.curve.id)"
             @pointerleave="onEntityLeave"
+            @dblclick.stop.prevent="onCurveDoubleClick(entry.curve.id, $event)"
           />
         </g>
 
@@ -1865,7 +1889,8 @@ watch(
           :transform="`translate(${label.screenX} ${label.screenY})`"
           role="img"
           :aria-label="label.accessible"
-          @dblclick.stop.prevent="beginCornerRoundEdit(label)"
+          @pointerdown.stop.prevent
+          @dblclick.stop.prevent="openCornerRoundEditor(label.round, label.screenX, label.screenY)"
         >
           <title>Double-click to edit the radius</title>
           <rect x="-18" y="-8" width="36" height="16" rx="2" class="fill-background" />

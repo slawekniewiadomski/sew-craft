@@ -696,7 +696,7 @@ option changed during implementation.
 - [x] Selecting two lines that meet at a corner and entering a radius creates a
       tangent arc and trims both lines to their tangent points.
 - [x] The radius remains editable from the Properties panel, by double-clicking
-      the `R` label, and by dragging a tangent handle.
+      the `R` label or the rounded arc, and by dragging a tangent handle.
 - [x] The original sharp corner is retained as a construction point and
       existing dimensions/constraints on it still drive the pattern.
 - [x] A line can carry one round at each end; all four corners of a rectangle can

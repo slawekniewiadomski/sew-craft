@@ -1921,6 +1921,70 @@ describe('PatternCanvas', () => {
     expect(wrapper.find('[data-testid="corner-round-editor"]').exists()).toBe(false);
   });
 
+  it('keeps the label press off the canvas, so the double-click still reaches the editor', async () => {
+    const wrapper = mountCanvas({ document: roundedSquare(), selectedEntityIds: ['ab'] });
+    const label = wrapper.find('[data-testid="corner-round-label-r1"]');
+
+    down(label.element, 100, 100);
+    expect(wrapper.emitted('marquee-change')).toBeUndefined();
+    expect(wrapper.find('[data-testid="corner-round-label-r1"]').exists()).toBe(true);
+
+    await label.trigger('dblclick');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="corner-round-editor"]').exists()).toBe(true);
+  });
+
+  it('opens the radius editor by double-clicking the rounded arc', async () => {
+    const wrapper = mountCanvas({ document: roundedSquare(), selectedEntityIds: ['r1:arc'] });
+
+    await wrapper.find('[data-kind="curve"][data-entity-id="r1:arc"]').trigger('dblclick', {
+      clientX: 300,
+      clientY: 200,
+    });
+    await flushPromises();
+
+    const input = wrapper.find('[data-testid="corner-round-editor"]');
+    expect(input.exists()).toBe(true);
+    expect((input.element as HTMLInputElement).value).toBe('10');
+    expect(input.attributes('style')).toContain('left: 300px');
+    expect(input.attributes('style')).toContain('top: 200px');
+
+    await input.setValue('12');
+    await input.trigger('keydown', { key: 'Enter' });
+    expect(wrapper.emitted('set-corner-round-radius')).toEqual([['r1', 12]]);
+
+    // Removing the focused input makes the browser fire a trailing blur.
+    await input.trigger('blur');
+    expect(wrapper.emitted('set-corner-round-radius')).toEqual([['r1', 12]]);
+  });
+
+  it('ignores a double-click on a curve that is not a rounded corner', async () => {
+    const wrapper = mountCanvas({ document: baseDoc });
+
+    await wrapper.find('[data-kind="curve"][data-entity-id="curve"]').trigger('dblclick', {
+      clientX: 100,
+      clientY: 100,
+    });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="corner-round-editor"]').exists()).toBe(false);
+  });
+
+  it('ignores an arc double-click while a tool or constraint is picking', async () => {
+    const document = roundedSquare();
+    const arc = '[data-kind="curve"][data-entity-id="r1:arc"]';
+    const drawing = mountCanvas({ document, tool: 'add_line' });
+    const constraining = mountCanvas({ document, constraintActive: true });
+
+    await drawing.find(arc).trigger('dblclick', { clientX: 300, clientY: 200 });
+    await constraining.find(arc).trigger('dblclick', { clientX: 300, clientY: 200 });
+    await flushPromises();
+
+    expect(drawing.find('[data-testid="corner-round-editor"]').exists()).toBe(false);
+    expect(constraining.find('[data-testid="corner-round-editor"]').exists()).toBe(false);
+  });
+
   it('closes the radius editor when the tool or document changes', async () => {
     const document = roundedSquare();
     const wrapper = mountCanvas({ document, selectedEntityIds: ['ab'] });
