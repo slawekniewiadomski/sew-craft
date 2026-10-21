@@ -253,6 +253,73 @@ describe('EditorView', () => {
     expect(wrapper.findAll('[data-kind="curve"]')).toHaveLength(1);
   });
 
+  it('draws a line in empty space as one undoable gesture', async () => {
+    const { wrapper, store } = await mountLoaded(simpleDoc);
+    const before = store.document.entities.length;
+    const journal = store.journal.length;
+
+    await wrapper.find('[data-testid="tool-add_line"]').trigger('click');
+    canvasDown(wrapper, 700, 500);
+    await nextTick();
+    expect(wrapper.find('[data-testid="line-pending-point"]').exists()).toBe(true);
+
+    canvasDown(wrapper, 300, 200);
+    await flushPromises();
+
+    expect(store.document.entities).toHaveLength(before + 3);
+    expect(store.journal).toHaveLength(journal + 1);
+    const lines = store.document.entities.filter((entity) => entity.kind === 'line');
+    expect(lines).toHaveLength(1);
+    expect(wrapper.find('[data-testid="line-pending-point"]').exists()).toBe(false);
+
+    store.undo();
+    await nextTick();
+
+    expect(store.document.entities).toHaveLength(before);
+    expect(store.journal).toHaveLength(journal);
+    expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Line');
+  });
+
+  it('draws a line from an existing point to empty space', async () => {
+    const { wrapper, store } = await mountLoaded(simpleDoc);
+    const before = store.document.entities.length;
+
+    await wrapper.find('[data-testid="tool-add_line"]').trigger('click');
+    pointDown(wrapper, 'p');
+    canvasDown(wrapper, 700, 500);
+    await flushPromises();
+
+    expect(store.document.entities).toHaveLength(before + 2);
+    expect(store.journal).toHaveLength(1);
+    const line = store.document.entities.find((entity) => entity.kind === 'line')!;
+    expect(line).toMatchObject({ start: 'p' });
+  });
+
+  it('clears a pending line preview when Escape leaves the tool', async () => {
+    const { wrapper, store } = await mountLoaded(simpleDoc);
+
+    await wrapper.find('[data-testid="tool-add_line"]').trigger('click');
+    canvasDown(wrapper, 700, 500);
+    await nextTick();
+    wrapper
+      .findComponent(PatternCanvas)
+      .find('svg')
+      .element.dispatchEvent(
+        new MouseEvent('pointermove', { bubbles: true, clientX: 650, clientY: 450 }),
+      );
+    await nextTick();
+    expect(wrapper.find('[data-testid="line-preview"]').exists()).toBe(true);
+
+    keydown('Escape');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="line-preview"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="line-pending-point"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Select');
+    store.undo();
+    expect(store.document.entities).toHaveLength(simpleDoc.entities.length);
+  });
+
   it('moves a point through the canvas drag', async () => {
     const pinia = createPinia();
     setActivePinia(pinia);

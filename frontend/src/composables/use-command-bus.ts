@@ -19,6 +19,10 @@ export function useCommandBus() {
     editor.dispatch(command);
   }
 
+  function dispatchGroup(commands: Command[]): void {
+    editor.dispatchGroup(commands);
+  }
+
   function undo(): void {
     editor.undo();
   }
@@ -27,5 +31,5 @@ export function useCommandBus() {
     editor.redo();
   }
 
-  return { document, journal, canUndo, canRedo, dispatch, undo, redo };
+  return { document, journal, canUndo, canRedo, dispatch, dispatchGroup, undo, redo };
 }
