@@ -5,6 +5,7 @@ export * from './errors.js';
 export * from './corner-round.js';
 export * from './dimension.js';
 export * from './offset.js';
+export * from './selection.js';
 export * from './solver.js';
 export * from './commands.js';
 export * from './export.js';

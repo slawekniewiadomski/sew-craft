@@ -57,21 +57,23 @@
       "params": { "id": "entity_id" }
     },
     "add_constraint": {
-      "description": "Attach a geometric constraint to one or more entities. A distance without a value is a driven dimension.",
+      "description": "Attach a geometric constraint to one or more entities. A distance without a value is a driven dimension; a distance with a reference follows another dimension.",
       "params": {
         "type": "coincident|horizontal|vertical|point_on_line|distance|angle|equal",
         "entities": "entity_id[]",
         "value": "number?",
+        "reference": "entity_id?",
         "orientation": "aligned|horizontal|vertical?",
         "offset": "number?"
       },
       "inverse": "remove_constraint"
     },
     "update_constraint": {
-      "description": "Change a dimensional constraint value or its dimension presentation. Null clears a distance to driven.",
+      "description": "Change a dimensional constraint value, reference or dimension presentation. Null clears a distance to driven; reference null unlinks and keeps the current value.",
       "params": {
         "id": "entity_id",
         "value": "number|null?",
+        "reference": "entity_id|null?",
         "orientation": "aligned|horizontal|vertical?",
         "offset": "number?"
       },

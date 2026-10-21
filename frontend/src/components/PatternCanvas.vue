@@ -14,16 +14,19 @@ import {
   dimensionGeometry,
   dimensionOffsetForPointer,
   type DimensionLayout,
+  dimensionState,
   dimensionValue,
+  type DimensionState,
   type DistanceConstraint,
+  entitiesInRect,
   type EntityId,
   inferDimensionOrientation,
   isCornerRoundDerived,
-  isDrivenDimension,
   type LineEntity,
   measureLinearDimension,
   type PatternDocument,
   type PointEntity,
+  type Rect,
   seamAllowancePaths,
   seamForEdge,
   type Vec2,
@@ -43,18 +46,32 @@ import {
   type CornerRoundPicks,
 } from '@/lib/corner-round';
 import {
+  dimensionAccessibleName,
   dimensionLabelWidth,
+  dimensionPatchForEdit,
   dimensionSegments,
+  filterReferenceOptions,
+  formatDimensionField,
   formatDimensionLabel,
   formatDimensionValue,
+  isReferenceEditText,
   parseDimensionEdit,
-  type DimensionEdit,
+  referenceOptions,
+  referenceSearchText,
   type DimensionPatch,
   type DimensionPlacement,
+  type DimensionReferenceOption,
   type DimensionSegment,
 } from '@/lib/dimensions';
 import type { EditorTool } from '@/lib/editor-tools';
 import { resolveLineEndpoint, sameEndpoint, type LineEndpoint } from '@/lib/line-tool';
+import {
+  applySelection,
+  rectMode,
+  selectionModeFrom,
+  toggleSelection,
+  type SelectionMode,
+} from '@/lib/selection';
 import { snapPoint, snapToGrid } from '@/lib/snap';
 import {
   fitToBounds,
@@ -70,6 +87,7 @@ import {
   type Viewport,
 } from '@/lib/viewport';
 
+import DimensionReferencePicker from './DimensionReferencePicker.vue';
 import SeamWidthEditor from './SeamWidthEditor.vue';
 
 interface LineView {
@@ -88,6 +106,17 @@ interface Hit {
   kind: string;
 }
 
+/** A bare-canvas drag that may become a rectangular selection. */
+interface MarqueeState {
+  start: Vec2;
+  current: Vec2;
+  mode: SelectionMode;
+  latched: boolean;
+}
+
+/** Screen pixels the pointer must travel before a click becomes a marquee. */
+const MARQUEE_THRESHOLD = 4;
+
 interface SeamView {
   id: EntityId;
   edge: EntityId;
@@ -103,11 +132,15 @@ interface DimensionDrawing {
   constraint: DistanceConstraint;
   layout: DimensionLayout;
   segments: DimensionSegment[];
-  /** Label text, wrapped in parentheses when the dimension is driven. */
+  /** Label text: `120`, `(120)` or `[120]`, by state. */
   value: string;
-  /** The effective number without parentheses, for accessible names. */
+  /** The effective number without decoration, for accessible names. */
   measured: string;
-  driven: boolean;
+  state: DimensionState;
+  /** The linked source, when the dimension records one. */
+  sourceId?: EntityId;
+  /** The label's full accessible name, including the state and source. */
+  accessibleName: string;
   preview: boolean;
   draggable: boolean;
   editable: boolean;
@@ -120,7 +153,9 @@ interface DimensionLabelView {
   constraint: DistanceConstraint;
   value: string;
   measured: string;
-  driven: boolean;
+  state: DimensionState;
+  sourceId?: EntityId;
+  accessibleName: string;
   width: number;
   x: number;
   y: number;
@@ -148,7 +183,7 @@ const props = withDefaults(
   defineProps<{
     document: PatternDocument;
     tool: EditorTool;
-    selectedId?: EntityId | null;
+    selectedEntityIds?: EntityId[];
     fitToken?: number;
     showSeamAllowance?: boolean;
     showConstraints?: boolean;
@@ -160,7 +195,7 @@ const props = withDefaults(
     cornerRoundPreviewRadius?: number | null;
   }>(),
   {
-    selectedId: null,
+    selectedEntityIds: () => [],
     fitToken: 0,
     showSeamAllowance: true,
     showConstraints: false,
@@ -174,7 +209,8 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  'update:selectedId': [id: EntityId | null];
+  'update:selectedEntityIds': [ids: EntityId[]];
+  'marquee-change': [active: boolean];
   'move-point': [id: EntityId, x: number, y: number];
   'add-point': [x: number, y: number];
   'add-line': [start: LineEndpoint, end: LineEndpoint];
@@ -194,6 +230,7 @@ const size = ref<Size>({ width: 800, height: 600 });
 let resizeObserver: ResizeObserver | null = null;
 const dragState = ref<{ id: EntityId; x: number; y: number; origin: Vec2 } | null>(null);
 const panState = ref<{ start: Vec2; origin: Viewport } | null>(null);
+const marqueeState = ref<MarqueeState | null>(null);
 const pending = ref<EntityId[]>([]);
 /** The line gesture's first endpoint; `null` until the first click. */
 const lineStart = ref<LineEndpoint | null>(null);
@@ -280,8 +317,8 @@ const activeRounds = computed<CornerRound[]>(() => {
     }
   };
 
-  if (props.selectedId !== null) {
-    cornerRoundsForEntity(props.document, props.selectedId).forEach(add);
+  if (props.selectedEntityIds.length > 0) {
+    props.selectedEntityIds.forEach((id) => cornerRoundsForEntity(props.document, id).forEach(add));
   }
   if (hoveredRoundId.value !== null) {
     add(cornerRounds(props.document).find((round) => round.id === hoveredRoundId.value));
@@ -363,6 +400,43 @@ const tangentPreview = computed(() => {
     arc: curvePath([geometry.tangentA, geometry.control1, geometry.control2, geometry.tangentB]),
     tangents: [geometry.tangentA, geometry.tangentB],
   };
+});
+
+/** Membership test for every selected entity's highlight. */
+const selectedIds = computed(() => new Set(props.selectedEntityIds));
+
+/** The marquee's screen-space rectangle, live while the pointer moves. */
+const marqueeRect = computed(() => {
+  const state = marqueeState.value;
+  if (state === null) return null;
+  return {
+    x: Math.min(state.start.x, state.current.x),
+    y: Math.min(state.start.y, state.current.y),
+    width: Math.abs(state.current.x - state.start.x),
+    height: Math.abs(state.current.y - state.start.y),
+  };
+});
+
+/** The marquee in world coordinates, used for hit-testing and preview. */
+const marqueeWorldRect = computed<Rect | null>(() => {
+  const state = marqueeState.value;
+  if (state === null) return null;
+  const start = screenToWorld(viewport.value, state.start);
+  const end = screenToWorld(viewport.value, state.current);
+  return {
+    minX: Math.min(start.x, end.x),
+    minY: Math.min(start.y, end.y),
+    maxX: Math.max(start.x, end.x),
+    maxY: Math.max(start.y, end.y),
+  };
+});
+
+/** Entities the latched marquee would select with the captured mode. */
+const marqueeCandidates = computed(() => {
+  const state = marqueeState.value;
+  const rect = marqueeWorldRect.value;
+  if (state === null || rect === null || !state.latched) return new Set<EntityId>();
+  return new Set(entitiesInRect(props.document, rect, rectMode(state.start.x, state.current.x)));
 });
 
 const lines = computed(() =>
@@ -502,16 +576,18 @@ function drawingFor(constraint: DistanceConstraint, preview: boolean): Dimension
 
   // `layout` resolves the same points, so the effective value is always present.
   const value = dimensionValue(props.document, placed)!;
-  const driven = isDrivenDimension(constraint);
+  const state = dimensionState(props.document, placed);
 
   return {
     id: constraint.id,
     constraint,
     layout,
     segments: dimensionSegments(layout),
-    value: formatDimensionLabel(value, driven),
+    value: formatDimensionLabel(value, state),
     measured: formatDimensionValue(value),
-    driven,
+    state,
+    ...(constraint.reference === undefined ? {} : { sourceId: constraint.reference }),
+    accessibleName: dimensionAccessibleName(value, state, constraint.reference),
     preview,
     draggable: !preview && dimensionDragEnabled.value,
     editable: !preview && !props.constraintActive,
@@ -569,7 +645,9 @@ const dimensionLabels = computed<DimensionLabelView[]>(() =>
       constraint: drawing.constraint,
       value: drawing.value,
       measured: drawing.measured,
-      driven: drawing.driven,
+      state: drawing.state,
+      ...(drawing.sourceId === undefined ? {} : { sourceId: drawing.sourceId }),
+      accessibleName: drawing.accessibleName,
       width: dimensionLabelWidth(drawing.value),
       x: screen.x,
       y: screen.y,
@@ -595,6 +673,64 @@ const dimensionEditor = computed(() => {
   };
 });
 
+/** The `#` picker's transient state; `null` while the field is not linking. */
+const dimensionPicker = ref<{ text: string; activeIndex: number } | null>(null);
+
+/** The dimension the inline editor is editing, used to resolve link targets. */
+const editingConstraint = computed<DistanceConstraint>(() => {
+  const editing = editingDimension.value!;
+  return distanceConstraints.value.find((constraint) => constraint.id === editing.id)!;
+});
+
+/** Every row the open picker offers for the edited dimension. */
+const dimensionPickerOptions = computed<DimensionReferenceOption[]>(() => {
+  const constraint = editingConstraint.value;
+  return filterReferenceOptions(
+    referenceOptions(props.document, constraint),
+    dimensionPicker.value!.text,
+  );
+});
+
+/** The row Enter would pick, or `null` when the list is empty. */
+const activePickerOption = computed<DimensionReferenceOption | null>(() => {
+  const picker = dimensionPicker.value;
+  if (picker === null || dimensionPickerOptions.value.length === 0) return null;
+  return dimensionPickerOptions.value[
+    Math.min(picker.activeIndex, dimensionPickerOptions.value.length - 1)
+  ]!;
+});
+
+/** The `aria-activedescendant` target while the picker is open. */
+const pickerActiveDescendant = computed<string | undefined>(() =>
+  activePickerOption.value === null
+    ? undefined
+    : `dimension-reference-list-${activePickerOption.value.id}`,
+);
+
+/** The row the picker highlights, clamped to the filtered list. */
+const pickerActiveIndex = computed<number>(() =>
+  activePickerOption.value === null
+    ? -1
+    : dimensionPickerOptions.value.findIndex(
+        (option) => option.id === activePickerOption.value!.id,
+      ),
+);
+
+function optionsFor(id: EntityId): DimensionReferenceOption[] {
+  const constraint = distanceConstraints.value.find((entry) => entry.id === id)!;
+  return referenceOptions(props.document, constraint);
+}
+
+function movePicker(step: number): void {
+  const picker = dimensionPicker.value!;
+  const count = dimensionPickerOptions.value.length;
+  if (count === 0) return;
+  dimensionPicker.value = {
+    text: picker.text,
+    activeIndex: (picker.activeIndex + step + count) % count,
+  };
+}
+
 function xTickPosition(value: number): number {
   return worldToScreen(viewport.value, { x: value, y: 0 }).x;
 }
@@ -605,7 +741,10 @@ function yTickPosition(value: number): number {
 
 function pointClass(point: PointEntity): string {
   if (pickedPointIds.value.has(point.id)) return 'fill-primary stroke-primary-foreground';
-  if (point.id === props.selectedId) return 'fill-primary stroke-primary-foreground';
+  if (selectedIds.value.has(point.id)) return 'fill-primary stroke-primary-foreground';
+  if (marqueeCandidates.value.has(point.id)) {
+    return 'fill-primary stroke-primary-foreground opacity-60';
+  }
   if (pendingIds.value.has(point.id) || point.id === pendingLineStartId.value) {
     return 'fill-accent stroke-accent-foreground';
   }
@@ -616,15 +755,19 @@ function entityClass(entity: { id: EntityId; construction: boolean }): string {
   if (
     pickedLineIds.value.has(entity.id) ||
     roundPickedLineIds.value.has(entity.id) ||
-    entity.id === props.selectedId
+    selectedIds.value.has(entity.id)
   ) {
     return 'text-primary';
   }
+  if (marqueeCandidates.value.has(entity.id)) return 'text-primary opacity-60';
   return entity.construction ? 'text-muted-foreground' : 'text-foreground';
 }
 
 function lineWidth(id: EntityId): number {
-  return pickedLineIds.value.has(id) || roundPickedLineIds.value.has(id) || id === props.selectedId
+  return pickedLineIds.value.has(id) ||
+    roundPickedLineIds.value.has(id) ||
+    selectedIds.value.has(id) ||
+    marqueeCandidates.value.has(id)
     ? 3
     : 2;
 }
@@ -744,6 +887,19 @@ function beginDimensionDrag(constraint: DistanceConstraint, event: PointerEvent)
   addPointerListeners();
 }
 
+function labelClass(label: DimensionLabelView): string {
+  switch (label.state) {
+    case 'referenced':
+      return 'fill-dimension-reference';
+    case 'broken':
+      return 'fill-destructive';
+    case 'driven':
+      return 'fill-muted-foreground';
+    case 'set':
+      return 'fill-foreground';
+  }
+}
+
 function onDimensionDoubleClick(label: DimensionLabelView): void {
   if (!label.editable) return;
   void beginDimensionEdit(label.constraint);
@@ -752,10 +908,12 @@ function onDimensionDoubleClick(label: DimensionLabelView): void {
 async function beginDimensionEdit(constraint: DistanceConstraint): Promise<void> {
   // The label only renders for a resolvable span, so an effective value exists.
   const value = dimensionValue(props.document, constraint)!;
+  const state = dimensionState(props.document, constraint);
   editingDimension.value = {
     id: constraint.id,
-    value: formatDimensionValue(value),
+    value: formatDimensionField(constraint, value, state),
   };
+  dimensionPicker.value = null;
   await nextTick();
   dimensionInput.value!.focus();
   dimensionInput.value!.select();
@@ -763,39 +921,88 @@ async function beginDimensionEdit(constraint: DistanceConstraint): Promise<void>
 
 function onDimensionEditInput(event: Event): void {
   const editing = editingDimension.value!;
-  editingDimension.value = {
-    id: editing.id,
-    value: (event.target as HTMLInputElement).value,
-  };
+  const value = (event.target as HTMLInputElement).value;
+  editingDimension.value = { id: editing.id, value };
+  dimensionPicker.value = isReferenceEditText(value)
+    ? { text: referenceSearchText(value), activeIndex: 0 }
+    : null;
 }
 
-/** Enter: apply a set or driven edit, otherwise keep editing to fix the typo. */
+/** Arrow keys move the picker, Enter links or commits, Escape closes or cancels. */
+function onDimensionEditorKeydown(event: KeyboardEvent): void {
+  if (dimensionPicker.value !== null) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      movePicker(1);
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      movePicker(-1);
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      dimensionPicker.value = null;
+      return;
+    }
+    if (event.key === 'Enter' && activePickerOption.value !== null) {
+      event.preventDefault();
+      selectReference(activePickerOption.value.id);
+      return;
+    }
+  }
+
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    applyDimensionEdit();
+    return;
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    cancelDimensionEdit();
+  }
+}
+
+/** Pick a row: link the edited dimension and close the field. */
+function selectReference(id: EntityId): void {
+  const editing = editingDimension.value!;
+  editingDimension.value = null;
+  dimensionPicker.value = null;
+  emit('update-dimension', editing.id, { reference: id });
+}
+
+/** Enter: apply a set, driven, unlink or reference edit; keep a typo editable. */
 function applyDimensionEdit(): void {
   const editing = editingDimension.value!;
   const edit = parseDimensionEdit(editing.value);
   if (edit.kind === 'invalid') return;
 
+  const patch = dimensionPatchForEdit(edit, optionsFor(editing.id));
+  if (patch === null) return;
+
   editingDimension.value = null;
-  emit('update-dimension', editing.id, dimensionPatchFor(edit));
+  dimensionPicker.value = null;
+  emit('update-dimension', editing.id, patch);
 }
 
-/** Blur: commit a set or driven edit and discard an invalid one. */
+/** Blur: commit an applicable edit and discard an invalid or unresolved one. */
 function finishDimensionEdit(): void {
-  const editing = editingDimension.value!;
+  const editing = editingDimension.value;
+  dimensionPicker.value = null;
+  if (editing === null) return;
+
   const edit = parseDimensionEdit(editing.value);
   editingDimension.value = null;
-  if (edit.kind !== 'invalid') {
-    emit('update-dimension', editing.id, dimensionPatchFor(edit));
-  }
-}
+  if (edit.kind === 'invalid') return;
 
-/** Map a parsed edit to the command patch: driven clears the value with `null`. */
-function dimensionPatchFor(edit: Exclude<DimensionEdit, { kind: 'invalid' }>): DimensionPatch {
-  return edit.kind === 'driven' ? { value: null } : { value: edit.value };
+  const patch = dimensionPatchForEdit(edit, optionsFor(editing.id));
+  if (patch !== null) emit('update-dimension', editing.id, patch);
 }
 
 function cancelDimensionEdit(): void {
   editingDimension.value = null;
+  dimensionPicker.value = null;
 }
 
 /** Double-click on the dashed allowance opens its inline width editor. */
@@ -903,6 +1110,7 @@ function onPointerDown(event: PointerEvent): void {
     beginPan(screen);
     return;
   }
+  if (event.button !== 0) return;
 
   const hit = hitEntity(event);
   if (props.constraintActive) {
@@ -918,15 +1126,28 @@ function onPointerDown(event: PointerEvent): void {
   }
 
   switch (props.tool) {
-    case 'select':
-      if (hit && hit.kind === 'point') {
-        emit('update:selectedId', hit.id);
+    case 'select': {
+      const mode = selectionModeFrom(event);
+      if (hit === null) {
+        // Touch keeps its single tap/pan; a mouse or pen drag is a marquee.
+        if (event.pointerType === 'touch') {
+          if (mode === 'replace') emit('update:selectedEntityIds', []);
+          beginPan(screen);
+        } else {
+          startMarquee(screen, mode);
+        }
+        break;
+      }
+
+      selectEntity(hit.id, mode);
+      if (mode !== 'replace') break;
+      if (hit.kind === 'point') {
         beginDrag(hit.id, pointById.value.get(hit.id)!);
       } else {
-        emit('update:selectedId', hit ? hit.id : null);
         beginPan(screen);
       }
       break;
+    }
     case 'add_point':
       emitAddPoint(screen);
       break;
@@ -962,6 +1183,8 @@ function onPointerMove(event: PointerEvent): void {
       );
       if (radius !== null) tangentDrag.value = { ...drag, radius };
     }
+  } else if (marqueeState.value) {
+    updateMarquee(screen);
   } else if (dimensionDrag.value) {
     const drag = dimensionDrag.value;
     dimensionDrag.value = {
@@ -997,6 +1220,7 @@ function onCanvasPointerMove(event: PointerEvent): void {
 
 /** Drop every in-flight pointer interaction without emitting a command. */
 function cancelPointerInteraction(): void {
+  cancelMarquee();
   dimensionDrag.value = null;
   dragState.value = null;
   panState.value = null;
@@ -1011,6 +1235,12 @@ function onPointerCancel(): void {
 function onPointerUp(): void {
   if (tangentDrag.value) {
     commitTangentDrag();
+  }
+
+  if (marqueeState.value) {
+    finishMarquee();
+    removePointerListeners();
+    return;
   }
 
   if (dimensionDrag.value) {
@@ -1034,11 +1264,19 @@ function onPointerUp(): void {
 }
 
 function onWheel(event: WheelEvent): void {
+  // The rectangle must not change scale under the pointer mid-gesture.
+  if (marqueeState.value !== null) return;
   const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
   viewport.value = zoomAt(viewport.value, screenPoint(event), factor);
 }
 
 function onKeyDown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && marqueeState.value !== null) {
+    event.preventDefault();
+    cancelPointerInteraction();
+    return;
+  }
+
   if (event.code === 'Space') {
     event.preventDefault();
     spaceHeld.value = true;
@@ -1101,6 +1339,60 @@ function onLinePointer(hit: Hit | null, screen: Vec2): void {
   emit('add-line', start, endpoint);
 }
 
+/** Combine one clicked entity with the current selection under `mode`. */
+function selectEntity(id: EntityId, mode: SelectionMode): void {
+  const current = props.selectedEntityIds;
+  if (mode === 'replace') {
+    emit('update:selectedEntityIds', [id]);
+  } else if (mode === 'add') {
+    emit('update:selectedEntityIds', toggleSelection(current, id));
+  } else {
+    emit('update:selectedEntityIds', applySelection(current, [id], 'subtract'));
+  }
+}
+
+function startMarquee(screen: Vec2, mode: SelectionMode): void {
+  marqueeState.value = { start: screen, current: screen, mode, latched: false };
+  emit('marquee-change', true);
+  addPointerListeners();
+}
+
+/** Move the rectangle and latch it once the pointer has travelled far enough. */
+function updateMarquee(screen: Vec2): void {
+  const state = marqueeState.value!;
+  const distance = Math.hypot(screen.x - state.start.x, screen.y - state.start.y);
+  marqueeState.value = {
+    ...state,
+    current: screen,
+    latched: state.latched || distance >= MARQUEE_THRESHOLD,
+  };
+}
+
+/** Commit a latched rectangle, or treat a sub-threshold drag as a click. */
+function finishMarquee(): void {
+  const state = marqueeState.value!;
+  const rect = marqueeWorldRect.value!;
+  const hits = state.latched
+    ? entitiesInRect(props.document, rect, rectMode(state.start.x, state.current.x))
+    : [];
+  marqueeState.value = null;
+  emit('marquee-change', false);
+
+  if (!state.latched) {
+    if (state.mode === 'replace') emit('update:selectedEntityIds', []);
+    return;
+  }
+
+  emit('update:selectedEntityIds', applySelection(props.selectedEntityIds, hits, state.mode));
+}
+
+/** Discard the rectangle and leave the previous selection untouched. */
+function cancelMarquee(): void {
+  if (marqueeState.value === null) return;
+  marqueeState.value = null;
+  emit('marquee-change', false);
+}
+
 function beginPan(screen: Vec2): void {
   panState.value = { start: screen, origin: viewport.value };
   addPointerListeners();
@@ -1131,10 +1423,15 @@ function fit(): void {
   }
 }
 
+function onWindowBlur(): void {
+  cancelPointerInteraction();
+}
+
 onMounted(() => {
   updateSize();
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
+  window.addEventListener('blur', onWindowBlur);
   window.addEventListener('resize', updateSize);
   if (typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver(updateSize);
@@ -1146,6 +1443,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown);
   window.removeEventListener('keyup', onKeyUp);
+  window.removeEventListener('blur', onWindowBlur);
   window.removeEventListener('resize', updateSize);
   resizeObserver?.disconnect();
   resizeObserver = null;
@@ -1318,7 +1616,7 @@ watch(
             fill="none"
             :class="entityClass(entry.curve)"
             :stroke-dasharray="entry.curve.construction ? '4 4' : undefined"
-            :stroke-width="entry.curve.id === selectedId ? 3 : 2"
+            :stroke-width="lineWidth(entry.curve.id)"
             stroke="currentColor"
             vector-effect="non-scaling-stroke"
             :data-entity-id="entry.curve.id"
@@ -1426,7 +1724,7 @@ watch(
             data-kind="point"
           />
           <circle
-            v-if="point.id === selectedId"
+            v-if="selectedIds.has(point.id)"
             :cx="point.x"
             :cy="point.y"
             r="7"
@@ -1491,11 +1789,7 @@ watch(
           :data-testid="`dimension-label-${label.id}`"
           :transform="`translate(${label.x} ${label.y}) rotate(${label.angle})`"
           role="img"
-          :aria-label="
-            label.driven
-              ? `Driven dimension, measured ${label.measured} millimetres`
-              : `Dimension ${label.measured} millimetres`
-          "
+          :aria-label="label.accessibleName"
           @pointerdown.stop="
             label.draggable ? beginDimensionDrag(label.constraint, $event) : undefined
           "
@@ -1519,12 +1813,22 @@ watch(
             class="fill-background"
           />
           <text
+            v-if="label.state === 'broken'"
+            :x="-label.width / 2 - 6"
+            y="1"
+            text-anchor="end"
+            dominant-baseline="middle"
+            class="fill-destructive text-[11px]"
+            data-testid="dimension-broken-glyph"
+            aria-hidden="true"
+          >
+            ⚠
+          </text>
+          <text
             text-anchor="middle"
             dominant-baseline="middle"
-            :class="[
-              label.driven && !label.preview ? 'fill-muted-foreground' : 'fill-foreground',
-              'text-[11px]',
-            ]"
+            :class="[labelClass(label), 'text-[11px]']"
+            :data-dimension-state="label.state"
           >
             {{ label.value }}
           </text>
@@ -1651,6 +1955,22 @@ watch(
           />
         </g>
       </g>
+
+      <g v-if="marqueeRect !== null" class="pointer-events-none" data-testid="selection-marquee">
+        <rect
+          :x="marqueeRect.x"
+          :y="marqueeRect.y"
+          :width="marqueeRect.width"
+          :height="marqueeRect.height"
+          fill="currentColor"
+          fill-opacity="0.1"
+          stroke="currentColor"
+          stroke-width="1"
+          stroke-dasharray="4 4"
+          vector-effect="non-scaling-stroke"
+          class="text-primary"
+        />
+      </g>
     </svg>
 
     <input
@@ -1663,9 +1983,13 @@ watch(
       :style="{ left: `${dimensionEditor.x}px`, top: `${dimensionEditor.y}px` }"
       data-testid="dimension-editor"
       :aria-label="`Dimension ${dimensionEditor.id} value`"
+      role="combobox"
+      aria-autocomplete="list"
+      :aria-expanded="dimensionPicker !== null"
+      :aria-controls="dimensionPicker === null ? undefined : 'dimension-reference-list'"
+      :aria-activedescendant="pickerActiveDescendant"
       @input="onDimensionEditInput"
-      @keydown.enter.prevent.stop="applyDimensionEdit"
-      @keydown.esc.prevent.stop="cancelDimensionEdit"
+      @keydown="onDimensionEditorKeydown"
       @blur="finishDimensionEdit"
     />
 
@@ -1683,6 +2007,16 @@ watch(
       @keydown.enter.prevent.stop="applyCornerRoundEdit"
       @keydown.esc.prevent.stop="cancelCornerRoundEdit"
       @blur="finishCornerRoundEdit"
+    />
+
+    <DimensionReferencePicker
+      v-if="dimensionPicker !== null && dimensionEditor !== null"
+      list-id="dimension-reference-list"
+      class="left-0 top-0"
+      :style="{ left: `${dimensionEditor.x}px`, top: `${dimensionEditor.y + 18}px` }"
+      :options="dimensionPickerOptions"
+      :active-index="pickerActiveIndex"
+      @select="selectReference"
     />
 
     <SeamWidthEditor

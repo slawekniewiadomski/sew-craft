@@ -2,15 +2,16 @@ import {
   constraintEntityIds,
   constraintOrientation,
   cornerRoundsForEntity,
+  dimensionState,
   dimensionValue,
   getEntity,
-  isDrivenDimension,
   measureLinearDimension,
   seamForEdge,
   seamSide,
   type Constraint,
   type ConstraintType,
   type DimensionOrientation,
+  type DimensionState,
   type Entity,
   type EntityId,
   type PatternDocument,
@@ -40,9 +41,12 @@ export type EntityGeometry = PointGeometry | LineGeometry | CurveGeometry;
 export type DimensionSummary = {
   id: EntityId;
   entities: [EntityId, EntityId];
-  /** The set value, or the live measurement when driven; `null` if unmeasurable. */
+  /** The resolved value: literal, source value, measurement or last known. */
   value: number | null;
-  driven: boolean;
+  /** Set, driven, referenced or broken. */
+  state: DimensionState;
+  /** The linked source id, or `null` when this dimension holds no reference. */
+  sourceId: EntityId | null;
   orientation: DimensionOrientation;
 };
 
@@ -161,7 +165,8 @@ export function entityProperties(
         id: constraint.id,
         entities: [constraint.a, constraint.b],
         value: dimensionValue(document, constraint),
-        driven: isDrivenDimension(constraint),
+        state: dimensionState(document, constraint),
+        sourceId: constraint.reference ?? null,
         orientation: constraintOrientation(constraint),
       });
       continue;

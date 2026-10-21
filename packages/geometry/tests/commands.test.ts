@@ -99,7 +99,12 @@ const removeConstraintCommand = (id: string): Command => ({
 
 const updateConstraintCommand = (
   id: string,
-  params: { value?: number | null; orientation?: DimensionOrientation; offset?: number },
+  params: {
+    value?: number | null;
+    reference?: string | null;
+    orientation?: DimensionOrientation;
+    offset?: number;
+  },
 ): Command => ({ id: 'update', type: 'update_constraint', params: { id, ...params } });
 
 const seamCommand = (id: string, edge: string, width?: number, side?: SeamSide): Command => ({
@@ -1356,5 +1361,490 @@ describe('solveDocument', () => {
 
     expect(solved.result.converged).toBe(false);
     expect(solved.document).toBe(document);
+  });
+});
+
+describe('dimension references', () => {
+  const points = [point('a', 0, 0), point('b', 100, 0), point('c', 100, 50), point('d', 0, 50)];
+
+  const referenceDocument = (): PatternDocument =>
+    documentOf(points, [
+      { id: 'source', type: 'distance', a: 'a', b: 'b', value: 120, offset: 10 },
+      { id: 'dependent', type: 'distance', a: 'c', b: 'd' },
+      { id: 'same-pair', type: 'distance', a: 'b', b: 'a', value: 80 },
+    ]);
+
+  const addReferenceCommand = (id: string, entities: string[], reference: string): Command => ({
+    id,
+    type: 'add_constraint',
+    params: { type: 'distance', entities, reference },
+  });
+
+  it('adds a link, stores the resolved value and keeps no literal', () => {
+    const document = referenceDocument();
+
+    const applied = applyCommand(document, addReferenceCommand('linked', ['c', 'd'], 'source'));
+
+    expect(getConstraint(applied.document, 'linked')).toEqual({
+      id: 'linked',
+      type: 'distance',
+      a: 'c',
+      b: 'd',
+      reference: 'source',
+      lastKnownValue: 120,
+    });
+    expect(getConstraint(applied.document, 'linked')).not.toHaveProperty('value');
+    expect(applied.inverse).toEqual(removeConstraintCommand('linked'));
+  });
+
+  it('rejects a value and a reference together', () => {
+    const document = referenceDocument();
+
+    unchanged(document, {
+      id: 'linked',
+      type: 'add_constraint',
+      params: { type: 'distance', entities: ['c', 'd'], value: 10, reference: 'source' },
+    } as Command);
+  });
+
+  it('rejects a missing, driven, broken, self or same-pair source', () => {
+    const document = documentOf(points, [
+      { id: 'source', type: 'distance', a: 'a', b: 'b', value: 120 },
+      { id: 'driven', type: 'distance', a: 'c', b: 'd' },
+      { id: 'broken', type: 'distance', a: 'd', b: 'a', reference: 'missing' },
+      { id: 'angle', type: 'angle', a: 'a', b: 'b', c: 'c', value: 1 },
+    ]);
+
+    unchanged(document, addReferenceCommand('linked', ['c', 'd'], 'nope'));
+    unchanged(document, addReferenceCommand('linked', ['c', 'd'], 'driven'));
+    unchanged(document, addReferenceCommand('linked', ['c', 'd'], 'broken'));
+    unchanged(document, addReferenceCommand('linked', ['c', 'd'], 'linked'));
+    unchanged(document, addReferenceCommand('linked', ['b', 'a'], 'source'));
+    unchanged(document, {
+      id: 'linked',
+      type: 'add_constraint',
+      params: { type: 'coincident', entities: ['a', 'b'], reference: 'source' },
+    } as Command);
+  });
+
+  it('links a set dimension and inverts to its literal', () => {
+    const document = referenceDocument();
+
+    const applied = applyCommand(
+      document,
+      updateConstraintCommand('dependent', { reference: 'source' }),
+    );
+
+    expect(getConstraint(applied.document, 'dependent')).toEqual({
+      id: 'dependent',
+      type: 'distance',
+      a: 'c',
+      b: 'd',
+      reference: 'source',
+      lastKnownValue: 120,
+      orientation: 'aligned',
+      offset: DEFAULT_DIMENSION_OFFSET,
+    });
+    expect(applied.inverse).toEqual(
+      updateConstraintCommand('dependent', {
+        value: null,
+        orientation: 'aligned',
+        offset: DEFAULT_DIMENSION_OFFSET,
+      }),
+    );
+  });
+
+  it('links a set dimension and inverts to the previous literal', () => {
+    const document = documentOf(points, [
+      { id: 'source', type: 'distance', a: 'a', b: 'b', value: 120 },
+      { id: 'dependent', type: 'distance', a: 'c', b: 'd', value: 40 },
+    ]);
+
+    const applied = applyCommand(
+      document,
+      updateConstraintCommand('dependent', { reference: 'source' }),
+    );
+
+    expect(getConstraint(applied.document, 'dependent')).toMatchObject({
+      reference: 'source',
+      lastKnownValue: 120,
+    });
+    expect(applied.inverse).toEqual(
+      updateConstraintCommand('dependent', {
+        value: 40,
+        orientation: 'aligned',
+        offset: DEFAULT_DIMENSION_OFFSET,
+      }),
+    );
+  });
+
+  it('resolves a chained source value when linking', () => {
+    const document = documentOf(points, [
+      { id: 'source', type: 'distance', a: 'a', b: 'b', value: 120 },
+      { id: 'middle', type: 'distance', a: 'b', b: 'c', reference: 'source' },
+      { id: 'dependent', type: 'distance', a: 'c', b: 'd' },
+    ]);
+
+    const applied = applyCommand(
+      document,
+      updateConstraintCommand('dependent', { reference: 'middle' }),
+    );
+
+    expect(getConstraint(applied.document, 'dependent')).toMatchObject({
+      reference: 'middle',
+      lastKnownValue: 120,
+    });
+  });
+
+  it('rejects a cycle, a self link, a driven, broken or same-pair source', () => {
+    const document = documentOf(points, [
+      { id: 'source', type: 'distance', a: 'a', b: 'b', value: 120 },
+      { id: 'middle', type: 'distance', a: 'b', b: 'c', reference: 'source' },
+      { id: 'driven', type: 'distance', a: 'c', b: 'd' },
+      { id: 'pair', type: 'distance', a: 'd', b: 'c', value: 30 },
+      { id: 'broken', type: 'distance', a: 'd', b: 'a', reference: 'missing' },
+    ]);
+
+    // A link back into its own chain, and a link to itself.
+    unchanged(document, updateConstraintCommand('source', { reference: 'middle' }));
+    unchanged(document, updateConstraintCommand('source', { reference: 'source' }));
+    // The same point pair cannot be measured twice.
+    unchanged(document, updateConstraintCommand('driven', { reference: 'pair' }));
+    // Driven, broken and missing sources are not equations.
+    unchanged(document, updateConstraintCommand('source', { reference: 'driven' }));
+    unchanged(document, updateConstraintCommand('source', { reference: 'broken' }));
+    unchanged(document, updateConstraintCommand('source', { reference: 'nope' }));
+  });
+
+  it('rejects a combined value and reference, and a reference on an angle', () => {
+    const document = documentOf(points, [
+      { id: 'source', type: 'distance', a: 'a', b: 'b', value: 120 },
+      { id: 'dependent', type: 'distance', a: 'c', b: 'd' },
+      { id: 'angle', type: 'angle', a: 'a', b: 'b', c: 'c', value: 1 },
+    ]);
+
+    unchanged(document, updateConstraintCommand('dependent', { value: 10, reference: 'source' }));
+    unchanged(document, updateConstraintCommand('angle', { reference: 'source' }));
+  });
+
+  it('unlinks to a literal at the resolved value and inverts to the link', () => {
+    const document = documentOf(points, [
+      { id: 'source', type: 'distance', a: 'a', b: 'b', value: 120 },
+      {
+        id: 'dependent',
+        type: 'distance',
+        a: 'c',
+        b: 'd',
+        reference: 'source',
+        lastKnownValue: 120,
+      },
+    ]);
+
+    const applied = applyCommand(
+      document,
+      updateConstraintCommand('dependent', { reference: null }),
+    );
+
+    expect(getConstraint(applied.document, 'dependent')).toEqual({
+      id: 'dependent',
+      type: 'distance',
+      a: 'c',
+      b: 'd',
+      value: 120,
+      orientation: 'aligned',
+      offset: DEFAULT_DIMENSION_OFFSET,
+    });
+    expect(applied.inverse).toEqual(
+      updateConstraintCommand('dependent', {
+        reference: 'source',
+        orientation: 'aligned',
+        offset: DEFAULT_DIMENSION_OFFSET,
+      }),
+    );
+  });
+
+  it('unlinks a broken dimension at its last known value and cannot invert it', () => {
+    const document = documentOf(points, [
+      {
+        id: 'dependent',
+        type: 'distance',
+        a: 'c',
+        b: 'd',
+        reference: 'missing',
+        lastKnownValue: 42,
+      },
+    ]);
+
+    const applied = applyCommand(
+      document,
+      updateConstraintCommand('dependent', { reference: null }),
+    );
+
+    expect(getConstraint(applied.document, 'dependent')).toMatchObject({ value: 42 });
+    expect(applied.inverse).toBeNull();
+  });
+
+  it('rejects unlinking a broken dimension with no last known value', () => {
+    const document = documentOf(points, [
+      { id: 'dependent', type: 'distance', a: 'c', b: 'd', reference: 'missing' },
+    ]);
+
+    unchanged(document, updateConstraintCommand('dependent', { reference: null }));
+  });
+
+  it('treats unlinking a driven dimension as a no-op', () => {
+    const document = documentOf(points, [{ id: 'driven', type: 'distance', a: 'c', b: 'd' }]);
+
+    const applied = applyCommand(document, updateConstraintCommand('driven', { reference: null }));
+
+    expect(applied.document).toBe(document);
+    expect(applied.inverse).toBeNull();
+  });
+
+  it('treats re-linking the same source as a no-op', () => {
+    const document = documentOf(points, [
+      { id: 'source', type: 'distance', a: 'a', b: 'b', value: 120 },
+      {
+        id: 'dependent',
+        type: 'distance',
+        a: 'c',
+        b: 'd',
+        reference: 'source',
+        lastKnownValue: 120,
+      },
+    ]);
+
+    const applied = applyCommand(
+      document,
+      updateConstraintCommand('dependent', { reference: 'source' }),
+    );
+
+    expect(applied.document).toBe(document);
+    expect(applied.inverse).toBeNull();
+  });
+
+  it('breaks a link when a value is typed and inverts to the link', () => {
+    const document = documentOf(points, [
+      { id: 'source', type: 'distance', a: 'a', b: 'b', value: 120 },
+      {
+        id: 'dependent',
+        type: 'distance',
+        a: 'c',
+        b: 'd',
+        reference: 'source',
+        lastKnownValue: 120,
+      },
+    ]);
+
+    const applied = applyCommand(document, updateConstraintCommand('dependent', { value: 60 }));
+
+    expect(getConstraint(applied.document, 'dependent')).toEqual({
+      id: 'dependent',
+      type: 'distance',
+      a: 'c',
+      b: 'd',
+      value: 60,
+      orientation: 'aligned',
+      offset: DEFAULT_DIMENSION_OFFSET,
+    });
+    expect(applied.inverse).toEqual(
+      updateConstraintCommand('dependent', {
+        reference: 'source',
+        orientation: 'aligned',
+        offset: DEFAULT_DIMENSION_OFFSET,
+      }),
+    );
+  });
+
+  it('breaks a link when cleared to driven', () => {
+    const document = documentOf(points, [
+      { id: 'source', type: 'distance', a: 'a', b: 'b', value: 120 },
+      {
+        id: 'dependent',
+        type: 'distance',
+        a: 'c',
+        b: 'd',
+        reference: 'source',
+        lastKnownValue: 120,
+      },
+    ]);
+
+    const applied = applyCommand(document, updateConstraintCommand('dependent', { value: null }));
+
+    expect(getConstraint(applied.document, 'dependent')).not.toHaveProperty('reference');
+    expect(getConstraint(applied.document, 'dependent')).not.toHaveProperty('lastKnownValue');
+  });
+
+  it('cannot invert a repair from a broken link and falls back to the snapshot', () => {
+    const document = documentOf(points, [
+      { id: 'source', type: 'distance', a: 'a', b: 'b', value: 120 },
+      { id: 'broken', type: 'distance', a: 'c', b: 'd', reference: 'missing', lastKnownValue: 42 },
+    ]);
+
+    const applied = applyCommand(
+      document,
+      updateConstraintCommand('broken', { reference: 'source' }),
+    );
+
+    expect(applied.inverse).toBeNull();
+    expect(getConstraint(applied.document, 'broken')).toMatchObject({
+      reference: 'source',
+      lastKnownValue: 120,
+    });
+  });
+
+  it('leaves dependents broken with the last value when the source is removed', () => {
+    const document = documentOf(points, [
+      { id: 'source', type: 'distance', a: 'a', b: 'b', value: 120 },
+      {
+        id: 'dependent',
+        type: 'distance',
+        a: 'c',
+        b: 'd',
+        reference: 'source',
+        lastKnownValue: 120,
+      },
+    ]);
+
+    const applied = applyCommand(document, removeConstraintCommand('source'));
+
+    expect(getConstraint(applied.document, 'source')).toBeUndefined();
+    expect(getConstraint(applied.document, 'dependent')).toEqual({
+      id: 'dependent',
+      type: 'distance',
+      a: 'c',
+      b: 'd',
+      reference: 'source',
+      lastKnownValue: 120,
+    });
+    expect(applied.inverse).toEqual({
+      id: 'source',
+      type: 'add_constraint',
+      params: { type: 'distance', entities: ['a', 'b'], value: 120 },
+    });
+  });
+
+  it('refreshes the last known value when a source is cleared to driven', () => {
+    const document = documentOf(points, [
+      { id: 'source', type: 'distance', a: 'a', b: 'b', value: 130 },
+      {
+        id: 'dependent',
+        type: 'distance',
+        a: 'c',
+        b: 'd',
+        reference: 'source',
+        lastKnownValue: 120,
+      },
+    ]);
+
+    const applied = applyCommand(document, updateConstraintCommand('source', { value: null }));
+
+    expect(getConstraint(applied.document, 'dependent')).toMatchObject({
+      reference: 'source',
+      lastKnownValue: 130,
+    });
+  });
+
+  it('restores a removed reference in the inverse', () => {
+    const document = documentOf(points, [
+      { id: 'source', type: 'distance', a: 'a', b: 'b', value: 120 },
+      {
+        id: 'dependent',
+        type: 'distance',
+        a: 'c',
+        b: 'd',
+        reference: 'source',
+        lastKnownValue: 120,
+      },
+    ]);
+
+    const applied = applyCommand(document, removeConstraintCommand('dependent'));
+
+    expect(applied.inverse).toEqual({
+      id: 'dependent',
+      type: 'add_constraint',
+      params: { type: 'distance', entities: ['c', 'd'], reference: 'source' },
+    });
+  });
+
+  it('has no inverse for removing a broken dimension', () => {
+    const document = documentOf(points, [
+      {
+        id: 'dependent',
+        type: 'distance',
+        a: 'c',
+        b: 'd',
+        reference: 'missing',
+        lastKnownValue: 42,
+      },
+    ]);
+
+    const applied = applyCommand(document, removeConstraintCommand('dependent'));
+
+    expect(applied.inverse).toBeNull();
+  });
+
+  it('breaks dependents when deleting a point cascades its source away', () => {
+    const document = documentOf(points, [
+      { id: 'source', type: 'distance', a: 'a', b: 'b', value: 120 },
+      {
+        id: 'dependent',
+        type: 'distance',
+        a: 'c',
+        b: 'd',
+        reference: 'source',
+        lastKnownValue: 120,
+      },
+    ]);
+
+    const applied = applyCommand(document, deleteCommand('a'));
+
+    expect(getConstraint(applied.document, 'source')).toBeUndefined();
+    expect(getConstraint(applied.document, 'dependent')).toMatchObject({
+      reference: 'source',
+      lastKnownValue: 120,
+    });
+    expect(applied.inverse).toBeNull();
+  });
+
+  it('removes a dependent whose own point is deleted', () => {
+    const document = documentOf(points, [
+      { id: 'source', type: 'distance', a: 'a', b: 'b', value: 120 },
+      {
+        id: 'dependent',
+        type: 'distance',
+        a: 'c',
+        b: 'd',
+        reference: 'source',
+        lastKnownValue: 120,
+      },
+    ]);
+
+    const applied = applyCommand(document, deleteCommand('c'));
+
+    expect(getConstraint(applied.document, 'dependent')).toBeUndefined();
+    expect(getConstraint(applied.document, 'source')).toBeDefined();
+  });
+
+  it('solves a linked draft and moves the dependent with its source', () => {
+    const base = documentOf(
+      [
+        point('a', 0, 0, { fixed: true }),
+        point('b', 20, 0),
+        point('c', 0, 40, { fixed: true }),
+        point('d', 30, 40),
+      ],
+      [
+        { id: 'source', type: 'distance', a: 'a', b: 'b', value: 50 },
+        { id: 'dependent', type: 'distance', a: 'c', b: 'd', reference: 'source' },
+      ],
+    );
+
+    const solved = executeCommand(base, updateConstraintCommand('source', { value: 70 }));
+
+    expect(solved.document.constraints).toHaveLength(2);
+    expect(getEntity(solved.document, 'b')).toHaveProperty('x', expect.closeTo(70, 6));
+    expect(getEntity(solved.document, 'd')).toHaveProperty('y', expect.closeTo(40, 6));
+    expect(getEntity(solved.document, 'd')).toHaveProperty('x', expect.closeTo(70, 6));
   });
 });

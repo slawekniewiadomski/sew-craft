@@ -71,10 +71,16 @@ Remove an entity and cascade-remove constraints that reference it.
 ### `add_constraint`
 
 - params: `type` (§ solver), `entities: entity_id[]`, `value?: number`,
+  `reference?: entity_id`,
   `orientation?: 'aligned' | 'horizontal' | 'vertical'`, `offset?: number`
 - `value` is required for `angle` (radians). For `distance` it is optional: a
   finite value `> 0` creates a **set** dimension; omitting it creates a
   **driven** dimension that measures the sketch without adding an equation.
+- `reference` applies only to `distance` and links it to an existing set or
+  referenced dimension. It is mutually exclusive with `value`. The source must
+  exist, be a `distance`, not be the same point pair, resolve to a finite
+  positive value, and must not create a reference cycle. The new dimension
+  stores `reference` and `lastKnownValue`, never a literal `value`.
 - `orientation` and `offset` apply only to `distance`; they are presentation for
   the linear dimension that renders the constraint. `orientation` defaults to
   `aligned`, `offset` to `20` mm (signed, measured from the span).
@@ -94,24 +100,39 @@ Constraint param mapping:
 
 ### `update_constraint`
 
-Change the driving value of a dimensional constraint, or a distance constraint's
-dimension presentation. At least one of `value`, `orientation` or `offset` is
-required. A value edit re-solves the sketch and moves the measured geometry; an
-orientation/offset-only edit changes presentation and is a no-op for the solver.
+Change the driving value or reference of a dimensional constraint, or a distance
+constraint's dimension presentation. At least one of `value`, `reference`,
+`orientation` or `offset` is required. A value/reference edit re-solves the
+sketch; an orientation/offset-only edit changes presentation and is a no-op for
+the solver.
 
-- params: `id: entity_id`, `value?: number | null`, `orientation?: aligned|horizontal|vertical`,
+- params: `id: entity_id`, `value?: number | null`,
+  `reference?: entity_id | null`, `orientation?: aligned|horizontal|vertical`,
   `offset?: number`
 - `value` keeps the `add_constraint` rules when it is a number (`distance > 0`,
-  `angle` finite). `null` clears a `distance` to driven; omitting it leaves the
-  value untouched; `null` is rejected for `angle`.
+  `angle` finite). A number breaks any existing reference; `null` clears a
+  `distance` to driven. Omitting it leaves the current state untouched; `null`
+  is rejected for `angle`.
+- `reference` links a `distance` to an existing source using the same validation
+  as `add_constraint`; it removes any literal `value` and stores the source's
+  resolved value as `lastKnownValue`. `reference: null` unlinks and keeps the
+  current effective value as a literal `value`, so geometry does not jump.
+- `value` and `reference` are mutually exclusive in one update; `reference: null`
+  still counts as a reference field and cannot be combined with `value`.
 - `orientation`/`offset` are rejected for non-distance constraints.
+- A no-op update (same value, same link, same presentation) returns
+  `inverse: null`.
 - inverse: `update_constraint` (restores the previous state and effective
-  presentation values, keeping the command id; a cleared dimension inverts to
-  its previous value, and a driven one inverts to `value: null`)
+  presentation values, keeping the command id; a link edit inverts to the
+  previous `reference`/`lastKnownValue`, a literal edit to its previous `value`,
+  and an unlink to the previous `reference`)
 
 ### `remove_constraint`
 
 - params: `id: entity_id`
+- Removing a referenced source leaves its dependents' `reference` recorded and
+  writes the last resolved number into `lastKnownValue`, so they render as
+  broken rather than disappearing.
 - inverse: `add_constraint` (params rebuilt from the removed constraint, keeping its id)
 
 ### `add_seam_allowance`
@@ -200,8 +221,13 @@ Restore a rounded corner.
 
 `add_corner_round`, `set_corner_round_radius` and `remove_corner_round` are new.
 The optional `cornerRounds` document collection they maintain is additive, so
-existing 0.6.0 payloads still apply unchanged; `spec_version` is bumped to
-`0.7.0`.
+existing 0.6.0 payloads still apply unchanged.
+
+`add_constraint` and `update_constraint` accept an optional `reference` on
+`distance` constraints, linking one dimension to another. A referenced dimension
+stores no literal `value`; its effective number is derived, and `lastKnownValue`
+preserves the display when the source disappears. Both fields are additive, so
+every 0.6.0 payload still applies unchanged. `spec_version` is bumped to `0.7.0`.
 
 ### Migration from spec 0.5.0
 

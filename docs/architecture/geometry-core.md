@@ -79,11 +79,18 @@ arrays. Document helpers in `document.ts`:
 ## Linear dimensions (`dimension.ts`)
 
 A linear dimension is not an entity: it is the CAD rendering of a `distance`
-constraint (see `constraint-solver.md`). A dimension is **driven** when the
-constraint has no `value` — it measures the sketch, renders in parentheses and
-adds no solver residual. Giving it a value makes it **set**: the solver drives
-the span and the label loses its parentheses. The pure helpers in `dimension.ts`
-compute that rendering and are consumed by the frontend canvas:
+constraint (see `constraint-solver.md`). A dimension has one of four states:
+
+- **Set** — the constraint has a literal `value`; the solver drives the span.
+- **Driven** — no `value` and no `reference`; it measures the sketch and adds no
+  solver residual.
+- **Referenced** — a `reference` names another distance constraint that resolves;
+  its effective value is derived from that source.
+- **Broken** — a `reference` is recorded but its source is missing, driven or
+  otherwise unresolvable. The last known reading is shown, but no residual is
+  added.
+
+The pure helpers in `dimension.ts` compute state and rendering for the frontend:
 
 - `dimensionGeometry(document, constraint)` — extension lines, dimension line,
   end chevrons and a rotated value label for a `distance` constraint, or `null`
@@ -91,9 +98,18 @@ compute that rendering and are consumed by the frontend canvas:
   (`DEFAULT_DIMENSION_OFFSET` is `20` mm).
 - `measureLinearDimension(document, a, b, orientation)` — the span the constraint
   would drive, or `null` when a point is missing.
-- `isDrivenDimension(constraint)` — true when the constraint has no `value`.
-- `dimensionValue(document, constraint)` — the set value, or the live measurement
-  for a driven dimension; `null` when a measured point is missing.
+- `dimensionState(document, constraint)` — one of `set`, `driven`, `referenced`
+  or `broken`.
+- `isDrivenDimension(constraint)` — true only when the constraint has neither a
+  `value` nor a `reference`.
+- `isReferencedDimension(document, constraint)` / `isBrokenDimension(document,
+constraint)` — the resolved state without overloading "driven".
+- `dimensionValue(document, constraint)` — the resolved effective value: the
+  literal value, the source's resolved value, the live measurement for a driven
+  dimension, or the last known reading for a broken one; `null` when nothing can
+  be resolved.
+- `referenceCandidates(document, constraint)` / `createsReferenceCycle(...)` —
+  the eligible sources for a picker and the cycle guard used by commands.
 - `inferDimensionOrientation(document, a, b, pointer)` — pick the axis from a
   pointer position while placing a dimension.
 - `dimensionOffsetForPointer(document, a, b, orientation, pointer)` — the signed
