@@ -66,10 +66,10 @@ through three points and the pattern renders and exports it as one SVG `A` comma
 
 ### Phase 2: Geometry core
 
-- [ ] 2.1 Add `ArcEntity`, `arc.ts` maths and `entityPoints` with tests
-- [ ] 2.2 Add `add_arc` validation, idempotence and inverse with tests
-- [ ] 2.3 Extend `bounds`, `cutEdges` and `entitiesInRect`, and flatten arcs in `edgePolyline`, with tests
-- [ ] 2.4 Render arcs in SVG as one `A` command with tests
+- [x] 2.1 Add `ArcEntity`, `arc.ts` maths and `entityPoints` with tests — 21101dd
+- [x] 2.2 Add `add_arc` validation, idempotence and inverse with tests — 21101dd
+- [x] 2.3 Extend `bounds`, `cutEdges` and `entitiesInRect`, and flatten arcs in `edgePolyline`, with tests — 21101dd
+- [x] 2.4 Render arcs in SVG as one `A` command with tests — 21101dd
 
 ### Phase 3: Command contract
 
