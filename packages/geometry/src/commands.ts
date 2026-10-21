@@ -950,6 +950,16 @@ function applyAddCornerRound(
     throw new CommandValidationError('add_corner_round', 'Pick two different lines.');
   }
 
+  // A committed round trims both lines away from the shared corner, so the
+  // corner id is no longer an endpoint. The round itself is the evidence.
+  const sharedRound = cornerRounds(document).find(
+    (round) =>
+      round.ends.some((end) => end.line === first) && round.ends.some((end) => end.line === second),
+  );
+  if (sharedRound !== undefined) {
+    throw new CommandValidationError('add_corner_round', 'This corner is already rounded.');
+  }
+
   const corner = sharedCorner(lineA, lineB);
   if (corner === null) {
     const shared = [lineA.start, lineA.end].filter((id) => id === lineB.start || id === lineB.end);
@@ -1209,7 +1219,7 @@ function applyRemoveCornerRound(
       cornerRounds: cornerRounds(document).filter((candidate) => candidate.id !== id),
     },
     inverse: {
-      id: `${command.id}:restore`,
+      id: round.id,
       type: 'add_corner_round',
       params: {
         first: round.ends[0].line,

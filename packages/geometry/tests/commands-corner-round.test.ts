@@ -186,22 +186,24 @@ describe('add_corner_round', () => {
   });
 
   it('rejects an already rounded corner, mixed flags, a third edge and a seam', () => {
+    expect(() => applyCommand(rounded(), addRound('r2', 5, 'l2', 'l1'))).toThrow(
+      'This corner is already rounded.',
+    );
+
     const roundedWithCorner = rounded();
-    const alreadyRounded: PatternDocument = {
+    const extraCornerLines: PatternDocument = {
       ...roundedWithCorner,
-      entities: roundedWithCorner.entities.map((candidate) =>
-        candidate.kind === 'line' && (candidate.id === 'l1' || candidate.id === 'l2')
-          ? { ...candidate, start: 'c' }
-          : candidate,
-      ),
+      entities: [
+        ...roundedWithCorner.entities,
+        point('d', -100, 0),
+        point('e', 0, -100),
+        line('l3', 'c', 'd'),
+        line('l4', 'c', 'e'),
+      ],
     };
-    expect(() =>
-      applyCommand(alreadyRounded, {
-        id: 'r2',
-        type: 'add_corner_round',
-        params: { first: 'l2', second: 'l1', radius: 5 },
-      }),
-    ).toThrow('This corner is already rounded.');
+    expect(() => applyCommand(extraCornerLines, addRound('r2', 5, 'l3', 'l4'))).toThrow(
+      'This corner is already rounded.',
+    );
 
     const mixed = documentOf(
       point('c', 0, 0),
@@ -435,7 +437,7 @@ describe('remove_corner_round', () => {
     });
 
     expect(result.inverse).toEqual({
-      id: 'remove:restore',
+      id: 'r1',
       type: 'add_corner_round',
       params: { first: 'l1', second: 'l2', radius: 10 },
     });
@@ -446,6 +448,10 @@ describe('remove_corner_round', () => {
     for (const id of ['r1:a', 'r1:b', 'r1:c1', 'r1:c2', 'r1:arc']) {
       expect(getEntity(result.document, id)).toBeUndefined();
     }
+
+    const restored = applyCommand(result.document, result.inverse!).document;
+    expect(cornerRounds(restored).map((round) => [round.id, round.radius])).toEqual([['r1', 10]]);
+    expect(getEntity(restored, 'r1:arc')).toBeDefined();
   });
 
   it('is idempotent for an unknown round', () => {
