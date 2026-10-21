@@ -4,6 +4,7 @@ import {
   constraintOffset,
   constraintOrientation,
   cutEdges,
+  dimensionState,
   dimensionValue,
   findDistanceConstraint,
   getEntity,
@@ -19,6 +20,7 @@ import type {
   ConstraintType,
   CurveEntity,
   DimensionOrientation,
+  DistanceConstraint,
   EntityId,
   LineEntity,
   SeamSide,
@@ -26,6 +28,7 @@ import type {
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import ConstraintPromptBar from '@/components/ConstraintPromptBar.vue';
+import DimensionReferencePicker from '@/components/DimensionReferencePicker.vue';
 import EditorRibbon from '@/components/EditorRibbon.vue';
 import EditorSidebar from '@/components/EditorSidebar.vue';
 import EntityPropertiesPanel from '@/components/EntityPropertiesPanel.vue';
@@ -47,11 +50,19 @@ import {
 import { constraintLabel } from '@/lib/constraint-view';
 import {
   DIMENSION_ORIENTATION_OPTIONS,
+  dimensionPatchForEdit,
+  dimensionStateLabel,
+  filterReferenceOptions,
+  formatDimensionField,
   formatDimensionValue,
+  isReferenceEditText,
   parseDimensionEdit,
   parseDimensionValue,
+  referenceOptions,
+  referenceSearchText,
   type DimensionPatch,
   type DimensionPlacement,
+  type DimensionReferenceOption,
 } from '@/lib/dimensions';
 import { downloadSvgFile } from '@/lib/download';
 import type { RibbonAction } from '@/lib/editor-ribbon';
@@ -166,19 +177,119 @@ const dimensions = computed(() =>
   pattern.value.constraints.flatMap((constraint) => {
     if (constraint.type !== 'distance') return [];
     // Point deletion cascades to constraints, so a surviving dimension resolves.
-    const measured = dimensionValue(pattern.value, constraint)!;
+    const measured = dimensionValue(pattern.value, constraint);
+    const state = dimensionState(pattern.value, constraint);
     return [
       {
         id: constraint.id,
+        constraint,
         entities: [constraint.a, constraint.b],
-        value: formatDimensionValue(measured),
-        driven: isDrivenDimension(constraint),
+        value: formatDimensionValue(measured ?? 0),
+        field: formatDimensionField(constraint, measured, state),
+        state,
+        stateLabel: dimensionStateLabel(state),
+        sourceId: constraint.reference ?? null,
         orientation: constraintOrientation(constraint),
         offset: formatDimensionValue(constraintOffset(constraint)),
       },
     ];
   }),
 );
+
+/** The `#` picker open in the Dimensions drawer, if any. */
+const dimensionPicker = ref<{ id: EntityId; text: string; activeIndex: number } | null>(null);
+
+/** Filtered rows for the open drawer picker. */
+const dimensionPickerOptions = computed<DimensionReferenceOption[]>(() => {
+  const picker = dimensionPicker.value!;
+  const constraint = pattern.value.constraints.find(
+    (entry): entry is DistanceConstraint => entry.id === picker.id && entry.type === 'distance',
+  )!;
+  return filterReferenceOptions(referenceOptions(pattern.value, constraint), picker.text);
+});
+
+/** The row Enter would pick in the drawer, or `null` for an empty list. */
+const activeDimensionPickerOption = computed<DimensionReferenceOption | null>(() => {
+  const picker = dimensionPicker.value;
+  if (picker === null || dimensionPickerOptions.value.length === 0) return null;
+  return dimensionPickerOptions.value[
+    Math.min(picker.activeIndex, dimensionPickerOptions.value.length - 1)
+  ]!;
+});
+
+/** The drawer picker's highlighted row, clamped to its filtered list. */
+const activeDimensionPickerIndex = computed<number>(() =>
+  activeDimensionPickerOption.value === null
+    ? -1
+    : dimensionPickerOptions.value.findIndex(
+        (option) => option.id === activeDimensionPickerOption.value!.id,
+      ),
+);
+
+function pickerOptionsFor(id: EntityId): DimensionReferenceOption[] {
+  const constraint = pattern.value.constraints.find(
+    (entry): entry is DistanceConstraint => entry.id === id && entry.type === 'distance',
+  )!;
+  return referenceOptions(pattern.value, constraint);
+}
+
+function openDimensionPicker(id: EntityId, text = ''): void {
+  dimensionPicker.value = { id, text, activeIndex: 0 };
+}
+
+function closeDimensionPicker(): void {
+  dimensionPicker.value = null;
+}
+
+function moveDimensionPicker(step: number): void {
+  const picker = dimensionPicker.value!;
+  const count = dimensionPickerOptions.value.length;
+  if (count === 0) return;
+  dimensionPicker.value = {
+    text: picker.text,
+    activeIndex: (picker.activeIndex + step + count) % count,
+    id: picker.id,
+  };
+}
+
+function onDimensionInput(id: EntityId, event: Event): void {
+  const value = (event.target as HTMLInputElement).value;
+  if (isReferenceEditText(value)) {
+    openDimensionPicker(id, referenceSearchText(value));
+  } else if (dimensionPicker.value?.id === id) {
+    closeDimensionPicker();
+  }
+}
+
+function selectDimensionReference(id: EntityId, reference: EntityId): void {
+  closeDimensionPicker();
+  onUpdateDimension(id, { reference });
+}
+
+function onDimensionKeydown(id: EntityId, event: KeyboardEvent): void {
+  const picker = dimensionPicker.value;
+  if (picker === null || picker.id !== id) return;
+
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    moveDimensionPicker(1);
+    return;
+  }
+  if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    moveDimensionPicker(-1);
+    return;
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeDimensionPicker();
+    return;
+  }
+  if (event.key === 'Enter' && activeDimensionPickerOption.value !== null) {
+    event.preventDefault();
+    selectDimensionReference(id, activeDimensionPickerOption.value.id);
+  }
+}
 
 const otherConstraints = computed(() =>
   pattern.value.constraints.filter((constraint) => constraint.type !== 'distance'),
@@ -362,15 +473,32 @@ function onUpdateDimension(id: EntityId, patch: DimensionPatch): void {
   );
 }
 
-/** The inspector edits a value only; placement stays in the Dimensions drawer. */
-function onInspectorDimensionValue(id: EntityId, value: number | null): void {
-  onUpdateDimension(id, { value });
-}
-
 function onDimensionValueEdit(id: EntityId, event: Event): void {
-  const edit = parseDimensionEdit((event.target as HTMLInputElement).value);
-  if (edit.kind === 'invalid') return;
-  onUpdateDimension(id, edit.kind === 'driven' ? { value: null } : { value: edit.value });
+  const input = event.target as HTMLInputElement;
+  const dimension = dimensions.value.find((entry) => entry.id === id)!;
+
+  const edit = parseDimensionEdit(input.value);
+  if (edit.kind === 'invalid') {
+    input.value = dimension.field;
+    return;
+  }
+
+  const unchangedSet =
+    edit.kind === 'set' && dimension.state === 'set' && dimension.constraint.value === edit.value;
+  const unchangedDriven = edit.kind === 'driven' && dimension.state === 'driven';
+  if (unchangedSet || unchangedDriven) {
+    input.value = dimension.field;
+    return;
+  }
+
+  const patch = dimensionPatchForEdit(edit, pickerOptionsFor(id));
+  if (patch === null) {
+    input.value = dimension.field;
+    return;
+  }
+
+  closeDimensionPicker();
+  onUpdateDimension(id, patch);
 }
 
 function onDimensionOrientationEdit(id: EntityId, event: Event): void {
@@ -656,7 +784,7 @@ onBeforeUnmount(() => {
             @set-seam-width="setSeamWidth"
             @flip-seam="flipSeam"
             @remove-seam="removeSeam"
-            @update-dimension="onInspectorDimensionValue"
+            @update-dimension="onUpdateDimension"
             @remove-constraint="removeConstraint"
           />
 
@@ -793,28 +921,56 @@ onBeforeUnmount(() => {
                 </Button>
               </div>
 
-              <div class="flex flex-wrap items-center gap-2">
+              <div class="relative flex flex-wrap items-center gap-2">
                 <input
-                  type="number"
-                  min="0.001"
-                  step="0.1"
+                  type="text"
+                  inputmode="decimal"
                   class="w-20 rounded-md border px-2 py-1 text-sm"
-                  :value="dimension.value"
-                  :aria-label="
-                    dimension.driven
-                      ? `Value for ${dimension.id} (driven measurement)`
-                      : `Value for ${dimension.id}`
-                  "
+                  :value="dimension.field"
+                  :aria-label="`Value for ${dimension.id} (${dimension.stateLabel.toLowerCase()})`"
                   :data-testid="`dimension-value-${dimension.id}`"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  :aria-expanded="dimensionPicker?.id === dimension.id"
+                  :aria-controls="
+                    dimensionPicker?.id === dimension.id
+                      ? `dimension-drawer-reference-list-${dimension.id}`
+                      : undefined
+                  "
+                  :aria-activedescendant="
+                    dimensionPicker?.id === dimension.id && activeDimensionPickerOption !== null
+                      ? `dimension-drawer-reference-list-${dimension.id}-${activeDimensionPickerOption.id}`
+                      : undefined
+                  "
+                  @input="onDimensionInput(dimension.id, $event)"
+                  @keydown="onDimensionKeydown(dimension.id, $event)"
                   @change="onDimensionValueEdit(dimension.id, $event)"
                 />
                 <span class="text-xs text-muted-foreground">mm</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :data-testid="`dimension-reference-${dimension.id}`"
+                  @click="openDimensionPicker(dimension.id)"
+                >
+                  {{ dimension.state === 'broken' ? 'Re-link' : 'Reference' }}
+                </Button>
                 <span
                   class="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
+                  :data-dimension-state="dimension.state"
                   :data-testid="`dimension-state-${dimension.id}`"
                 >
-                  {{ dimension.driven ? 'Driven' : 'Set' }}
+                  {{ dimension.stateLabel }}
                 </span>
+
+                <DimensionReferencePicker
+                  v-if="dimensionPicker?.id === dimension.id"
+                  :list-id="`dimension-drawer-reference-list-${dimension.id}`"
+                  class="left-0 top-full mt-1"
+                  :options="dimensionPickerOptions"
+                  :active-index="activeDimensionPickerIndex"
+                  @select="selectDimensionReference(dimension.id, $event)"
+                />
 
                 <select
                   class="rounded-md border px-2 py-1 text-sm"
@@ -844,6 +1000,32 @@ onBeforeUnmount(() => {
                   @change="onDimensionOffsetEdit(dimension.id, $event)"
                 />
                 <span class="text-xs text-muted-foreground">offset (mm)</span>
+              </div>
+
+              <p
+                v-if="dimension.state === 'referenced'"
+                class="text-xs text-muted-foreground"
+                :data-testid="`dimension-source-${dimension.id}`"
+              >
+                Source: <span class="font-mono">{{ dimension.sourceId }}</span>
+              </p>
+              <p
+                v-else-if="dimension.state === 'broken'"
+                class="text-xs text-destructive"
+                :data-testid="`dimension-broken-${dimension.id}`"
+              >
+                Source {{ dimension.sourceId }} is missing. Type a value or press # to re-link.
+              </p>
+
+              <div v-if="dimension.sourceId !== null" class="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :data-testid="`dimension-unlink-${dimension.id}`"
+                  @click="onUpdateDimension(dimension.id, { reference: null })"
+                >
+                  Remove reference
+                </Button>
               </div>
             </li>
           </ul>

@@ -148,19 +148,19 @@ describe('EntityPropertiesPanel', () => {
     expect((input.element as HTMLInputElement).value).toBe('100');
 
     await input.setValue('120');
-    expect(wrapper.emitted('update-dimension')).toEqual([['width', 120]]);
+    expect(wrapper.emitted('update-dimension')).toEqual([['width', { value: 120 }]]);
 
     await input.setValue('0');
     expect((input.element as HTMLInputElement).value).toBe('100');
-    expect(wrapper.emitted('update-dimension')).toEqual([['width', 120]]);
+    expect(wrapper.emitted('update-dimension')).toEqual([['width', { value: 120 }]]);
 
     await input.setValue('100');
-    expect(wrapper.emitted('update-dimension')).toEqual([['width', 120]]);
+    expect(wrapper.emitted('update-dimension')).toEqual([['width', { value: 120 }]]);
 
     await input.setValue('');
     expect(wrapper.emitted('update-dimension')).toEqual([
-      ['width', 120],
-      ['width', null],
+      ['width', { value: 120 }],
+      ['width', { value: null }],
     ]);
   });
 
@@ -177,11 +177,11 @@ describe('EntityPropertiesPanel', () => {
     expect(wrapper.find('[data-testid="entity-dimension-state-live"]').text()).toBe('Driven');
 
     await input.setValue('100');
-    expect(wrapper.emitted('update-dimension')).toEqual([['live', 100]]);
+    expect(wrapper.emitted('update-dimension')).toEqual([['live', { value: 100 }]]);
 
     await input.setValue('');
     expect((input.element as HTMLInputElement).value).toBe('100');
-    expect(wrapper.emitted('update-dimension')).toEqual([['live', 100]]);
+    expect(wrapper.emitted('update-dimension')).toEqual([['live', { value: 100 }]]);
   });
 
   it('leaves an unmeasurable dimension value empty', () => {
@@ -219,5 +219,170 @@ describe('EntityPropertiesPanel', () => {
     const { wrapper } = panel(broken, 'broken');
 
     expect(wrapper.find('[data-testid="entity-length"]').text()).toBe('—');
+  });
+
+  it('links a dimension from the inspector picker with the keyboard or pointer', async () => {
+    const { wrapper } = panel(
+      doc({
+        constraints: [
+          { id: 'width', type: 'distance', a: 'a', b: 'b', value: 100 },
+          { id: 'height', type: 'distance', a: 'b', b: 'c', value: 60 },
+          { id: 'depth', type: 'distance', a: 'c', b: 'd', value: 80 },
+        ],
+      }),
+      'b',
+    );
+    const input = wrapper.find('[data-testid="entity-dimension-value-width"]');
+
+    await input.trigger('keydown', { key: 'ArrowDown' });
+    expect(wrapper.find('[data-testid="dimension-reference-picker"]').exists()).toBe(false);
+
+    (input.element as HTMLInputElement).value = '#';
+    await input.trigger('input');
+
+    const picker = wrapper.find('[data-testid="dimension-reference-picker"]');
+    expect(picker.exists()).toBe(true);
+    expect(picker.find('[data-testid="dimension-reference-option-height"]').text()).toBe(
+      'height · 60 mm · b → c · Aligned',
+    );
+    expect(input.attributes('aria-expanded')).toBe('true');
+    expect(input.attributes('aria-activedescendant')).toBe(
+      'entity-dimension-reference-list-width-height',
+    );
+
+    const heightInput = wrapper.find('[data-testid="entity-dimension-value-height"]');
+    await heightInput.trigger('keydown', { key: 'ArrowDown' });
+    await heightInput.trigger('keydown', { key: 'Escape' });
+    expect(wrapper.find('[data-testid="dimension-reference-picker"]').exists()).toBe(true);
+    expect(input.attributes('aria-activedescendant')).toBe(
+      'entity-dimension-reference-list-width-height',
+    );
+
+    await input.trigger('keydown', { key: 'ArrowDown' });
+    expect(input.attributes('aria-activedescendant')).toBe(
+      'entity-dimension-reference-list-width-depth',
+    );
+    await input.trigger('keydown', { key: 'ArrowUp' });
+    expect(input.attributes('aria-activedescendant')).toBe(
+      'entity-dimension-reference-list-width-height',
+    );
+
+    await input.trigger('keydown', { key: 'Enter' });
+    expect(wrapper.emitted('update-dimension')).toEqual([['width', { reference: 'height' }]]);
+    expect(wrapper.find('[data-testid="dimension-reference-picker"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="entity-dimension-reference-width"]').trigger('click');
+    await wrapper.find('[data-testid="dimension-reference-option-depth"]').trigger('click');
+    expect(wrapper.emitted('update-dimension')).toEqual([
+      ['width', { reference: 'height' }],
+      ['width', { reference: 'depth' }],
+    ]);
+  });
+
+  it('filters the inspector picker and closes it with Escape', async () => {
+    const { wrapper } = panel(
+      doc({
+        constraints: [
+          { id: 'width', type: 'distance', a: 'a', b: 'b', value: 100 },
+          { id: 'height', type: 'distance', a: 'b', b: 'c', value: 60 },
+        ],
+      }),
+      'l1',
+    );
+    const input = wrapper.find('[data-testid="entity-dimension-value-width"]');
+
+    (input.element as HTMLInputElement).value = '#zzz';
+    await input.trigger('input');
+    expect(wrapper.find('[data-testid="dimension-reference-empty"]').text()).toBe(
+      'No other dimensions can be referenced.',
+    );
+
+    await input.trigger('keydown', { key: 'ArrowDown' });
+    await input.trigger('keydown', { key: 'ArrowUp' });
+    await input.trigger('keydown', { key: 'Escape' });
+    expect(wrapper.find('[data-testid="dimension-reference-picker"]').exists()).toBe(false);
+    expect(input.attributes('aria-expanded')).toBe('false');
+
+    (input.element as HTMLInputElement).value = '#';
+    await input.trigger('input');
+    (input.element as HTMLInputElement).value = '120';
+    await input.trigger('input');
+    expect(wrapper.find('[data-testid="dimension-reference-picker"]').exists()).toBe(false);
+  });
+
+  it('renders referenced and broken rows with source actions', async () => {
+    const document = doc({
+      constraints: [
+        { id: 'A', type: 'distance', a: 'a', b: 'b', value: 100 },
+        { id: 'R', type: 'distance', a: 'b', b: 'c', reference: 'A' },
+        { id: 'B', type: 'distance', a: 'c', b: 'd', reference: 'gone', lastKnownValue: 75 },
+      ],
+    });
+    const { wrapper } = panel(document, 'c');
+
+    const referenced = wrapper.find('[data-testid="entity-dimension-value-R"]');
+    expect((referenced.element as HTMLInputElement).value).toBe('#A');
+    expect(wrapper.find('[data-testid="entity-dimension-state-R"]').text()).toBe('Referenced');
+    expect(wrapper.find('[data-testid="entity-dimension-source-R"]').text()).toContain('Source: A');
+
+    await wrapper.find('[data-testid="entity-dimension-unlink-R"]').trigger('click');
+    expect(wrapper.emitted('update-dimension')).toEqual([['R', { reference: null }]]);
+
+    const broken = wrapper.find('[data-testid="entity-dimension-value-B"]');
+    expect((broken.element as HTMLInputElement).value).toBe('75');
+    expect(wrapper.find('[data-testid="entity-dimension-state-B"]').text()).toBe('Broken');
+    expect(wrapper.find('[data-testid="entity-dimension-broken-B"]').text()).toBe(
+      'Source gone is missing. Type a value or press # to re-link.',
+    );
+    expect(wrapper.find('[data-testid="entity-dimension-reference-B"]').text()).toBe('Re-link');
+
+    await wrapper.find('[data-testid="entity-dimension-reference-B"]').trigger('click');
+    await wrapper.find('[data-testid="dimension-reference-option-A"]').trigger('click');
+    expect(wrapper.emitted('update-dimension')).toEqual([
+      ['R', { reference: null }],
+      ['B', { reference: 'A' }],
+    ]);
+  });
+
+  it('falls back for a stale dimension row after the constraint is gone', async () => {
+    const document = doc();
+    const entity = entityProperties(document, 'l1')!;
+    entity.dimensions = [
+      {
+        id: 'stale',
+        entities: ['a', 'b'],
+        value: 120,
+        state: 'set',
+        sourceId: null,
+        orientation: 'aligned',
+      },
+      {
+        id: 'stale-null',
+        entities: ['a', 'b'],
+        value: null,
+        state: 'driven',
+        sourceId: null,
+        orientation: 'aligned',
+      },
+    ];
+    const wrapper = mount(EntityPropertiesPanel, { props: { document, entity } });
+    const input = wrapper.find('[data-testid="entity-dimension-value-stale"]');
+
+    expect((input.element as HTMLInputElement).value).toBe('120');
+    expect(
+      (
+        wrapper.find('[data-testid="entity-dimension-value-stale-null"]')
+          .element as HTMLInputElement
+      ).value,
+    ).toBe('');
+
+    (input.element as HTMLInputElement).value = '#width';
+    await input.trigger('input');
+    expect(wrapper.find('[data-testid="dimension-reference-empty"]').exists()).toBe(true);
+
+    (input.element as HTMLInputElement).value = '#width';
+    await input.trigger('change');
+    expect((input.element as HTMLInputElement).value).toBe('120');
+    expect(wrapper.emitted('update-dimension')).toBeUndefined();
   });
 });

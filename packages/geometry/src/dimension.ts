@@ -1,5 +1,6 @@
 import { getEntity } from './document.js';
 import type {
+  Constraint,
   DimensionOrientation,
   DistanceConstraint,
   EntityId,
@@ -83,25 +84,164 @@ export function constraintOffset(constraint: DistanceConstraint): number {
   return constraint.offset ?? DEFAULT_DIMENSION_OFFSET;
 }
 
-/** True when a dimension only measures the sketch and adds no solver equation. */
-export function isDrivenDimension(constraint: DistanceConstraint): boolean {
-  return constraint.value === undefined;
+/**
+ * The four states a dimension can be in. `set` and `referenced` drive the
+ * sketch; `driven` measures it; `broken` is a reference whose source no longer
+ * resolves and therefore drives nothing.
+ */
+export type DimensionState = 'set' | 'driven' | 'referenced' | 'broken';
+
+/** The `distance` constraint with this id, or `null` when absent or another type. */
+function distanceById(constraints: readonly Constraint[], id: EntityId): DistanceConstraint | null {
+  const constraint = constraints.find((candidate) => candidate.id === id);
+  return constraint !== undefined && constraint.type === 'distance' ? constraint : null;
+}
+
+/** Whether a value can drive the solver: finite and greater than zero. */
+function isUsableValue(value: number): boolean {
+  return Number.isFinite(value) && value > 0;
 }
 
 /**
- * The value a dimension reports: its set value when driving, otherwise the live
- * measurement along its orientation. `null` when a measured point is missing.
+ * The value a dimension drives with, following a reference chain. `null` for a
+ * driven, missing, broken or cyclic source. `visited` makes a hand-edited cyclic
+ * document safe to read instead of recursing forever.
+ */
+function resolveConstraintValue(
+  constraints: readonly Constraint[],
+  constraint: DistanceConstraint,
+  visited: Set<EntityId>,
+): number | null {
+  if (constraint.value !== undefined) {
+    return isUsableValue(constraint.value) ? constraint.value : null;
+  }
+
+  const reference = constraint.reference;
+  if (reference === undefined) return null;
+  if (visited.has(constraint.id)) return null;
+  visited.add(constraint.id);
+
+  const source = distanceById(constraints, reference);
+  if (source === null) return null;
+  return resolveConstraintValue(constraints, source, visited);
+}
+
+/**
+ * The resolved driving value of a dimension: its literal, or a source chain's
+ * literal. `null` when the dimension is driven or its reference is broken.
+ */
+export function resolveSetValue(
+  constraints: readonly Constraint[],
+  constraint: DistanceConstraint,
+): number | null {
+  return resolveConstraintValue(constraints, constraint, new Set());
+}
+
+/** The state of a dimension, derived from its fields and the document. */
+export function dimensionState(
+  document: PatternDocument,
+  constraint: DistanceConstraint,
+): DimensionState {
+  if (constraint.value !== undefined) return 'set';
+  if (constraint.reference === undefined) return 'driven';
+  return resolveSetValue(document.constraints, constraint) === null ? 'broken' : 'referenced';
+}
+
+/** True when a dimension only measures the sketch and adds no solver equation. */
+export function isDrivenDimension(constraint: DistanceConstraint): boolean {
+  return constraint.value === undefined && constraint.reference === undefined;
+}
+
+/** True when a dimension follows a source that currently resolves. */
+export function isReferencedDimension(
+  document: PatternDocument,
+  constraint: DistanceConstraint,
+): boolean {
+  return dimensionState(document, constraint) === 'referenced';
+}
+
+/** True when a dimension's recorded source no longer resolves. */
+export function isBrokenDimension(
+  document: PatternDocument,
+  constraint: DistanceConstraint,
+): boolean {
+  return dimensionState(document, constraint) === 'broken';
+}
+
+/**
+ * The value a dimension reports: its literal `value`, the resolved source value
+ * when referenced, the live measurement when driven, or the last known reading
+ * when broken. `null` when a measured point is missing.
+ */
+export function resolveDimensionValue(
+  document: PatternDocument,
+  constraint: DistanceConstraint,
+): number | null {
+  if (constraint.value !== undefined) return constraint.value;
+  if (constraint.reference === undefined) {
+    return measureLinearDimension(
+      document,
+      constraint.a,
+      constraint.b,
+      constraintOrientation(constraint),
+    );
+  }
+  return resolveSetValue(document.constraints, constraint) ?? constraint.lastKnownValue ?? null;
+}
+
+/**
+ * The effective value of a dimension, resolved through any reference chain.
+ * Every surface reads this so a linked dimension never has a second number.
  */
 export function dimensionValue(
   document: PatternDocument,
   constraint: DistanceConstraint,
 ): number | null {
-  if (constraint.value !== undefined) return constraint.value;
-  return measureLinearDimension(
-    document,
-    constraint.a,
-    constraint.b,
-    constraintOrientation(constraint),
+  return resolveDimensionValue(document, constraint);
+}
+
+/** Order-insensitive comparison of two point pairs. */
+function samePointPair(constraint: DistanceConstraint, a: EntityId, b: EntityId): boolean {
+  return (constraint.a === a && constraint.b === b) || (constraint.a === b && constraint.b === a);
+}
+
+/**
+ * Whether linking `dependentId` to `sourceId` would close a loop, including a
+ * self-link. Walks the source's chain and stops as soon as it reaches the
+ * dependent or an existing cycle.
+ */
+export function createsReferenceCycle(
+  constraints: readonly Constraint[],
+  dependentId: EntityId,
+  sourceId: EntityId,
+): boolean {
+  const seen = new Set<EntityId>([dependentId]);
+  let current = distanceById(constraints, sourceId);
+  while (current !== null) {
+    if (seen.has(current.id)) return true;
+    seen.add(current.id);
+    if (current.reference === undefined) return false;
+    current = distanceById(constraints, current.reference);
+  }
+  return false;
+}
+
+/**
+ * The dimensions a dimension may reference: another distance constraint that is
+ * not itself, not on the same point pair, currently resolves to a value and
+ * would not create a cycle. Driven and broken dimensions are never offered.
+ */
+export function referenceCandidates(
+  document: PatternDocument,
+  constraint: DistanceConstraint,
+): DistanceConstraint[] {
+  return document.constraints.filter(
+    (candidate): candidate is DistanceConstraint =>
+      candidate.type === 'distance' &&
+      candidate.id !== constraint.id &&
+      !samePointPair(candidate, constraint.a, constraint.b) &&
+      resolveSetValue(document.constraints, candidate) !== null &&
+      !createsReferenceCycle(document.constraints, constraint.id, candidate.id),
   );
 }
 
