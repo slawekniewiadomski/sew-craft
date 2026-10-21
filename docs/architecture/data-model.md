@@ -68,6 +68,8 @@ can be written when it changes.
     { "id": "l1", "kind": "line", "start": "p1", "end": "p2", "construction": false },
     { "id": "p3", "kind": "point", "x": 120, "y": 90, "construction": false, "fixed": false },
     { "id": "l2", "kind": "line", "start": "p2", "end": "p3", "construction": false },
+    { "id": "p4", "kind": "point", "x": 130, "y": 0, "construction": false, "fixed": false },
+    { "id": "ci1", "kind": "circle", "center": "p2", "rim": "p4", "construction": false },
   ],
   "constraints": [
     { "id": "c1", "type": "horizontal", "a": "p1", "b": "p2" },
@@ -112,6 +114,13 @@ anchors and the radius, while its derived entities (tangent points `r1:a`,
 `r1:b`, controls `r1:c1`, `r1:c2`, and the cubic arc `r1:arc`) live in
 `entities` and are omitted from the snippet. `l1` and `l2` are trimmed to the
 tangent points, and `p2` stays as a construction point.
+
+A `circle` entity references its centre point and one point on the rim; the
+radius is derived as the distance between them and is never stored. Its bounding
+box is the centre widened by the radius in each direction, and `add_seam_allowance`
+rejects a circle in v1. The entity kind is additive, so a document written before
+the feature loads unchanged and a document containing a circle is still valid
+JSON for older builds.
 
 A `distance` constraint without `value` or `reference` is a **driven** dimension:
 it reports the live measurement and adds no solver equation. A `reference` links

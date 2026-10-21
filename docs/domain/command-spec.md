@@ -15,7 +15,7 @@ runtime source of truth is `config/geometry.php`, exposed at `GET /api/commands`
 }
 ```
 
-## Commands (v0.7)
+## Commands (v0.8)
 
 ### `add_point`
 
@@ -46,6 +46,22 @@ Cubic Bézier through four control points `p0..p3`.
 
 - params: `p0..p3: entity_id`, `construction?: bool`
 - inverse: `delete_entity`
+
+### `add_circle`
+
+Create a circle from two existing points: the centre and a point on the rim. The
+radius is derived as the distance between them and is never stored, so the solver
+keeps operating on points only.
+
+- params: `center: entity_id`, `rim: entity_id`, `construction?: bool`
+- Both ids must resolve to drafting points, distinct from each other and not
+  derived by a corner round.
+- `center` and `rim` must differ and their distance must be at least `MIN_RADIUS`
+  (`0.001` mm); a smaller radius is a validation error.
+- Re-applying a command whose circle id already exists is a no-op.
+- inverse: `delete_entity`
+- A seam allowance cannot be added to a circle in v1; `add_seam_allowance`
+  rejects it with "seam allowances need a line or curve edge".
 
 ### `add_construction_line`
 
@@ -216,6 +232,12 @@ Restore a rounded corner.
   previous construction flag, deletes the tangent points, control points and arc,
   and removes the feature. A line with a round at its other end keeps that round.
 - inverse: `add_corner_round` with the original lines and radius.
+
+### Migration from spec 0.7.0
+
+`add_circle` is new and the `circle` entity kind is additive, so every 0.7.0
+payload still applies unchanged. The pattern schema string stays
+`sewcraft.pattern/0.1`. `spec_version` is bumped to `0.8.0`.
 
 ### Migration from spec 0.6.0
 
