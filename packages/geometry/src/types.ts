@@ -122,6 +122,39 @@ export function seamSide(seam: Seam): SeamSide {
   return seam.side ?? 'left';
 }
 
+/** One selected line of a corner round, trimmed at the shared sharp corner. */
+export interface CornerRoundEnd {
+  /** The selected line, trimmed at the shared corner. */
+  line: EntityId;
+  /**
+   * The original point at the line's opposite end. It defines the line
+   * direction even after the line has been trimmed at both ends.
+   */
+  anchor: EntityId;
+  /** The derived point where this line becomes the arc. */
+  tangent: EntityId;
+}
+
+/**
+ * The persisted record of a rounded corner: the sharp corner, its two lines, the
+ * radius and the derived tangent/control points and arc. Derived geometry is
+ * regenerated after every solve.
+ */
+export interface CornerRound {
+  id: EntityId;
+  /** The sharp corner, kept as a construction point. */
+  corner: EntityId;
+  ends: [CornerRoundEnd, CornerRoundEnd];
+  /** Arc radius in millimetres. */
+  radius: number;
+  /** Derived cubic Bézier, cut geometry like the lines it joins. */
+  arc: EntityId;
+  /** Derived Bézier control points p1 and p2. */
+  controls: [EntityId, EntityId];
+  /** The sharp corner's construction flag before the round. */
+  cornerConstruction: boolean;
+}
+
 /**
  * The canonical, versioned geometry document stored in `patterns.geometry`.
  * Its schema version is explicit so migrations can be written when it changes.
@@ -132,4 +165,6 @@ export interface PatternDocument {
   entities: Entity[];
   constraints: Constraint[];
   seams: Seam[];
+  /** Optional so documents written before corner rounds load unchanged. */
+  cornerRounds?: CornerRound[];
 }

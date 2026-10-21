@@ -6,6 +6,7 @@ import {
   type Entity,
   type EntityId,
   entitiesInRect,
+  executeCommand,
   type LineEntity,
   type PatternDocument,
   type PointEntity,
@@ -28,6 +29,7 @@ vi.mock('@sewcraft/geometry', async (importOriginal) => {
 });
 
 import type { ConstraintPick } from '@/lib/constraint-tools';
+import type { CornerRoundPicks } from '@/lib/corner-round';
 import { snapPoint, snapToGrid } from '@/lib/snap';
 import {
   fitToBounds,
@@ -92,6 +94,26 @@ const baseDoc = doc([
   cv('badcurve', 'a', 'b', 'c', 'missing'),
 ]);
 
+/** A cut square with a 10 mm round at corner `b` between `ab` and `bc`. */
+function roundedSquare(radius = 10): PatternDocument {
+  const square = doc([
+    pt('a', 0, 0),
+    pt('b', 100, 0),
+    pt('c', 100, 100),
+    pt('d', 0, 100),
+    ln('ab', 'a', 'b'),
+    ln('bc', 'b', 'c'),
+    ln('cd', 'c', 'd'),
+    ln('da', 'd', 'a'),
+  ]);
+
+  return executeCommand(square, {
+    id: 'r1',
+    type: 'add_corner_round',
+    params: { first: 'ab', second: 'bc', radius },
+  }).document;
+}
+
 let rectSpy: MockInstance;
 
 beforeEach(() => {
@@ -109,6 +131,9 @@ function mountCanvas(
     showDimensions: boolean;
     constraintActive: boolean;
     constraintPicks: ConstraintPick[];
+    roundCornerActive: boolean;
+    roundCornerPicks: CornerRoundPicks;
+    cornerRoundPreviewRadius: number | null;
   }> = {},
 ): VueWrapper {
   return mount(PatternCanvas, {
@@ -1723,5 +1748,236 @@ describe('PatternCanvas', () => {
 
     expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(false);
     expect(wrapper.emitted('update-dimension')).toBeUndefined();
+  });
+
+  it('emits round-corner picks for any entity and highlights the picked lines', () => {
+    const wrapper = mountCanvas({
+      roundCornerActive: true,
+      roundCornerPicks: { first: 'ab', second: null },
+    });
+
+    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200);
+    down(pointCircle(wrapper, 'a').element, 300, 200);
+    down(wrapper.find('[data-testid="grid"]').element, 600, 500);
+
+    expect(wrapper.emitted('round-corner-pick')).toEqual([['ab'], ['a']]);
+    expect(wrapper.find('[data-kind="line"][data-entity-id="ab"]').classes()).toContain(
+      'text-primary',
+    );
+    expect(wrapper.find('[data-kind="line"][data-entity-id="ab"]').attributes('stroke-width')).toBe(
+      '3',
+    );
+    expect(wrapper.find('div').classes()).toContain('cursor-crosshair');
+  });
+
+  it('renders a live round preview from the pending radius', async () => {
+    const square = doc([
+      pt('a', 0, 0),
+      pt('b', 100, 0),
+      pt('c', 100, 100),
+      ln('ab', 'a', 'b'),
+      ln('bc', 'b', 'c'),
+    ]);
+    const wrapper = mountCanvas({
+      document: square,
+      roundCornerActive: true,
+      roundCornerPicks: { first: 'ab', second: 'bc' },
+      cornerRoundPreviewRadius: 10,
+    });
+
+    expect(wrapper.find('[data-testid="corner-round-preview"]').exists()).toBe(true);
+    expect(wrapper.findAll('[data-testid^="corner-round-preview-line"]')).toHaveLength(2);
+    expect(wrapper.find('[data-testid="corner-round-preview-arc"]').attributes('d')).toContain(
+      'M 90 0',
+    );
+
+    await wrapper.setProps({ cornerRoundPreviewRadius: null });
+    expect(wrapper.find('[data-testid="corner-round-preview"]').exists()).toBe(false);
+  });
+
+  it('hides derived points and shows handles and the label for a selected round', () => {
+    const document = roundedSquare();
+    const wrapper = mountCanvas({ document, selectedEntityIds: ['ab'] });
+
+    expect(pointCircle(wrapper, 'r1:a').exists()).toBe(false);
+    expect(pointCircle(wrapper, 'r1:c1').exists()).toBe(false);
+    expect(pointCircle(wrapper, 'b').exists()).toBe(true);
+
+    expect(wrapper.find('[data-testid="corner-round-handle-r1-0"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="corner-round-handle-r1-1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="corner-round-label-r1"] text').text()).toBe('R 10');
+    expect(wrapper.find('[data-testid="corner-round-label-r1"]').attributes('aria-label')).toBe(
+      'Corner radius 10 millimetres',
+    );
+
+    const arc = mountCanvas({ document, selectedEntityIds: ['r1:arc'] });
+    expect(arc.find('[data-testid="corner-round-label-r1"]').exists()).toBe(true);
+  });
+
+  it('shows handles while a rounded entity is hovered', async () => {
+    const wrapper = mountCanvas({ document: roundedSquare() });
+
+    expect(wrapper.find('[data-testid="corner-round-handle-r1-0"]').exists()).toBe(false);
+
+    await wrapper.find('[data-kind="line"][data-entity-id="ab"]').trigger('pointerenter');
+    expect(wrapper.find('[data-testid="corner-round-handle-r1-0"]').exists()).toBe(true);
+
+    await wrapper.find('[data-kind="line"][data-entity-id="ab"]').trigger('pointerleave');
+    expect(wrapper.find('[data-testid="corner-round-handle-r1-0"]').exists()).toBe(false);
+
+    await wrapper.find('[data-kind="line"][data-entity-id="cd"]').trigger('pointerenter');
+    expect(wrapper.find('[data-testid="corner-round-handle-r1-0"]').exists()).toBe(false);
+
+    await wrapper.findAll('[data-kind="line"][data-entity-id="ab"]')[1]!.trigger('pointerenter');
+    expect(wrapper.find('[data-testid="corner-round-handle-r1-0"]').exists()).toBe(true);
+
+    await wrapper.find('[data-kind="curve"][data-entity-id="r1:arc"]').trigger('pointerenter');
+    expect(wrapper.find('[data-testid="corner-round-handle-r1-0"]').exists()).toBe(true);
+  });
+
+  it('drags a tangent handle along its line and commits one radius command', async () => {
+    const document = roundedSquare();
+    const wrapper = mountCanvas({ document, selectedEntityIds: ['ab'] });
+    const vp = fittedViewport(document);
+    const target = worldToScreen(vp, { x: 80, y: 0 });
+
+    down(wrapper.find('[data-testid="corner-round-handle-r1-0"] rect').element, 100, 100);
+    move(target.x, target.y);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="corner-round-drag-preview"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="corner-round-label-r1"] text').text()).toBe('R 20');
+
+    up();
+    await nextTick();
+
+    expect(wrapper.emitted('set-corner-round-radius')).toEqual([['r1', 20]]);
+    expect(wrapper.find('[data-testid="corner-round-drag-preview"]').exists()).toBe(false);
+  });
+
+  it('clamps a drag to the maximum and can be cancelled', () => {
+    const document = roundedSquare();
+    const wrapper = mountCanvas({ document, selectedEntityIds: ['ab'] });
+    const vp = fittedViewport(document);
+    const far = worldToScreen(vp, { x: 100, y: 200 });
+
+    down(wrapper.find('[data-testid="corner-round-handle-r1-1"] rect').element, 100, 100);
+    move(far.x, far.y);
+    up();
+
+    expect(wrapper.emitted('set-corner-round-radius')?.[0]?.[1]).toBeCloseTo(99.999, 3);
+
+    down(wrapper.find('[data-testid="corner-round-handle-r1-0"] rect').element, 100, 100);
+    move(10, 10);
+    window.dispatchEvent(new MouseEvent('pointercancel'));
+
+    expect(wrapper.emitted('set-corner-round-radius')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="corner-round-handle-r1-0"]').exists()).toBe(true);
+  });
+
+  it('edits the radius from the R label and keeps typos open', async () => {
+    const document = roundedSquare();
+    const wrapper = mountCanvas({ document, selectedEntityIds: ['ab'] });
+
+    await wrapper.find('[data-testid="corner-round-label-r1"]').trigger('dblclick');
+    await flushPromises();
+
+    const input = wrapper.find('[data-testid="corner-round-editor"]');
+    expect(input.exists()).toBe(true);
+    expect((input.element as HTMLInputElement).value).toBe('10');
+
+    await input.setValue('12');
+    await input.trigger('keydown', { key: 'Enter' });
+
+    expect(wrapper.emitted('set-corner-round-radius')).toEqual([['r1', 12]]);
+    expect(wrapper.find('[data-testid="corner-round-editor"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="corner-round-label-r1"]').trigger('dblclick');
+    await flushPromises();
+    await wrapper.find('[data-testid="corner-round-editor"]').setValue('0');
+    await wrapper.find('[data-testid="corner-round-editor"]').trigger('keydown', { key: 'Enter' });
+
+    expect(wrapper.find('[data-testid="corner-round-editor"]').exists()).toBe(true);
+    await wrapper.find('[data-testid="corner-round-editor"]').trigger('keydown', { key: 'Escape' });
+    expect(wrapper.find('[data-testid="corner-round-editor"]').exists()).toBe(false);
+    expect(wrapper.emitted('set-corner-round-radius')).toEqual([['r1', 12]]);
+  });
+
+  it('commits a valid blur edit and discards an invalid one', async () => {
+    const document = roundedSquare();
+    const wrapper = mountCanvas({ document, selectedEntityIds: ['ab'] });
+
+    await wrapper.find('[data-testid="corner-round-label-r1"]').trigger('dblclick');
+    await flushPromises();
+    await wrapper.find('[data-testid="corner-round-editor"]').setValue('15');
+    await wrapper.find('[data-testid="corner-round-editor"]').trigger('blur');
+    expect(wrapper.emitted('set-corner-round-radius')).toEqual([['r1', 15]]);
+
+    await wrapper.find('[data-testid="corner-round-label-r1"]').trigger('dblclick');
+    await flushPromises();
+    await wrapper.find('[data-testid="corner-round-editor"]').setValue('nope');
+    await wrapper.find('[data-testid="corner-round-editor"]').trigger('blur');
+    expect(wrapper.emitted('set-corner-round-radius')).toEqual([['r1', 15]]);
+    expect(wrapper.find('[data-testid="corner-round-editor"]').exists()).toBe(false);
+  });
+
+  it('closes the radius editor when the tool or document changes', async () => {
+    const document = roundedSquare();
+    const wrapper = mountCanvas({ document, selectedEntityIds: ['ab'] });
+    const open = async (): Promise<void> => {
+      await wrapper.find('[data-testid="corner-round-label-r1"]').trigger('dblclick');
+      await flushPromises();
+      expect(wrapper.find('[data-testid="corner-round-editor"]').exists()).toBe(true);
+    };
+
+    await open();
+    await wrapper.setProps({ tool: 'add_line' });
+    await nextTick();
+    expect(wrapper.find('[data-testid="corner-round-editor"]').exists()).toBe(false);
+
+    await wrapper.setProps({ tool: 'select' });
+    await open();
+    await wrapper.setProps({ document: { ...document } });
+    await nextTick();
+    expect(wrapper.find('[data-testid="corner-round-editor"]').exists()).toBe(false);
+  });
+
+  it('omits handles and labels for an unresolvable round', async () => {
+    const document = roundedSquare();
+    const degenerate: PatternDocument = {
+      ...document,
+      entities: document.entities.map((entity) =>
+        entity.id === 'a' ? { ...entity, x: 100, y: 0 } : entity,
+      ),
+    };
+    const wrapper = mountCanvas({ document: degenerate, selectedEntityIds: ['ab'] });
+
+    expect(wrapper.find('[data-testid="corner-round-handle-r1-0"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="corner-round-label-r1"]').exists()).toBe(false);
+  });
+
+  it('drops a drag preview when the round or its geometry disappears', async () => {
+    const document = roundedSquare();
+    const wrapper = mountCanvas({ document, selectedEntityIds: ['ab'] });
+
+    down(wrapper.find('[data-testid="corner-round-handle-r1-0"] rect').element, 100, 100);
+    await wrapper.setProps({ document: { ...document, cornerRounds: [] } });
+    await nextTick();
+    expect(wrapper.find('[data-testid="corner-round-drag-preview"]').exists()).toBe(false);
+    window.dispatchEvent(new MouseEvent('pointercancel'));
+
+    await wrapper.setProps({ document, selectedEntityIds: ['ab'] });
+    down(wrapper.find('[data-testid="corner-round-handle-r1-0"] rect').element, 100, 100);
+    await wrapper.setProps({
+      document: {
+        ...document,
+        entities: document.entities.map((entity) =>
+          entity.id === 'a' ? { ...entity, x: 100, y: 0 } : entity,
+        ),
+      },
+    });
+    await nextTick();
+    expect(wrapper.find('[data-testid="corner-round-drag-preview"]').exists()).toBe(false);
+    window.dispatchEvent(new MouseEvent('pointercancel'));
   });
 });

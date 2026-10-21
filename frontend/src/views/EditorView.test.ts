@@ -2,6 +2,7 @@ import {
   createEmptyDocument,
   type Constraint,
   type EntityId,
+  executeCommand,
   type PatternDocument,
 } from '@sewcraft/geometry';
 import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from '@vue/test-utils';
@@ -10,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 
 import PatternCanvas from '@/components/PatternCanvas.vue';
+import CornerRoundPromptBar from '@/components/CornerRoundPromptBar.vue';
 import { downloadSvgFile } from '@/lib/download';
 import { useEditorStore } from '@/stores/editor';
 
@@ -1805,5 +1807,198 @@ describe('EditorView', () => {
     await nextTick();
 
     expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(false);
+  });
+
+  it('rounds a corner from the canvas picks and stays armed for the next one', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    await wrapper.find('[data-testid="tool-round_corner"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="corner-round-prompt"]').text()).toBe(
+      'Round corner — pick the first line.',
+    );
+
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+    expect(wrapper.find('[data-testid="corner-round-prompt"]').text()).toBe(
+      'Round corner — pick the second line.',
+    );
+
+    entityDown(wrapper, 'line', 'bc');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="corner-round-prompt"]').text()).toBe(
+      'Round corner — set the radius.',
+    );
+
+    const input = wrapper.find('[data-testid="corner-round-value"]');
+    expect((input.element as HTMLInputElement).value).toBe('5');
+    expect(wrapper.find('[data-testid="corner-round-max"]').text()).toBe('Maximum 99.999 mm');
+
+    await input.setValue('10');
+    expect(wrapper.findComponent(PatternCanvas).props('cornerRoundPreviewRadius')).toBe(10);
+
+    await wrapper.find('[data-testid="corner-round-prompt-bar"] form').trigger('submit');
+    await flushPromises();
+
+    expect(store.document.cornerRounds).toHaveLength(1);
+    expect(store.document.cornerRounds?.[0]).toMatchObject({ radius: 10 });
+    expect(store.document.cornerRounds?.[0]?.id).toMatch(/^corner-round-/);
+    expect(wrapper.find('[data-testid="corner-round-value"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="corner-round-prompt"]').text()).toBe(
+      'Round corner — pick the first line.',
+    );
+    expect(wrapper.find('[data-testid="tool-round_corner"]').attributes('aria-pressed')).toBe(
+      'true',
+    );
+  });
+
+  it('rejects bad picks with a concrete reason and clears them on Escape', async () => {
+    const { wrapper } = await mountLoaded(lineDoc);
+
+    await wrapper.find('[data-testid="tool-round_corner"]').trigger('click');
+    await nextTick();
+
+    pointDown(wrapper, 'a');
+    await nextTick();
+    expect(wrapper.find('[data-testid="corner-round-rejection"]').text()).toBe('Pick a line.');
+
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+    entityDown(wrapper, 'line', 'cd');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="corner-round-rejection"]').text()).toBe(
+      'The lines must meet at a corner.',
+    );
+    expect(wrapper.find('[data-testid="corner-round-prompt"]').text()).toBe(
+      'Round corner — pick the second line.',
+    );
+
+    keydown('Escape');
+    await nextTick();
+    expect(wrapper.find('[data-testid="corner-round-prompt-bar"]').exists()).toBe(false);
+    expect(wrapper.findComponent(PatternCanvas).classes()).toContain('cursor-default');
+  });
+
+  it('cancels the picks but keeps the tool armed', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    await wrapper.find('[data-testid="tool-round_corner"]').trigger('click');
+    await nextTick();
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+
+    await wrapper.find('[data-testid="corner-round-cancel"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="corner-round-prompt"]').text()).toBe(
+      'Round corner — pick the first line.',
+    );
+    expect(wrapper.find('[data-testid="corner-round-value"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="tool-round_corner"]').attributes('aria-pressed')).toBe(
+      'true',
+    );
+    expect(store.journal).toHaveLength(0);
+  });
+
+  it('keeps Apply disabled and explains an unusable radius', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    await wrapper.find('[data-testid="tool-round_corner"]').trigger('click');
+    await nextTick();
+    entityDown(wrapper, 'line', 'ab');
+    entityDown(wrapper, 'line', 'bc');
+    await flushPromises();
+
+    await wrapper.find('[data-testid="corner-round-value"]').setValue('200');
+
+    expect(wrapper.find('[data-testid="corner-round-value-error"]').text()).toBe(
+      'Radius 200 mm is too large for these lines; the maximum is 99.999 mm.',
+    );
+    expect(wrapper.find('[data-testid="corner-round-apply"]').attributes('disabled')).toBeDefined();
+    expect(store.journal).toHaveLength(0);
+  });
+
+  it('clears a stale pick when its line disappears', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    await wrapper.find('[data-testid="tool-round_corner"]').trigger('click');
+    await nextTick();
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+
+    store.dispatch({ id: 'delete-ab', type: 'delete_entity', params: { id: 'ab' } });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="corner-round-prompt"]').text()).toBe(
+      'Round corner — pick the first line.',
+    );
+  });
+
+  it('keeps a valid pick when another command changes the document', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    await wrapper.find('[data-testid="tool-round_corner"]').trigger('click');
+    await nextTick();
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+
+    store.dispatch({ id: 'point-x', type: 'add_point', params: { x: 10, y: 10 } });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="corner-round-prompt"]').text()).toBe(
+      'Round corner — pick the second line.',
+    );
+  });
+
+  it('clears both picks when the second line disappears', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    await wrapper.find('[data-testid="tool-round_corner"]').trigger('click');
+    await nextTick();
+    entityDown(wrapper, 'line', 'ab');
+    entityDown(wrapper, 'line', 'bc');
+    await flushPromises();
+
+    store.dispatch({ id: 'delete-bc', type: 'delete_entity', params: { id: 'bc' } });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="corner-round-prompt"]').text()).toBe(
+      'Round corner — pick the first line.',
+    );
+  });
+
+  it('ignores Apply before both lines are picked', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    await wrapper.find('[data-testid="tool-round_corner"]').trigger('click');
+    await nextTick();
+
+    wrapper.findComponent(CornerRoundPromptBar).vm.$emit('apply', 10);
+    await nextTick();
+
+    expect(store.journal).toHaveLength(0);
+  });
+
+  it('edits and removes a round from the inspector', async () => {
+    const rounded = executeCommand(lineDoc, {
+      id: 'r1',
+      type: 'add_corner_round',
+      params: { first: 'ab', second: 'bc', radius: 10 },
+    }).document;
+    const { wrapper, store } = await mountLoaded(rounded);
+
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+
+    const input = wrapper.find('[data-testid="entity-corner-radius-r1"]');
+    expect((input.element as HTMLInputElement).value).toBe('10');
+
+    await input.setValue('20');
+    await flushPromises();
+    expect(store.document.cornerRounds?.[0]?.radius).toBe(20);
+
+    await wrapper.find('[data-testid="entity-remove-corner-round-r1"]').trigger('click');
+    await flushPromises();
+    expect(store.document.cornerRounds).toEqual([]);
   });
 });

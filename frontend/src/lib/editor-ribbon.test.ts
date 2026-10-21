@@ -18,9 +18,16 @@ describe('RIBBON_GROUPS', () => {
     ]);
   });
 
-  it('puts select and the history/canvas actions in the tools group', () => {
+  it('puts select, the round corner tool and the history/canvas actions in the tools group', () => {
     expect(RIBBON_GROUPS[0]!.items).toEqual([
       { kind: 'tool', id: 'tool-select', label: 'Select', icon: 'select', tool: 'select' },
+      {
+        kind: 'tool',
+        id: 'tool-round_corner',
+        label: 'Round corner',
+        icon: 'round-corner',
+        tool: 'round_corner',
+      },
       { kind: 'action', id: 'undo', label: 'Undo', icon: 'undo', action: 'undo' },
       { kind: 'action', id: 'redo', label: 'Redo', icon: 'redo', action: 'redo' },
       { kind: 'action', id: 'delete', label: 'Delete', icon: 'delete', action: 'delete' },

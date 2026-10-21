@@ -42,3 +42,17 @@ it('exposes the construction commands', function () {
         ->assertJsonPath('commands.set_construction.params.construction', 'bool')
         ->assertJsonPath('commands.set_construction.inverse', 'set_construction');
 });
+
+it('exposes the corner round commands', function () {
+    $this->getJson('/api/commands')
+        ->assertOk()
+        ->assertJsonPath('commands.add_corner_round.params.first', 'entity_id')
+        ->assertJsonPath('commands.add_corner_round.params.second', 'entity_id')
+        ->assertJsonPath('commands.add_corner_round.params.radius', 'number')
+        ->assertJsonPath('commands.add_corner_round.inverse', 'remove_corner_round')
+        ->assertJsonPath('commands.set_corner_round_radius.params.id', 'entity_id')
+        ->assertJsonPath('commands.set_corner_round_radius.params.radius', 'number')
+        ->assertJsonPath('commands.set_corner_round_radius.inverse', 'set_corner_round_radius')
+        ->assertJsonPath('commands.remove_corner_round.params.id', 'entity_id')
+        ->assertJsonPath('commands.remove_corner_round.inverse', 'add_corner_round');
+});

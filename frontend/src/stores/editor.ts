@@ -1,6 +1,7 @@
 import {
   createEmptyDocument,
   executeCommand,
+  normalizeCornerRounds,
   type Command,
   type PatternDocument,
 } from '@sewcraft/geometry';
@@ -100,7 +101,9 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function load(next: PatternDocument): void {
-    document.value = next;
+    // A hand-edited document may carry an inconsistent round; the load path
+    // drops the feature once and keeps its persisted geometry as static shapes.
+    document.value = normalizeCornerRounds(next);
     past.value = [];
     future.value = [];
   }

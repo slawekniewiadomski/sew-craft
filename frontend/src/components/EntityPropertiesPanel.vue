@@ -10,7 +10,12 @@ import type {
 import { computed, ref } from 'vue';
 
 import { Button } from '@/components/ui/button';
-import type { DimensionSummary, EntityProperties } from '@/lib/entity-properties';
+import { formatCornerRadius, parseCornerRadius } from '@/lib/corner-round';
+import type {
+  CornerRoundSummary,
+  DimensionSummary,
+  EntityProperties,
+} from '@/lib/entity-properties';
 import {
   DIMENSION_ORIENTATION_OPTIONS,
   dimensionPatchForEdit,
@@ -42,6 +47,8 @@ const emit = defineEmits<{
   'remove-seam': [id: EntityId];
   'update-dimension': [id: EntityId, patch: DimensionPatch];
   'remove-constraint': [id: EntityId];
+  'set-corner-round-radius': [id: EntityId, radius: number];
+  'remove-corner-round': [id: EntityId];
 }>();
 
 /** The `#` picker open in the inspector, if any. */
@@ -220,6 +227,18 @@ function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
   closePicker();
   emit('update-dimension', dimension.id, patch);
 }
+
+/** An invalid or unchanged radius snaps back without emitting a command. */
+function onCornerRadiusEdit(round: CornerRoundSummary, event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const radius = parseCornerRadius(input.value);
+  if (radius === null || radius === round.radius) {
+    input.value = formatCornerRadius(round.radius);
+    return;
+  }
+
+  emit('set-corner-round-radius', round.id, radius);
+}
 </script>
 
 <template>
@@ -317,6 +336,60 @@ function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
           />
         </div>
       </dl>
+    </section>
+
+    <section
+      v-if="props.entity.rounds.length > 0"
+      aria-labelledby="entity-corner-rounds-heading"
+      data-testid="entity-corner-rounds"
+    >
+      <h3
+        id="entity-corner-rounds-heading"
+        class="text-xs font-semibold uppercase text-muted-foreground"
+      >
+        Corner round
+      </h3>
+      <ul class="mt-1 space-y-2" :aria-label="`Corner rounds for ${props.entity.id}`">
+        <li
+          v-for="round in props.entity.rounds"
+          :key="round.id"
+          class="space-y-1"
+          :data-testid="`entity-corner-round-${round.id}`"
+        >
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="min-w-0">
+              <span class="font-mono text-muted-foreground">{{ round.id }}</span>
+              <span class="ml-2 text-xs text-muted-foreground">
+                corner {{ round.corner }} · anchors {{ round.anchors.join(', ') }}
+              </span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              :aria-label="`Remove corner round ${round.id}`"
+              :data-testid="`entity-remove-corner-round-${round.id}`"
+              @click="emit('remove-corner-round', round.id)"
+            >
+              Remove
+            </Button>
+          </div>
+
+          <label class="flex flex-wrap items-center gap-2">
+            <span class="text-xs text-muted-foreground">Radius</span>
+            <input
+              type="number"
+              min="0.001"
+              step="0.001"
+              class="w-24 rounded-md border px-2 py-1"
+              :value="formatCornerRadius(round.radius)"
+              :aria-label="`Radius for corner round ${round.id} (mm)`"
+              :data-testid="`entity-corner-radius-${round.id}`"
+              @change="onCornerRadiusEdit(round, $event)"
+            />
+            <span class="text-xs text-muted-foreground">mm</span>
+          </label>
+        </li>
+      </ul>
     </section>
 
     <section aria-labelledby="entity-dimensions-heading">

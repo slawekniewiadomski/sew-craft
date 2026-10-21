@@ -71,6 +71,10 @@ arrays. Document helpers in `document.ts`:
   included), or `null` for a point-less document.
 - `getSeam(document, id)` / `seamForEdge(document, edge)` — look up a seam
   allowance by its own id or by the edge it is attached to.
+- `cornerRounds(document)` — the optional corner-round features, defaulting to
+  `[]` for documents written before the feature existed.
+- `allPoints`, `cutEdges` and `bounds` include derived tangent and control points
+  like any other point; the frontend filters them out of the drafting layer.
 
 ## Linear dimensions (`dimension.ts`)
 
@@ -150,6 +154,85 @@ Seam allowance offsetting depends on the entity model only (edges), not on
 `piece`. When pieces are modelled (see below), `piece` becomes a grouping for the
 edges and their allowances.
 
+## Corner rounds (`corner-round.ts`)
+
+A **corner round** (fillet) replaces a sharp corner between two lines with a
+tangent arc and trims both lines to their tangent points. It is a live
+parametric feature, not a static bake: the document stores the sharp corner, both
+line anchors and the radius, and the derived geometry is recomputed after every
+solve.
+
+```ts
+interface CornerRoundEnd {
+  line: EntityId; // the selected line, trimmed at the shared corner
+  anchor: EntityId; // the original point at the line's opposite end
+  tangent: EntityId; // the derived point where the line becomes the arc
+}
+
+interface CornerRound {
+  id: EntityId;
+  corner: EntityId; // the sharp corner, kept as a construction point
+  ends: [CornerRoundEnd, CornerRoundEnd];
+  radius: number; // millimetres
+  arc: EntityId; // derived cubic Bézier (cut edge)
+  controls: [EntityId, EntityId]; // derived Bézier control points
+  cornerConstruction: boolean; // the corner's flag before the round
+}
+```
+
+`PatternDocument.cornerRounds` is optional so documents written before the
+feature load unchanged. A line may carry one round at each end; a sharp corner
+may carry at most one. Derived ids are deterministic from the command id:
+`<id>:a`, `<id>:b` (tangent points), `<id>:c1`, `<id>:c2` (controls) and
+`<id>:arc`.
+
+### Math
+
+With `uA` and `uB` the unit directions from the sharp corner to the two
+opposite anchors, `θ` the interior angle, and `r` the radius:
+
+- Reject `θ` within 1° of 0° (spike) or 180° (straight).
+- Tangent distance `t = r / tan(θ / 2)`; tangent points
+  `T_A = corner + uA·t`, `T_B = corner + uB·t`.
+- Control distance `k = (4/3)·tan((π − θ)/4)·r`; controls
+  `P1 = T_A − uA·k`, `P2 = T_B − uB·k`.
+- The arc is the cubic `T_A, P1, P2, T_B`. Its error against a true circle is
+  below ~0.03 % of the radius, far under a sewing tolerance.
+
+### Helpers
+
+- `cornerRoundsForEntity(document, id)` — every feature that references a line,
+  arc, tangent, control, sharp corner or anchor.
+- `isCornerRoundDerived(document, id)` — true for an arc, tangent or control
+  point; used by command validation and the canvas.
+- `cornerRoundGeometry(document, corner, anchorA, anchorB, radius)` — the pure
+  tangent/control math plus a validation error for a spike, a straight corner,
+  a missing point or an invalid radius.
+- `maxCornerRadius(document, round)` — the largest radius that still leaves
+  `MIN_CORNER_ROUND` (0.001 mm) of every selected line, including any round at
+  the opposite end of either line.
+- `regenerateCornerRounds(document)` — recompute every feature's derived points,
+  arc and line endpoints. Throws `CommandValidationError` when a feature can no
+  longer be built, before mutating anything. Runs at the end of
+  `solveDocument`.
+- `normalizeCornerRounds(document)` — validate loaded features without moving
+  geometry; a feature whose invariants no longer hold is dropped and its
+  persisted entities stay as static geometry. Never throws. The frontend load
+  path calls it once.
+
+### Commands
+
+`add_corner_round { first, second, radius }` validates two distinct lines that
+share exactly one point, matching construction flags, no seam allowance, no
+existing round at that corner, no third same-kind edge, and a radius that fits.
+`set_corner_round_radius { id, radius }` applies the same fit rules and
+regenerates; `remove_corner_round { id }` restores both lines and the sharp
+corner's construction flag and deletes the derived entities. See
+`docs/domain/command-spec.md` for payloads and inverses.
+
+Seam allowances on rounded lines are rejected in v1: a straight offset would
+stop at the tangent point and leave a gap around the arc.
+
 ## Public API
 
 ```ts
@@ -168,6 +251,9 @@ import {
   toSvg,
   dimensionGeometry,
   findDistanceConstraint,
+  cornerRounds,
+  cornerRoundGeometry,
+  normalizeCornerRounds,
   type Command,
   type PointEntity,
   type Constraint,

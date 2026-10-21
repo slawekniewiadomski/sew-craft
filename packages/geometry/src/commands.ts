@@ -1,17 +1,26 @@
 import {
   allPoints,
   constraintEntityIds,
+  cornerRounds,
   getConstraint,
   getEntity,
   getSeam,
   seamForEdge,
 } from './document.js';
 import {
+  cornerRoundGeometry,
+  cornerRoundsForEntity,
+  isCornerRoundDerived,
+  maxCornerRadius,
+  regenerateCornerRounds,
+} from './corner-round.js';
+import {
   constraintOffset,
   constraintOrientation,
   createsReferenceCycle,
   resolveSetValue,
 } from './dimension.js';
+import { CommandValidationError } from './errors.js';
 import { solve } from './solver.js';
 import type { SolveOptions, SolveResult } from './solver.js';
 import {
@@ -21,6 +30,7 @@ import {
   seamSide,
   type Constraint,
   type ConstraintType,
+  type CornerRound,
   type CurveEntity,
   type DimensionOrientation,
   type DistanceConstraint,
@@ -118,6 +128,21 @@ export interface SetSeamAllowanceParams {
   side?: SeamSide;
 }
 
+export interface AddCornerRoundParams {
+  first: EntityId;
+  second: EntityId;
+  radius: number;
+}
+
+export interface SetCornerRoundRadiusParams {
+  id: EntityId;
+  radius: number;
+}
+
+export interface RemoveCornerRoundParams {
+  id: EntityId;
+}
+
 export type SolveParams = Record<string, never>;
 
 /**
@@ -159,6 +184,19 @@ export type Command =
       params: SetSeamAllowanceParams;
       issuedAt?: string;
     }
+  | { id: EntityId; type: 'add_corner_round'; params: AddCornerRoundParams; issuedAt?: string }
+  | {
+      id: EntityId;
+      type: 'set_corner_round_radius';
+      params: SetCornerRoundRadiusParams;
+      issuedAt?: string;
+    }
+  | {
+      id: EntityId;
+      type: 'remove_corner_round';
+      params: RemoveCornerRoundParams;
+      issuedAt?: string;
+    }
   | { id: EntityId; type: 'solve'; params: SolveParams; issuedAt?: string };
 
 export type CommandType = Command['type'];
@@ -182,15 +220,7 @@ export interface ExecuteResult {
   solveResult: SolveResult;
 }
 
-export class CommandValidationError extends Error {
-  readonly commandType: CommandType;
-
-  constructor(commandType: CommandType, message: string) {
-    super(`[${commandType}] ${message}`);
-    this.name = 'CommandValidationError';
-    this.commandType = commandType;
-  }
-}
+export { CommandValidationError } from './errors.js';
 
 export class CommandExecutionError extends Error {
   readonly commandType: CommandType;
@@ -251,6 +281,12 @@ export function applyCommand(document: PatternDocument, command: Command): Comma
       return applyRemoveSeamAllowance(document, command);
     case 'set_seam_allowance':
       return applySetSeamAllowance(document, command);
+    case 'add_corner_round':
+      return applyAddCornerRound(document, command);
+    case 'set_corner_round_radius':
+      return applySetCornerRoundRadius(document, command);
+    case 'remove_corner_round':
+      return applyRemoveCornerRound(document, command);
     case 'solve':
       return noOp(document);
   }
@@ -276,7 +312,7 @@ export function solveDocument(
     return { ...entity, x: coordinate.x, y: coordinate.y };
   });
 
-  return { document: { ...document, entities }, result };
+  return { document: regenerateCornerRounds({ ...document, entities }), result };
 }
 
 /**
@@ -317,6 +353,44 @@ function requirePoint(document: PatternDocument, id: EntityId, type: CommandType
   return entity;
 }
 
+/** A point the user may attach new geometry to; derived points are read-only. */
+function requireDraftingPoint(
+  document: PatternDocument,
+  id: EntityId,
+  type: CommandType,
+): PointEntity {
+  const point = requirePoint(document, id, type);
+  if (isCornerRoundDerived(document, id)) {
+    throw new CommandValidationError(
+      type,
+      'This point is derived by a corner round; edit the radius.',
+    );
+  }
+  return point;
+}
+
+function requireLine(document: PatternDocument, id: EntityId, type: CommandType): LineEntity {
+  const entity = getEntity(document, id);
+  if (entity === undefined) {
+    throw new CommandValidationError(type, `unknown entity: ${id}`);
+  }
+  if (entity.kind !== 'line') {
+    throw new CommandValidationError(type, `entity ${id} is a ${entity.kind}, expected a line`);
+  }
+  return entity;
+}
+
+/** The single point two distinct lines share, or `null` when they share none. */
+function sharedCorner(first: LineEntity, second: LineEntity): EntityId | null {
+  const shared = [first.start, first.end].filter((id) => id === second.start || id === second.end);
+  return shared.length === 1 ? shared[0]! : null;
+}
+
+/** Millimetre text for an error message, rounded to the field precision. */
+function radiusText(radius: number): string {
+  return String(Math.round(radius * 1000) / 1000);
+}
+
 function applyAddPoint(
   document: PatternDocument,
   command: CommandOf<'add_point'>,
@@ -354,6 +428,12 @@ function applyMovePoint(
   }
 
   const point = requirePoint(document, id, 'move_point');
+  if (isCornerRoundDerived(document, id)) {
+    throw new CommandValidationError(
+      'move_point',
+      'This point is derived by a corner round; edit the radius.',
+    );
+  }
   if (point.x === x && point.y === y) {
     return noOp(document);
   }
@@ -374,8 +454,8 @@ function applyAddLine(
   type: CommandType,
 ): CommandApplication {
   const { start, end } = command.params;
-  requirePoint(document, start, type);
-  requirePoint(document, end, type);
+  requireDraftingPoint(document, start, type);
+  requireDraftingPoint(document, end, type);
   if (getEntity(document, command.id) !== undefined) {
     return noOp(document);
   }
@@ -396,6 +476,14 @@ function applySetConstruction(
   const entity = getEntity(document, id);
   if (entity === undefined) {
     throw new CommandValidationError('set_construction', `unknown entity: ${id}`);
+  }
+  if (
+    isCornerRoundDerived(document, id) ||
+    cornerRoundsForEntity(document, id).some(
+      (round) => round.corner === id || round.ends.some((end) => end.line === id),
+    )
+  ) {
+    throw new CommandValidationError('set_construction', 'Remove the corner round first.');
   }
   if (entity.construction === construction) {
     return noOp(document);
@@ -425,7 +513,7 @@ function applyAddCurve(
     throw new CommandValidationError('add_curve', 'control points must be distinct');
   }
   for (const id of controlPoints) {
-    requirePoint(document, id, 'add_curve');
+    requireDraftingPoint(document, id, 'add_curve');
   }
   if (getEntity(document, command.id) !== undefined) {
     return noOp(document);
@@ -456,16 +544,32 @@ function applyDeleteEntity(
     return noOp(document);
   }
 
-  const entities = document.entities.filter((entity) => entity.id !== id);
+  const rounds = cornerRoundsForEntity(document, id);
+  if (rounds.some((round) => round.corner === id || round.ends.some((end) => end.anchor === id))) {
+    throw new CommandValidationError('delete_entity', 'Remove the corner round first.');
+  }
+
+  // A rounded line, arc or derived point takes its feature with it; the requested
+  // id itself is deleted below (and may already be gone with the derived geometry).
+  let working = document;
+  for (const round of rounds) {
+    working = applyRemoveCornerRound(working, {
+      id: `${command.id}:${round.id}`,
+      type: 'remove_corner_round',
+      params: { id: round.id },
+    }).document;
+  }
+
+  const entities = working.entities.filter((entity) => entity.id !== id);
   const constraints = captureBrokenDependents(
-    document.constraints,
-    document.constraints.filter((constraint) => !constraintEntityIds(constraint).includes(id)),
+    working.constraints,
+    working.constraints.filter((constraint) => !constraintEntityIds(constraint).includes(id)),
   );
-  const seams = document.seams.filter((seam) => seam.edge !== id);
+  const seams = working.seams.filter((seam) => seam.edge !== id);
 
   // Restoring the entity plus its cascade-removed constraints and seams is not a
   // single command, so undo relies on the journal's snapshot.
-  return { document: { ...document, entities, constraints, seams }, inverse: null };
+  return { document: { ...working, entities, constraints, seams }, inverse: null };
 }
 
 /**
@@ -544,7 +648,7 @@ function applyAddConstraint(
     );
   }
   for (const id of entities) {
-    requirePoint(document, id, 'add_constraint');
+    requireDraftingPoint(document, id, 'add_constraint');
   }
 
   if (
@@ -895,6 +999,13 @@ function applyAddSeamAllowance(
     );
   }
 
+  if (isCornerRoundDerived(document, edge) || cornerRoundsForEntity(document, edge).length > 0) {
+    throw new CommandValidationError(
+      'add_seam_allowance',
+      'Remove the corner round first; a seam allowance cannot wrap the arc in v1.',
+    );
+  }
+
   if (getSeam(document, command.id) !== undefined) {
     return noOp(document);
   }
@@ -984,6 +1095,314 @@ function applySetSeamAllowance(
         id,
         width: seam.width,
         ...(inverseSide === undefined ? {} : { side: inverseSide }),
+      },
+    },
+  };
+}
+
+/** The original point at a line end, following one level of corner-round trim. */
+function originalAnchor(document: PatternDocument, lineId: EntityId, endpoint: EntityId): EntityId {
+  const round = cornerRounds(document).find((candidate) =>
+    candidate.ends.some((end) => end.line === lineId && end.tangent === endpoint),
+  );
+  return round?.corner ?? endpoint;
+}
+
+/**
+ * Round a corner between two lines. The selected lines are trimmed to their
+ * tangent points, the arc and its control points are derived, and the sharp
+ * corner stays as a construction point so existing dimensions keep driving it.
+ */
+function applyAddCornerRound(
+  document: PatternDocument,
+  command: CommandOf<'add_corner_round'>,
+): CommandApplication {
+  const { first, second, radius } = command.params;
+  if (cornerRounds(document).some((round) => round.id === command.id)) {
+    return noOp(document);
+  }
+
+  const lineA = requireLine(document, first, 'add_corner_round');
+  const lineB = requireLine(document, second, 'add_corner_round');
+  if (first === second) {
+    throw new CommandValidationError('add_corner_round', 'Pick two different lines.');
+  }
+
+  // A committed round trims both lines away from the shared corner, so the
+  // corner id is no longer an endpoint. The round itself is the evidence.
+  const sharedRound = cornerRounds(document).find(
+    (round) =>
+      round.ends.some((end) => end.line === first) && round.ends.some((end) => end.line === second),
+  );
+  if (sharedRound !== undefined) {
+    throw new CommandValidationError('add_corner_round', 'This corner is already rounded.');
+  }
+
+  const corner = sharedCorner(lineA, lineB);
+  if (corner === null) {
+    const shared = [lineA.start, lineA.end].filter((id) => id === lineB.start || id === lineB.end);
+    throw new CommandValidationError(
+      'add_corner_round',
+      shared.length === 0 ? 'The lines must meet at a corner.' : 'Pick two different lines.',
+    );
+  }
+  if (cornerRounds(document).some((round) => round.corner === corner)) {
+    throw new CommandValidationError('add_corner_round', 'This corner is already rounded.');
+  }
+  if (lineA.construction !== lineB.construction) {
+    throw new CommandValidationError(
+      'add_corner_round',
+      'Both lines must be cut edges or both construction.',
+    );
+  }
+  if (seamForEdge(document, first) !== undefined || seamForEdge(document, second) !== undefined) {
+    throw new CommandValidationError('add_corner_round', 'Remove the seam allowance first.');
+  }
+
+  const meeting = document.entities.filter(
+    (entity) =>
+      entity.kind === 'line' &&
+      entity.construction === lineA.construction &&
+      (entity.start === corner || entity.end === corner),
+  );
+  if (meeting.length > 2) {
+    throw new CommandValidationError(
+      'add_corner_round',
+      'The corner is shared by more than two edges of this kind.',
+    );
+  }
+
+  const anchorA = originalAnchor(document, first, lineA.start === corner ? lineA.end : lineA.start);
+  const anchorB = originalAnchor(
+    document,
+    second,
+    lineB.start === corner ? lineB.end : lineB.start,
+  );
+  const geometry = cornerRoundGeometry(document, corner, anchorA, anchorB, radius);
+  if (geometry.geometry === null) {
+    throw new CommandValidationError('add_corner_round', geometry.error);
+  }
+
+  const tentative: CornerRound = {
+    id: command.id,
+    corner,
+    ends: [
+      { line: first, anchor: anchorA, tangent: `${command.id}:a` },
+      { line: second, anchor: anchorB, tangent: `${command.id}:b` },
+    ],
+    radius,
+    arc: `${command.id}:arc`,
+    controls: [`${command.id}:c1`, `${command.id}:c2`],
+    cornerConstruction: false,
+  };
+  const maximum = maxCornerRadius(document, tentative);
+  if (maximum === null) {
+    throw new CommandValidationError('add_corner_round', 'The corner cannot be rounded.');
+  }
+  if (radius > maximum + 1e-9) {
+    throw new CommandValidationError(
+      'add_corner_round',
+      `Radius ${radiusText(radius)} mm is too large for these lines; the maximum is ${radiusText(maximum)} mm.`,
+    );
+  }
+
+  const derivedIds = [
+    tentative.ends[0].tangent,
+    tentative.ends[1].tangent,
+    tentative.controls[0],
+    tentative.controls[1],
+    tentative.arc,
+  ];
+  for (const id of derivedIds) {
+    if (getEntity(document, id) !== undefined) {
+      throw new CommandValidationError('add_corner_round', `Derived entity id "${id}" is in use.`);
+    }
+  }
+
+  const cornerEntity = requirePoint(document, corner, 'add_corner_round');
+  const construction = lineA.construction;
+  const entities: Entity[] = document.entities.map((entity) => {
+    if (entity.kind === 'line' && entity.id === first) {
+      return entity.start === corner
+        ? { ...entity, start: tentative.ends[0].tangent }
+        : { ...entity, end: tentative.ends[0].tangent };
+    }
+    if (entity.kind === 'line' && entity.id === second) {
+      return entity.start === corner
+        ? { ...entity, start: tentative.ends[1].tangent }
+        : { ...entity, end: tentative.ends[1].tangent };
+    }
+    if (entity.id === corner) {
+      return { ...cornerEntity, construction: true };
+    }
+    return entity;
+  });
+
+  entities.push(
+    {
+      id: tentative.ends[0].tangent,
+      kind: 'point',
+      x: geometry.geometry.tangentA.x,
+      y: geometry.geometry.tangentA.y,
+      construction,
+      fixed: true,
+    },
+    {
+      id: tentative.ends[1].tangent,
+      kind: 'point',
+      x: geometry.geometry.tangentB.x,
+      y: geometry.geometry.tangentB.y,
+      construction,
+      fixed: true,
+    },
+    {
+      id: tentative.controls[0],
+      kind: 'point',
+      x: geometry.geometry.control1.x,
+      y: geometry.geometry.control1.y,
+      construction: true,
+      fixed: true,
+    },
+    {
+      id: tentative.controls[1],
+      kind: 'point',
+      x: geometry.geometry.control2.x,
+      y: geometry.geometry.control2.y,
+      construction: true,
+      fixed: true,
+    },
+    {
+      id: tentative.arc,
+      kind: 'curve',
+      p0: tentative.ends[0].tangent,
+      p1: tentative.controls[0],
+      p2: tentative.controls[1],
+      p3: tentative.ends[1].tangent,
+      construction,
+    },
+  );
+
+  const round: CornerRound = { ...tentative, cornerConstruction: cornerEntity.construction };
+
+  return {
+    document: {
+      ...document,
+      entities,
+      cornerRounds: [...cornerRounds(document), round],
+    },
+    inverse: {
+      id: `${command.id}:remove`,
+      type: 'remove_corner_round',
+      params: { id: command.id },
+    },
+  };
+}
+
+/** Change the radius of an existing round and regenerate its derived geometry. */
+function applySetCornerRoundRadius(
+  document: PatternDocument,
+  command: CommandOf<'set_corner_round_radius'>,
+): CommandApplication {
+  const { id, radius } = command.params;
+  const round = cornerRounds(document).find((candidate) => candidate.id === id);
+  if (round === undefined) {
+    throw new CommandValidationError('set_corner_round_radius', `unknown corner round: ${id}`);
+  }
+  if (!Number.isFinite(radius) || radius < 0.001) {
+    throw new CommandValidationError(
+      'set_corner_round_radius',
+      'Radius must be a finite number of at least 0.001 mm.',
+    );
+  }
+  if (round.radius === radius) {
+    return noOp(document);
+  }
+
+  const maximum = maxCornerRadius(document, round);
+  if (maximum === null) {
+    throw new CommandValidationError(
+      'set_corner_round_radius',
+      'The corner can no longer be rounded.',
+    );
+  }
+  if (radius > maximum + 1e-9) {
+    throw new CommandValidationError(
+      'set_corner_round_radius',
+      `Radius ${radiusText(radius)} mm is too large for these lines; the maximum is ${radiusText(maximum)} mm.`,
+    );
+  }
+
+  const updated: CornerRound = { ...round, radius };
+  const documentWithRadius: PatternDocument = {
+    ...document,
+    cornerRounds: cornerRounds(document).map((candidate) =>
+      candidate.id === id ? updated : candidate,
+    ),
+  };
+
+  return {
+    document: regenerateCornerRounds(documentWithRadius),
+    inverse: {
+      id: `${command.id}:restore`,
+      type: 'set_corner_round_radius',
+      params: { id, radius: round.radius },
+    },
+  };
+}
+
+/** Restore the sharp corner, delete the derived geometry and drop the feature. */
+function applyRemoveCornerRound(
+  document: PatternDocument,
+  command: CommandOf<'remove_corner_round'>,
+): CommandApplication {
+  const { id } = command.params;
+  const round = cornerRounds(document).find((candidate) => candidate.id === id);
+  if (round === undefined) {
+    return noOp(document);
+  }
+
+  const removed = new Set<EntityId>([
+    round.arc,
+    ...round.controls,
+    ...round.ends.map((end) => end.tangent),
+  ]);
+
+  const entities = document.entities
+    .filter((entity) => !removed.has(entity.id))
+    .map((entity): Entity => {
+      if (entity.kind === 'line') {
+        const end = round.ends.find((candidate) => candidate.line === entity.id);
+        if (end !== undefined) {
+          if (entity.start === end.tangent) return { ...entity, start: round.corner };
+          if (entity.end === end.tangent) return { ...entity, end: round.corner };
+        }
+      }
+      if (entity.kind === 'point' && entity.id === round.corner) {
+        return { ...entity, construction: round.cornerConstruction };
+      }
+      return entity;
+    });
+
+  const constraints = document.constraints.filter(
+    (constraint) => !constraintEntityIds(constraint).some((entityId) => removed.has(entityId)),
+  );
+  const seams = document.seams.filter((seam) => !removed.has(seam.edge));
+
+  return {
+    document: {
+      ...document,
+      entities,
+      constraints,
+      seams,
+      cornerRounds: cornerRounds(document).filter((candidate) => candidate.id !== id),
+    },
+    inverse: {
+      id: round.id,
+      type: 'add_corner_round',
+      params: {
+        first: round.ends[0].line,
+        second: round.ends[1].line,
+        radius: round.radius,
       },
     },
   };

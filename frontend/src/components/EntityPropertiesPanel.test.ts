@@ -1,4 +1,4 @@
-import { createEmptyDocument, type PatternDocument } from '@sewcraft/geometry';
+import { createEmptyDocument, executeCommand, type PatternDocument } from '@sewcraft/geometry';
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 
@@ -221,6 +221,46 @@ describe('EntityPropertiesPanel', () => {
     expect(wrapper.find('[data-testid="entity-length"]').text()).toBe('—');
   });
 
+  it('shows a corner round section for a rounded line and its arc', () => {
+    const document = roundedDoc();
+
+    const line = panel(document, 'l1').wrapper;
+    expect(line.find('[data-testid="entity-corner-rounds"]').exists()).toBe(true);
+    expect(line.find('[data-testid="entity-corner-round-r1"]').text()).toContain(
+      'corner b · anchors a, c',
+    );
+    expect(
+      (line.find('[data-testid="entity-corner-radius-r1"]').element as HTMLInputElement).value,
+    ).toBe('10');
+
+    const arc = panel(document, 'r1:arc').wrapper;
+    expect(arc.find('[data-testid="entity-corner-round-r1"]').exists()).toBe(true);
+
+    const corner = panel(document, 'b').wrapper;
+    expect(corner.find('[data-testid="entity-corner-rounds"]').exists()).toBe(false);
+
+    const guide = panel(document, 'guide').wrapper;
+    expect(guide.find('[data-testid="entity-corner-rounds"]').exists()).toBe(false);
+  });
+
+  it('edits and removes a corner round', async () => {
+    const { wrapper } = panel(roundedDoc(), 'l1');
+    const input = wrapper.find('[data-testid="entity-corner-radius-r1"]');
+
+    await input.setValue('20');
+    expect(wrapper.emitted('set-corner-round-radius')).toEqual([['r1', 20]]);
+
+    await input.setValue('0');
+    expect((input.element as HTMLInputElement).value).toBe('10');
+    expect(wrapper.emitted('set-corner-round-radius')).toEqual([['r1', 20]]);
+
+    await input.setValue('10');
+    expect(wrapper.emitted('set-corner-round-radius')).toEqual([['r1', 20]]);
+
+    await wrapper.find('[data-testid="entity-remove-corner-round-r1"]').trigger('click');
+    expect(wrapper.emitted('remove-corner-round')).toEqual([['r1']]);
+  });
+
   it('links a dimension from the inspector picker with the keyboard or pointer', async () => {
     const { wrapper } = panel(
       doc({
@@ -386,3 +426,19 @@ describe('EntityPropertiesPanel', () => {
     expect(wrapper.emitted('update-dimension')).toBeUndefined();
   });
 });
+
+/** The base document plus line `bc` and a 10 mm round at corner `b`. */
+function roundedDoc(): PatternDocument {
+  const source = doc({
+    entities: [
+      ...doc().entities,
+      { id: 'bc', kind: 'line', start: 'b', end: 'c', construction: false },
+    ],
+  });
+
+  return executeCommand(source, {
+    id: 'r1',
+    type: 'add_corner_round',
+    params: { first: 'l1', second: 'bc', radius: 10 },
+  }).document;
+}

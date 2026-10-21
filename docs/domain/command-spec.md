@@ -173,7 +173,55 @@ Change the width or side of an attached seam allowance without detaching it.
   stored or changed, the previous side; keeping the command id)
 - additive: v0.5 payloads still apply; `spec_version` is bumped to `0.6.0`.
 
+### `add_corner_round`
+
+Round a corner between two lines. Both lines are trimmed to their tangent points,
+a cubic Bézier arc and its control points are derived, and the sharp corner stays
+as a construction point so dimensions and constraints on it keep driving the
+sketch.
+
+- params: `first: entity_id`, `second: entity_id`, `radius: number` (mm)
+- Both params name distinct `line` entities that share exactly one point.
+- Neither line may already be rounded at that shared corner, carry a seam
+  allowance, or be joined at the corner by a third line of the same
+  construction flag.
+- Both lines must have the same `construction` flag; the arc and tangent points
+  inherit it.
+- `radius` must be finite, at least `0.001`, and fit both lines while leaving at
+  least `0.001` mm of each line outside the tangent point. The corner angle must
+  be strictly between `0°` and `180°` with a `1°` guard at each end.
+- Derived ids are deterministic: `<id>:a` and `<id>:b` (tangent points),
+  `<id>:c1`/`<id>:c2` (controls) and `<id>:arc`. Re-applying a command whose
+  feature exists is a no-op.
+- inverse: `remove_corner_round` with the feature id.
+
+### `set_corner_round_radius`
+
+Change the radius of an existing round without removing it. Both tangent points,
+the arc and the line endpoints regenerate in the same command.
+
+- params: `id: entity_id` (the feature id), `radius: number` (mm)
+- Same fit and angle rules as `add_corner_round`, including any round at the
+  opposite end of either line. An out-of-range radius is a validation error and
+  leaves the document unchanged.
+- Re-applying the current radius is a no-op with `inverse: null`.
+- inverse: `set_corner_round_radius` with the previous radius.
+
+### `remove_corner_round`
+
+Restore a rounded corner.
+
+- params: `id: entity_id` (the feature id)
+- Restores both line endpoints to the sharp corner, restores the corner's
+  previous construction flag, deletes the tangent points, control points and arc,
+  and removes the feature. A line with a round at its other end keeps that round.
+- inverse: `add_corner_round` with the original lines and radius.
+
 ### Migration from spec 0.6.0
+
+`add_corner_round`, `set_corner_round_radius` and `remove_corner_round` are new.
+The optional `cornerRounds` document collection they maintain is additive, so
+existing 0.6.0 payloads still apply unchanged.
 
 `add_constraint` and `update_constraint` accept an optional `reference` on
 `distance` constraints, linking one dimension to another. A referenced dimension

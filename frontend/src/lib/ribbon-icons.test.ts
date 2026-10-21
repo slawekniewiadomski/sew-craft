@@ -21,6 +21,7 @@ describe('RIBBON_ICONS', () => {
       'point',
       'point_on_line',
       'redo',
+      'round-corner',
       'select',
       'undo',
       'vertical',

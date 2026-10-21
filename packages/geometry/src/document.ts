@@ -1,6 +1,7 @@
 import {
   PATTERN_SCHEMA,
   type Constraint,
+  type CornerRound,
   type CurveEntity,
   type Entity,
   type EntityId,
@@ -28,6 +29,11 @@ export function createEmptyDocument(): PatternDocument {
 
 export function getEntity(document: PatternDocument, id: EntityId): Entity | undefined {
   return document.entities.find((entity) => entity.id === id);
+}
+
+/** Every corner round in the document; `[]` for documents written before the feature. */
+export function cornerRounds(document: PatternDocument): CornerRound[] {
+  return document.cornerRounds ?? [];
 }
 
 export function getConstraint(document: PatternDocument, id: EntityId): Constraint | undefined {
