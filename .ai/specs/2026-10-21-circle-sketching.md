@@ -1,6 +1,6 @@
 # Circle sketching (circle tool)
 
-Status: draft — design review; Q1–Q2 open
+Status: implemented — Q1 (a `circle` kind) and Q2 (centre→rim gesture) resolved as recommended
 Refs #52
 Related: 002 (geometry core primitives), 005 (canvas editor interactions), 008 (SVG
 export), 2026-10-20-line-tool-point-creation (grouped gesture), 2026-10-21-arc-sketching (#53)

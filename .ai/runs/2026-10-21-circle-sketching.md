@@ -71,13 +71,13 @@ renders and exports it as one SVG circle.
 
 ### Phase 4: Canvas interaction
 
-- [ ] 4.1 Add the Circle tool, ribbon item and glyph
-- [ ] 4.2 Add `circle-tool.ts` endpoint resolution and grouped command batch with tests
-- [ ] 4.3 Wire the canvas gesture, dashed preview, hit target and component tests
+- [x] 4.1 Add the Circle tool, ribbon item and glyph — 54b3d6e
+- [x] 4.2 Add `circle-tool.ts` endpoint resolution and grouped command batch with tests — 54b3d6e
+- [x] 4.3 Wire the canvas gesture, dashed preview, hit target and component tests — 54b3d6e
 
 ### Phase 5: Properties and verification
 
-- [ ] 5.1 Add the circle properties geometry, "Circle" noun and radius editing with tests
-- [ ] 5.2 Wire `EditorView.onAddCircle` through `dispatchGroup` with view tests
+- [x] 5.1 Add the circle properties geometry, "Circle" noun and radius editing with tests — b1cbdc8
+- [x] 5.2 Wire `EditorView.onAddCircle` through `dispatchGroup` with view tests — b1cbdc8
 - [ ] 5.3 Run the full validation gate and `om-auto-review-pr --autofix`
 - [ ] 5.4 Retitle the PR, normalize labels, flip to ready and release the lock
