@@ -17,11 +17,11 @@ flip. Pattern drafting origin is per-piece; a global origin is not assumed.
 
 ## Entities
 
-| Kind     | References      | Notes                                                     |
-| -------- | --------------- | --------------------------------------------------------- |
-| `point`  | —               | the only solver variable in v0.1                          |
-| `line`   | two points      | straight segment / edge                                   |
-| `curve`  | four points     | cubic Bézier (p0, p1, p2, p3)                             |
+| Kind     | References               | Notes                                                         |
+| -------- | ------------------------ | ------------------------------------------------------------- |
+| `point`  | —                        | the only solver variable in v0.1                              |
+| `line`   | two points               | straight segment / edge                                       |
+| `curve`  | four points              | cubic Bézier (p0, p1, p2, p3)                                 |
 | `circle` | a centre and a rim point | true circle; the radius is their distance and is never stored |
 
 Every entity has an `id` (string) and a `construction: boolean`. Construction

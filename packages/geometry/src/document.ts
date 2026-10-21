@@ -59,9 +59,7 @@ export function allPoints(document: PatternDocument): PointEntity[] {
  * order. Construction entities are guides and are never cut or exported, so
  * exports and the cut-edge layer both derive their contents from this selector.
  */
-export function cutEdges(
-  document: PatternDocument,
-): (LineEntity | CurveEntity | CircleEntity)[] {
+export function cutEdges(document: PatternDocument): (LineEntity | CurveEntity | CircleEntity)[] {
   return document.entities.filter(
     (entity): entity is LineEntity | CurveEntity | CircleEntity =>
       entity.kind !== 'point' && !entity.construction,

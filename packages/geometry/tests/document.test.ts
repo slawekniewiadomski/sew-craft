@@ -255,11 +255,7 @@ describe('bounds', () => {
   });
 
   it('widens the box by the circle radius for an axis-aligned rim', () => {
-    const document = documentOf([
-      point('c', 10, 10),
-      point('r', 10, 4),
-      circle('c1', 'c', 'r'),
-    ]);
+    const document = documentOf([point('c', 10, 10), point('r', 10, 4), circle('c1', 'c', 'r')]);
 
     expect(bounds(document)).toEqual({ min: { x: 4, y: 4 }, max: { x: 16, y: 16 } });
   });

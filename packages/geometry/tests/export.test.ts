@@ -160,11 +160,11 @@ describe('toSvg', () => {
   });
 
   it('renders a cut circle as a true SVG circle', () => {
-    const svg = toSvg(
-      documentOf([point('c', 10, 20), point('r', 13, 24), circle('c1', 'c', 'r')]),
-    );
+    const svg = toSvg(documentOf([point('c', 10, 20), point('r', 13, 24), circle('c1', 'c', 'r')]));
 
-    expect(svg).toContain('<circle cx="10" cy="20" r="5" data-entity-id="c1" data-kind="circle" />');
+    expect(svg).toContain(
+      '<circle cx="10" cy="20" r="5" data-entity-id="c1" data-kind="circle" />',
+    );
   });
 
   it('renders a construction circle in the construction layer', () => {

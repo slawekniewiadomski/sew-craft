@@ -559,10 +559,7 @@ function applyAddCircle(
 
   const radius = Math.hypot(rimPoint.x - centerPoint.x, rimPoint.y - centerPoint.y);
   if (!Number.isFinite(radius) || radius < MIN_RADIUS) {
-    throw new CommandValidationError(
-      'add_circle',
-      `the radius must be at least ${MIN_RADIUS} mm`,
-    );
+    throw new CommandValidationError('add_circle', `the radius must be at least ${MIN_RADIUS} mm`);
   }
   if (getEntity(document, command.id) !== undefined) {
     return noOp(document);
