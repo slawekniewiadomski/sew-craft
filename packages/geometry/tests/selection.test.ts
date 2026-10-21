@@ -4,6 +4,7 @@ import {
   createEmptyDocument,
   entitiesInRect,
   type CurveEntity,
+  type ArcEntity,
   type Entity,
   type LineEntity,
   type PatternDocument,
@@ -41,6 +42,15 @@ const curve = (id: string, points: [string, string, string, string]): CurveEntit
 const documentOf = (entities: Entity[]): PatternDocument => ({
   ...createEmptyDocument(),
   entities,
+});
+
+const arc = (id: string, start: string, end: string, through: string): ArcEntity => ({
+  id,
+  kind: 'arc',
+  start,
+  end,
+  through,
+  construction: false,
 });
 
 const rect = (minX: number, minY: number, maxX: number, maxY: number): Rect => ({
@@ -140,5 +150,40 @@ describe('entitiesInRect', () => {
     const dangling = documentOf([line('dangling', 'a', 'missing')]);
 
     expect(entitiesInRect(dangling, rect(-1, -1, 11, 1), 'crossing')).toEqual([]);
+  });
+});
+
+describe('entitiesInRect with arcs', () => {
+  const document = documentOf([
+    point('s', -10, 0),
+    point('t', 0, 10),
+    point('e', 10, 0),
+    point('flat-s', 0, 20),
+    point('flat-e', 10, 20),
+    point('flat-t', 5, 20),
+    arc('bulge', 's', 'e', 't'),
+    arc('flat', 'flat-s', 'flat-e', 'flat-t'),
+    arc('dangling', 's', 'e', 'missing'),
+  ]);
+
+  it('selects an arc in window mode only when its whole bounding box is inside', () => {
+    expect(entitiesInRect(document, rect(-10, 0, 10, 10), 'window')).toContain('bulge');
+    expect(entitiesInRect(document, rect(-10, 0, 9, 10), 'window')).not.toContain('bulge');
+  });
+
+  it('selects an arc in crossing mode when its box overlaps even if no point is inside', () => {
+    expect(entitiesInRect(document, rect(3, 1, 7, 3), 'crossing')).toContain('bulge');
+  });
+
+  it('falls back to the three-point hull for a degenerate arc', () => {
+    expect(entitiesInRect(document, rect(-1, 19, 11, 21), 'crossing')).toContain('flat');
+    expect(entitiesInRect(document, rect(-1, 19, 11, 21), 'window')).toContain('flat');
+  });
+
+  it('skips a dangling arc without throwing', () => {
+    const hits = entitiesInRect(document, rect(-20, -20, 20, 20), 'crossing');
+
+    expect(hits).not.toContain('dangling');
+    expect(hits).toContain('bulge');
   });
 });

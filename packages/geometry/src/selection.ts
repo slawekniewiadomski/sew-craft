@@ -1,3 +1,4 @@
+import { arcExtents, arcPoints, arcThroughPoints } from './arc.js';
 import { allPoints } from './document.js';
 import type { EntityId, PatternDocument, PointEntity } from './types.js';
 
@@ -106,6 +107,31 @@ function convexHull(points: readonly Vec[]): Vec[] {
   return [...lower, ...upper];
 }
 
+/**
+ * The convex hull used for arc hit-testing: the four corners of the arc's
+ * bounding box, widened by the arc's cardinal extents. Conservative, matching the
+ * curve hull semantics. A degenerate (collinear) arc falls back to the hull of
+ * its three points.
+ */
+function arcHull(start: Vec, through: Vec, end: Vec): Vec[] {
+  const geometry = arcThroughPoints(start, end, through);
+  if (geometry === null) return convexHull([start, through, end]);
+
+  const samples = [...arcPoints(geometry, start, end), ...arcExtents(geometry)];
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const point of samples) {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  }
+
+  return rectCorners({ minX, minY, maxX, maxY });
+}
+
 /** Resolve an entity's point references, or `null` when one is missing. */
 function resolvePoints(
   points: ReadonlyMap<EntityId, PointEntity>,
@@ -123,8 +149,9 @@ function resolvePoints(
 /**
  * Visible entities hit by a rectangle, in document order. A point uses an
  * inclusive coordinate test; a line is the segment between its endpoints; a
- * curve is the convex hull of its four control points. Passing `window` keeps
- * only entities fully inside, `crossing` keeps anything that overlaps.
+ * curve is the convex hull of its four control points; an arc is its bounding
+ * box. Passing `window` keeps only entities fully inside, `crossing` keeps
+ * anything that overlaps.
  */
 export function entitiesInRect(document: PatternDocument, rect: Rect, mode: RectMode): EntityId[] {
   const points = new Map(allPoints(document).map((point) => [point.id, point]));
@@ -134,6 +161,18 @@ export function entitiesInRect(document: PatternDocument, rect: Rect, mode: Rect
   for (const entity of document.entities) {
     if (entity.kind === 'point') {
       if (pointInRect(entity, rect)) hits.push(entity.id);
+      continue;
+    }
+
+    if (entity.kind === 'arc') {
+      const resolved = resolvePoints(points, [entity.start, entity.through, entity.end]);
+      if (resolved === null) continue;
+      const hull = arcHull(resolved[0]!, resolved[1]!, resolved[2]!);
+      const hit =
+        mode === 'window'
+          ? hull.every((point) => pointInRect(point, rect))
+          : convexOverlap(hull, corners);
+      if (hit) hits.push(entity.id);
       continue;
     }
 

@@ -1,5 +1,7 @@
+import { arcExtents, arcGeometry } from './arc.js';
 import {
   PATTERN_SCHEMA,
+  type ArcEntity,
   type Constraint,
   type CornerRound,
   type CurveEntity,
@@ -54,13 +56,14 @@ export function allPoints(document: PatternDocument): PointEntity[] {
 }
 
 /**
- * Every line or curve that is part of the cut pattern, in document order.
+ * Every line, curve or arc that is part of the cut pattern, in document order.
  * Construction entities are guides and are never cut or exported, so exports
  * and the cut-edge layer both derive their contents from this selector.
  */
-export function cutEdges(document: PatternDocument): (LineEntity | CurveEntity)[] {
+export function cutEdges(document: PatternDocument): (LineEntity | CurveEntity | ArcEntity)[] {
   return document.entities.filter(
-    (entity): entity is LineEntity | CurveEntity => entity.kind !== 'point' && !entity.construction,
+    (entity): entity is LineEntity | CurveEntity | ArcEntity =>
+      entity.kind !== 'point' && !entity.construction,
   );
 }
 
@@ -96,7 +99,9 @@ export function entityPoints(document: PatternDocument, entity: Entity): PointEn
   const ids: EntityId[] =
     entity.kind === 'line'
       ? [entity.start, entity.end]
-      : [entity.p0, entity.p1, entity.p2, entity.p3];
+      : entity.kind === 'arc'
+        ? [entity.start, entity.through, entity.end]
+        : [entity.p0, entity.p1, entity.p2, entity.p3];
 
   return ids.map((id) => {
     const referenced = getEntity(document, id);
@@ -109,7 +114,8 @@ export function entityPoints(document: PatternDocument, entity: Entity): PointEn
 
 /**
  * Axis-aligned bounding box of every point in the document, including
- * construction points. Returns `null` when the document has no points.
+ * construction points, widened by each arc's cardinal extents. Returns `null`
+ * when the document has no points.
  */
 export function bounds(document: PatternDocument): Bounds | null {
   const points = allPoints(document);
@@ -127,6 +133,21 @@ export function bounds(document: PatternDocument): Bounds | null {
     if (point.y < minY) minY = point.y;
     if (point.x > maxX) maxX = point.x;
     if (point.y > maxY) maxY = point.y;
+  }
+
+  // An arc can bulge past all three of its points, so its cardinal extents matter
+  // for a correct fit view and export viewBox. An invalid (collinear) arc has no
+  // extents and is skipped.
+  for (const entity of document.entities) {
+    if (entity.kind !== 'arc') continue;
+    const geometry = arcGeometry(document, entity);
+    if (geometry === null) continue;
+    for (const extent of arcExtents(geometry)) {
+      minX = Math.min(minX, extent.x);
+      minY = Math.min(minY, extent.y);
+      maxX = Math.max(maxX, extent.x);
+      maxY = Math.max(maxY, extent.y);
+    }
   }
 
   return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };

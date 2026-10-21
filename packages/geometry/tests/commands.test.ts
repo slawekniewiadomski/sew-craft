@@ -11,6 +11,7 @@ import {
   getConstraint,
   getEntity,
   getSeam,
+  MIN_BULGE,
   seamForEdge,
   solveDocument,
   type Command,
@@ -71,6 +72,18 @@ const addCurveCommand = (id: string, p0: string, p1: string, p2: string, p3: str
   id,
   type: 'add_curve',
   params: { p0, p1, p2, p3 },
+});
+
+const addArcCommand = (
+  id: string,
+  start: string,
+  end: string,
+  through: string,
+  construction = false,
+): Command => ({
+  id,
+  type: 'add_arc',
+  params: { start, end, through, construction },
 });
 
 const deleteCommand = (id: string): Command => ({ id, type: 'delete_entity', params: { id } });
@@ -403,6 +416,81 @@ describe('add_curve', () => {
 
   it('is idempotent', () => {
     const command = addCurveCommand('c1', 'p0', 'p1', 'p2', 'p3');
+    const first = applyCommand(document, command);
+
+    expect(applyCommand(first.document, command).document).toBe(first.document);
+  });
+});
+
+describe('add_arc', () => {
+  const document = documentOf([
+    point('s', -10, 0),
+    point('e', 10, 0),
+    point('t', 0, 10),
+    point('near', 5, MIN_BULGE / 2),
+    point('collinear', 5, 0),
+  ]);
+
+  it('creates an arc through three points, with the inverse removing it again', () => {
+    const applied = applyCommand(document, addArcCommand('a1', 's', 'e', 't'));
+
+    expect(getEntity(applied.document, 'a1')).toEqual({
+      id: 'a1',
+      kind: 'arc',
+      start: 's',
+      end: 'e',
+      through: 't',
+      construction: false,
+    });
+    expect(applyCommand(applied.document, applied.inverse!).document).toEqual(document);
+  });
+
+  it('honours the construction flag and defaults it to false when omitted', () => {
+    const guide = applyCommand(document, addArcCommand('a1', 's', 'e', 't', true));
+    const plain = applyCommand(document, {
+      id: 'a2',
+      type: 'add_arc',
+      params: { start: 's', end: 'e', through: 't' },
+    });
+
+    expect(getEntity(guide.document, 'a1')).toMatchObject({ construction: true });
+    expect(getEntity(plain.document, 'a2')).toMatchObject({ construction: false });
+  });
+
+  it('rejects a repeated point, an unknown point and a non-point reference', () => {
+    const withLine = documentOf([
+      point('s', -10, 0),
+      { id: 'l', kind: 'line', start: 's', end: 's', construction: false },
+    ]);
+
+    unchanged(document, addArcCommand('a1', 's', 's', 't'));
+    unchanged(document, addArcCommand('a1', 's', 'e', 's'));
+    unchanged(document, addArcCommand('a1', 's', 'e', 'missing'));
+    unchanged(withLine, addArcCommand('a1', 's', 'e', 'l'));
+  });
+
+  it('rejects a through point on or within MIN_BULGE of the chord', () => {
+    unchanged(document, addArcCommand('a1', 's', 'e', 'collinear'));
+    unchanged(document, addArcCommand('a1', 's', 'e', 'near'));
+  });
+
+  it('rejects a corner-round derived point', () => {
+    const rounded = applyCommand(
+      documentOf([
+        point('a', 0, 0),
+        point('b', 100, 0),
+        point('d', 0, 100),
+        { id: 'l1', kind: 'line', start: 'a', end: 'b', construction: false },
+        { id: 'l2', kind: 'line', start: 'a', end: 'd', construction: false },
+      ]),
+      { id: 'r1', type: 'add_corner_round', params: { first: 'l1', second: 'l2', radius: 10 } },
+    ).document;
+
+    unchanged(rounded, addArcCommand('a1', 'r1:a', 'b', 'd'));
+  });
+
+  it('is idempotent', () => {
+    const command = addArcCommand('a1', 's', 'e', 't');
     const first = applyCommand(document, command);
 
     expect(applyCommand(first.document, command).document).toBe(first.document);
@@ -1100,6 +1188,24 @@ describe('add_seam_allowance', () => {
     ]);
 
     unchanged(withGuide, seamCommand('s', 'g1', 10));
+  });
+
+  it('accepts an arc edge, which flattens to a polyline', () => {
+    const withArc = documentOf([
+      point('a', -10, 0),
+      point('b', 0, 10),
+      point('c', 10, 0),
+      { id: 'a1', kind: 'arc', start: 'a', end: 'c', through: 'b', construction: false },
+    ]);
+
+    const applied = applyCommand(withArc, seamCommand('s', 'a1', 10, 'right'));
+
+    expect(getSeam(applied.document, 's')).toEqual({
+      id: 's',
+      edge: 'a1',
+      width: 10,
+      side: 'right',
+    });
   });
 });
 

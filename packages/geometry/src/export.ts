@@ -1,6 +1,9 @@
+import { arcGeometry, svgArcCommand } from './arc.js';
 import { bounds, getEntity } from './document.js';
+import { formatSvgNumber as formatNumber } from './number.js';
 import {
   PATTERN_SCHEMA,
+  type ArcEntity,
   type CurveEntity,
   type EntityId,
   type LineEntity,
@@ -39,23 +42,12 @@ interface ViewBox {
 }
 
 const DEFAULT_PADDING = 10;
-const COORDINATE_PRECISION = 1e4;
 
 const CUT_COLOR = '#000000';
 const CONSTRUCTION_COLOR = '#9ca3af';
 const SEAM_ALLOWANCE_COLOR = '#2563eb';
 
 const indent = (line: string): string => `  ${line}`;
-
-/**
- * Format a millimetre value for an SVG attribute. Values are rounded to 1e-4 mm
- * so floating-point noise never leaks into the output, and negative zero is
- * normalised to `0`.
- */
-function formatNumber(value: number): string {
-  const rounded = Math.round(value * COORDINATE_PRECISION) / COORDINATE_PRECISION;
-  return rounded === 0 ? '0' : String(rounded);
-}
 
 function escapeXml(value: string): string {
   return value
@@ -92,7 +84,20 @@ function curveElement(document: PatternDocument, curve: CurveEntity): string | n
   return `<path d="${d}"${entityAttr(curve.id)} />`;
 }
 
-/** Split the document's line and curve entities into cut and construction layers. */
+function arcElement(document: PatternDocument, arc: ArcEntity): string | null {
+  const geometry = arcGeometry(document, arc);
+  const start = pointById(document, arc.start);
+  const end = pointById(document, arc.end);
+  if (geometry === null || start === undefined || end === undefined) return null;
+
+  return `<path d="${svgArcCommand(
+    geometry,
+    { x: start.x, y: start.y },
+    { x: end.x, y: end.y },
+  )}"${entityAttr(arc.id)} data-kind="arc" />`;
+}
+
+/** Split the document's line, curve and arc entities into cut and construction layers. */
 function renderEntities(document: PatternDocument): { cut: string[]; construction: string[] } {
   const cut: string[] = [];
   const construction: string[] = [];
@@ -101,7 +106,11 @@ function renderEntities(document: PatternDocument): { cut: string[]; constructio
     if (entity.kind === 'point') continue;
 
     const element =
-      entity.kind === 'line' ? lineElement(document, entity) : curveElement(document, entity);
+      entity.kind === 'line'
+        ? lineElement(document, entity)
+        : entity.kind === 'arc'
+          ? arcElement(document, entity)
+          : curveElement(document, entity);
     if (element === null) continue;
 
     (entity.construction ? construction : cut).push(element);
