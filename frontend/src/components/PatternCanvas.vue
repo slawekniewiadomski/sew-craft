@@ -7,6 +7,7 @@ import {
   cornerRoundGeometry,
   cornerRounds,
   cornerRoundsForEntity,
+  type CircleEntity,
   type CornerRound,
   type CurveEntity,
   DEFAULT_DIMENSION_OFFSET,
@@ -24,6 +25,7 @@ import {
   isCornerRoundDerived,
   type LineEntity,
   measureLinearDimension,
+  MIN_RADIUS,
   type PatternDocument,
   type PointEntity,
   type Rect,
@@ -34,6 +36,7 @@ import {
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import { curvePath, polylinePath } from '@/lib/canvas-render';
+import { resolveCircleEndpoint, sameCircleEndpoint, type CircleEndpoint } from '@/lib/circle-tool';
 import type { ConstraintPick } from '@/lib/constraint-tools';
 import { CONSTRAINT_ICONS, constraintMarkers, type ConstraintMarker } from '@/lib/constraint-view';
 import {
@@ -99,6 +102,13 @@ interface LineView {
 interface CurveView {
   curve: CurveEntity;
   d: string;
+}
+
+interface CircleView {
+  circle: CircleEntity;
+  cx: number;
+  cy: number;
+  r: number;
 }
 
 interface Hit {
@@ -216,6 +226,7 @@ const emit = defineEmits<{
   'add-point': [x: number, y: number];
   'add-line': [start: LineEndpoint, end: LineEndpoint];
   'add-curve': [points: [EntityId, EntityId, EntityId, EntityId]];
+  'add-circle': [center: CircleEndpoint, rim: CircleEndpoint];
   'constraint-pick': [pick: ConstraintPick];
   'add-dimension': [placement: DimensionPlacement];
   'update-dimension': [id: EntityId, patch: DimensionPatch];
@@ -237,6 +248,10 @@ const pending = ref<EntityId[]>([]);
 const lineStart = ref<LineEndpoint | null>(null);
 /** The snapped pointer position while a line gesture is pending. */
 const linePreview = ref<Vec2 | null>(null);
+/** The circle gesture's pending centre; `null` until the first click. */
+const circleCenter = ref<CircleEndpoint | null>(null);
+/** The snapped pointer position while a circle gesture is pending. */
+const circlePreview = ref<Vec2 | null>(null);
 const spaceHeld = ref(false);
 
 /** Points picked for a dimension that has not yet been placed. */
@@ -473,6 +488,25 @@ const curves = computed(() =>
 );
 
 /**
+ * Committed circles whose centre and rim both resolve to points and whose radius
+ * is renderable. A degenerate or dangling circle is skipped, exactly as the
+ * export layer skips it. Reading the drag-aware `pointById` keeps the circle
+ * following a live point drag.
+ */
+const circles = computed(() =>
+  props.document.entities
+    .filter((entity): entity is CircleEntity => entity.kind === 'circle')
+    .flatMap((circle): CircleView[] => {
+      const center = pointById.value.get(circle.center);
+      const rim = pointById.value.get(circle.rim);
+      if (center === undefined || rim === undefined) return [];
+      const r = Math.hypot(rim.x - center.x, rim.y - center.y);
+      if (r < MIN_RADIUS) return [];
+      return [{ circle, cx: center.x, cy: center.y, r }];
+    }),
+);
+
+/**
  * Seam allowances are a render-only offset layer: hidden entirely when the
  * presentation toggle is off, and never part of the document the UI mutates.
  */
@@ -542,6 +576,29 @@ const pendingLineStart = computed<Vec2 | null>(() => {
 
   const point = pointById.value.get(start.id)!;
   return { x: point.x, y: point.y };
+});
+/** The document point reused as the circle centre, highlighted while pending. */
+const pendingCircleCenterId = computed(() =>
+  circleCenter.value?.kind === 'point' ? circleCenter.value.id : null,
+);
+/**
+ * World position of the pending circle centre. An id is always current because
+ * the document watcher clears a centre whose point disappeared.
+ */
+const pendingCircleCenter = computed<Vec2 | null>(() => {
+  const center = circleCenter.value;
+  if (center === null) return null;
+  if (center.kind === 'new') return { x: center.x, y: center.y };
+
+  const point = pointById.value.get(center.id)!;
+  return { x: point.x, y: point.y };
+});
+/** The dashed preview radius: pending centre to the snapped pointer. Read only
+ * while both the pending centre and the preview position exist. */
+const circlePreviewRadius = computed<number>(() => {
+  const center = pendingCircleCenter.value!;
+  const rim = circlePreview.value!;
+  return Math.hypot(rim.x - center.x, rim.y - center.y);
 });
 const gridStep = computed(() => niceStep(viewport.value.scale));
 const gridPath = computed(() => `M ${gridStep.value} 0 L 0 0 0 ${gridStep.value}`);
@@ -754,7 +811,11 @@ function pointClass(point: PointEntity): string {
   if (marqueeCandidates.value.has(point.id)) {
     return 'fill-primary stroke-primary-foreground opacity-60';
   }
-  if (pendingIds.value.has(point.id) || point.id === pendingLineStartId.value) {
+  if (
+    pendingIds.value.has(point.id) ||
+    point.id === pendingLineStartId.value ||
+    point.id === pendingCircleCenterId.value
+  ) {
     return 'fill-accent stroke-accent-foreground';
   }
   return point.construction ? 'fill-muted-foreground' : 'fill-foreground';
@@ -827,7 +888,7 @@ function onDimensionPointer(hit: Hit | null): void {
     return;
   }
 
-  if (hit === null || hit.kind === 'curve') {
+  if (hit === null || (hit.kind !== 'point' && hit.kind !== 'line')) {
     dimensionPending.value = [];
     return;
   }
@@ -1177,6 +1238,9 @@ function onPointerDown(event: PointerEvent): void {
     case 'add_line':
       onLinePointer(hit, screen);
       break;
+    case 'add_circle':
+      onCirclePointer(hit, screen);
+      break;
     case 'add_curve':
       selectPendingPoint(hit, 4);
       break;
@@ -1238,6 +1302,10 @@ function onCanvasPointerMove(event: PointerEvent): void {
 
   if (props.tool === 'add_line' && lineStart.value !== null) {
     linePreview.value = snappedPoint(screenToWorld(viewport.value, screenPoint(event)));
+  }
+
+  if (props.tool === 'add_circle' && circleCenter.value !== null) {
+    circlePreview.value = snappedPoint(screenToWorld(viewport.value, screenPoint(event)));
   }
 }
 
@@ -1362,6 +1430,32 @@ function onLinePointer(hit: Hit | null, screen: Vec2): void {
   emit('add-line', start, endpoint);
 }
 
+/**
+ * The circle gesture mirrors the line gesture: a point hit is reused by id, a
+ * bare canvas resolves to the snapped position. The first click stores a
+ * provisional centre; the second emits both endpoints so the editor can commit
+ * the points and the circle as one undoable gesture.
+ */
+function onCirclePointer(hit: Hit | null, screen: Vec2): void {
+  const endpoint: CircleEndpoint =
+    hit !== null && hit.kind === 'point'
+      ? { kind: 'point', id: hit.id }
+      : resolveCircleEndpoint(props.document, screenToWorld(viewport.value, screen));
+
+  const center = circleCenter.value;
+  if (center === null) {
+    circleCenter.value = endpoint;
+    circlePreview.value = null;
+    return;
+  }
+
+  if (sameCircleEndpoint(center, endpoint)) return;
+
+  circleCenter.value = null;
+  circlePreview.value = null;
+  emit('add-circle', center, endpoint);
+}
+
 /** Combine one clicked entity with the current selection under `mode`. */
 function selectEntity(id: EntityId, mode: SelectionMode): void {
   const current = props.selectedEntityIds;
@@ -1484,6 +1578,8 @@ watch(
     pending.value = [];
     lineStart.value = null;
     linePreview.value = null;
+    circleCenter.value = null;
+    circlePreview.value = null;
     dimensionPending.value = [];
     dimensionPlacement.value = null;
     editingDimension.value = null;
@@ -1496,8 +1592,8 @@ watch(
 );
 
 // Any document edit invalidates the inline editor: the constraint may have
-// moved, been removed, or been undone underneath it. A pending line start that
-// referenced a point also disappears when that point does.
+// moved, been removed, or been undone underneath it. A pending line start or
+// circle centre that referenced a point also disappears when that point does.
 watch(
   () => props.document,
   () => {
@@ -1507,6 +1603,10 @@ watch(
     if (pendingLineStartId.value !== null && !pointById.value.has(pendingLineStartId.value)) {
       lineStart.value = null;
       linePreview.value = null;
+    }
+    if (pendingCircleCenterId.value !== null && !pointById.value.has(pendingCircleCenterId.value)) {
+      circleCenter.value = null;
+      circlePreview.value = null;
     }
   },
 );
@@ -1648,6 +1748,33 @@ watch(
             @pointerleave="onEntityLeave"
             @dblclick.stop.prevent="onCurveDoubleClick(entry.curve.id, $event)"
           />
+
+          <template v-for="entry in circles" :key="entry.circle.id">
+            <circle
+              :cx="entry.cx"
+              :cy="entry.cy"
+              :r="entry.r"
+              fill="none"
+              :class="entityClass(entry.circle)"
+              :stroke-dasharray="entry.circle.construction ? '4 4' : undefined"
+              :stroke-width="lineWidth(entry.circle.id)"
+              stroke="currentColor"
+              vector-effect="non-scaling-stroke"
+              :data-entity-id="entry.circle.id"
+              data-kind="circle"
+            />
+            <circle
+              :cx="entry.cx"
+              :cy="entry.cy"
+              :r="entry.r"
+              fill="none"
+              stroke="transparent"
+              stroke-width="12"
+              vector-effect="non-scaling-stroke"
+              :data-entity-id="entry.circle.id"
+              data-kind="circle"
+            />
+          </template>
         </g>
 
         <g
@@ -1734,6 +1861,31 @@ watch(
             class="fill-accent stroke-accent-foreground"
             stroke-width="1"
             data-testid="line-pending-point"
+          />
+        </g>
+
+        <g v-if="pendingCircleCenter !== null" class="pointer-events-none" aria-hidden="true">
+          <circle
+            v-if="circlePreview !== null"
+            :cx="pendingCircleCenter.x"
+            :cy="pendingCircleCenter.y"
+            :r="circlePreviewRadius"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-dasharray="4 4"
+            vector-effect="non-scaling-stroke"
+            class="text-muted-foreground"
+            data-testid="circle-preview"
+          />
+          <circle
+            v-if="circleCenter?.kind === 'new'"
+            :cx="pendingCircleCenter.x"
+            :cy="pendingCircleCenter.y"
+            r="4"
+            class="fill-accent stroke-accent-foreground"
+            stroke-width="1"
+            data-testid="circle-pending-center"
           />
         </g>
 
