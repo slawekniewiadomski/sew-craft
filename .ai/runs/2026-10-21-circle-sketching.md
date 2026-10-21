@@ -79,5 +79,5 @@ renders and exports it as one SVG circle.
 
 - [x] 5.1 Add the circle properties geometry, "Circle" noun and radius editing with tests — b1cbdc8
 - [x] 5.2 Wire `EditorView.onAddCircle` through `dispatchGroup` with view tests — b1cbdc8
-- [ ] 5.3 Run the full validation gate and `om-auto-review-pr --autofix`
-- [ ] 5.4 Retitle the PR, normalize labels, flip to ready and release the lock
+- [x] 5.3 Run the full validation gate and `om-auto-review-pr --autofix` — 3a07284
+- [x] 5.4 Retitle the PR, normalize labels, flip to ready and release the lock — 25bdd18
