@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import {
   allPoints,
+  arcThroughPoints,
+  type ArcEntity,
   bounds,
   constraintOffset,
   constraintOrientation,
@@ -29,10 +31,12 @@ import {
   type Rect,
   seamAllowancePaths,
   seamForEdge,
+  svgArcCommand,
   type Vec2,
 } from '@sewcraft/geometry';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
+import { arcFromEndpoints } from '@/lib/arc-tool';
 import { curvePath, polylinePath } from '@/lib/canvas-render';
 import type { ConstraintPick } from '@/lib/constraint-tools';
 import { CONSTRAINT_ICONS, constraintMarkers, type ConstraintMarker } from '@/lib/constraint-view';
@@ -63,8 +67,14 @@ import {
   type DimensionReferenceOption,
   type DimensionSegment,
 } from '@/lib/dimensions';
+import {
+  endpointMissing,
+  endpointPosition,
+  resolveDraftingEndpoint,
+  sameDraftingEndpoint,
+  type DraftingEndpoint,
+} from '@/lib/drafting';
 import type { EditorTool } from '@/lib/editor-tools';
-import { resolveLineEndpoint, sameEndpoint, type LineEndpoint } from '@/lib/line-tool';
 import {
   applySelection,
   rectMode,
@@ -101,6 +111,11 @@ interface CurveView {
   d: string;
 }
 
+interface ArcView {
+  arc: ArcEntity;
+  d: string;
+}
+
 interface Hit {
   id: EntityId;
   kind: string;
@@ -120,7 +135,7 @@ const MARQUEE_THRESHOLD = 4;
 interface SeamView {
   id: EntityId;
   edge: EntityId;
-  kind: 'line' | 'curve';
+  kind: 'line' | 'curve' | 'arc';
   width: number;
   d: string;
   selfIntersects: boolean;
@@ -214,7 +229,8 @@ const emit = defineEmits<{
   'marquee-change': [active: boolean];
   'move-point': [id: EntityId, x: number, y: number];
   'add-point': [x: number, y: number];
-  'add-line': [start: LineEndpoint, end: LineEndpoint];
+  'add-line': [start: DraftingEndpoint, end: DraftingEndpoint];
+  'add-arc': [start: DraftingEndpoint, end: DraftingEndpoint, through: DraftingEndpoint];
   'add-curve': [points: [EntityId, EntityId, EntityId, EntityId]];
   'constraint-pick': [pick: ConstraintPick];
   'add-dimension': [placement: DimensionPlacement];
@@ -234,9 +250,16 @@ const panState = ref<{ start: Vec2; origin: Viewport } | null>(null);
 const marqueeState = ref<MarqueeState | null>(null);
 const pending = ref<EntityId[]>([]);
 /** The line gesture's first endpoint; `null` until the first click. */
-const lineStart = ref<LineEndpoint | null>(null);
+const lineStart = ref<DraftingEndpoint | null>(null);
 /** The snapped pointer position while a line gesture is pending. */
 const linePreview = ref<Vec2 | null>(null);
+/** The arc gesture's start and end clicks; `null` until each click lands. */
+const arcStart = ref<DraftingEndpoint | null>(null);
+const arcEnd = ref<DraftingEndpoint | null>(null);
+/** The snapped pointer while the arc gesture is pending; the preview's through point. */
+const arcPointer = ref<Vec2 | null>(null);
+/** True after a rejected third click, until the pointer leaves the chord. */
+const arcHint = ref(false);
 const spaceHeld = ref(false);
 
 /** Points picked for a dimension that has not yet been placed. */
@@ -473,6 +496,30 @@ const curves = computed(() =>
 );
 
 /**
+ * Committed arcs, each drawn as one `A` command. An arc whose three points no
+ * longer define a circle is skipped rather than thrown, so an arc invalidated by
+ * a constraint solve simply disappears from the canvas.
+ */
+const arcs = computed(() =>
+  props.document.entities
+    .filter((entity): entity is ArcEntity => entity.kind === 'arc')
+    .flatMap((arc): ArcView[] => {
+      const resolved = [arc.start, arc.end, arc.through]
+        .map((id) => pointById.value.get(id))
+        .filter((point): point is PointEntity => point !== undefined);
+      if (resolved.length !== 3) return [];
+
+      const start = resolved[0]!;
+      const end = resolved[1]!;
+      const through = resolved[2]!;
+      const geometry = arcThroughPoints(start, end, through);
+      if (geometry === null) return [];
+
+      return [{ arc, d: svgArcCommand(geometry, start, end) }];
+    }),
+);
+
+/**
  * Seam allowances are a render-only offset layer: hidden entirely when the
  * presentation toggle is off, and never part of the document the UI mutates.
  */
@@ -481,7 +528,7 @@ const seams = computed<SeamView[]>(() => {
   return seamAllowancePaths(props.document).map((allowance) => {
     const seam = seamForEdge(props.document, allowance.edge)!;
     const entity = props.document.entities.find((candidate) => candidate.id === allowance.edge) as
-      LineEntity | CurveEntity;
+      LineEntity | CurveEntity | ArcEntity;
     return {
       id: seam.id,
       edge: allowance.edge,
@@ -543,6 +590,56 @@ const pendingLineStart = computed<Vec2 | null>(() => {
   const point = pointById.value.get(start.id)!;
   return { x: point.x, y: point.y };
 });
+/**
+ * World position of the pending arc start. An id is always current because the
+ * document watcher clears a gesture whose point disappeared.
+ */
+const arcStartPosition = computed<Vec2 | null>(() =>
+  arcStart.value === null ? null : endpointPosition(props.document, arcStart.value),
+);
+/** The dashed chord shown between the start click and the end click. */
+const arcChord = computed(() => {
+  if (arcEnd.value !== null) return null;
+  const start = arcStartPosition.value;
+  const pointer = arcPointer.value;
+  if (start === null || pointer === null) return null;
+  return { start, end: pointer };
+});
+/**
+ * The dashed arc that follows the pointer after the second click. It is built by
+ * the same `arcFromEndpoints` guard the commit uses, so what is previewed is
+ * exactly what a third click would store.
+ */
+const arcPreview = computed(() => {
+  const start = arcStart.value;
+  const end = arcEnd.value;
+  const pointer = arcPointer.value;
+  if (start === null || end === null || pointer === null) return null;
+
+  const geometry = arcFromEndpoints(props.document, start, end, {
+    kind: 'new',
+    x: pointer.x,
+    y: pointer.y,
+  });
+  if (geometry === null) return null;
+
+  // A non-null geometry means both endpoints resolved to points, so both positions exist.
+  const startPosition = endpointPosition(props.document, start)!;
+  const endPosition = endpointPosition(props.document, end)!;
+  return { d: svgArcCommand(geometry, startPosition, endPosition) };
+});
+
+/** Marker for a start click that created a new point rather than reusing one. */
+const arcPendingStart = computed<Vec2 | null>(() => {
+  const start = arcStart.value;
+  return start !== null && start.kind === 'new' ? { x: start.x, y: start.y } : null;
+});
+/** Marker for an end click that created a new point rather than reusing one. */
+const arcPendingEnd = computed<Vec2 | null>(() => {
+  const end = arcEnd.value;
+  return end !== null && end.kind === 'new' ? { x: end.x, y: end.y } : null;
+});
+
 const gridStep = computed(() => niceStep(viewport.value.scale));
 const gridPath = computed(() => `M ${gridStep.value} 0 L 0 0 0 ${gridStep.value}`);
 const transform = computed(() => viewportTransform(viewport.value));
@@ -827,7 +924,7 @@ function onDimensionPointer(hit: Hit | null): void {
     return;
   }
 
-  if (hit === null || hit.kind === 'curve') {
+  if (hit === null || hit.kind === 'curve' || hit.kind === 'arc') {
     dimensionPending.value = [];
     return;
   }
@@ -1180,6 +1277,9 @@ function onPointerDown(event: PointerEvent): void {
     case 'add_curve':
       selectPendingPoint(hit, 4);
       break;
+    case 'add_arc':
+      onArcPointer(hit, screen);
+      break;
     case 'dimension':
       onDimensionPointer(hit);
       break;
@@ -1238,6 +1338,23 @@ function onCanvasPointerMove(event: PointerEvent): void {
 
   if (props.tool === 'add_line' && lineStart.value !== null) {
     linePreview.value = snappedPoint(screenToWorld(viewport.value, screenPoint(event)));
+  }
+
+  if (props.tool === 'add_arc' && arcStart.value !== null) {
+    const world = snappedPoint(screenToWorld(viewport.value, screenPoint(event)));
+    arcPointer.value = world;
+
+    // The hint clears as soon as the pointer leaves the chord into a valid bulge.
+    if (
+      arcEnd.value !== null &&
+      arcFromEndpoints(props.document, arcStart.value, arcEnd.value, {
+        kind: 'new',
+        x: world.x,
+        y: world.y,
+      }) !== null
+    ) {
+      arcHint.value = false;
+    }
   }
 }
 
@@ -1343,10 +1460,10 @@ function commitPending(ids: EntityId[]): void {
  * editor can commit the points and the line as one undoable gesture.
  */
 function onLinePointer(hit: Hit | null, screen: Vec2): void {
-  const endpoint: LineEndpoint =
+  const endpoint: DraftingEndpoint =
     hit !== null && hit.kind === 'point'
       ? { kind: 'point', id: hit.id }
-      : resolveLineEndpoint(props.document, screenToWorld(viewport.value, screen));
+      : resolveDraftingEndpoint(props.document, screenToWorld(viewport.value, screen));
 
   const start = lineStart.value;
   if (start === null) {
@@ -1355,11 +1472,59 @@ function onLinePointer(hit: Hit | null, screen: Vec2): void {
     return;
   }
 
-  if (sameEndpoint(start, endpoint)) return;
+  if (sameDraftingEndpoint(start, endpoint)) return;
 
   lineStart.value = null;
   linePreview.value = null;
   emit('add-line', start, endpoint);
+}
+
+/** Drop the pending arc gesture without emitting a command. */
+function clearArcGesture(): void {
+  arcStart.value = null;
+  arcEnd.value = null;
+  arcPointer.value = null;
+  arcHint.value = false;
+}
+
+/**
+ * The arc gesture: click 1 is the start, click 2 the end, click 3 a point on the
+ * arc between them. Each click resolves like the Line tool. A repeated endpoint
+ * is ignored silently; a third click on the chord would give an infinite radius,
+ * so it is ignored and the hint asks for a point off the line, leaving the
+ * pending start and end in place so the user can try again.
+ */
+function onArcPointer(hit: Hit | null, screen: Vec2): void {
+  const endpoint: DraftingEndpoint =
+    hit !== null && hit.kind === 'point'
+      ? { kind: 'point', id: hit.id }
+      : resolveDraftingEndpoint(props.document, screenToWorld(viewport.value, screen));
+
+  const start = arcStart.value;
+  if (start === null) {
+    clearArcGesture();
+    arcStart.value = endpoint;
+    return;
+  }
+
+  if (sameDraftingEndpoint(start, endpoint)) return;
+
+  const end = arcEnd.value;
+  if (end === null) {
+    arcEnd.value = endpoint;
+    arcPointer.value = null;
+    return;
+  }
+
+  if (sameDraftingEndpoint(end, endpoint)) return;
+
+  if (arcFromEndpoints(props.document, start, end, endpoint) === null) {
+    arcHint.value = true;
+    return;
+  }
+
+  clearArcGesture();
+  emit('add-arc', start, end, endpoint);
 }
 
 /** Combine one clicked entity with the current selection under `mode`. */
@@ -1484,6 +1649,7 @@ watch(
     pending.value = [];
     lineStart.value = null;
     linePreview.value = null;
+    clearArcGesture();
     dimensionPending.value = [];
     dimensionPlacement.value = null;
     editingDimension.value = null;
@@ -1508,6 +1674,11 @@ watch(
       lineStart.value = null;
       linePreview.value = null;
     }
+
+    const arcPointMissing = [arcStart.value, arcEnd.value].some((endpoint) =>
+      endpointMissing(props.document, endpoint),
+    );
+    if (arcPointMissing) clearArcGesture();
   },
 );
 
@@ -1648,6 +1819,22 @@ watch(
             @pointerleave="onEntityLeave"
             @dblclick.stop.prevent="onCurveDoubleClick(entry.curve.id, $event)"
           />
+
+          <path
+            v-for="entry in arcs"
+            :key="entry.arc.id"
+            :d="entry.d"
+            fill="none"
+            :class="entityClass(entry.arc)"
+            :stroke-dasharray="entry.arc.construction ? '4 4' : undefined"
+            :stroke-width="lineWidth(entry.arc.id)"
+            stroke="currentColor"
+            vector-effect="non-scaling-stroke"
+            :data-entity-id="entry.arc.id"
+            data-kind="arc"
+            @pointerenter="onEntityHover(entry.arc.id)"
+            @pointerleave="onEntityLeave"
+          />
         </g>
 
         <g
@@ -1734,6 +1921,51 @@ watch(
             class="fill-accent stroke-accent-foreground"
             stroke-width="1"
             data-testid="line-pending-point"
+          />
+        </g>
+
+        <g v-if="arcStartPosition !== null" class="pointer-events-none" aria-hidden="true">
+          <line
+            v-if="arcChord !== null"
+            :x1="arcChord.start.x"
+            :y1="arcChord.start.y"
+            :x2="arcChord.end.x"
+            :y2="arcChord.end.y"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-dasharray="4 4"
+            vector-effect="non-scaling-stroke"
+            class="text-muted-foreground"
+            data-testid="arc-chord"
+          />
+          <path
+            v-if="arcPreview !== null"
+            :d="arcPreview.d"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-dasharray="4 4"
+            vector-effect="non-scaling-stroke"
+            class="text-muted-foreground"
+            data-testid="arc-preview"
+          />
+          <circle
+            v-if="arcPendingStart !== null"
+            :cx="arcPendingStart.x"
+            :cy="arcPendingStart.y"
+            r="4"
+            class="fill-accent stroke-accent-foreground"
+            stroke-width="1"
+            data-testid="arc-pending-start"
+          />
+          <circle
+            v-if="arcPendingEnd !== null"
+            :cx="arcPendingEnd.x"
+            :cy="arcPendingEnd.y"
+            r="4"
+            class="fill-accent stroke-accent-foreground"
+            stroke-width="1"
+            data-testid="arc-pending-end"
           />
         </g>
 
@@ -1997,6 +2229,15 @@ watch(
         />
       </g>
     </svg>
+
+    <p
+      v-if="arcHint"
+      class="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground shadow-sm"
+      role="status"
+      data-testid="arc-hint"
+    >
+      pick a point off the line
+    </p>
 
     <input
       v-if="dimensionEditor !== null"

@@ -429,6 +429,29 @@ describe('EditorView', () => {
     expect(line).toMatchObject({ start: 'p' });
   });
 
+  it('draws an arc in empty space as one undoable gesture', async () => {
+    const { wrapper, store } = await mountLoaded(simpleDoc);
+    const before = store.document.entities.length;
+    const journal = store.journal.length;
+
+    await wrapper.find('[data-testid="tool-add_arc"]').trigger('click');
+    canvasDown(wrapper, 700, 500);
+    canvasDown(wrapper, 300, 500);
+    canvasDown(wrapper, 500, 200);
+    await flushPromises();
+
+    // Three new points and the arc, committed as a single journal entry.
+    expect(store.document.entities).toHaveLength(before + 4);
+    expect(store.journal).toHaveLength(journal + 1);
+    expect(wrapper.findAll('[data-kind="arc"]')).toHaveLength(1);
+
+    store.undo();
+    await nextTick();
+
+    expect(store.document.entities).toHaveLength(before);
+    expect(store.journal).toHaveLength(journal);
+  });
+
   it('clears a pending line preview when Escape leaves the tool', async () => {
     const { wrapper, store } = await mountLoaded(simpleDoc);
 
