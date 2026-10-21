@@ -211,4 +211,39 @@ describe('editor store', () => {
     expect(store.canRedo).toBe(false);
     expect(store.canUndo).toBe(false);
   });
+
+  it('drops an inconsistent corner round on load and keeps its static geometry', () => {
+    const store = useEditorStore();
+    const square: PatternDocument = {
+      ...createEmptyDocument(),
+      entities: [
+        point('a', 0, 0),
+        point('b', 100, 0),
+        point('c', 100, 100),
+        point('d', 0, 100),
+        { id: 'ab', kind: 'line', start: 'a', end: 'b', construction: false },
+        { id: 'bc', kind: 'line', start: 'b', end: 'c', construction: false },
+        { id: 'cd', kind: 'line', start: 'c', end: 'd', construction: false },
+        { id: 'da', kind: 'line', start: 'd', end: 'a', construction: false },
+      ],
+    };
+    const rounded = executeCommand(square, {
+      id: 'r1',
+      type: 'add_corner_round',
+      params: { first: 'ab', second: 'bc', radius: 10 },
+    }).document;
+
+    store.load(rounded);
+    expect(store.document).toBe(rounded);
+    expect(store.document.cornerRounds).toHaveLength(1);
+
+    const inconsistent: PatternDocument = {
+      ...rounded,
+      cornerRounds: rounded.cornerRounds!.map((round) => ({ ...round, radius: 1000 })),
+    };
+    store.load(inconsistent);
+
+    expect(store.document.cornerRounds).toEqual([]);
+    expect(store.document.entities).toHaveLength(rounded.entities.length);
+  });
 });

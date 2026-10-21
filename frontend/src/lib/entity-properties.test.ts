@@ -60,6 +60,7 @@ describe('entityProperties', () => {
       geometry: { kind: 'point', x: 100, y: 0 },
       length: null,
       seam: null,
+      rounds: [],
       dimensions: [],
       constraints: [],
     });

@@ -1,6 +1,7 @@
 import {
   constraintEntityIds,
   constraintOrientation,
+  cornerRoundsForEntity,
   dimensionValue,
   getEntity,
   isDrivenDimension,
@@ -53,6 +54,16 @@ export type ConstraintSummary = {
   entities: EntityId[];
 };
 
+/** A corner round that acts on the selected line or arc. */
+export type CornerRoundSummary = {
+  id: EntityId;
+  radius: number;
+  corner: EntityId;
+  lines: [EntityId, EntityId];
+  anchors: [EntityId, EntityId];
+  arc: EntityId;
+};
+
 /** Everything the Properties inspector shows for one selected entity. */
 export type EntityProperties = {
   id: EntityId;
@@ -64,6 +75,8 @@ export type EntityProperties = {
   /** Measured length in millimetres for lines only. */
   length: number | null;
   seam: { id: EntityId; width: number; side: SeamSide } | null;
+  /** Rounds that reference the selected line or arc. */
+  rounds: CornerRoundSummary[];
   dimensions: DimensionSummary[];
   constraints: ConstraintSummary[];
 };
@@ -164,6 +177,24 @@ export function entityProperties(
 
   const seam = entity.kind === 'point' ? undefined : seamForEdge(document, entity.id);
 
+  // A round shows on its two lines and on its arc, not on points or the sharp
+  // corner; the sharp corner stays a construction point of the sketch.
+  const rounds: CornerRoundSummary[] =
+    entity.kind === 'point'
+      ? []
+      : cornerRoundsForEntity(document, entity.id)
+          .filter(
+            (round) => round.arc === entity.id || round.ends.some((end) => end.line === entity.id),
+          )
+          .map((round) => ({
+            id: round.id,
+            radius: round.radius,
+            corner: round.corner,
+            lines: [round.ends[0].line, round.ends[1].line],
+            anchors: [round.ends[0].anchor, round.ends[1].anchor],
+            arc: round.arc,
+          }));
+
   return {
     id: entity.id,
     kind: entity.kind,
@@ -175,6 +206,7 @@ export function entityProperties(
         ? measureLinearDimension(document, entity.start, entity.end, 'aligned')
         : null,
     seam: seam === undefined ? null : { id: seam.id, width: seam.width, side: seamSide(seam) },
+    rounds,
     dimensions,
     constraints,
   };

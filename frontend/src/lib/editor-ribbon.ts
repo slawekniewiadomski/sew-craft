@@ -42,6 +42,7 @@ const TOOL_ICONS: Record<EditorTool, RibbonIconName> = {
   add_point: 'point',
   add_line: 'line',
   add_curve: 'curve',
+  round_corner: 'round-corner',
   dimension: 'dimension',
   add_allowance: 'allowance',
 };
@@ -83,6 +84,7 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
     label: 'Tools',
     items: [
       toolItem('select'),
+      toolItem('round_corner'),
       actionItem('undo', 'Undo', 'undo', 'undo'),
       actionItem('redo', 'Redo', 'redo', 'redo'),
       actionItem('delete', 'Delete', 'delete', 'delete'),

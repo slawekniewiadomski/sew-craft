@@ -5,7 +5,7 @@ import EditorRibbon from './EditorRibbon.vue';
 
 function mountRibbon(
   overrides: Partial<{
-    activeTool: 'select' | 'add_point' | 'add_line' | 'add_curve';
+    activeTool: 'select' | 'add_point' | 'add_line' | 'add_curve' | 'round_corner';
     activeConstraint: 'horizontal' | null;
     canUndo: boolean;
     canRedo: boolean;
@@ -26,6 +26,7 @@ function mountRibbon(
 
 const RIBBON_LABELS = [
   'Select',
+  'Round corner',
   'Undo',
   'Redo',
   'Delete',
@@ -50,7 +51,7 @@ describe('EditorRibbon', () => {
     const wrapper = mountRibbon();
 
     const buttons = wrapper.findAll('button');
-    expect(buttons).toHaveLength(18);
+    expect(buttons).toHaveLength(19);
     expect(buttons.every((button) => button.find('svg').exists())).toBe(true);
     expect(buttons.map((button) => button.attributes('aria-label'))).toEqual(RIBBON_LABELS);
 

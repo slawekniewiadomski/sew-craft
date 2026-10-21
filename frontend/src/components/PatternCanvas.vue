@@ -4,6 +4,10 @@ import {
   bounds,
   constraintOffset,
   constraintOrientation,
+  cornerRoundGeometry,
+  cornerRounds,
+  cornerRoundsForEntity,
+  type CornerRound,
   type CurveEntity,
   DEFAULT_DIMENSION_OFFSET,
   type DimensionOrientation,
@@ -14,6 +18,7 @@ import {
   type DistanceConstraint,
   type EntityId,
   inferDimensionOrientation,
+  isCornerRoundDerived,
   isDrivenDimension,
   type LineEntity,
   measureLinearDimension,
@@ -28,6 +33,15 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { curvePath, polylinePath } from '@/lib/canvas-render';
 import type { ConstraintPick } from '@/lib/constraint-tools';
 import { CONSTRAINT_ICONS, constraintMarkers, type ConstraintMarker } from '@/lib/constraint-view';
+import {
+  cornerRoundLabel,
+  cornerRoundPreview,
+  formatCornerRadius,
+  parseCornerRadius,
+  tangentDragRadius,
+  type CornerRoundLabel,
+  type CornerRoundPicks,
+} from '@/lib/corner-round';
 import {
   dimensionLabelWidth,
   dimensionSegments,
@@ -115,6 +129,20 @@ interface DimensionLabelView {
   editable: boolean;
 }
 
+/** A tangent handle of a selected round, positioned in screen space. */
+interface CornerRoundHandleView {
+  id: EntityId;
+  endIndex: 0 | 1;
+  x: number;
+  y: number;
+}
+
+/** The `R 12` label of a selected round, positioned in screen space. */
+interface CornerRoundLabelView extends CornerRoundLabel {
+  screenX: number;
+  screenY: number;
+}
+
 const props = withDefaults(
   defineProps<{
     document: PatternDocument;
@@ -126,6 +154,9 @@ const props = withDefaults(
     showDimensions?: boolean;
     constraintActive?: boolean;
     constraintPicks?: ConstraintPick[];
+    roundCornerActive?: boolean;
+    roundCornerPicks?: CornerRoundPicks;
+    cornerRoundPreviewRadius?: number | null;
   }>(),
   {
     selectedId: null,
@@ -135,6 +166,9 @@ const props = withDefaults(
     showDimensions: true,
     constraintActive: false,
     constraintPicks: () => [],
+    roundCornerActive: false,
+    roundCornerPicks: () => ({ first: null, second: null }),
+    cornerRoundPreviewRadius: null,
   },
 );
 
@@ -149,6 +183,8 @@ const emit = defineEmits<{
   'update-dimension': [id: EntityId, patch: DimensionPatch];
   'add-allowance': [edge: EntityId];
   'set-seam-width': [id: EntityId, width: number];
+  'round-corner-pick': [id: EntityId];
+  'set-corner-round-radius': [id: EntityId, radius: number];
 }>();
 
 const svg = ref<SVGSVGElement | null>(null);
@@ -178,6 +214,24 @@ const editingDimension = ref<{ id: EntityId; value: string } | null>(null);
 const dimensionInput = ref<HTMLInputElement | null>(null);
 /** The inline seam-width editor, keyed to the seam and anchored in screen space. */
 const editingSeam = ref<{ id: EntityId; width: number; x: number; y: number } | null>(null);
+/** The round whose tangent handles and label are shown because it is hovered. */
+const hoveredRoundId = ref<EntityId | null>(null);
+/** Live tangent-handle drag; the radius changes on release. */
+const tangentDrag = ref<{
+  id: EntityId;
+  endIndex: 0 | 1;
+  radius: number;
+  startRadius: number;
+} | null>(null);
+/** The inline `R` label editor, anchored at the label in screen space. */
+const editingCornerRound = ref<{
+  id: EntityId;
+  value: string;
+  startRadius: number;
+  x: number;
+  y: number;
+} | null>(null);
+const cornerRoundInput = ref<HTMLInputElement | null>(null);
 
 const points = computed(() =>
   allPoints(props.document).map((point) =>
@@ -188,6 +242,123 @@ const points = computed(() =>
 );
 
 const pointById = computed(() => new Map(points.value.map((point) => [point.id, point])));
+
+/**
+ * Derived tangent and control points stay in `points` so lines and arcs resolve,
+ * but they are not drafting handles: only the explicit tangent handles render.
+ */
+const visiblePoints = computed(() =>
+  points.value.filter((point) => !isCornerRoundDerived(props.document, point.id)),
+);
+
+const roundPickedLineIds = computed(() => {
+  const picks = [props.roundCornerPicks.first, props.roundCornerPicks.second];
+  return new Set(picks.filter((id): id is EntityId => id !== null));
+});
+
+/**
+ * The live tool preview: trimmed lines, tangent dots and a dashed arc. It is
+ * aria-hidden and never written to the document until Apply.
+ */
+const roundPreview = computed(() => {
+  const radius = props.cornerRoundPreviewRadius;
+  if (!props.roundCornerActive || radius === null) return null;
+  return cornerRoundPreview(props.document, props.roundCornerPicks, radius);
+});
+
+/** Rounds whose handles and label are visible: selected, hovered or dragging. */
+const activeRounds = computed<CornerRound[]>(() => {
+  const rounds: CornerRound[] = [];
+  const add = (round: CornerRound | undefined): void => {
+    if (round !== undefined && !rounds.some((candidate) => candidate.id === round.id)) {
+      rounds.push(round);
+    }
+  };
+
+  if (props.selectedId !== null) {
+    cornerRoundsForEntity(props.document, props.selectedId).forEach(add);
+  }
+  if (hoveredRoundId.value !== null) {
+    add(cornerRounds(props.document).find((round) => round.id === hoveredRoundId.value));
+  }
+  if (tangentDrag.value !== null) {
+    add(cornerRounds(props.document).find((round) => round.id === tangentDrag.value!.id));
+  }
+
+  return rounds;
+});
+
+/** The radius a round shows: the dragged value while the handle is moving. */
+function radiusOf(round: CornerRound): number {
+  const drag = tangentDrag.value;
+  return drag !== null && drag.id === round.id ? drag.radius : round.radius;
+}
+
+function roundGeometryOf(round: CornerRound): ReturnType<typeof cornerRoundGeometry>['geometry'] {
+  return cornerRoundGeometry(
+    props.document,
+    round.corner,
+    round.ends[0].anchor,
+    round.ends[1].anchor,
+    radiusOf(round),
+  ).geometry;
+}
+
+/** Tangent handles, in screen space so they stay a constant size at any zoom. */
+const roundHandles = computed<CornerRoundHandleView[]>(() =>
+  activeRounds.value.flatMap((round) => {
+    const geometry = roundGeometryOf(round);
+    if (geometry === null) return [];
+    return ([0, 1] as const).flatMap((endIndex) => {
+      const screen = worldToScreen(
+        viewport.value,
+        endIndex === 0 ? geometry.tangentA : geometry.tangentB,
+      );
+      return [{ id: round.id, endIndex, x: screen.x, y: screen.y }];
+    });
+  }),
+);
+
+/** `R 12` labels, offset outward from the arc's midpoint by a constant 18 px. */
+const roundLabels = computed<CornerRoundLabelView[]>(() =>
+  activeRounds.value.flatMap((round) => {
+    const label = cornerRoundLabel(props.document, round);
+    if (label === null) return [];
+
+    const mid = worldToScreen(viewport.value, { x: label.x, y: label.y });
+    const radius = radiusOf(round);
+    const text = formatCornerRadius(radius);
+
+    return [
+      {
+        ...label,
+        radius,
+        text: `R ${text}`,
+        accessible: `Corner radius ${text} millimetres`,
+        screenX: mid.x + label.outwardX * 18,
+        screenY: mid.y + label.outwardY * 18,
+      },
+    ];
+  }),
+);
+
+/** The dashed arc that follows a tangent-handle drag, before it is committed. */
+const tangentPreview = computed(() => {
+  const drag = tangentDrag.value;
+  if (drag === null) return null;
+
+  const round = cornerRounds(props.document).find((candidate) => candidate.id === drag.id);
+  if (round === undefined) return null;
+
+  const geometry = roundGeometryOf(round);
+  if (geometry === null) return null;
+
+  return {
+    id: drag.id,
+    arc: curvePath([geometry.tangentA, geometry.control1, geometry.control2, geometry.tangentB]),
+    tangents: [geometry.tangentA, geometry.tangentB],
+  };
+});
 
 const lines = computed(() =>
   props.document.entities
@@ -275,7 +446,9 @@ const visible = computed(() => visibleWorldRect(viewport.value, size.value));
 const xTicks = computed(() => ticksAlong(visible.value, 'x', gridStep.value));
 const yTicks = computed(() => ticksAlong(visible.value, 'y', gridStep.value));
 const cursorClass = computed(() =>
-  props.constraintActive || props.tool !== 'select' ? 'cursor-crosshair' : 'cursor-default',
+  props.constraintActive || props.roundCornerActive || props.tool !== 'select'
+    ? 'cursor-crosshair'
+    : 'cursor-default',
 );
 const pickedPointIds = computed(
   () =>
@@ -417,12 +590,20 @@ function pointClass(point: PointEntity): string {
 }
 
 function entityClass(entity: { id: EntityId; construction: boolean }): string {
-  if (pickedLineIds.value.has(entity.id) || entity.id === props.selectedId) return 'text-primary';
+  if (
+    pickedLineIds.value.has(entity.id) ||
+    roundPickedLineIds.value.has(entity.id) ||
+    entity.id === props.selectedId
+  ) {
+    return 'text-primary';
+  }
   return entity.construction ? 'text-muted-foreground' : 'text-foreground';
 }
 
 function lineWidth(id: EntityId): number {
-  return pickedLineIds.value.has(id) || id === props.selectedId ? 3 : 2;
+  return pickedLineIds.value.has(id) || roundPickedLineIds.value.has(id) || id === props.selectedId
+    ? 3
+    : 2;
 }
 
 function svgRect(): DOMRect {
@@ -609,6 +790,88 @@ function commitSeamWidth(width: number): void {
   emit('set-seam-width', editing.id, width);
 }
 
+/** Show a round's handles while its line or arc is hovered. */
+function onEntityHover(id: EntityId): void {
+  hoveredRoundId.value = cornerRoundsForEntity(props.document, id)[0]?.id ?? null;
+}
+
+function onEntityLeave(): void {
+  hoveredRoundId.value = null;
+}
+
+function beginTangentDrag(round: CornerRound, endIndex: 0 | 1, event: PointerEvent): void {
+  event.stopPropagation();
+  event.preventDefault();
+  tangentDrag.value = {
+    id: round.id,
+    endIndex,
+    radius: round.radius,
+    startRadius: round.radius,
+  };
+  addPointerListeners();
+}
+
+function beginTangentDragHandle(handle: CornerRoundHandleView, event: PointerEvent): void {
+  const round = cornerRounds(props.document).find((candidate) => candidate.id === handle.id);
+  if (round !== undefined) beginTangentDrag(round, handle.endIndex, event);
+}
+
+function commitTangentDrag(): void {
+  const drag = tangentDrag.value!;
+  tangentDrag.value = null;
+  if (drag.radius !== drag.startRadius) {
+    emit('set-corner-round-radius', drag.id, drag.radius);
+  }
+}
+
+/** Double-click on `R 12` opens the same radius field as the inspector. */
+async function beginCornerRoundEdit(label: CornerRoundLabelView): Promise<void> {
+  editingCornerRound.value = {
+    id: label.id,
+    value: formatCornerRadius(label.radius),
+    startRadius: label.radius,
+    x: label.screenX,
+    y: label.screenY,
+  };
+  await nextTick();
+  cornerRoundInput.value!.focus();
+  cornerRoundInput.value!.select();
+}
+
+function onCornerRoundEditInput(event: Event): void {
+  const editing = editingCornerRound.value!;
+  editingCornerRound.value = {
+    ...editing,
+    value: (event.target as HTMLInputElement).value,
+  };
+}
+
+/** Enter: apply a valid radius, otherwise keep editing to fix the typo. */
+function applyCornerRoundEdit(): void {
+  const editing = editingCornerRound.value!;
+  const radius = parseCornerRadius(editing.value);
+  if (radius === null) return;
+
+  editingCornerRound.value = null;
+  if (radius !== editing.startRadius) {
+    emit('set-corner-round-radius', editing.id, radius);
+  }
+}
+
+/** Blur: commit a valid edit and discard an invalid one. */
+function finishCornerRoundEdit(): void {
+  const editing = editingCornerRound.value!;
+  const radius = parseCornerRadius(editing.value);
+  editingCornerRound.value = null;
+  if (radius !== null && radius !== editing.startRadius) {
+    emit('set-corner-round-radius', editing.id, radius);
+  }
+}
+
+function cancelCornerRoundEdit(): void {
+  editingCornerRound.value = null;
+}
+
 function onPointerDown(event: PointerEvent): void {
   updateSize();
   const screen = screenPoint(event);
@@ -623,6 +886,11 @@ function onPointerDown(event: PointerEvent): void {
     if (hit !== null) {
       emit('constraint-pick', { id: hit.id, kind: hit.kind as ConstraintPick['kind'] });
     }
+    return;
+  }
+
+  if (props.roundCornerActive) {
+    if (hit !== null) emit('round-corner-pick', hit.id);
     return;
   }
 
@@ -659,7 +927,19 @@ function onPointerDown(event: PointerEvent): void {
 function onPointerMove(event: PointerEvent): void {
   const screen = screenPoint(event);
 
-  if (dimensionDrag.value) {
+  if (tangentDrag.value) {
+    const drag = tangentDrag.value;
+    const round = cornerRounds(props.document).find((candidate) => candidate.id === drag.id);
+    if (round !== undefined) {
+      const radius = tangentDragRadius(
+        props.document,
+        round,
+        drag.endIndex,
+        screenToWorld(viewport.value, screen),
+      );
+      if (radius !== null) tangentDrag.value = { ...drag, radius };
+    }
+  } else if (dimensionDrag.value) {
     const drag = dimensionDrag.value;
     dimensionDrag.value = {
       ...drag,
@@ -693,6 +973,7 @@ function cancelPointerInteraction(): void {
   dimensionDrag.value = null;
   dragState.value = null;
   panState.value = null;
+  tangentDrag.value = null;
   removePointerListeners();
 }
 
@@ -701,6 +982,10 @@ function onPointerCancel(): void {
 }
 
 function onPointerUp(): void {
+  if (tangentDrag.value) {
+    commitTangentDrag();
+  }
+
   if (dimensionDrag.value) {
     const { id, offset, startOffset } = dimensionDrag.value;
     dimensionDrag.value = null;
@@ -833,6 +1118,8 @@ watch(
     cancelPointerInteraction();
     editingSeam.value = null;
     dimensionDrag.value = null;
+    hoveredRoundId.value = null;
+    editingCornerRound.value = null;
   },
 );
 
@@ -843,6 +1130,7 @@ watch(
   () => {
     editingDimension.value = null;
     editingSeam.value = null;
+    editingCornerRound.value = null;
   },
 );
 
@@ -949,6 +1237,8 @@ watch(
               vector-effect="non-scaling-stroke"
               :data-entity-id="entry.line.id"
               data-kind="line"
+              @pointerenter="onEntityHover(entry.line.id)"
+              @pointerleave="onEntityLeave"
             />
             <line
               :x1="entry.start.x"
@@ -960,6 +1250,8 @@ watch(
               vector-effect="non-scaling-stroke"
               :data-entity-id="entry.line.id"
               data-kind="line"
+              @pointerenter="onEntityHover(entry.line.id)"
+              @pointerleave="onEntityLeave"
             />
           </template>
 
@@ -975,10 +1267,74 @@ watch(
             vector-effect="non-scaling-stroke"
             :data-entity-id="entry.curve.id"
             data-kind="curve"
+            @pointerenter="onEntityHover(entry.curve.id)"
+            @pointerleave="onEntityLeave"
           />
         </g>
 
-        <g v-for="point in points" :key="point.id">
+        <g
+          v-if="roundPreview"
+          class="pointer-events-none"
+          data-testid="corner-round-preview"
+          aria-hidden="true"
+        >
+          <line
+            v-for="(entry, index) in roundPreview.lines"
+            :key="entry.id"
+            :x1="entry.from.x"
+            :y1="entry.from.y"
+            :x2="entry.to.x"
+            :y2="entry.to.y"
+            class="stroke-primary"
+            stroke-width="1.5"
+            stroke-dasharray="4 3"
+            vector-effect="non-scaling-stroke"
+            :data-testid="`corner-round-preview-line-${index}`"
+          />
+          <path
+            :d="roundPreview.arc"
+            fill="none"
+            class="stroke-primary"
+            stroke-width="1.5"
+            stroke-dasharray="4 3"
+            vector-effect="non-scaling-stroke"
+            data-testid="corner-round-preview-arc"
+          />
+          <circle
+            v-for="(tangent, index) in roundPreview.tangents"
+            :key="`preview-${index}`"
+            :cx="tangent.x"
+            :cy="tangent.y"
+            r="2.5"
+            class="fill-primary"
+          />
+        </g>
+
+        <g
+          v-if="tangentPreview"
+          class="pointer-events-none"
+          data-testid="corner-round-drag-preview"
+          aria-hidden="true"
+        >
+          <path
+            :d="tangentPreview.arc"
+            fill="none"
+            class="stroke-primary"
+            stroke-width="1.5"
+            stroke-dasharray="4 3"
+            vector-effect="non-scaling-stroke"
+          />
+          <circle
+            v-for="(tangent, index) in tangentPreview.tangents"
+            :key="`drag-${index}`"
+            :cx="tangent.x"
+            :cy="tangent.y"
+            r="2.5"
+            class="fill-primary"
+          />
+        </g>
+
+        <g v-for="point in visiblePoints" :key="point.id">
           <circle
             :cx="point.x"
             :cy="point.y"
@@ -1094,6 +1450,46 @@ watch(
         </g>
       </g>
 
+      <g class="pointer-events-none" data-testid="corner-round-layer">
+        <g
+          v-for="handle in roundHandles"
+          :key="`handle-${handle.id}-${handle.endIndex}`"
+          class="pointer-events-auto cursor-move"
+          :data-testid="`corner-round-handle-${handle.id}-${handle.endIndex}`"
+          :transform="`translate(${handle.x} ${handle.y})`"
+          role="img"
+          :aria-label="`Tangent handle for corner round ${handle.id}`"
+        >
+          <title>Drag to change the corner radius</title>
+          <rect
+            x="-5"
+            y="-5"
+            width="10"
+            height="10"
+            class="fill-primary stroke-background"
+            stroke-width="1.5"
+            @pointerdown.stop="beginTangentDragHandle(handle, $event)"
+          />
+        </g>
+
+        <g
+          v-for="label in roundLabels"
+          :key="`label-${label.id}`"
+          class="pointer-events-auto cursor-text"
+          :data-testid="`corner-round-label-${label.id}`"
+          :transform="`translate(${label.screenX} ${label.screenY})`"
+          role="img"
+          :aria-label="label.accessible"
+          @dblclick.stop.prevent="beginCornerRoundEdit(label)"
+        >
+          <title>Double-click to edit the radius</title>
+          <rect x="-18" y="-8" width="36" height="16" rx="2" class="fill-background" />
+          <text text-anchor="middle" dominant-baseline="middle" class="fill-foreground text-[11px]">
+            {{ label.text }}
+          </text>
+        </g>
+      </g>
+
       <g class="pointer-events-none" data-testid="constraints-layer">
         <g
           v-for="marker in constraintLayer"
@@ -1190,6 +1586,22 @@ watch(
       @keydown.enter.prevent.stop="applyDimensionEdit"
       @keydown.esc.prevent.stop="cancelDimensionEdit"
       @blur="finishDimensionEdit"
+    />
+
+    <input
+      v-if="editingCornerRound !== null"
+      ref="cornerRoundInput"
+      :value="editingCornerRound.value"
+      type="text"
+      inputmode="decimal"
+      class="absolute z-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-md border bg-background px-1 py-0.5 text-center text-xs shadow-sm"
+      :style="{ left: `${editingCornerRound.x}px`, top: `${editingCornerRound.y}px` }"
+      data-testid="corner-round-editor"
+      :aria-label="`Corner round ${editingCornerRound.id} radius in millimetres`"
+      @input="onCornerRoundEditInput"
+      @keydown.enter.prevent.stop="applyCornerRoundEdit"
+      @keydown.esc.prevent.stop="cancelCornerRoundEdit"
+      @blur="finishCornerRoundEdit"
     />
 
     <SeamWidthEditor

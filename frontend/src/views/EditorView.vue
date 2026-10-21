@@ -25,6 +25,7 @@ import type {
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import ConstraintPromptBar from '@/components/ConstraintPromptBar.vue';
+import CornerRoundPromptBar from '@/components/CornerRoundPromptBar.vue';
 import EditorRibbon from '@/components/EditorRibbon.vue';
 import EditorSidebar from '@/components/EditorSidebar.vue';
 import EntityPropertiesPanel from '@/components/EntityPropertiesPanel.vue';
@@ -43,6 +44,16 @@ import {
   type ConstraintPick,
 } from '@/lib/constraint-tools';
 import { constraintLabel } from '@/lib/constraint-view';
+import {
+  applyCornerRoundPick,
+  cornerRoundPrompt,
+  cornerRoundRejection,
+  defaultCornerRadius,
+  emptyCornerRoundPicks,
+  formatCornerRadius,
+  maxCornerRadiusForLines,
+  type CornerRoundPicks,
+} from '@/lib/corner-round';
 import {
   DIMENSION_ORIENTATION_OPTIONS,
   formatDimensionValue,
@@ -75,6 +86,9 @@ const activeConstraint = ref<ConstraintType | null>(null);
 const constraintPicks = ref<ConstraintPick[]>([]);
 const pendingConstraint = ref<AddConstraintParams | null>(null);
 const constraintRejectionMessage = ref<string | null>(null);
+const cornerRoundPicks = ref<CornerRoundPicks>(emptyCornerRoundPicks());
+const cornerRoundRejectionMessage = ref<string | null>(null);
+const cornerRoundPreviewRadius = ref<number | null>(null);
 
 /**
  * Construction geometry is presentation only: hiding it filters what is drawn
@@ -153,6 +167,22 @@ const constraintInitial = computed(() =>
     : constraintInitialValue(activeConstraint.value, constraintPicks.value, pattern.value),
 );
 
+const cornerRoundActive = computed(() => activeTool.value === 'round_corner');
+const cornerRoundMax = computed(() => {
+  const { first, second } = cornerRoundPicks.value;
+  if (first === null || second === null) return null;
+  return maxCornerRadiusForLines(pattern.value, first, second);
+});
+const cornerRoundReady = computed(
+  () => cornerRoundMax.value !== null && cornerRoundMax.value >= 0.001,
+);
+const cornerRoundPromptText = computed(() => cornerRoundPrompt(cornerRoundPicks.value));
+const cornerRoundInitial = computed(() =>
+  cornerRoundMax.value === null
+    ? ''
+    : formatCornerRadius(defaultCornerRadius(cornerRoundMax.value)),
+);
+
 function run(action: () => void): boolean {
   try {
     error.value = null;
@@ -166,6 +196,7 @@ function run(action: () => void): boolean {
 
 function selectTool(tool: EditorTool): void {
   exitConstraint();
+  exitCornerRound();
   activeTool.value = activeTool.value === tool ? 'select' : tool;
 }
 
@@ -176,12 +207,19 @@ function exitConstraint(): void {
   constraintRejectionMessage.value = null;
 }
 
+function exitCornerRound(): void {
+  cornerRoundPicks.value = emptyCornerRoundPicks();
+  cornerRoundRejectionMessage.value = null;
+  cornerRoundPreviewRadius.value = null;
+}
+
 function selectConstraint(type: ConstraintType): void {
   if (activeConstraint.value === type) {
     exitConstraint();
     return;
   }
 
+  exitCornerRound();
   activeConstraint.value = type;
   activeTool.value = 'select';
   selectedId.value = null;
@@ -424,6 +462,54 @@ function removeConstraint(id: EntityId): void {
   );
 }
 
+/** One line pick: fill a slot or reject the pair with a concrete reason. */
+function onRoundCornerPick(id: EntityId): void {
+  const result = applyCornerRoundPick(cornerRoundPicks.value, id, pattern.value);
+  if (result.status === 'rejected') {
+    cornerRoundRejectionMessage.value = cornerRoundRejection(result.reason);
+    return;
+  }
+
+  cornerRoundRejectionMessage.value = null;
+  cornerRoundPicks.value = result.picks;
+  if (result.status === 'picking') cornerRoundPreviewRadius.value = null;
+}
+
+/** Apply keeps the tool armed for the next corner, like the other tools. */
+function applyCornerRound(radius: number): void {
+  const { first, second } = cornerRoundPicks.value;
+  if (first === null || second === null) return;
+
+  const applied = run(() =>
+    dispatch({
+      id: nextCommandId('corner-round'),
+      type: 'add_corner_round',
+      params: { first, second, radius },
+    }),
+  );
+  if (applied) exitCornerRound();
+}
+
+function setCornerRoundRadius(id: EntityId, radius: number): void {
+  run(() =>
+    dispatch({
+      id: nextCommandId('corner-round-radius'),
+      type: 'set_corner_round_radius',
+      params: { id, radius },
+    }),
+  );
+}
+
+function removeCornerRound(id: EntityId): void {
+  run(() =>
+    dispatch({
+      id: nextCommandId('corner-round-remove'),
+      type: 'remove_corner_round',
+      params: { id },
+    }),
+  );
+}
+
 function isEditing(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement && target.matches('input, textarea, [contenteditable="true"]')
@@ -439,6 +525,7 @@ function onKeyDown(event: KeyboardEvent): void {
 
   if (event.key === 'Escape' && activeTool.value !== 'select') {
     event.preventDefault();
+    exitCornerRound();
     activeTool.value = 'select';
     return;
   }
@@ -460,6 +547,18 @@ watch(pattern, (next) => {
   constraintPicks.value = pruned;
   pendingConstraint.value = null;
   constraintRejectionMessage.value = null;
+});
+
+// A picked line can disappear through delete or undo while the tool is armed.
+watch(pattern, (next) => {
+  const picks = cornerRoundPicks.value;
+  if (picks.first === null && picks.second === null) return;
+
+  const exists = (id: EntityId | null): boolean =>
+    id === null || next.entities.some((entity) => entity.id === id);
+  if (exists(picks.first) && exists(picks.second)) return;
+
+  exitCornerRound();
 });
 
 function seed(): void {
@@ -527,6 +626,18 @@ onBeforeUnmount(() => {
       @cancel="exitConstraint"
     />
 
+    <CornerRoundPromptBar
+      v-if="cornerRoundActive"
+      :prompt="cornerRoundPromptText"
+      :rejection="cornerRoundRejectionMessage"
+      :ready="cornerRoundReady"
+      :initial-value="cornerRoundInitial"
+      :max-radius="cornerRoundMax ?? 0"
+      @apply="applyCornerRound"
+      @cancel="exitCornerRound"
+      @preview="cornerRoundPreviewRadius = $event"
+    />
+
     <p v-if="error" class="border-b px-3 py-1 text-sm text-destructive">{{ error }}</p>
 
     <div class="flex min-h-0 flex-1">
@@ -541,11 +652,16 @@ onBeforeUnmount(() => {
           :show-dimensions="showDimensions"
           :constraint-active="activeConstraint !== null"
           :constraint-picks="constraintPicks"
+          :round-corner-active="cornerRoundActive"
+          :round-corner-picks="cornerRoundPicks"
+          :corner-round-preview-radius="cornerRoundPreviewRadius"
           @move-point="onMovePoint"
           @add-point="onAddPoint"
           @add-line="onAddLine"
           @add-curve="onAddCurve"
           @constraint-pick="onConstraintPick"
+          @round-corner-pick="onRoundCornerPick"
+          @set-corner-round-radius="setCornerRoundRadius"
           @add-dimension="onAddDimension"
           @update-dimension="onUpdateDimension"
           @add-allowance="onAddAllowance"
@@ -571,6 +687,8 @@ onBeforeUnmount(() => {
             @remove-seam="removeSeam"
             @update-dimension="onInspectorDimensionValue"
             @remove-constraint="removeConstraint"
+            @set-corner-round-radius="setCornerRoundRadius"
+            @remove-corner-round="removeCornerRound"
           />
 
           <section
