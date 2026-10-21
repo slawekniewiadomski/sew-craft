@@ -1,4 +1,5 @@
 import {
+  circleGeometry,
   constraintEntityIds,
   constraintOrientation,
   cornerRoundsForEntity,
@@ -35,7 +36,10 @@ export type CurveGeometry = {
   p3: EntityId;
 };
 
-export type EntityGeometry = PointGeometry | LineGeometry | CurveGeometry;
+/** Geometry a circle contributes to the inspector. */
+export type CircleGeometry = { kind: 'circle'; center: EntityId; rim: EntityId };
+
+export type EntityGeometry = PointGeometry | LineGeometry | CurveGeometry | CircleGeometry;
 
 /** A dimension that acts on the selected entity. */
 export type DimensionSummary = {
@@ -78,6 +82,8 @@ export type EntityProperties = {
   geometry: EntityGeometry;
   /** Measured length in millimetres for lines only. */
   length: number | null;
+  /** Derived radius in millimetres for circles only. */
+  radius: number | null;
   seam: { id: EntityId; width: number; side: SeamSide } | null;
   /** Rounds that reference the selected line or arc. */
   rounds: CornerRoundSummary[];
@@ -93,6 +99,8 @@ function geometryOf(entity: Entity): EntityGeometry {
       return { kind: 'line', start: entity.start, end: entity.end };
     case 'curve':
       return { kind: 'curve', p0: entity.p0, p1: entity.p1, p2: entity.p2, p3: entity.p3 };
+    case 'circle':
+      return { kind: 'circle', center: entity.center, rim: entity.rim };
   }
 }
 
@@ -116,6 +124,11 @@ function constraintActsOnEntity(constraint: Constraint, entity: Entity): boolean
   if (entity.kind === 'curve') {
     const controlPoints = [entity.p0, entity.p1, entity.p2, entity.p3];
     return constraintEntityIds(constraint).some((id) => controlPoints.includes(id));
+  }
+
+  if (entity.kind === 'circle') {
+    const referencePoints = [entity.center, entity.rim];
+    return constraintEntityIds(constraint).some((id) => referencePoints.includes(id));
   }
 
   switch (constraint.type) {
@@ -210,6 +223,7 @@ export function entityProperties(
       entity.kind === 'line'
         ? measureLinearDimension(document, entity.start, entity.end, 'aligned')
         : null,
+    radius: entity.kind === 'circle' ? (circleGeometry(document, entity)?.radius ?? null) : null,
     seam: seam === undefined ? null : { id: seam.id, width: seam.width, side: seamSide(seam) },
     rounds,
     dimensions,

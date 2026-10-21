@@ -59,6 +59,7 @@ describe('entityProperties', () => {
       fixed: true,
       geometry: { kind: 'point', x: 100, y: 0 },
       length: null,
+      radius: null,
       seam: null,
       rounds: [],
       dimensions: [],
@@ -102,6 +103,58 @@ describe('entityProperties', () => {
       length: null,
       seam: null,
     });
+  });
+
+  it('describes a circle with its centre, rim and derived radius', () => {
+    const properties = entityProperties(
+      doc({
+        entities: [
+          ...entities,
+          { id: 'k1', kind: 'circle', center: 'a', rim: 'b', construction: false },
+        ],
+      }),
+      'k1',
+    );
+
+    expect(properties).toMatchObject({
+      kind: 'circle',
+      fixed: null,
+      geometry: { kind: 'circle', center: 'a', rim: 'b' },
+      radius: 100,
+      length: null,
+      seam: null,
+    });
+  });
+
+  it('reports a null radius for a degenerate or dangling circle', () => {
+    const document = doc({
+      entities: [
+        ...entities,
+        { id: 'zero', kind: 'circle', center: 'a', rim: 'a', construction: false },
+        { id: 'dangling', kind: 'circle', center: 'a', rim: 'gone', construction: false },
+      ],
+    });
+
+    expect(entityProperties(document, 'zero')?.radius).toBeNull();
+    expect(entityProperties(document, 'dangling')?.radius).toBeNull();
+  });
+
+  it('relates a circle to constraints on its centre and rim points', () => {
+    const document = doc({
+      entities: [
+        ...entities,
+        { id: 'k1', kind: 'circle', center: 'a', rim: 'c', construction: false },
+      ],
+      constraints: [
+        { id: 'radius', type: 'distance', a: 'a', b: 'c', value: 100 },
+        { id: 'unrelated', type: 'vertical', a: 'b', b: 'd' },
+      ],
+    });
+
+    expect(entityProperties(document, 'k1')?.dimensions.map((dimension) => dimension.id)).toEqual([
+      'radius',
+    ]);
+    expect(entityProperties(document, 'k1')?.constraints).toEqual([]);
   });
 
   it('reports construction geometry and a seam allowance on a guide edge', () => {

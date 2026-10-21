@@ -31,6 +31,16 @@ function panel(document: PatternDocument, id: string) {
   return { wrapper, entity };
 }
 
+function withCircle(overrides: Partial<PatternDocument> = {}): PatternDocument {
+  return doc({
+    entities: [
+      ...doc().entities,
+      { id: 'k1', kind: 'circle', center: 'a', rim: 'b', construction: false },
+    ],
+    ...overrides,
+  });
+}
+
 describe('EntityPropertiesPanel', () => {
   it('renders a point with its coordinates, fixed flag and no seam section', () => {
     const { wrapper } = panel(doc(), 'solo');
@@ -85,6 +95,60 @@ describe('EntityPropertiesPanel', () => {
     const curve = panel(document, 'c1').wrapper;
     expect(curve.text()).toContain('No dimensions on this curve.');
     expect(curve.text()).toContain('No constraints on this curve.');
+
+    const circle = panel(withCircle({ constraints: [] }), 'k1').wrapper;
+    expect(circle.text()).toContain('No dimensions on this circle.');
+    expect(circle.text()).toContain('No constraints on this circle.');
+  });
+
+  it('renders a circle with its centre, rim, radius and no seam section', () => {
+    const { wrapper } = panel(withCircle(), 'k1');
+
+    expect(wrapper.find('[data-testid="entity-kind"]').text()).toBe('Circle');
+    expect(wrapper.find('[data-testid="entity-circle-center"]').text()).toBe('a');
+    expect(wrapper.find('[data-testid="entity-circle-rim"]').text()).toBe('b');
+    expect(
+      (wrapper.find('[data-testid="entity-circle-radius"]').element as HTMLInputElement).value,
+    ).toBe('100');
+    expect(wrapper.find('[data-testid="entity-seam"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="entity-scope-hint"]').text()).toBe(
+      'Showing what acts on this circle. Select a point to see its constraints.',
+    );
+  });
+
+  it('emits a new circle radius and snaps back an invalid or unchanged one', async () => {
+    const { wrapper } = panel(withCircle(), 'k1');
+    const input = wrapper.find('[data-testid="entity-circle-radius"]');
+
+    await input.setValue('25');
+    expect(wrapper.emitted('set-circle-radius')).toEqual([['k1', 25]]);
+
+    await input.setValue('0');
+    expect((input.element as HTMLInputElement).value).toBe('100');
+    expect(wrapper.emitted('set-circle-radius')).toEqual([['k1', 25]]);
+
+    await input.setValue('100');
+    expect((input.element as HTMLInputElement).value).toBe('100');
+    expect(wrapper.emitted('set-circle-radius')).toEqual([['k1', 25]]);
+  });
+
+  it('shows an empty radius field for a degenerate circle', async () => {
+    const { wrapper } = panel(
+      doc({
+        entities: [
+          ...doc().entities,
+          { id: 'zero', kind: 'circle', center: 'a', rim: 'a', construction: false },
+        ],
+      }),
+      'zero',
+    );
+
+    const input = wrapper.find('[data-testid="entity-circle-radius"]');
+    expect((input.element as HTMLInputElement).value).toBe('');
+
+    await input.setValue('0');
+    expect((input.element as HTMLInputElement).value).toBe('');
+    expect(wrapper.emitted('set-circle-radius')).toBeUndefined();
   });
 
   it('shows the construction badge and toggles it', async () => {
