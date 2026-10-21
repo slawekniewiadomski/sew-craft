@@ -37,7 +37,19 @@ export interface CurveEntity {
   construction: boolean;
 }
 
-export type Entity = PointEntity | LineEntity | CurveEntity;
+/**
+ * A true circle. The centre and a point on the rim are ordinary solver points;
+ * the radius is always the distance between them and is never stored.
+ */
+export interface CircleEntity {
+  id: EntityId;
+  kind: 'circle';
+  center: EntityId;
+  rim: EntityId;
+  construction: boolean;
+}
+
+export type Entity = PointEntity | LineEntity | CurveEntity | CircleEntity;
 
 export const CONSTRAINT_TYPES = [
   'coincident',

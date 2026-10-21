@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createEmptyDocument,
   entitiesInRect,
+  type CircleEntity,
   type CurveEntity,
   type Entity,
   type LineEntity,
@@ -35,6 +36,14 @@ const curve = (id: string, points: [string, string, string, string]): CurveEntit
   p1: points[1],
   p2: points[2],
   p3: points[3],
+  construction: false,
+});
+
+const circle = (id: string, center: string, rim: string): CircleEntity => ({
+  id,
+  kind: 'circle',
+  center,
+  rim,
   construction: false,
 });
 
@@ -140,5 +149,41 @@ describe('entitiesInRect', () => {
     const dangling = documentOf([line('dangling', 'a', 'missing')]);
 
     expect(entitiesInRect(dangling, rect(-1, -1, 11, 1), 'crossing')).toEqual([]);
+  });
+});
+
+describe('entitiesInRect with circles', () => {
+  const document = documentOf([
+    point('c', 10, 10),
+    point('r', 14, 10),
+    point('d', 50, 50),
+    point('e', 50, 50),
+    point('far', 0, 0),
+    point('big', Number.MAX_VALUE, Number.MAX_VALUE),
+    circle('ball', 'c', 'r'),
+    circle('degenerate', 'd', 'e'),
+    circle('dangling', 'c', 'missing'),
+    circle('huge', 'c', 'big'),
+  ]);
+
+  it('selects a circle in window mode only when its full bounding box is inside', () => {
+    // centre 10,10 radius 4 → box 6..14.
+    expect(entitiesInRect(document, rect(5, 5, 15, 15), 'window')).toContain('ball');
+    expect(entitiesInRect(document, rect(5, 5, 13, 15), 'window')).not.toContain('ball');
+  });
+
+  it('selects a circle in crossing mode when its box overlaps, even if no point is inside', () => {
+    const hits = entitiesInRect(document, rect(13, 13, 18, 18), 'crossing');
+
+    expect(hits).toContain('ball');
+  });
+
+  it('skips a degenerate or dangling circle without throwing', () => {
+    const hits = entitiesInRect(document, rect(-10, -10, 100, 100), 'crossing');
+
+    expect(hits).not.toContain('degenerate');
+    expect(hits).not.toContain('dangling');
+    expect(hits).not.toContain('huge');
+    expect(hits).toContain('ball');
   });
 });

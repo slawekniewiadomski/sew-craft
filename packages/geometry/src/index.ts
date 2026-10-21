@@ -3,6 +3,7 @@ export * from './types.js';
 export * from './document.js';
 export * from './errors.js';
 export * from './corner-round.js';
+export * from './circle.js';
 export * from './dimension.js';
 export * from './offset.js';
 export * from './selection.js';

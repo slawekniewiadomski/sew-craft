@@ -268,7 +268,7 @@ export function edgePolyline(
   segments: number = CURVE_SEGMENTS,
 ): Vec2[] | null {
   const entity = getEntity(document, edge);
-  if (entity === undefined || entity.kind === 'point') {
+  if (entity === undefined || entity.kind === 'point' || entity.kind === 'circle') {
     return null;
   }
 
