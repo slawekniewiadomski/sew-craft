@@ -78,6 +78,8 @@ can be written when it changes.
       "through": "p5",
       "construction": false,
     },
+    { "id": "p6", "kind": "point", "x": 130, "y": 0, "construction": false, "fixed": false },
+    { "id": "ci1", "kind": "circle", "center": "p2", "rim": "p6", "construction": false },
   ],
   "constraints": [
     { "id": "c1", "type": "horizontal", "a": "p1", "b": "p2" },
@@ -133,6 +135,13 @@ invalid: render, export and bounds skip it and the properties panel shows an
 "invalid" state rather than throwing. The entity kind is additive, so a document
 written before the feature loads unchanged and a document containing an arc is
 still valid JSON for older builds.
+
+A `circle` entity references its centre point and one point on the rim; the
+radius is derived as the distance between them and is never stored. Its bounding
+box is the centre widened by the radius in each direction, and `add_seam_allowance`
+rejects a circle in v1. The entity kind is additive, so a document written before
+the feature loads unchanged and a document containing a circle is still valid
+JSON for older builds.
 
 A `distance` constraint without `value` or `reference` is a **driven** dimension:
 it reports the live measurement and adds no solver equation. A `reference` links

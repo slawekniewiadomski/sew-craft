@@ -202,6 +202,17 @@ describe('edgePolyline', () => {
     expect(edgePolyline(document, 'a')).toBeNull();
   });
 
+  it('returns null for a circle, which has no seam-allowance direction in v1', () => {
+    const document = documentOf([
+      point('a', 0, 0),
+      point('b', 0, 10),
+      { id: 'c1', kind: 'circle', center: 'a', rim: 'b', construction: false },
+    ]);
+
+    expect(edgePolyline(document, 'c1')).toBeNull();
+    expect(seamAllowancePath(document, { id: 's', edge: 'c1', width: 1 })).toBeNull();
+  });
+
   it('flattens a line to its two endpoints', () => {
     const document = documentOf([point('a', 0, 0), point('b', 10, 5), line('l', 'a', 'b')]);
 

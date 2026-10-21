@@ -9,6 +9,7 @@ describe('RIBBON_ICONS', () => {
       'allowance',
       'angle',
       'arc',
+      'circle',
       'coincident',
       'curve',
       'delete',

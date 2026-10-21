@@ -66,6 +66,22 @@ derived and never stored, so the solver keeps operating on points only.
 - A seam allowance is allowed on an arc: it flattens to a polyline and the side
   follows the `start`→`end` direction.
 
+### `add_circle`
+
+Create a circle from two existing points: the centre and a point on the rim. The
+radius is derived as the distance between them and is never stored, so the solver
+keeps operating on points only.
+
+- params: `center: entity_id`, `rim: entity_id`, `construction?: bool`
+- Both ids must resolve to drafting points, distinct from each other and not
+  derived by a corner round.
+- `center` and `rim` must differ and their distance must be at least `MIN_RADIUS`
+  (`0.001` mm); a smaller radius is a validation error.
+- Re-applying a command whose circle id already exists is a no-op.
+- inverse: `delete_entity`
+- A seam allowance cannot be added to a circle in v1; `add_seam_allowance`
+  rejects it with "seam allowances need a line, curve or arc edge".
+
 ### `add_construction_line`
 
 Reference-only segment that is never a cut edge.
@@ -236,11 +252,17 @@ Restore a rounded corner.
   and removes the feature. A line with a round at its other end keeps that round.
 - inverse: `add_corner_round` with the original lines and radius.
 
+### Migration from spec 0.8.0
+
+`add_arc` is new and the `arc` entity kind is additive, so every 0.8.0 payload
+still applies unchanged. The pattern schema string stays `sewcraft.pattern/0.1`.
+`spec_version` is bumped to `0.9.0`.
+
 ### Migration from spec 0.7.0
 
-`add_arc` is new and the `arc` entity kind is additive, so every 0.7.0 payload
-still applies unchanged. The pattern schema string stays `sewcraft.pattern/0.1`.
-`spec_version` is bumped to `0.8.0`.
+`add_circle` is new and the `circle` entity kind is additive, so every 0.7.0
+payload still applies unchanged. The pattern schema string stays
+`sewcraft.pattern/0.1`. `spec_version` is bumped to `0.8.0`.
 
 ### Migration from spec 0.6.0
 

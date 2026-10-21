@@ -1,9 +1,11 @@
 import { arcGeometry, svgArcCommand } from './arc.js';
+import { circleGeometry } from './circle.js';
 import { bounds, getEntity } from './document.js';
 import { formatSvgNumber as formatNumber } from './number.js';
 import {
   PATTERN_SCHEMA,
   type ArcEntity,
+  type CircleEntity,
   type CurveEntity,
   type EntityId,
   type LineEntity,
@@ -97,7 +99,14 @@ function arcElement(document: PatternDocument, arc: ArcEntity): string | null {
   )}"${entityAttr(arc.id)} data-kind="arc" />`;
 }
 
-/** Split the document's line, curve and arc entities into cut and construction layers. */
+function circleElement(document: PatternDocument, circle: CircleEntity): string | null {
+  const geometry = circleGeometry(document, circle);
+  if (geometry === null) return null;
+
+  return `<circle cx="${formatNumber(geometry.center.x)}" cy="${formatNumber(geometry.center.y)}" r="${formatNumber(geometry.radius)}"${entityAttr(circle.id)} data-kind="circle" />`;
+}
+
+/** Split the document's line, curve, circle and arc entities into cut and construction layers. */
 function renderEntities(document: PatternDocument): { cut: string[]; construction: string[] } {
   const cut: string[] = [];
   const construction: string[] = [];
@@ -110,7 +119,9 @@ function renderEntities(document: PatternDocument): { cut: string[]; constructio
         ? lineElement(document, entity)
         : entity.kind === 'arc'
           ? arcElement(document, entity)
-          : curveElement(document, entity);
+          : entity.kind === 'circle'
+            ? circleElement(document, entity)
+            : curveElement(document, entity);
     if (element === null) continue;
 
     (entity.construction ? construction : cut).push(element);

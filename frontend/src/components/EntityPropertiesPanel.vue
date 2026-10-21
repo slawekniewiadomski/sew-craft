@@ -49,6 +49,7 @@ const emit = defineEmits<{
   'remove-constraint': [id: EntityId];
   'set-corner-round-radius': [id: EntityId, radius: number];
   'remove-corner-round': [id: EntityId];
+  'set-circle-radius': [id: EntityId, radius: number];
 }>();
 
 /** The `#` picker open in the inspector, if any. */
@@ -150,6 +151,7 @@ const KIND_LABELS: Record<Entity['kind'], string> = {
   line: 'Line',
   curve: 'Curve',
   arc: 'Arc',
+  circle: 'Circle',
 };
 
 const KIND_NOUNS: Record<Entity['kind'], string> = {
@@ -157,6 +159,7 @@ const KIND_NOUNS: Record<Entity['kind'], string> = {
   line: 'line',
   curve: 'curve',
   arc: 'arc',
+  circle: 'circle',
 };
 
 const kindNoun = computed(() => KIND_NOUNS[props.entity.kind]);
@@ -261,6 +264,22 @@ function onCornerRadiusEdit(round: CornerRoundSummary, event: Event): void {
 
   emit('set-corner-round-radius', round.id, radius);
 }
+
+/**
+ * Edit a circle's radius. An invalid or unchanged value snaps the field back
+ * without emitting a command; a valid one is forwarded for the editor to turn
+ * into a rim move or a driving-dimension update.
+ */
+function onCircleRadiusEdit(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const radius = parseCornerRadius(input.value);
+  if (radius === null || radius === props.entity.radius) {
+    input.value = props.entity.radius === null ? '' : formatCornerRadius(props.entity.radius);
+    return;
+  }
+
+  emit('set-circle-radius', props.entity.id, radius);
+}
 </script>
 
 <template>
@@ -364,7 +383,7 @@ function onCornerRadiusEdit(round: CornerRoundSummary, event: Event): void {
           </p>
         </template>
 
-        <template v-else>
+        <template v-else-if="props.entity.geometry.kind === 'curve'">
           <div
             v-for="point in ['p0', 'p1', 'p2', 'p3'] as const"
             :key="point"
@@ -372,6 +391,37 @@ function onCornerRadiusEdit(round: CornerRoundSummary, event: Event): void {
           >
             <dt class="uppercase text-muted-foreground">{{ point }}</dt>
             <dd class="font-mono">{{ props.entity.geometry[point] }}</dd>
+          </div>
+        </template>
+
+        <template v-else>
+          <div class="flex items-center justify-between gap-2">
+            <dt class="text-muted-foreground">Centre</dt>
+            <dd class="font-mono" data-testid="entity-circle-center">
+              {{ props.entity.geometry.center }}
+            </dd>
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <dt class="text-muted-foreground">Rim</dt>
+            <dd class="font-mono" data-testid="entity-circle-rim">
+              {{ props.entity.geometry.rim }}
+            </dd>
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <dt class="text-muted-foreground">Radius</dt>
+            <dd class="flex items-center gap-1">
+              <input
+                type="number"
+                min="0.001"
+                step="0.001"
+                class="w-24 rounded-md border px-2 py-1 text-sm text-foreground"
+                :value="props.entity.radius === null ? '' : formatCornerRadius(props.entity.radius)"
+                :aria-label="`Radius for circle ${props.entity.id} (mm)`"
+                data-testid="entity-circle-radius"
+                @change="onCircleRadiusEdit"
+              />
+              <span class="text-xs text-muted-foreground">mm</span>
+            </dd>
           </div>
         </template>
 
@@ -604,7 +654,7 @@ function onCornerRadiusEdit(round: CornerRoundSummary, event: Event): void {
     </section>
 
     <section
-      v-if="props.entity.geometry.kind !== 'point'"
+      v-if="props.entity.geometry.kind !== 'point' && props.entity.geometry.kind !== 'circle'"
       aria-labelledby="entity-seam-heading"
       data-testid="entity-seam"
     >

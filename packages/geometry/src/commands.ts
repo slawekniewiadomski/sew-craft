@@ -15,6 +15,7 @@ import {
   maxCornerRadius,
   regenerateCornerRounds,
 } from './corner-round.js';
+import { MIN_RADIUS } from './circle.js';
 import {
   constraintOffset,
   constraintOrientation,
@@ -33,6 +34,7 @@ import {
   type Constraint,
   type ConstraintType,
   type CornerRound,
+  type CircleEntity,
   type CurveEntity,
   type DimensionOrientation,
   type DistanceConstraint,
@@ -78,6 +80,12 @@ export interface AddArcParams {
   start: EntityId;
   end: EntityId;
   through: EntityId;
+  construction?: boolean;
+}
+
+export interface AddCircleParams {
+  center: EntityId;
+  rim: EntityId;
   construction?: boolean;
 }
 
@@ -165,6 +173,7 @@ export type Command =
   | { id: EntityId; type: 'add_line'; params: AddLineParams; issuedAt?: string }
   | { id: EntityId; type: 'add_curve'; params: AddCurveParams; issuedAt?: string }
   | { id: EntityId; type: 'add_arc'; params: AddArcParams; issuedAt?: string }
+  | { id: EntityId; type: 'add_circle'; params: AddCircleParams; issuedAt?: string }
   | {
       id: EntityId;
       type: 'add_construction_line';
@@ -279,6 +288,8 @@ export function applyCommand(document: PatternDocument, command: Command): Comma
       return applyAddCurve(document, command);
     case 'add_arc':
       return applyAddArc(document, command);
+    case 'add_circle':
+      return applyAddCircle(document, command);
     case 'delete_entity':
       return applyDeleteEntity(document, command);
     case 'add_constraint':
@@ -584,6 +595,39 @@ function applyAddArc(document: PatternDocument, command: CommandOf<'add_arc'>): 
 
   return {
     document: { ...document, entities: [...document.entities, arc] },
+    inverse: deleteEntityCommand(command.id),
+  };
+}
+
+function applyAddCircle(
+  document: PatternDocument,
+  command: CommandOf<'add_circle'>,
+): CommandApplication {
+  const { center, rim } = command.params;
+  if (center === rim) {
+    throw new CommandValidationError('add_circle', 'the centre and rim must be distinct points');
+  }
+  const centerPoint = requireDraftingPoint(document, center, 'add_circle');
+  const rimPoint = requireDraftingPoint(document, rim, 'add_circle');
+
+  const radius = Math.hypot(rimPoint.x - centerPoint.x, rimPoint.y - centerPoint.y);
+  if (!Number.isFinite(radius) || radius < MIN_RADIUS) {
+    throw new CommandValidationError('add_circle', `the radius must be at least ${MIN_RADIUS} mm`);
+  }
+  if (getEntity(document, command.id) !== undefined) {
+    return noOp(document);
+  }
+
+  const circle: CircleEntity = {
+    id: command.id,
+    kind: 'circle',
+    center,
+    rim,
+    construction: command.params.construction ?? false,
+  };
+
+  return {
+    document: { ...document, entities: [...document.entities, circle] },
     inverse: deleteEntityCommand(command.id),
   };
 }
@@ -1049,6 +1093,12 @@ function applyAddSeamAllowance(
     throw new CommandValidationError(
       'add_seam_allowance',
       `edge ${edge} is not a cut line, curve or arc`,
+    );
+  }
+  if (edgeEntity.kind === 'circle') {
+    throw new CommandValidationError(
+      'add_seam_allowance',
+      'seam allowances need a line, curve or arc edge',
     );
   }
 

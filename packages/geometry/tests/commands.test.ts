@@ -86,6 +86,17 @@ const addArcCommand = (
   params: { start, end, through, construction },
 });
 
+const addCircleCommand = (
+  id: string,
+  center: string,
+  rim: string,
+  construction = false,
+): Command => ({
+  id,
+  type: 'add_circle',
+  params: { center, rim, construction },
+});
+
 const deleteCommand = (id: string): Command => ({ id, type: 'delete_entity', params: { id } });
 
 const setConstructionCommand = (id: string, target: string, construction: boolean): Command => ({
@@ -491,6 +502,85 @@ describe('add_arc', () => {
 
   it('is idempotent', () => {
     const command = addArcCommand('a1', 's', 'e', 't');
+    const first = applyCommand(document, command);
+
+    expect(applyCommand(first.document, command).document).toBe(first.document);
+  });
+});
+
+describe('add_circle', () => {
+  const document = documentOf([
+    point('c', 0, 0),
+    point('r', 3, 4),
+    point('near', 0.0005, 0),
+    point('big', Number.MAX_VALUE, Number.MAX_VALUE),
+  ]);
+
+  it('creates a circle from a centre and rim point with a derived radius', () => {
+    const applied = applyCommand(document, addCircleCommand('c1', 'c', 'r'));
+
+    expect(getEntity(applied.document, 'c1')).toEqual({
+      id: 'c1',
+      kind: 'circle',
+      center: 'c',
+      rim: 'r',
+      construction: false,
+    });
+    expect(applyCommand(applied.document, applied.inverse!).document).toEqual(document);
+  });
+
+  it('honours the construction flag', () => {
+    const applied = applyCommand(document, addCircleCommand('c1', 'c', 'r', true));
+
+    expect(getEntity(applied.document, 'c1')).toMatchObject({ construction: true });
+  });
+
+  it('defaults an omitted construction flag to false', () => {
+    const applied = applyCommand(document, {
+      id: 'c1',
+      type: 'add_circle',
+      params: { center: 'c', rim: 'r' },
+    });
+
+    expect(getEntity(applied.document, 'c1')).toMatchObject({ construction: false });
+  });
+
+  it('rejects a repeated point, a zero radius and an unknown point without mutating', () => {
+    unchanged(document, addCircleCommand('c1', 'c', 'c'));
+    unchanged(document, addCircleCommand('c1', 'c', 'near'));
+    unchanged(document, addCircleCommand('c1', 'c', 'missing'));
+  });
+
+  it('rejects a radius that is not finite', () => {
+    unchanged(document, addCircleCommand('c1', 'c', 'big'));
+  });
+
+  it('rejects a non-point reference', () => {
+    const withLine = documentOf([
+      point('c', 0, 0),
+      { id: 'l', kind: 'line', start: 'c', end: 'c', construction: false },
+    ]);
+
+    unchanged(withLine, addCircleCommand('c1', 'c', 'l'));
+  });
+
+  it('rejects a corner-round derived point', () => {
+    const rounded = applyCommand(
+      documentOf([
+        point('a', 0, 0),
+        point('b', 100, 0),
+        point('d', 0, 100),
+        { id: 'l1', kind: 'line', start: 'a', end: 'b', construction: false },
+        { id: 'l2', kind: 'line', start: 'a', end: 'd', construction: false },
+      ]),
+      { id: 'r1', type: 'add_corner_round', params: { first: 'l1', second: 'l2', radius: 10 } },
+    ).document;
+
+    unchanged(rounded, addCircleCommand('c1', 'r1:a', 'b'));
+  });
+
+  it('is idempotent', () => {
+    const command = addCircleCommand('c1', 'c', 'r');
     const first = applyCommand(document, command);
 
     expect(applyCommand(first.document, command).document).toBe(first.document);
@@ -1206,6 +1296,18 @@ describe('add_seam_allowance', () => {
       width: 10,
       side: 'right',
     });
+  });
+
+  it('rejects a circle with a clear message', () => {
+    const withCircle = documentOf([
+      point('a', 0, 0),
+      point('b', 0, 10),
+      { id: 'c1', kind: 'circle', center: 'a', rim: 'b', construction: false },
+    ]);
+
+    expect(() => applyCommand(withCircle, seamCommand('s', 'c1', 10))).toThrow(
+      /seam allowances need a line, curve or arc edge/,
+    );
   });
 });
 

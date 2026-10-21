@@ -12,6 +12,7 @@ export type RibbonIconName =
   | 'line'
   | 'curve'
   | 'arc'
+  | 'circle'
   | 'dimension'
   | 'allowance'
   | 'round-corner'
@@ -31,6 +32,7 @@ const ACTION_ICONS: Record<ActionIconName, RibbonIcon> = {
   line: { paths: ['M2.5 9.5 L9.5 2.5'] },
   curve: { paths: ['M1.8 9.4 C4 3, 8 9, 10.2 2.6'] },
   arc: { paths: ['M2.2 9.6 A 7.3 7.3 0 0 1 9.8 2.4'] },
+  circle: { paths: ['M1.5 6 A4.5 4.5 0 0 1 10.5 6 A4.5 4.5 0 0 1 1.5 6'] },
   dimension: {
     paths: [
       'M2.5 2 V10',

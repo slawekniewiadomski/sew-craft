@@ -6,6 +6,7 @@ export * from './number.js';
 export * from './flatten.js';
 export * from './arc.js';
 export * from './corner-round.js';
+export * from './circle.js';
 export * from './dimension.js';
 export * from './offset.js';
 export * from './selection.js';

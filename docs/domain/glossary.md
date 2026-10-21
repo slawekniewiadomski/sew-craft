@@ -24,7 +24,7 @@ UI copy and specs.
 
 | Term                     | Meaning                                                                                                                                                                                                                  |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Entity**               | A point, line, curve or arc in the geometry document.                                                                                                                                                                    |
+| **Entity**               | A point, line, curve, circle or arc in the geometry document.                                                                                                                                                            |
 | **Constraint**           | A relation the solver must satisfy (coincident, distance, …).                                                                                                                                                            |
 | **Dimension**            | The CAD rendering of a `distance` constraint: extension lines, a chevron line, and an editable value.                                                                                                                    |
 | **Set dimension**        | A dimension with a literal `value`: the solver drives the span and the label renders without parentheses.                                                                                                                |

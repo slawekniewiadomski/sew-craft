@@ -9,6 +9,7 @@ import {
   measureLinearDimension,
   seamForEdge,
   seamSide,
+  type CircleEntity,
   type Constraint,
   type ConstraintType,
   type DimensionOrientation,
@@ -46,7 +47,11 @@ export type ArcGeometry = {
   through: EntityId;
 };
 
-export type EntityGeometry = PointGeometry | LineGeometry | CurveGeometry | ArcGeometry;
+/** Geometry a circle contributes to the inspector. */
+export type CircleGeometry = { kind: 'circle'; center: EntityId; rim: EntityId };
+
+export type EntityGeometry =
+  PointGeometry | LineGeometry | CurveGeometry | CircleGeometry | ArcGeometry;
 
 /**
  * The derived circle measurements of an arc, all recomputed from its three
@@ -107,6 +112,8 @@ export type EntityProperties = {
    * points no longer define a circle (collinear after a constraint solve).
    */
   arc: ArcMeasurement | null;
+  /** Derived radius in millimetres for circles only. */
+  radius: number | null;
   seam: { id: EntityId; width: number; side: SeamSide } | null;
   /** Rounds that reference the selected line or arc. */
   rounds: CornerRoundSummary[];
@@ -124,6 +131,8 @@ function geometryOf(entity: Entity): EntityGeometry {
       return { kind: 'curve', p0: entity.p0, p1: entity.p1, p2: entity.p2, p3: entity.p3 };
     case 'arc':
       return { kind: 'arc', start: entity.start, end: entity.end, through: entity.through };
+    case 'circle':
+      return { kind: 'circle', center: entity.center, rim: entity.rim };
   }
 }
 
@@ -143,6 +152,20 @@ function arcMeasurementOf(document: PatternDocument, entity: Entity): ArcMeasure
     includedAngle: sweep * RADIANS_TO_DEGREES,
     length: sweep * geometry.radius,
   };
+}
+
+/**
+ * The circle's derived radius in millimetres, or `null` when a referenced point
+ * is missing or is not a point. Unlike `circleGeometry`, a collapsed circle
+ * still reports its (near-)zero radius so the inspector can show it.
+ */
+function circleRadius(document: PatternDocument, circle: CircleEntity): number | null {
+  const center = getEntity(document, circle.center);
+  const rim = getEntity(document, circle.rim);
+  if (center?.kind !== 'point' || rim?.kind !== 'point') return null;
+
+  const radius = Math.hypot(rim.x - center.x, rim.y - center.y);
+  return Number.isFinite(radius) ? radius : null;
 }
 
 /** Order-insensitive endpoint comparison: `{a,b}` equals `{s,e}`. */
@@ -171,6 +194,11 @@ function constraintActsOnEntity(constraint: Constraint, entity: Entity): boolean
   if (entity.kind === 'arc') {
     const points = [entity.start, entity.end, entity.through];
     return constraintEntityIds(constraint).some((id) => points.includes(id));
+  }
+
+  if (entity.kind === 'circle') {
+    const referencePoints = [entity.center, entity.rim];
+    return constraintEntityIds(constraint).some((id) => referencePoints.includes(id));
   }
 
   switch (constraint.type) {
@@ -266,6 +294,7 @@ export function entityProperties(
         ? measureLinearDimension(document, entity.start, entity.end, 'aligned')
         : null,
     arc: arcMeasurementOf(document, entity),
+    radius: entity.kind === 'circle' ? circleRadius(document, entity) : null,
     seam: seam === undefined ? null : { id: seam.id, width: seam.width, side: seamSide(seam) },
     rounds,
     dimensions,

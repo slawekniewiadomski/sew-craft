@@ -17,12 +17,13 @@ flip. Pattern drafting origin is per-piece; a global origin is not assumed.
 
 ## Entities
 
-| Kind    | References   | Notes                                                                                                                    |
-| ------- | ------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `point` | —            | the only solver variable in v0.1                                                                                         |
-| `line`  | two points   | straight segment / edge                                                                                                  |
-| `curve` | four points  | cubic Bézier (p0, p1, p2, p3)                                                                                            |
-| `arc`   | three points | true circular arc: start, end, and a through point that fixes the bulge and sweep; centre, radius and angles are derived |
+| Kind     | References               | Notes                                                                                                                    |
+| -------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `point`  | —                        | the only solver variable in v0.1                                                                                         |
+| `line`   | two points               | straight segment / edge                                                                                                  |
+| `curve`  | four points              | cubic Bézier (p0, p1, p2, p3)                                                                                            |
+| `circle` | a centre and a rim point | true circle; the radius is their distance and is never stored                                                            |
+| `arc`    | three points             | true circular arc: start, end, and a through point that fixes the bulge and sweep; centre, radius and angles are derived |
 
 Every entity has an `id` (string) and a `construction: boolean`. Construction
 geometry is drawn as a guide and is **never** part of a cut edge or export.
@@ -62,16 +63,17 @@ arrays. Document helpers in `document.ts`:
 - `getEntity(document, id)` — entity by id, or `undefined`.
 - `getConstraint(document, id)` — constraint by id, or `undefined`.
 - `allPoints(document)` — every `point` entity, construction included.
-- `cutEdges(document)` — every line/curve/arc that is part of the cut pattern
-  (i.e. not construction geometry); the source for cut-edge layers and exports.
+- `cutEdges(document)` — every line/curve/circle/arc that is part of the cut
+  pattern (i.e. not construction geometry); the source for cut-edge layers and
+  exports.
 - `entityPoints(document, entity)` — the point entities an entity references, in
-  order (an arc resolves to start, through, end); throws when a reference is
-  missing or is not a point.
+  order (a circle resolves to centre then rim, an arc to start, through, end);
+  throws when a reference is missing or is not a point.
 - `constraintEntityIds(constraint)` — the point ids a constraint references, in
   semantic order (shared by the solver and the command core).
 - `bounds(document)` — axis-aligned `{ min, max }` over all points (construction
-  included), widened by each arc's cardinal extents, or `null` for a point-less
-  document.
+  included), widened by each circle's radius and each arc's cardinal extents, or
+  `null` for a point-less document.
 - `getSeam(document, id)` / `seamForEdge(document, edge)` — look up a seam
   allowance by its own id or by the edge it is attached to.
 - `cornerRounds(document)` — the optional corner-round features, defaulting to
@@ -156,7 +158,9 @@ command omits it is `10` (`DEFAULT_SEAM_ALLOWANCE`). `side` is `'left'` or
 `'right'` relative to the edge's start→end direction; `seamSide(seam)` resolves
 an omitted side to `'left'`, which is how documents written before sides existed
 keep rendering. Line, curve and arc edges can carry one, and at most one seam per
-edge; a seam allowance on an arc follows the `start`→`end` direction.
+edge; a seam allowance on an arc follows the `start`→`end` direction. A circle
+has no direction for a closed offset, so `add_seam_allowance` rejects one with
+"seam allowances need a line, curve or arc edge".
 
 The offset is produced by pure functions:
 

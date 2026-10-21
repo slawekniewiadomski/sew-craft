@@ -41,6 +41,7 @@ describe('RIBBON_GROUPS', () => {
       { kind: 'tool', id: 'tool-add_line', label: 'Line', icon: 'line', tool: 'add_line' },
       { kind: 'tool', id: 'tool-add_curve', label: 'Curve', icon: 'curve', tool: 'add_curve' },
       { kind: 'tool', id: 'tool-add_arc', label: 'Arc', icon: 'arc', tool: 'add_arc' },
+      { kind: 'tool', id: 'tool-add_circle', label: 'Circle', icon: 'circle', tool: 'add_circle' },
       {
         kind: 'tool',
         id: 'tool-dimension',

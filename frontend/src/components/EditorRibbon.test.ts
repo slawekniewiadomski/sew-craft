@@ -35,6 +35,7 @@ const RIBBON_LABELS = [
   'Line',
   'Curve',
   'Arc',
+  'Circle',
   'Dimension',
   'Seam allowance',
   'Coincident',
@@ -52,7 +53,7 @@ describe('EditorRibbon', () => {
     const wrapper = mountRibbon();
 
     const buttons = wrapper.findAll('button');
-    expect(buttons).toHaveLength(20);
+    expect(buttons).toHaveLength(21);
     expect(buttons.every((button) => button.find('svg').exists())).toBe(true);
     expect(buttons.map((button) => button.attributes('aria-label'))).toEqual(RIBBON_LABELS);
 
