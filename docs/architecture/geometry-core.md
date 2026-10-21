@@ -17,11 +17,12 @@ flip. Pattern drafting origin is per-piece; a global origin is not assumed.
 
 ## Entities
 
-| Kind    | References  | Notes                            |
-| ------- | ----------- | -------------------------------- |
-| `point` | —           | the only solver variable in v0.1 |
-| `line`  | two points  | straight segment / edge          |
-| `curve` | four points | cubic Bézier (p0, p1, p2, p3)    |
+| Kind    | References  | Notes                                                             |
+| ------- | ----------- | ----------------------------------------------------------------- |
+| `point` | —           | the only solver variable in v0.1                                  |
+| `line`  | two points  | straight segment / edge                                           |
+| `curve` | four points | cubic Bézier (p0, p1, p2, p3)                                     |
+| `arc`   | three points| true circular arc: start, end, and a through point that fixes the bulge and sweep; centre, radius and angles are derived |
 
 Every entity has an `id` (string) and a `construction: boolean`. Construction
 geometry is drawn as a guide and is **never** part of a cut edge or export.
@@ -61,14 +62,16 @@ arrays. Document helpers in `document.ts`:
 - `getEntity(document, id)` — entity by id, or `undefined`.
 - `getConstraint(document, id)` — constraint by id, or `undefined`.
 - `allPoints(document)` — every `point` entity, construction included.
-- `cutEdges(document)` — every line/curve that is part of the cut pattern (i.e.
-  not construction geometry); the source for cut-edge layers and exports.
+- `cutEdges(document)` — every line/curve/arc that is part of the cut pattern
+  (i.e. not construction geometry); the source for cut-edge layers and exports.
 - `entityPoints(document, entity)` — the point entities an entity references, in
-  order; throws when a reference is missing or is not a point.
+  order (an arc resolves to start, through, end); throws when a reference is
+  missing or is not a point.
 - `constraintEntityIds(constraint)` — the point ids a constraint references, in
   semantic order (shared by the solver and the command core).
 - `bounds(document)` — axis-aligned `{ min, max }` over all points (construction
-  included), or `null` for a point-less document.
+  included), widened by each arc's cardinal extents, or `null` for a point-less
+  document.
 - `getSeam(document, id)` / `seamForEdge(document, edge)` — look up a seam
   allowance by its own id or by the edge it is attached to.
 - `cornerRounds(document)` — the optional corner-round features, defaulting to
@@ -119,6 +122,32 @@ constraint)` — the resolved state without overloading "driven".
 - `constraintOrientation(constraint)` / `constraintOffset(constraint)` — the
   effective presentation values, applying the defaults.
 
+## Circular arcs (`arc.ts`)
+
+An `arc` is a true circular arc referencing three ordinary points — `start`,
+`end` and a `through` point on the arc between them. Everything else is derived:
+`arcThroughPoints(start, end, through)` returns an `ArcGeometry`
+(`center`, `radius`, `startAngle`, `endAngle`, `sweep`, `largeArc`), or `null`
+when the points are collinear within `MIN_BULGE` (`0.001` mm), `start` and `end`
+coincide, or the maths overflows. Angles are measured in the document's **y-down**
+frame, so a positive `sweep` runs in the direction of increasing `atan2` angle.
+The sweep always takes the direction that passes through `through`, which is what
+makes `largeArc` and the SVG sweep flag agree with the clicked bulge.
+`arcGeometry(document, arc)` resolves the three references first and returns
+`null` when one is missing or is not a point, or when a constraint solve has
+flattened them.
+
+- `arcPoints(geometry, start, end, segments?)` — flatten from `start` to `end`,
+  pinning both exact endpoints; `segments` defaults to `FLATTEN_SEGMENTS`, the
+  same resolution curves use, so seam allowances tessellate every curved edge
+  alike.
+- `arcExtents(geometry)` — the cardinal points inside the sweep, which can lie
+  beyond the three referenced points and therefore widen `bounds`.
+- `svgArcCommand(geometry, start, end)` — the full `M … A …` path data for export
+  and the canvas preview, using the derived radius, `largeArc` and sweep flags.
+- `formatSvgNumber(value)` (`number.ts`) — millimetre formatting shared by the
+  arc command and the SVG exporter, rounded to 1e-4 mm.
+
 ## Seam allowance (`offset.ts`)
 
 A seam allowance is a per-edge offset stored on the document as
@@ -126,8 +155,8 @@ A seam allowance is a per-edge offset stored on the document as
 command omits it is `10` (`DEFAULT_SEAM_ALLOWANCE`). `side` is `'left'` or
 `'right'` relative to the edge's start→end direction; `seamSide(seam)` resolves
 an omitted side to `'left'`, which is how documents written before sides existed
-keep rendering. Only line and curve edges can carry one, and at most one seam per
-edge.
+keep rendering. Line, curve and arc edges can carry one, and at most one seam per
+edge; a seam allowance on an arc follows the `start`→`end` direction.
 
 The offset is produced by pure functions:
 
@@ -137,8 +166,9 @@ The offset is produced by pure functions:
   last vertex back to the first.
 - `findSelfIntersections(path, options?)` — non-adjacent segment crossings of an
   offset path, reported (not hidden) so a folded allowance can be flagged.
-- `edgePolyline(document, edge, segments?)` — flatten a line (two points) or
-  cubic Bézier (sampled) edge to a polyline.
+- `edgePolyline(document, edge, segments?)` — flatten a line (two points), a
+  cubic Bézier (sampled) or an arc (sampled along its sweep) to a polyline, or
+  `null` for an arc that has become degenerate.
 - `seamAllowancePath(document, seam, options?)` / `seamAllowancePaths(document, options?)`
   — the offset `path` plus its `side` and `selfIntersections`, or `null` for an
   edge that is missing or is a point. The offset distance is `+width` for a

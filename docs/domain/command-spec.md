@@ -15,7 +15,7 @@ runtime source of truth is `config/geometry.php`, exposed at `GET /api/commands`
 }
 ```
 
-## Commands (v0.7)
+## Commands (v0.8)
 
 ### `add_point`
 
@@ -46,6 +46,25 @@ Cubic Bézier through four control points `p0..p3`.
 
 - params: `p0..p3: entity_id`, `construction?: bool`
 - inverse: `delete_entity`
+
+### `add_arc`
+
+Create a true circular arc through three existing points: `start` and `end` bound
+it and `through` is a point on the arc between them, which fixes both the bulge
+and the sweep direction. The circle, centre, radius, angles and extents are all
+derived and never stored, so the solver keeps operating on points only.
+
+- params: `start: entity_id`, `end: entity_id`, `through: entity_id`,
+  `construction?: bool`
+- All three ids must resolve to drafting points distinct from each other and not
+  derived by a corner round, and `start` must differ from `end`.
+- `through` must lie at least `MIN_BULGE` (`0.001` mm) off the `start`→`end`
+  chord; a smaller sagitta is a validation error ("through must be at least
+  0.001 mm off the start-end chord").
+- Re-applying a command whose arc id already exists is a no-op.
+- inverse: `delete_entity`
+- A seam allowance is allowed on an arc: it flattens to a polyline and the side
+  follows the `start`→`end` direction.
 
 ### `add_construction_line`
 
@@ -216,6 +235,12 @@ Restore a rounded corner.
   previous construction flag, deletes the tangent points, control points and arc,
   and removes the feature. A line with a round at its other end keeps that round.
 - inverse: `add_corner_round` with the original lines and radius.
+
+### Migration from spec 0.7.0
+
+`add_arc` is new and the `arc` entity kind is additive, so every 0.7.0 payload
+still applies unchanged. The pattern schema string stays `sewcraft.pattern/0.1`.
+`spec_version` is bumped to `0.8.0`.
 
 ### Migration from spec 0.6.0
 

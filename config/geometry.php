@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.7.0',
+    'spec_version' => '0.8.0',
 
     /*
     |--------------------------------------------------------------------------
@@ -69,6 +69,16 @@ return [
                 'p1' => 'entity_id',
                 'p2' => 'entity_id',
                 'p3' => 'entity_id',
+                'construction' => 'bool?',
+            ],
+            'inverse' => 'delete_entity',
+        ],
+        'add_arc' => [
+            'description' => 'Create a circular arc through three points: start, end and a point on the arc.',
+            'params' => [
+                'start' => 'entity_id',
+                'end' => 'entity_id',
+                'through' => 'entity_id',
                 'construction' => 'bool?',
             ],
             'inverse' => 'delete_entity',
