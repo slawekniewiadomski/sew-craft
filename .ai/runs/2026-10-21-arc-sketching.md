@@ -85,5 +85,5 @@ through three points and the pattern renders and exports it as one SVG `A` comma
 
 - [x] 5.1 Add the arc properties measurements and "Arc" noun with tests — c000f7d
 - [x] 5.2 Wire `EditorView.onAddArc` through `dispatchGroup` with view tests — 95e68df
-- [ ] 5.3 Run the full validation gate and `om-auto-review-pr --autofix`
-- [ ] 5.4 Retitle the PR, normalize labels, flip to ready and release the lock
+- [x] 5.3 Run the full validation gate and `om-auto-review-pr --autofix` — fc065a3
+- [x] 5.4 Retitle the PR, normalize labels, flip to ready and release the lock — fc065a3
