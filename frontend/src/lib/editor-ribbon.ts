@@ -2,7 +2,7 @@ import { CONSTRAINT_TOOLS } from './constraint-tools';
 import { EDITOR_TOOLS, type EditorTool } from './editor-tools';
 import type { RibbonIconName } from './ribbon-icons';
 
-export type RibbonAction = 'undo' | 'redo' | 'delete' | 'fit' | 'download_svg';
+export type RibbonAction = 'undo' | 'redo' | 'delete' | 'fit' | 'create_piece' | 'download_svg';
 
 export interface RibbonConstraintItem {
   kind: 'constraint';
@@ -87,6 +87,7 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
     items: [
       toolItem('select'),
       toolItem('round_corner'),
+      actionItem('create-piece', 'Create piece', 'create_piece', 'piece'),
       actionItem('undo', 'Undo', 'undo', 'undo'),
       actionItem('redo', 'Redo', 'redo', 'redo'),
       actionItem('delete', 'Delete', 'delete', 'delete'),

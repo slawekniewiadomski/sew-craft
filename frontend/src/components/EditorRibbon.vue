@@ -15,6 +15,7 @@ const props = defineProps<{
   canUndo: boolean;
   canRedo: boolean;
   canDelete: boolean;
+  canCreatePiece?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -47,6 +48,8 @@ function isDisabled(item: RibbonItem): boolean {
       return !props.canRedo;
     case 'delete':
       return !props.canDelete;
+    case 'create_piece':
+      return !props.canCreatePiece;
     default:
       return false;
   }

@@ -21,7 +21,9 @@ const doc = (constraints: Constraint[]): PatternDocument => ({
   constraints,
 });
 
-const ALL: Constraint[] = [
+type SolverConstraint = Exclude<Constraint, { type: 'derived_distance' }>;
+
+const ALL: SolverConstraint[] = [
   { id: 'coincident-ab', type: 'coincident', a: 'a', b: 'b' },
   { id: 'horizontal-ab', type: 'horizontal', a: 'a', b: 'b' },
   { id: 'vertical-bc', type: 'vertical', a: 'b', b: 'c' },
@@ -88,6 +90,18 @@ describe('constraintLabel', () => {
     expect(constraintLabel(ALL[2]!)).toBe('Vertical');
     expect(constraintLabel(ALL[3]!)).toBe('Point on line');
     expect(constraintLabel(ALL[6]!)).toBe('Equal length');
+  });
+
+  it('names a derived dimension as a cut dimension', () => {
+    expect(
+      constraintLabel({
+        id: 'cut',
+        type: 'derived_distance',
+        piece: 'p1',
+        a: { edge: 'ab', at: 'start' },
+        b: { edge: 'bc', at: 'end' },
+      }),
+    ).toBe('Cut dimension');
   });
 });
 

@@ -1,6 +1,7 @@
 import {
   cornerRoundGeometry,
   cornerRounds,
+  documentSeams,
   getEntity,
   maxCornerRadius,
   MIN_CORNER_ROUND,
@@ -215,8 +216,8 @@ export function applyCornerRoundPick(
     return { status: 'rejected', picks, reason: 'mixed' };
   }
   if (
-    document.seams.some((seam) => seam.edge === picks.first) ||
-    document.seams.some((seam) => seam.edge === id)
+    documentSeams(document).some((seam) => seam.edge === picks.first) ||
+    documentSeams(document).some((seam) => seam.edge === id)
   ) {
     return { status: 'rejected', picks, reason: 'seam' };
   }

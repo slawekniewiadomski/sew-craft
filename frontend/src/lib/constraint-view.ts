@@ -55,6 +55,8 @@ export function constraintLabel(constraint: Constraint): string {
       return `Distance ${constraint.value} mm`;
     case 'angle':
       return `Angle ${radiansToDegrees(constraint.value)}°`;
+    case 'derived_distance':
+      return 'Cut dimension';
     default:
       return CONSTRAINT_LABELS[constraint.type];
   }
@@ -108,6 +110,9 @@ export function constraintMarkers(document: PatternDocument): ConstraintMarker[]
   const points = new Map(allPoints(document).map((point) => [point.id, point]));
 
   return document.constraints.flatMap((constraint) => {
+    // Cut dimensions anchor to piece loop vertices, not solver points; the
+    // canvas draws them with the dimension layer instead of an icon.
+    if (constraint.type === 'derived_distance') return [];
     const ids = constraintEntityIds(constraint);
     const resolved = ids.flatMap((id) => {
       const point = points.get(id);

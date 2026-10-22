@@ -1,0 +1,213 @@
+import {
+  allowanceDistance,
+  allowanceForEdge,
+  getEntity,
+  pieceMetrics,
+  validatePiece,
+  type AllowanceKind,
+  type CutAnchor,
+  type Entity,
+  type EntityId,
+  type PatternDocument,
+  type Piece,
+  type PieceMetrics,
+} from '@sewcraft/geometry';
+
+/** One row of the piece allowance editor. */
+export interface PieceAllowanceRow {
+  edge: EntityId;
+  /** `none` means the edge has no allowance strip. */
+  kind: AllowanceKind | 'none';
+  width: number;
+  /** The distance the cut line moves for this kind: `2 × width` for a double fold. */
+  cutDistance: number;
+}
+
+/** Everything the inspector reports for a piece that owns the selected edge. */
+export interface PieceSummary {
+  id: EntityId;
+  name: string | null;
+  quantity: number;
+  edges: EntityId[];
+  allowances: PieceAllowanceRow[];
+  metrics: PieceMetrics | null;
+}
+
+/** The allowance editor rows for a piece, one per loop edge. */
+export function pieceAllowanceRows(piece: Piece): PieceAllowanceRow[] {
+  return piece.edges.map((edge) => {
+    const allowance = allowanceForEdge(piece, edge);
+    if (allowance === undefined) {
+      return { edge, kind: 'none', width: 0, cutDistance: 0 };
+    }
+    return {
+      edge,
+      kind: allowance.kind ?? 'seam',
+      width: allowance.width,
+      cutDistance: allowanceDistance(allowance),
+    };
+  });
+}
+
+/** The inspector's piece card for a piece, with derived measurements. */
+export function pieceSummary(document: PatternDocument, piece: Piece): PieceSummary {
+  return {
+    id: piece.id,
+    name: piece.name ?? null,
+    quantity: piece.quantity ?? 1,
+    edges: [...piece.edges],
+    allowances: pieceAllowanceRows(piece),
+    metrics: pieceMetrics(document, piece),
+  };
+}
+
+/** The piece that owns an edge, or `null`. */
+export function pieceOwningEdge(document: PatternDocument, edge: EntityId): Piece | null {
+  return document.pieces.find((piece) => piece.edges.includes(edge)) ?? null;
+}
+
+/** The two point ids a line, curve or arc joins, in its own direction. */
+function endpointIds(entity: Entity): [EntityId, EntityId] | null {
+  switch (entity.kind) {
+    case 'line':
+      return [entity.start, entity.end];
+    case 'curve':
+      return [entity.p0, entity.p3];
+    case 'arc':
+      return [entity.start, entity.end];
+    case 'point':
+    case 'circle':
+      return null;
+  }
+}
+
+function positionOf(document: PatternDocument, id: EntityId): { x: number; y: number } | null {
+  const entity = getEntity(document, id);
+  return entity?.kind === 'point' ? { x: entity.x, y: entity.y } : null;
+}
+
+/** Point positions within the cut tolerance used by the command validator. */
+function samePosition(a: { x: number; y: number }, b: { x: number; y: number }): boolean {
+  return Math.hypot(a.x - b.x, a.y - b.y) <= 0.001;
+}
+
+function endpointsAt(
+  document: PatternDocument,
+  id: EntityId,
+):
+  | [
+      { id: EntityId; position: { x: number; y: number } },
+      { id: EntityId; position: { x: number; y: number } },
+    ]
+  | null {
+  const entity = getEntity(document, id);
+  if (entity === undefined) return null;
+  const ids = endpointIds(entity);
+  if (ids === null) return null;
+  const start = positionOf(document, ids[0]);
+  const end = positionOf(document, ids[1]);
+  if (start === null || end === null) return null;
+  return [
+    { id: ids[0], position: start },
+    { id: ids[1], position: end },
+  ];
+}
+
+export type PieceCreation = { ok: true; edges: EntityId[] } | { ok: false; message: string };
+
+/**
+ * Validate and order a selection of cut edges into one closed loop. Errors name
+ * the first edge that cannot continue the chain, so the ribbon can explain why
+ * Create piece is unavailable.
+ */
+export function pieceCreationFromSelection(
+  document: PatternDocument,
+  ids: readonly EntityId[],
+): PieceCreation {
+  if (ids.length < 3) {
+    return { ok: false, message: 'Select at least three cut edges to create a piece.' };
+  }
+  if (new Set(ids).size !== ids.length) {
+    return { ok: false, message: 'An edge is selected more than once.' };
+  }
+
+  const first = ids[0]!;
+  const firstEnds = endpointsAt(document, first);
+  if (firstEnds === null) {
+    return { ok: false, message: `Edge ${first} is not a cut line, curve or arc.` };
+  }
+
+  const ordered: EntityId[] = [first];
+  const remaining = new Set(ids.slice(1));
+  let tail = firstEnds[1];
+
+  while (remaining.size > 0) {
+    const next = [...remaining].find((id) => {
+      const ends = endpointsAt(document, id);
+      return (
+        ends !== null &&
+        (samePosition(tail.position, ends[0].position) ||
+          samePosition(tail.position, ends[1].position))
+      );
+    });
+
+    if (next === undefined) {
+      return {
+        ok: false,
+        message: `Edge ${ordered[ordered.length - 1]} does not connect to another selected edge.`,
+      };
+    }
+
+    const ends = endpointsAt(document, next)!;
+    tail = samePosition(tail.position, ends[0].position) ? ends[1] : ends[0];
+    ordered.push(next);
+    remaining.delete(next);
+  }
+
+  if (!samePosition(tail.position, firstEnds[0].position)) {
+    return {
+      ok: false,
+      message: `Edge ${ordered[ordered.length - 1]} does not connect to edge ${first}.`,
+    };
+  }
+
+  const validation = validatePiece(document, ordered);
+  return validation.ok ? { ok: true, edges: ordered } : { ok: false, message: validation.message };
+}
+
+/**
+ * The cut-loop anchor at one end of a piece edge, addressed by the point the
+ * selected loop vertex belongs to. Returns `null` when the point is not a loop
+ * vertex of this piece.
+ */
+export function anchorForPoint(
+  document: PatternDocument,
+  piece: Piece,
+  pointId: EntityId,
+): CutAnchor | null {
+  for (const edge of piece.edges) {
+    const entity = getEntity(document, edge);
+    if (entity === undefined) continue;
+    const ids = endpointIds(entity);
+    if (ids === null) continue;
+    if (ids[0] === pointId) return { edge, at: 'start' };
+    if (ids[1] === pointId) return { edge, at: 'end' };
+  }
+  return null;
+}
+
+/** A cut dimension between two loop vertices of the same piece, or `null`. */
+export function cutDimensionForPoints(
+  document: PatternDocument,
+  a: EntityId,
+  b: EntityId,
+): { piece: Piece; a: CutAnchor; b: CutAnchor } | null {
+  for (const piece of document.pieces) {
+    const first = anchorForPoint(document, piece, a);
+    const second = anchorForPoint(document, piece, b);
+    if (first !== null && second !== null) {
+      return { piece, a: first, b: second };
+    }
+  }
+  return null;
+}
