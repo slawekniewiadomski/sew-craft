@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.9.0',
+    'spec_version' => '0.10.0',
 
     /*
     |--------------------------------------------------------------------------
@@ -109,27 +109,29 @@ return [
             'inverse' => 'set_construction',
         ],
         'delete_entity' => [
-            'description' => 'Remove an entity and any constraints referencing it.',
+            'description' => 'Remove an entity, the constraints referencing it and any piece that uses it.',
             'params' => [
                 'id' => 'entity_id',
             ],
         ],
         'add_constraint' => [
-            'description' => 'Attach a geometric constraint to one or more entities. A distance without a value is a driven dimension.',
+            'description' => 'Attach a geometric constraint to one or more entities. A distance without a value is a driven dimension; a distance with a reference follows another dimension.',
             'params' => [
                 'type' => 'coincident|horizontal|vertical|point_on_line|distance|angle|equal',
                 'entities' => 'entity_id[]',
                 'value' => 'number?',
+                'reference' => 'entity_id?',
                 'orientation' => 'aligned|horizontal|vertical?',
                 'offset' => 'number?',
             ],
             'inverse' => 'remove_constraint',
         ],
         'update_constraint' => [
-            'description' => 'Change a dimensional constraint value or its dimension presentation. Null clears a distance to driven.',
+            'description' => 'Change a dimensional constraint value or its dimension presentation. Null clears a distance to driven. A cut dimension accepts only orientation and offset.',
             'params' => [
                 'id' => 'entity_id',
                 'value' => 'number|null?',
+                'reference' => 'entity_id|null?',
                 'orientation' => 'aligned|horizontal|vertical?',
                 'offset' => 'number?',
             ],
@@ -143,7 +145,7 @@ return [
             'inverse' => 'add_constraint',
         ],
         'add_seam_allowance' => [
-            'description' => 'Attach a seam allowance (mm) to a cut line or curve edge.',
+            'description' => 'Deprecated: attach a legacy seam allowance (mm) to a cut edge outside any piece. Removed in 0.3.',
             'params' => [
                 'edge' => 'entity_id',
                 'width' => 'number?',
@@ -152,14 +154,14 @@ return [
             'inverse' => 'remove_seam_allowance',
         ],
         'remove_seam_allowance' => [
-            'description' => 'Detach the seam allowance from an edge.',
+            'description' => 'Deprecated: detach a legacy seam allowance from an edge. Removed in 0.3.',
             'params' => [
                 'id' => 'entity_id',
             ],
             'inverse' => 'add_seam_allowance',
         ],
         'set_seam_allowance' => [
-            'description' => 'Change the width or side of an attached seam allowance (mm).',
+            'description' => 'Deprecated: change the width or side of a legacy seam allowance (mm). Removed in 0.3.',
             'params' => [
                 'id' => 'entity_id',
                 'width' => 'number?',
@@ -190,6 +192,52 @@ return [
                 'id' => 'entity_id',
             ],
             'inverse' => 'add_corner_round',
+        ],
+        'create_piece' => [
+            'description' => 'Create a piece from one closed loop of cut edges. The edge order is the loop order and sets the outward direction.',
+            'params' => [
+                'edges' => 'entity_id[]',
+                'name' => 'string?',
+                'quantity' => 'int?',
+            ],
+            'inverse' => 'delete_piece',
+        ],
+        'update_piece' => [
+            'description' => 'Rename a piece or change its cut quantity. Null clears either.',
+            'params' => [
+                'id' => 'entity_id',
+                'name' => 'string|null?',
+                'quantity' => 'int|null?',
+            ],
+            'inverse' => 'update_piece',
+        ],
+        'delete_piece' => [
+            'description' => 'Remove a piece together with its cut dimensions.',
+            'params' => [
+                'id' => 'entity_id',
+            ],
+        ],
+        'set_piece_allowance' => [
+            'description' => 'Set, change or remove the allowance of one piece loop edge. Width is the finished width in mm; double folds cut twice it.',
+            'params' => [
+                'piece' => 'entity_id',
+                'edge' => 'entity_id',
+                'width' => 'number?',
+                'kind' => 'seam|single|double?',
+                'remove' => 'bool?',
+            ],
+            'inverse' => 'set_piece_allowance',
+        ],
+        'add_derived_dimension' => [
+            'description' => 'Add a read-only cut dimension between two loop vertices of one piece. Its value follows the cut loop and adds no solver equation.',
+            'params' => [
+                'piece' => 'entity_id',
+                'a' => 'cut_anchor',
+                'b' => 'cut_anchor',
+                'orientation' => 'aligned|horizontal|vertical?',
+                'offset' => 'number?',
+            ],
+            'inverse' => 'remove_constraint',
         ],
         'solve' => [
             'description' => 'Rebuild the sketch by running the constraint solver.',

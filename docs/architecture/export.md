@@ -14,14 +14,34 @@ or scale.
 
 ## SVG (v0.1)
 
-The editor already renders SVG, so SVG export reuses the same mapping:
+The editor already renders SVG, so SVG export reuses the same mapping. Layer
+meaning depends on whether the document has pieces:
 
-- one `<path>`/`<g>` per piece, cut edges as strokes with `fill="none"`,
-- construction lines in a separate `<g data-layer="construction">` with a muted
-  stroke, optionally omitted,
-- seam allowance drawn as its own offset path (dashed or a distinct layer),
-- `width`/`height` set in `mm` and a `viewBox` in mm coordinates,
-- metadata comment with `schema` version and timestamp.
+**With pieces** (the current path):
+
+- `cut` (always): one closed `<path>` per piece, the **cut loop** — the stitch
+  loop offset outward per edge by its allowance and joined at every corner. This
+  is what you cut, not what you sew. Each path carries `data-piece="<id>"`, and
+  `data-warning="self-intersection"` when the offset loop crosses itself.
+- `stitch` (on by default, `stitch: false` omits it): the piece boundary as
+  drawn, one closed thin path per piece.
+- `fold` (on by default, `fold: false` omits it): one dashed closed path per
+  double-fold allowance, at the finished width inside the cut line. A `seam` or
+  `single` allowance emits no fold line.
+- `construction` (off by default): the guide layer, as before.
+- `seam-allowance`: only the legacy per-edge outlines passed in `seamAllowance`
+  for edges outside any piece. A piece's allowances never take this path.
+- `width`/`height` in `mm`, and a `viewBox` from the union of the pieces' **cut**
+  bounds plus `padding`, so allowance geometry is never clipped.
+- one metadata comment per piece: `<!-- sewcraft:piece id="…" name="…"
+finished="WxH" cut="WxH" quantity="N" -->` (mm), plus the document comment with
+  `schema` and timestamp.
+
+**Without pieces** (legacy contract, unchanged):
+
+- `cut` is every non-construction line, curve, circle and arc; the `viewBox` comes
+  from `bounds(document)`; `stitch` and `fold` emit nothing; legacy seam-allowance
+  outlines stay in their own `seam-allowance` layer.
 
 No third-party dependency needed; build the string from the model.
 
@@ -36,20 +56,22 @@ import { toSvg } from '@sewcraft/geometry';
 
 toSvg(document, {
   construction: false, // include the construction layer (default off)
-  seamAllowance: [], // precomputed offset outlines (see below)
+  stitch: true, // include piece stitch loops (default on)
+  fold: true, // include double-fold fold lines (default on)
+  seamAllowance: [], // legacy offset outlines for edges outside a piece
   padding: 10, // whitespace in mm around the drawing
 });
 ```
 
 The output has a `viewBox` in pattern coordinates plus `width`/`height` in `mm`,
 and an XML comment carrying the pattern `schema` and a generation timestamp.
-Layers are emitted as `<g data-layer="...">` groups: `cut` always (every
-non-construction line/curve), `construction` when requested and non-empty, and
-`seam-allowance` when outlines are supplied.
+Layers are emitted as `<g data-layer="...">` groups; a group is omitted when it
+would be empty.
 
-Seam-allowance geometry is **not** computed here: the offset algorithm is spec
-007's, and 008 defines the layer as an extension point. Callers pass precomputed
-outlines as `{ edge, path }`, which the serializer draws in the allowance layer.
+Piece geometry is **not** computed here either: `pieceCutLoop`, `pieceLoop`,
+`pieceFoldLines`, `pieceMetrics` and `pieceCutBounds` in `piece.ts` derive it, and
+the serializer only renders the result. Legacy allowance outlines stay an
+extension point, passed in as `{ edge, path }`.
 
 ## PDF (later)
 

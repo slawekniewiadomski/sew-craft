@@ -1,6 +1,10 @@
 # 007 — Seam allowance
 
-Status: in progress (geometry core + editor rendering/UI done; export pending 008)
+Status: superseded by
+[2026-10-22-pieces-and-allowance.md](./2026-10-22-pieces-and-allowance.md).
+The per-edge `Seam` is now the legacy path for edges outside a piece; a piece owns
+its loop allowances (`seam` / `single` / `double`) and derives the cut loop and
+fold lines. This file is kept for history.
 Depends on: 006 (pieces), 008
 
 ## Goal

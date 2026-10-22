@@ -60,7 +60,7 @@ can be written when it changes.
 
 ```jsonc
 {
-  "schema": "sewcraft.pattern/0.1",
+  "schema": "sewcraft.pattern/0.2",
   "units": "mm",
   "entities": [
     { "id": "p1", "kind": "point", "x": 0, "y": 0, "construction": true, "fixed": true },
@@ -99,8 +99,27 @@ can be written when it changes.
       "b": "p3",
       "reference": "c2", // effective value is resolved through c2
     },
+    {
+      "id": "c4",
+      "type": "derived_distance", // read-only cut dimension; no solver equation
+      "piece": "pc1",
+      "a": { "edge": "l1", "at": "start" },
+      "b": { "edge": "l1", "at": "end" },
+    },
   ],
-  "seams": [{ "id": "s1", "edge": "l1", "width": 10 }],
+  "pieces": [
+    {
+      "id": "pc1",
+      "name": "Front",
+      "edges": ["l1", "l2"], // ordered closed loop of cut edges
+      "allowances": [
+        { "edge": "l1", "width": 10, "kind": "double" }, // finished width 10 mm, cuts 20 mm
+        { "edge": "l2", "width": 10 }, // kind omitted means "seam"
+      ],
+      "quantity": 2,
+    },
+  ],
+  "seams": [{ "id": "s1", "edge": "l1", "width": 10 }], // deprecated: edges outside any piece
   "cornerRounds": [
     {
       "id": "r1",
@@ -143,14 +162,43 @@ rejects a circle in v1. The entity kind is additive, so a document written befor
 the feature loads unchanged and a document containing a circle is still valid
 JSON for older builds.
 
+A `piece` is a closed loop of existing cut edges cut from fabric. `edges` is the
+loop order, which is also what defines "outward"; a piece never stores a side.
+`allowances` holds at most one entry per loop edge — an edge with no entry has no
+allowance, which is how a shared edge (cut on the stitch line) is expressed.
+`width` is the **finished** width in millimetres and `kind` is one of `seam`
+(omitted default), `single` or `double`; a `double` fold cuts at `2 × width` and
+adds a fold line at `width`. `name` and `quantity` are optional (quantity omitted
+means 1). Derived geometry is never stored: the stitch loop, cut loop, fold lines,
+metrics and cut bounds are recomputed from the document on read.
+
+The schema is `sewcraft.pattern/0.2`. `normalizeDocument` in
+`packages/geometry/src/migration.ts` brings a document up to it on load and is
+one-way and idempotent. A 0.1 document's closed seam chains become one piece each,
+with those seams as `kind: 'seam'` allowances at the stored width and `side`
+discarded. Seams on edges that close no loop stay in the deprecated `seams` field,
+which is read-only after load and keeps its legacy dashed rendering until it is
+removed in 0.3. Documents without `pieces` gain an empty list, and an
+already-current document is returned unchanged.
+
 A `distance` constraint without `value` or `reference` is a **driven** dimension:
 it reports the live measurement and adds no solver equation. A `reference` links
 one dimension to another; the effective value is derived, so the constraint
 stores no duplicate `value`. When the source disappears, the dependent keeps its
 `reference`, stores the last resolved number in `lastKnownValue` and renders as
 **broken** until the user re-links it. At most one of `value` and `reference` is
-present. The schema stays `sewcraft.pattern/0.1`; the fields are additive, so
-older documents load unchanged. See `docs/architecture/geometry-core.md` for
+present.
+
+A `derived_distance` constraint is a **cut dimension**. It addresses two loop
+vertices of one piece by `{ edge, at }` anchors rather than by point id, because
+the cut loop has no entities of its own. Its value is measured from the resolved
+cut loop on every read, it adds no solver equation (`solveDocument` filters it
+out), and it is read-only: `update_constraint` accepts only `orientation` and
+`offset`. When the piece or an anchored edge is deleted, `delete_entity` or
+`delete_piece` removes the dimension, and a cut dimension whose anchors no longer
+resolve keeps its last reading and renders as broken.
+
+See `docs/architecture/geometry-core.md` for
 entity semantics and `docs/domain/command-spec.json` for the machine-readable
 command schema.
 

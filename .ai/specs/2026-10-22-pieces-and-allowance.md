@@ -1,7 +1,7 @@
 # Pieces, allowance kinds and cut dimensions
 
-Status: proposed (spec review)
-Builds on: 007 (seam allowance), 008 (SVG export), 2026-10-20-seam-allowance-side
+Status: implemented (PR #56; spec and implementation on one branch)
+Builds on: 007 (seam allowance, superseded), 008 (SVG export), 2026-10-20-seam-allowance-side
 Supersedes: the per-edge `Seam` as the owner of an allowance
 
 ## 📝 TLDR
@@ -501,25 +501,25 @@ removed in 0.3.
 
 ## ✅ Acceptance criteria
 
-- [ ] A 200 × 200 piece with a 10 mm allowance on three edges and none on the
+- [x] A 200 × 200 piece with a 10 mm allowance on three edges and none on the
       fourth produces exactly a 220 × 210 cut loop sharing the fourth edge.
-- [ ] The same piece with `double` on those edges produces 240 × 220 with a fold
+- [x] The same piece with `double` on those edges produces 240 × 220 with a fold
       line exactly on 220 × 210.
-- [ ] The cut loop is one closed, corner-joined path with no gaps or double
+- [x] The cut loop is one closed, corner-joined path with no gaps or double
       offsets at shared vertices.
-- [ ] The exported `cut` layer contains only cut loops, each closed, and the
+- [x] The exported `cut` layer contains only cut loops, each closed, and the
       `viewBox` includes allowance geometry.
-- [ ] Stitch and fold layers are exported and individually optional; construction
+- [x] Stitch and fold layers are exported and individually optional; construction
       stays off by default.
-- [ ] A cut dimension reads 220 and 210 from the reference piece, updates when a
+- [x] A cut dimension reads 220 and 210 from the reference piece, updates when a
       width or kind changes, adds no solver equation, and is read-only.
-- [ ] Deleting a piece edge or the piece removes or breaks dependent cut
+- [x] Deleting a piece edge or the piece removes or breaks dependent cut
       dimensions without leaving a stale number on screen.
-- [ ] A 0.1 document with a closed seam chain loads as one piece with the same
+- [x] A 0.1 document with a closed seam chain loads as one piece with the same
       rendering plus joined corners; an open chain still renders dashed.
-- [ ] 100 % statements, branches, functions and lines across
+- [x] 100 % statements, branches, functions and lines across
       `packages/geometry/src`, `frontend/src` and backend `app/`.
-- [ ] `npm run lint`, `npm run format:check`, `npm run typecheck` and the Pest
+- [x] `npm run lint`, `npm run format:check`, `npm run typecheck` and the Pest
       suite pass; command spec, config and docs are in sync at `0.10.0`.
 
 ## Out of scope

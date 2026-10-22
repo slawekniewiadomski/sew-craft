@@ -26,7 +26,9 @@ Milestone: draw a constrained rectangle, undo/redo, reload from the server.
 
 - [ ] 006 Construction geometry.
 - [ ] 007 Seam allowance.
-- [ ] Pieces (closed profiles) as a first-class entity.
+- [x] Pieces (closed profiles) as a first-class entity, with per-edge allowances
+      (`seam` / single / double), derived cut loops, fold lines and read-only cut
+      dimensions. Fabric layout and nesting stay deferred to phase 5.
 - [ ] 008 SVG export.
 
 Milestone: draft a simple piece with construction lines and seam allowance, export
