@@ -2504,6 +2504,16 @@ describe('PatternCanvas', () => {
 
     expect(wrapper.find('[data-piece-cut="broken"]').exists()).toBe(false);
     expect(wrapper.find('[data-piece-stitch="broken"]').exists()).toBe(false);
+
+    const dangling = mountCanvas({
+      document: {
+        ...pieceDoc,
+        entities: pieceDoc.entities.filter((entity) => entity.id !== 'c'),
+      },
+    });
+
+    expect(dangling.find('[data-piece-cut="p1"]').exists()).toBe(false);
+    expect(dangling.find('[data-piece-stitch="p1"]').exists()).toBe(false);
   });
 
   it('renders a cut dimension with its derived label and read-only tooltip', () => {

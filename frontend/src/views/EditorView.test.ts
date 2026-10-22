@@ -2396,6 +2396,20 @@ describe('EditorView', () => {
     expect(store.document.pieces).toEqual([]);
   });
 
+  it('shows a piece whose point was deleted without a size instead of crashing', async () => {
+    const { wrapper } = await mountLoaded({
+      ...pieceDoc,
+      entities: pieceDoc.entities.filter((entity) => entity.id !== 'c'),
+    });
+
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="entity-piece"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="entity-piece-finished"]').text()).toBe('—');
+    expect(wrapper.find('[data-testid="entity-piece-cut"]').text()).toBe('—');
+  });
+
   it('describes an edge that belongs to a piece in the outline', async () => {
     const { wrapper } = await mountLoaded(pieceDoc);
 
