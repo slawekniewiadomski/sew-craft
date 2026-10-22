@@ -37,6 +37,12 @@ meaning depends on whether the document has pieces:
 finished="WxH" cut="WxH" quantity="N" -->` (mm), plus the document comment with
   `schema` and timestamp.
 
+The presence of pieces decides the contract, not whether they resolve. A piece
+whose loop is broken (a deleted point or edge) emits no cut, stitch, fold or
+metadata and contributes no bounds; when no piece resolves, the `cut` layer is
+empty and the `viewBox` is `0 0 0 0`. It never falls back to exporting every
+entity as a cut line.
+
 **Without pieces** (legacy contract, unchanged):
 
 - `cut` is every non-construction line, curve, circle and arc; the `viewBox` comes
