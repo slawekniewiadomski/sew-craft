@@ -92,6 +92,14 @@ export function pieceEdges(document: PatternDocument, piece: Piece): PieceEdgeEn
     ) {
       return [];
     }
+    try {
+      // A dangling point reference makes the whole loop unresolvable; report it
+      // as an absent edge so every derived function degrades to `null` rather
+      // than throwing during a render or an export.
+      entityPoints(document, entity);
+    } catch {
+      return [];
+    }
     return [entity];
   });
 }
@@ -180,21 +188,41 @@ export function validatePiece(
     entities.push(entity);
   }
 
-  for (let i = 0; i < entities.length; i += 1) {
-    const current = entities[i]!;
-    const next = entities[(i + 1) % entities.length]!;
-    const currentPoints = edgeEndpointIds(current).map((id) => endpointPosition(document, id));
-    const nextPoints = edgeEndpointIds(next).map((id) => endpointPosition(document, id));
-    const meets = currentPoints.some((point) =>
-      nextPoints.some((candidate) => connects(point, candidate)),
-    );
-    if (!meets) {
+  // Walk the ordered edges as one chain: each edge must continue at the vertex
+  // the previous edge ended on, and the last must close back to the first. A
+  // selection that only shares one common vertex (a star) fails here. The first
+  // edge may itself run against the walk, so pick the direction that meets the
+  // second edge first, mirroring `orientedPolylines`.
+  const firstPoints = edgeEndpointIds(entities[0]!).map((id) => endpointPosition(document, id));
+  const secondPoints = edgeEndpointIds(entities[1]!).map((id) => endpointPosition(document, id));
+  let origin = firstPoints[0]!;
+  let current = firstPoints[1]!;
+  if (!secondPoints.some((point) => connects(current, point))) {
+    origin = firstPoints[1]!;
+    current = firstPoints[0]!;
+  }
+  for (let i = 1; i < entities.length; i += 1) {
+    const edge = entities[i]!;
+    const [start, end] = edgeEndpointIds(edge).map((id) => endpointPosition(document, id));
+    if (connects(current, start!)) {
+      current = end!;
+    } else if (connects(current, end!)) {
+      current = start!;
+    } else {
       return {
         ok: false,
-        message: `Edge ${current.id} does not connect to edge ${next.id}.`,
-        edge: next.id,
+        message: `Edge ${entities[i - 1]!.id} does not connect to edge ${edge.id}.`,
+        edge: edge.id,
       };
     }
+  }
+  if (!connects(current, origin)) {
+    const last = entities[entities.length - 1]!;
+    return {
+      ok: false,
+      message: `Edge ${last.id} does not connect to edge ${entities[0]!.id}.`,
+      edge: entities[0]!.id,
+    };
   }
 
   return { ok: true };

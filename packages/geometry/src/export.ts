@@ -262,10 +262,14 @@ export function toSvg(document: PatternDocument, options: SvgExportOptions = {})
     .map((piece) => piece.metadata)
     .filter((element): element is string => element !== null);
 
-  const cutElements = pieceCut.length > 0 ? pieceCut : legacy.cut;
-  const stitchElements = pieces.length > 0 ? pieceStitch : [];
+  // The presence of pieces decides the contract, not whether their loops
+  // resolve: a broken piece exports an empty cut layer and a zero-size viewBox
+  // rather than silently falling back to every entity as a cut line.
+  const hasPieces = pieces.length > 0;
+  const cutElements = hasPieces ? pieceCut : legacy.cut;
+  const stitchElements = hasPieces ? pieceStitch : [];
   const cutBounds = cutBoundsOf(pieces);
-  const box = computeViewBox(cutBounds ?? bounds(document), padding);
+  const box = computeViewBox(hasPieces ? cutBounds : bounds(document), padding);
 
   const lines: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',

@@ -234,6 +234,24 @@ describe('validatePiece', () => {
     });
   });
 
+  it('rejects a star that only shares one common vertex', () => {
+    const star = documentOf([
+      point('hub', 0, 0),
+      point('a', 10, 0),
+      point('b', 0, 10),
+      point('c', -10, 0),
+      line('spoke-a', 'hub', 'a'),
+      line('spoke-b', 'hub', 'b'),
+      line('spoke-c', 'hub', 'c'),
+    ]);
+
+    expect(validatePiece(star, ['spoke-a', 'spoke-b', 'spoke-c'])).toMatchObject({
+      ok: false,
+      edge: 'spoke-c',
+      message: 'Edge spoke-b does not connect to edge spoke-c.',
+    });
+  });
+
   it('rejects an edge whose geometry cannot resolve', () => {
     const broken = documentOf([
       point('a', 0, 0),
@@ -279,6 +297,22 @@ describe('pieceLoop and cut loop', () => {
     expect(pieceCutBounds(document, broken)).toBeNull();
     expect(pieceMetrics(document, broken)).toBeNull();
     expect(pieceCutVertex(document, broken, { edge: 'bottom', at: 'start' })).toBeNull();
+  });
+
+  it('skips an edge whose point was deleted so every derived function degrades to absent', () => {
+    const { document, piece } = referenceDocument();
+    const dangling: PatternDocument = {
+      ...document,
+      entities: document.entities.filter((entity) => entity.id !== 'c'),
+    };
+
+    expect(pieceEdges(dangling, piece).map((edge) => edge.id)).toEqual(['bottom', 'left']);
+    expect(pieceLoop(dangling, piece)).toBeNull();
+    expect(pieceCutLoop(dangling, piece)).toBeNull();
+    expect(pieceFoldLines(dangling, piece)).toEqual([]);
+    expect(pieceCutBounds(dangling, piece)).toBeNull();
+    expect(pieceMetrics(dangling, piece)).toBeNull();
+    expect(pieceCutVertex(dangling, piece, { edge: 'bottom', at: 'start' })).toBeNull();
   });
 
   it('reverses an edge stored against the walk', () => {

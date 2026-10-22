@@ -142,6 +142,22 @@ describe('create_piece', () => {
     ).toThrowError(/does not connect to edge/);
   });
 
+  it('rejects a star that only shares one common vertex', () => {
+    const document = documentOf([
+      point('hub', 300, 0),
+      point('x', 310, 0),
+      point('y', 300, 10),
+      point('z', 290, 0),
+      line('spoke-x', 'hub', 'x'),
+      line('spoke-y', 'hub', 'y'),
+      line('spoke-z', 'hub', 'z'),
+    ]);
+
+    expect(() =>
+      applyCommand(document, createPiece({ edges: ['spoke-x', 'spoke-y', 'spoke-z'] })),
+    ).toThrowError(/does not connect to edge/);
+  });
+
   it('rejects an edge that already belongs to a piece', () => {
     const document = applyCommand(documentOf(), createPiece()).document;
 

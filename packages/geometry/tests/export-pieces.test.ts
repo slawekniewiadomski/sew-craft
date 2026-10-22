@@ -132,6 +132,20 @@ describe('piece cut layer', () => {
     expect(output).not.toContain('sewcraft:piece id="broken"');
   });
 
+  it('exports an empty cut layer and a zero-size viewBox for an unresolvable piece', () => {
+    const document = documentOf();
+    const output = svg({
+      ...document,
+      entities: document.entities.filter((entity) => entity.id !== 'c'),
+    });
+
+    expect(layer(output, 'cut')).toEqual([]);
+    expect(layer(output, 'stitch')).toBeNull();
+    expect(output).not.toContain('data-entity-id');
+    expect(output).toContain('width="0mm" height="0mm"');
+    expect(output).toContain('viewBox="0 0 0 0"');
+  });
+
   it('sizes the page from the cut bounds plus padding, not the document bounds', () => {
     const output = svg(documentOf([piece()], [point('guide', 5000, 5000, true)]));
 
@@ -262,12 +276,14 @@ describe('legacy documents and layers', () => {
     expect(seams[0]).not.toContain('Z"');
   });
 
-  it('falls back to the document bounds when no piece resolves', () => {
+  it('does not fall back to the document bounds when no piece resolves', () => {
     const broken: Piece = { ...piece(), edges: ['missing'] };
     const output = svg(documentOf([broken]));
 
-    expect(output).toContain('width="220mm" height="220mm"');
-    expect(output).toContain('viewBox="-10 -10 220 220"');
+    expect(layer(output, 'cut')).toEqual([]);
+    expect(output).not.toContain('data-entity-id');
+    expect(output).toContain('width="0mm" height="0mm"');
+    expect(output).toContain('viewBox="0 0 0 0"');
   });
 
   it('uses the encoded schema version in the comment', () => {
