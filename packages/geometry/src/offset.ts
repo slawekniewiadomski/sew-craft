@@ -1,5 +1,5 @@
 import { arcPoints as flattenArc, arcThroughPoints } from './arc.js';
-import { entityPoints, getEntity } from './document.js';
+import { documentSeams, entityPoints, getEntity } from './document.js';
 import { FLATTEN_SEGMENTS } from './flatten.js';
 import {
   seamSide,
@@ -106,38 +106,207 @@ function arcPoints(center: Vec2, from: Vec2, to: Vec2, radius: number): Vec2[] {
 }
 
 /**
- * The points that turn offset segment `A` into offset segment `B` around their
- * shared vertex. The returned list starts at `A`'s offset end and ends at `B`'s
- * offset start, so the caller can simply append it.
+ * Join two offset segments that may carry different distances. The miter is the
+ * intersection of the two offset lines; a zero distance keeps that edge on its
+ * original line, which is what makes a shared piece edge coincide with the cut
+ * outline. A miter longer than `miterLimit` times the larger adjacent distance
+ * falls back to a bevel.
  */
-function joinPoints(
+function joinVariablePoints(
   center: Vec2,
   directionA: Vec2,
   directionB: Vec2,
-  distance: number,
+  distanceA: number,
+  distanceB: number,
   join: JoinStyle,
   miterLimit: number,
 ): Vec2[] {
   const normalA = leftNormal(directionA);
   const normalB = leftNormal(directionB);
-  const incoming = add(center, scale(normalA, distance));
-  const outgoing = add(center, scale(normalB, distance));
+  const incoming = add(center, scale(normalA, distanceA));
+  const outgoing = add(center, scale(normalB, distanceB));
   const turn = cross(directionA, directionB);
 
   if (Math.abs(turn) <= EPSILON) {
-    // Straight continuation: the two offset ends coincide. A reversal (dot < 0)
-    // has no miter, so bevel across instead.
-    return dot(directionA, directionB) > 0 ? [outgoing] : [incoming, outgoing];
+    // Parallel segments: same direction keeps one offset unless the distances
+    // differ, a reversal has no miter and bevels across.
+    if (dot(directionA, directionB) <= 0) return [incoming, outgoing];
+    return magnitude(sub(incoming, outgoing)) <= EPSILON ? [outgoing] : [incoming, outgoing];
   }
 
-  const convex = turn * distance < 0;
-  if (join === 'round' && convex) {
-    return [incoming, ...arcPoints(center, incoming, outgoing, Math.abs(distance)), outgoing];
+  const convex = turn * distanceA < 0;
+  if (join === 'round' && convex && distanceA === distanceB) {
+    return [incoming, ...arcPoints(center, incoming, outgoing, Math.abs(distanceA)), outgoing];
   }
 
   const miter = intersectLines(incoming, directionA, outgoing, directionB);
-  const withinLimit = magnitude(sub(miter, center)) <= miterLimit * Math.abs(distance);
-  return withinLimit ? [miter] : [incoming, outgoing];
+  const limit = miterLimit * Math.max(Math.abs(distanceA), Math.abs(distanceB));
+  return magnitude(sub(miter, center)) <= limit + EPSILON ? [miter] : [incoming, outgoing];
+}
+
+/** Where each source vertex's join landed in `VariableOffsetResult.points`. */
+export interface VariableOffsetVertex {
+  /** Index of the first point generated for this vertex. */
+  start: number;
+  /** Index one past the last point generated for this vertex. */
+  end: number;
+}
+
+export interface VariableOffsetResult {
+  points: Vec2[];
+  /** One entry per source vertex, in source order. */
+  vertices: VariableOffsetVertex[];
+}
+
+/** Drop consecutive duplicate points while keeping one distance per live segment. */
+function compactLoop(
+  points: readonly Vec2[],
+  distances: readonly number[],
+): { points: Vec2[]; distances: number[] } {
+  const keptPoints: Vec2[] = [];
+  const keptDistances: number[] = [];
+
+  for (let i = 0; i < points.length; i += 1) {
+    const point = points[i]!;
+    const previous = keptPoints[keptPoints.length - 1];
+    if (previous !== undefined && magnitude(sub(point, previous)) <= EPSILON) {
+      // The zero-length segment is dropped; the surviving segment starts here.
+      keptDistances[keptDistances.length - 1] = distances[i]!;
+      continue;
+    }
+    keptPoints.push(point);
+    keptDistances.push(distances[i]!);
+  }
+
+  if (keptPoints.length > 1) {
+    const first = keptPoints[0]!;
+    const last = keptPoints[keptPoints.length - 1]!;
+    if (magnitude(sub(last, first)) <= EPSILON) {
+      keptDistances[0] = keptDistances[keptDistances.length - 1]!;
+      keptPoints.pop();
+      keptDistances.pop();
+    }
+  }
+
+  return { points: keptPoints, distances: keptDistances };
+}
+
+/** Drop consecutive duplicate points from an open polyline and its segment distances. */
+function compactOpen(
+  points: readonly Vec2[],
+  distances: readonly number[],
+): { points: Vec2[]; distances: number[] } {
+  const keptPoints: Vec2[] = [];
+  const keptDistances: number[] = [];
+
+  for (let i = 0; i < points.length; i += 1) {
+    const point = points[i]!;
+    const previous = keptPoints[keptPoints.length - 1];
+    if (previous !== undefined && magnitude(sub(point, previous)) <= EPSILON) continue;
+    if (keptPoints.length > 0) keptDistances.push(distances[i - 1]!);
+    keptPoints.push(point);
+  }
+
+  return { points: keptPoints, distances: keptDistances };
+}
+
+/**
+ * Offset a polyline by one signed distance per segment. A positive distance
+ * offsets to the left of the travel direction, a negative distance to the right.
+ * The result also reports which output points belong to each source vertex, so a
+ * caller can anchor derived geometry to a loop vertex. The points are not
+ * deduplicated, which keeps that mapping exact.
+ */
+export function offsetVariablePolylineDetailed(
+  points: readonly Vec2[],
+  distances: readonly number[],
+  options: OffsetOptions = {},
+): VariableOffsetResult {
+  const { closed = false, join = 'miter', miterLimit = DEFAULT_MITER_LIMIT } = options;
+  const expected = closed ? points.length : Math.max(points.length - 1, 0);
+  if (distances.length !== expected) {
+    const source = points.slice();
+    return {
+      points: source,
+      vertices: source.map((_, index) => ({ start: index, end: index + 1 })),
+    };
+  }
+
+  const compact = closed
+    ? compactLoop(points, distances)
+    : compactOpen(points, distances);
+  const source = compact.points;
+  const perSegment = compact.distances;
+  const identity = (): VariableOffsetResult => ({
+    points: source.slice(),
+    vertices: source.map((_, index) => ({ start: index, end: index + 1 })),
+  });
+
+  if (source.length < 2 || (closed && source.length < 3)) return identity();
+
+  const segmentCount = closed ? source.length : source.length - 1;
+  if (perSegment.every((distance) => distance === 0)) return identity();
+
+  const directions: Vec2[] = [];
+  for (let i = 0; i < segmentCount; i += 1) {
+    directions.push(normalize(sub(source[(i + 1) % source.length]!, source[i]!)));
+  }
+
+  const output: Vec2[] = [];
+  const vertices: VariableOffsetVertex[] = [];
+
+  if (closed) {
+    for (let j = 0; j < segmentCount; j += 1) {
+      const previous = (j - 1 + segmentCount) % segmentCount;
+      const joinPoints = joinVariablePoints(
+        source[j]!,
+        directions[previous]!,
+        directions[j]!,
+        perSegment[previous]!,
+        perSegment[j]!,
+        join,
+        miterLimit,
+      );
+      vertices.push({ start: output.length, end: output.length + joinPoints.length });
+      output.push(...joinPoints);
+    }
+    return { points: output, vertices };
+  }
+
+  output.push(add(source[0]!, scale(leftNormal(directions[0]!), perSegment[0]!)));
+  vertices.push({ start: 0, end: 1 });
+  for (let j = 1; j < segmentCount; j += 1) {
+    const joinPoints = joinVariablePoints(
+      source[j]!,
+      directions[j - 1]!,
+      directions[j]!,
+      perSegment[j - 1]!,
+      perSegment[j]!,
+      join,
+      miterLimit,
+    );
+    vertices.push({ start: output.length, end: output.length + joinPoints.length });
+    output.push(...joinPoints);
+  }
+  output.push(
+    add(source[segmentCount]!, scale(leftNormal(directions[segmentCount - 1]!), perSegment[segmentCount - 1]!)),
+  );
+  vertices.push({ start: output.length - 1, end: output.length });
+
+  return { points: output, vertices };
+}
+
+/**
+ * Offset a polyline by one signed distance per segment, with duplicate output
+ * points removed. Degenerate input (fewer than two distinct points, a distance
+ * count that does not match, or every distance zero) is returned unchanged.
+ */
+export function offsetVariablePolyline(
+  points: readonly Vec2[],
+  distances: readonly number[],
+  options: OffsetOptions = {},
+): Vec2[] {
+  return dedupe(offsetVariablePolylineDetailed(points, distances, options).points);
 }
 
 /**
@@ -152,49 +321,18 @@ export function offsetPolyline(
   distance: number,
   options: OffsetOptions = {},
 ): Vec2[] {
-  const { closed = false, join = 'miter', miterLimit = DEFAULT_MITER_LIMIT } = options;
+  const { closed = false } = options;
   const source = dedupe(points);
   if (source.length < 2 || distance === 0 || (closed && source.length < 3)) {
     return source.slice();
   }
 
   const segmentCount = closed ? source.length : source.length - 1;
-  const directions: Vec2[] = [];
-  for (let i = 0; i < segmentCount; i += 1) {
-    const start = source[i]!;
-    const end = source[(i + 1) % source.length]!;
-    directions.push(normalize(sub(end, start)));
-  }
-
-  const output: Vec2[] = [];
-  if (closed) {
-    for (let j = 0; j < segmentCount; j += 1) {
-      const previous = (j - 1 + segmentCount) % segmentCount;
-      output.push(
-        ...joinPoints(
-          source[j]!,
-          directions[previous]!,
-          directions[j]!,
-          distance,
-          join,
-          miterLimit,
-        ),
-      );
-    }
-    return dedupe(output);
-  }
-
-  const firstNormal = leftNormal(directions[0]!);
-  output.push(add(source[0]!, scale(firstNormal, distance)));
-  for (let j = 1; j < segmentCount; j += 1) {
-    output.push(
-      ...joinPoints(source[j]!, directions[j - 1]!, directions[j]!, distance, join, miterLimit),
-    );
-  }
-  const lastNormal = leftNormal(directions[segmentCount - 1]!);
-  output.push(add(source[segmentCount]!, scale(lastNormal, distance)));
-
-  return dedupe(output);
+  return offsetVariablePolyline(
+    source,
+    Array.from({ length: segmentCount }, () => distance),
+    options,
+  );
 }
 
 /**
@@ -325,7 +463,7 @@ export function seamAllowancePaths(
   options: OffsetOptions = {},
 ): SeamAllowancePath[] {
   const paths: SeamAllowancePath[] = [];
-  for (const seam of document.seams) {
+  for (const seam of documentSeams(document)) {
     const path = seamAllowancePath(document, seam, options);
     if (path !== null) {
       paths.push(path);

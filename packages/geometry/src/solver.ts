@@ -236,6 +236,9 @@ function residuals(
         values.push(Math.hypot(a2.x - a1.x, a2.y - a1.y) - Math.hypot(b2.x - b1.x, b2.y - b1.y));
         break;
       }
+      case 'derived_distance':
+        // A cut dimension measures derived geometry and adds no equation.
+        break;
     }
   }
 

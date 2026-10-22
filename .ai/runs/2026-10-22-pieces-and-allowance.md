@@ -75,15 +75,15 @@ branch and PR**, and no second PR is opened.
 
 ### Phase 2: Geometry core
 
-- [ ] 2.1 `offsetVariablePolyline` with per-segment distances, joins and self-intersection, `offsetPolyline` delegating
-- [ ] 2.2 `piece.ts`: loop validation, cut loop, fold lines, vertices, metrics, cut bounds, loop discovery
-- [ ] 2.3 Export the new geometry from `index.ts`; 100 % coverage for the new branches
+- [x] 2.1 `offsetVariablePolyline` with per-segment distances, joins and self-intersection, `offsetPolyline` delegating
+- [x] 2.2 `piece.ts`: loop validation, cut loop, fold lines, vertices, metrics, cut bounds, loop discovery
+- [x] 2.3 Export the new geometry from `index.ts`; 100 % coverage for the new branches
 
 ### Phase 3: Model, commands and migration
 
-- [ ] 3.1 Schema 0.2 types (`Allowance`, `Piece`, `DerivedDistanceConstraint`, `CutAnchor`) and document fields
+- [x] 3.1 Schema 0.2 types (`Allowance`, `Piece`, `DerivedDistanceConstraint`, `CutAnchor`) and document fields
 - [ ] 3.2 `normalizeDocument` 0.1 → 0.2 migration, `createEmptyDocument`, frontend `load()` wiring
-- [ ] 3.3 Piece and derived-dimension commands, validation, inverses and delete cascades
+- [x] 3.3 Piece and derived-dimension commands, validation, inverses and delete cascades
 - [ ] 3.4 `spec_version` 0.10.0 across PHP config, JSON contract and markdown contract
 
 ### Phase 4: Canvas and inspector
@@ -94,9 +94,9 @@ branch and PR**, and no second PR is opened.
 
 ### Phase 5: Export and derived cut dimensions
 
-- [ ] 5.1 Piece-driven SVG export: closed cut paths, optional stitch/fold/construction layers, cut-bounds viewBox, metadata
+- [x] 5.1 Piece-driven SVG export: closed cut paths, optional stitch/fold/construction layers, cut-bounds viewBox, metadata
 - [ ] 5.2 Download path and export dialog layer toggles
-- [ ] 5.3 `derived` dimension state, `resolveCutSpan`, read-only value, broken handling; solver never sees it
+- [x] 5.3 `derived` dimension state, `resolveCutSpan`, read-only value, broken handling; solver never sees it
 
 ### Phase 6: Documentation and gate
 
