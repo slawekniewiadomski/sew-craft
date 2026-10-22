@@ -68,10 +68,7 @@ const arc = (id: string, start: string, end: string, through: string): ArcEntity
   construction: false,
 });
 
-const documentOf = (
-  entities: Entity[],
-  pieces: Piece[] = [],
-): PatternDocument => ({
+const documentOf = (entities: Entity[], pieces: Piece[] = []): PatternDocument => ({
   ...createEmptyDocument(),
   entities,
   pieces,
@@ -104,8 +101,8 @@ function referenceDocument(): { document: PatternDocument; piece: Piece } {
 }
 
 const size = (bounds: { min: { x: number; y: number }; max: { x: number; y: number } } | null) => ({
-  width: (bounds!.max.x - bounds!.min.x),
-  height: (bounds!.max.y - bounds!.min.y),
+  width: bounds!.max.x - bounds!.min.x,
+  height: bounds!.max.y - bounds!.min.y,
 });
 
 describe('allowance helpers', () => {
@@ -632,9 +629,7 @@ describe('loopBounds', () => {
 describe('basicPieceForLoops', () => {
   it('discovers one loop of non-construction cut edges', () => {
     const { document } = referenceDocument();
-    expect(basicPieceForLoops(document)).toEqual([
-      ['bottom', 'right', 'top', 'left'],
-    ]);
+    expect(basicPieceForLoops(document)).toEqual([['bottom', 'right', 'top', 'left']]);
   });
 
   it('walks a loop whose edges are stored in mixed directions', () => {
@@ -649,9 +644,7 @@ describe('basicPieceForLoops', () => {
       line('left', 'a', 'd'),
     ];
 
-    expect(basicPieceForLoops(documentOf(entities))).toEqual([
-      ['bottom', 'right', 'top', 'left'],
-    ]);
+    expect(basicPieceForLoops(documentOf(entities))).toEqual([['bottom', 'right', 'top', 'left']]);
   });
 
   it('accepts an explicit candidate set', () => {

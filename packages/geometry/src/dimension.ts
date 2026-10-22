@@ -335,7 +335,18 @@ export function dimensionOffsetForPointer(
 ): number {
   const span = resolveSpan(document, a, b);
   if (span === null) return DEFAULT_DIMENSION_OFFSET;
+  return dimensionOffsetFromSpan(span, orientation, pointer);
+}
 
+/**
+ * The signed offset of a dimension line placed at `pointer`, for callers that
+ * already resolved the span (a piece's cut loop, which has no point entities).
+ */
+export function dimensionOffsetFromSpan(
+  span: { a: Vec2; b: Vec2 },
+  orientation: DimensionOrientation,
+  pointer: Vec2,
+): number {
   const mid = { x: (span.a.x + span.b.x) / 2, y: (span.a.y + span.b.y) / 2 };
   switch (orientation) {
     case 'horizontal':
@@ -511,7 +522,12 @@ export function derivedDimensionGeometry(
 ): DimensionLayout | null {
   const span = resolveCutSpan(document, constraint);
   if (span === null) return null;
-  return layoutForSpan(span.a, span.b, constraintOrientation(constraint), constraintOffset(constraint));
+  return layoutForSpan(
+    span.a,
+    span.b,
+    constraintOrientation(constraint),
+    constraintOffset(constraint),
+  );
 }
 
 function layoutForSpan(

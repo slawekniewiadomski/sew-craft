@@ -28,7 +28,6 @@ import {
   constraintOffset,
   constraintOrientation,
   createsReferenceCycle,
-  measureCutDimension,
   resolveSetValue,
 } from './dimension.js';
 import { CommandValidationError } from './errors.js';

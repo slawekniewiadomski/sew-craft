@@ -54,9 +54,7 @@ export interface PieceMetrics {
   quantity: number;
 }
 
-export type PieceValidation =
-  | { ok: true }
-  | { ok: false; message: string; edge?: EntityId };
+export type PieceValidation = { ok: true } | { ok: false; message: string; edge?: EntityId };
 
 /** The finished width a kind contributes to the cut distance. */
 export function allowanceDistance(allowance: Allowance): number {
@@ -74,9 +72,7 @@ export function pieceForEdge(
   edge: EntityId,
   ignorePiece?: EntityId,
 ): Piece | undefined {
-  return document.pieces.find(
-    (piece) => piece.id !== ignorePiece && piece.edges.includes(edge),
-  );
+  return document.pieces.find((piece) => piece.id !== ignorePiece && piece.edges.includes(edge));
 }
 
 /** A piece by id. */

@@ -232,9 +232,7 @@ export function offsetVariablePolylineDetailed(
     };
   }
 
-  const compact = closed
-    ? compactLoop(points, distances)
-    : compactOpen(points, distances);
+  const compact = closed ? compactLoop(points, distances) : compactOpen(points, distances);
   const source = compact.points;
   const perSegment = compact.distances;
   const identity = (): VariableOffsetResult => ({
@@ -289,7 +287,10 @@ export function offsetVariablePolylineDetailed(
     output.push(...joinPoints);
   }
   output.push(
-    add(source[segmentCount]!, scale(leftNormal(directions[segmentCount - 1]!), perSegment[segmentCount - 1]!)),
+    add(
+      source[segmentCount]!,
+      scale(leftNormal(directions[segmentCount - 1]!), perSegment[segmentCount - 1]!),
+    ),
   );
   vertices.push({ start: output.length - 1, end: output.length });
 

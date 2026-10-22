@@ -2,13 +2,7 @@ import { arcGeometry, svgArcCommand } from './arc.js';
 import { circleGeometry } from './circle.js';
 import { bounds, getEntity } from './document.js';
 import { formatSvgNumber as formatNumber } from './number.js';
-import {
-  pieceCutBounds,
-  pieceCutLoop,
-  pieceFoldLines,
-  pieceLoop,
-  pieceMetrics,
-} from './piece.js';
+import { pieceCutBounds, pieceCutLoop, pieceFoldLines, pieceLoop, pieceMetrics } from './piece.js';
 import {
   PATTERN_SCHEMA,
   type ArcEntity,
@@ -157,11 +151,7 @@ function renderEntities(document: PatternDocument): { cut: string[]; constructio
 }
 
 /** A closed `path` element for a piece loop. */
-function loopElement(
-  points: readonly Vec2[],
-  attributes: string,
-  closed: boolean,
-): string | null {
+function loopElement(points: readonly Vec2[], attributes: string, closed: boolean): string | null {
   if (points.length === 0) return null;
 
   const [first, ...rest] = points;
@@ -199,7 +189,8 @@ function renderPiece(document: PatternDocument, piece: Piece): PieceRender {
 
   return {
     cut: cut === null ? null : loopElement(cut.points, `${pieceAttr}${cutWarnings}`, true),
-    stitch: loop === null ? null : loopElement(loop.points, `${pieceAttr} data-kind="stitch"`, true),
+    stitch:
+      loop === null ? null : loopElement(loop.points, `${pieceAttr} data-kind="stitch"`, true),
     fold: folds.map((fold) => loopElement(fold, `${pieceAttr} data-kind="fold"`, true)!),
     metadata: pieceMetadata(document, piece),
     bounds: pieceCutBounds(document, piece),

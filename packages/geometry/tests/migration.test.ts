@@ -47,11 +47,7 @@ const seamsFor = (prefix: string, width = 10): Seam[] => [
   { id: `${prefix}-s4`, edge: `${prefix}-left`, width, side: 'right' },
 ];
 
-const legacy = (
-  entities: Entity[],
-  seams: Seam[],
-  pieces?: Piece[],
-): LegacyPatternDocument => {
+const legacy = (entities: Entity[], seams: Seam[], pieces?: Piece[]): LegacyPatternDocument => {
   const document: LegacyPatternDocument = {
     schema: 'sewcraft.pattern/0.1',
     units: 'mm',
@@ -75,9 +71,7 @@ describe('normalizeDocument', () => {
 
     const piece = migrated.pieces[0]!;
     expect(piece.id).toBe('piece-1');
-    expect(new Set(edgeIds(piece))).toEqual(
-      new Set(['a-bottom', 'a-right', 'a-top', 'a-left']),
-    );
+    expect(new Set(edgeIds(piece))).toEqual(new Set(['a-bottom', 'a-right', 'a-top', 'a-left']));
     expect(piece.allowances).toHaveLength(4);
     expect(piece.allowances.every((allowance) => allowance.kind === 'seam')).toBe(true);
     expect(piece.allowances.every((allowance) => allowance.width === 10)).toBe(true);
@@ -89,11 +83,7 @@ describe('normalizeDocument', () => {
   });
 
   it('keeps seams on an open chain on the legacy path', () => {
-    const entities: Entity[] = [
-      point('a', 0, 0),
-      point('b', 100, 0),
-      line('ab', 'a', 'b'),
-    ];
+    const entities: Entity[] = [point('a', 0, 0), point('b', 100, 0), line('ab', 'a', 'b')];
     const seams: Seam[] = [{ id: 's1', edge: 'ab', width: 10 }];
     const migrated = normalizeDocument(legacy(entities, seams));
 
@@ -155,7 +145,17 @@ describe('normalizeDocument', () => {
     const piece: Piece = { id: 'p', edges: ['a'], allowances: [] };
     const current = { ...createEmptyDocument(), pieces: [piece] };
 
-    expect(normalizeDocument(current)).toEqual(current);
+    expect(normalizeDocument(current)).toBe(current);
+  });
+
+  it('adds a piece list to a 0.2 document written without one', () => {
+    const current = { ...createEmptyDocument() } as LegacyPatternDocument;
+    delete current.pieces;
+
+    const migrated = normalizeDocument(current);
+
+    expect(migrated.schema).toBe('sewcraft.pattern/0.2');
+    expect(migrated.pieces).toEqual([]);
   });
 
   it('drops the seams field only for adopted edges', () => {

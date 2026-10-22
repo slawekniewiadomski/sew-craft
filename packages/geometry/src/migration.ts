@@ -27,10 +27,16 @@ function pieceId(existing: ReadonlySet<EntityId>, index: number, prefix: string)
  * migration is one-way and idempotent, and a 0.2 document is returned with its
  * pieces intact.
  */
-export function normalizeDocument(document: PatternDocument | LegacyPatternDocument): PatternDocument {
+export function normalizeDocument(
+  document: PatternDocument | LegacyPatternDocument,
+): PatternDocument {
   const existingPieces = document.pieces ?? [];
   if (document.schema === PATTERN_SCHEMA) {
-    return { ...document, schema: PATTERN_SCHEMA, pieces: existingPieces };
+    // Keep the caller's object identity for an already-current document; the
+    // store relies on `load` not copying an unmodified document.
+    return document.pieces === undefined
+      ? { ...document, schema: PATTERN_SCHEMA, pieces: existingPieces }
+      : (document as PatternDocument);
   }
 
   const seams = document.seams ?? [];

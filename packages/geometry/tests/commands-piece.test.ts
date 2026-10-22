@@ -146,7 +146,10 @@ describe('create_piece', () => {
     const document = applyCommand(documentOf(), createPiece()).document;
 
     expect(() =>
-      applyCommand(document, createPiece({ id: 'piece-2', edges: ['bottom', 'right', 'top', 'left'] })),
+      applyCommand(
+        document,
+        createPiece({ id: 'piece-2', edges: ['bottom', 'right', 'top', 'left'] }),
+      ),
     ).toThrowError(/already belongs to another piece/);
   });
 
@@ -183,7 +186,10 @@ describe('update_piece', () => {
   });
 
   it('clears a name and quantity with null', () => {
-    const document = applyCommand(documentOf(), createPiece({ name: 'Panel', quantity: 3 })).document;
+    const document = applyCommand(
+      documentOf(),
+      createPiece({ name: 'Panel', quantity: 3 }),
+    ).document;
     const result = applyCommand(document, {
       id: 'update-1',
       type: 'update_piece',
@@ -222,10 +228,7 @@ describe('update_piece', () => {
   it('replaces one piece without touching another', () => {
     const document: PatternDocument = {
       ...withPiece(),
-      pieces: [
-        ...withPiece().pieces,
-        { id: 'piece-2', edges: ['other'], allowances: [] },
-      ],
+      pieces: [...withPiece().pieces, { id: 'piece-2', edges: ['other'], allowances: [] }],
     };
     const result = applyCommand(document, {
       id: 'update-1',
@@ -381,7 +384,9 @@ describe('set_piece_allowance', () => {
     });
 
     expect(
-      pieceById(result.document, 'piece-1')!.allowances.some((allowance) => allowance.edge === 'top'),
+      pieceById(result.document, 'piece-1')!.allowances.some(
+        (allowance) => allowance.edge === 'top',
+      ),
     ).toBe(false);
     expect(result.inverse).toEqual({
       id: 'a3:restore',
@@ -1043,8 +1048,8 @@ describe('cut dimensions stay out of the solver', () => {
     expect(solved.result.converged).toBe(true);
     expect(solved.document.constraints).toHaveLength(1);
     expect(getConstraint(solved.document, 'cut-width')?.type).toBe('derived_distance');
-    expect(
-      derivedDimensionValue(solved.document, derivedOf(solved.document, 'cut-width')),
-    ).toBe(220);
+    expect(derivedDimensionValue(solved.document, derivedOf(solved.document, 'cut-width'))).toBe(
+      220,
+    );
   });
 });

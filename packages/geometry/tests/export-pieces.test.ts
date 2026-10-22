@@ -244,7 +244,15 @@ describe('legacy documents and layers', () => {
 
   it('keeps legacy seam allowances in their own layer', () => {
     const output = svg(documentOf(), {
-      seamAllowance: [{ edge: 'legacy', path: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }],
+      seamAllowance: [
+        {
+          edge: 'legacy',
+          path: [
+            { x: 0, y: 0 },
+            { x: 1, y: 1 },
+          ],
+        },
+      ],
     });
     const seams = layer(output, 'seam-allowance')!;
 

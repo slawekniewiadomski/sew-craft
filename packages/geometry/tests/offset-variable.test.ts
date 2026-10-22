@@ -87,28 +87,19 @@ describe('offsetVariablePolylineDetailed', () => {
   });
 
   it('keeps both offset lines when parallel segments offset by different distances', () => {
-    const result = offsetVariablePolylineDetailed(
-      [p(0, 0), p(10, 0), p(20, 0)],
-      [1, 2],
-    );
+    const result = offsetVariablePolylineDetailed([p(0, 0), p(10, 0), p(20, 0)], [1, 2]);
 
     expect(result.points).toEqual([p(0, 1), p(10, 1), p(10, 2), p(20, 2)]);
   });
 
   it('collapses a parallel corner when both segments share one offset line', () => {
-    const result = offsetVariablePolylineDetailed(
-      [p(0, 0), p(10, 0), p(20, 0)],
-      [1, 1],
-    );
+    const result = offsetVariablePolylineDetailed([p(0, 0), p(10, 0), p(20, 0)], [1, 1]);
 
     expect(result.points).toEqual([p(0, 1), p(10, 1), p(20, 1)]);
   });
 
   it('bevels a reversal instead of mitring it', () => {
-    const result = offsetVariablePolylineDetailed(
-      [p(0, 0), p(10, 0), p(0, 0)],
-      [1, 1],
-    );
+    const result = offsetVariablePolylineDetailed([p(0, 0), p(10, 0), p(0, 0)], [1, 1]);
 
     expect(result.points).toEqual([p(0, 1), p(10, 1), p(10, -1), p(0, -1)]);
   });
