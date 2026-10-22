@@ -770,6 +770,48 @@ describe('EditorView', () => {
     expect(svg).toContain('data-entity-id="guide"');
   });
 
+  it('omits the stitch and fold layers when their export toggles are off', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useEditorStore().load({
+      ...createEmptyDocument(),
+      entities: [
+        { id: 'a', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+        { id: 'b', kind: 'point', x: 200, y: 0, construction: false, fixed: false },
+        { id: 'c', kind: 'point', x: 200, y: 200, construction: false, fixed: false },
+        { id: 'd', kind: 'point', x: 0, y: 200, construction: false, fixed: false },
+        { id: 'bottom', kind: 'line', start: 'a', end: 'b', construction: false },
+        { id: 'right', kind: 'line', start: 'b', end: 'c', construction: false },
+        { id: 'top', kind: 'line', start: 'c', end: 'd', construction: false },
+        { id: 'left', kind: 'line', start: 'd', end: 'a', construction: false },
+      ],
+      pieces: [
+        {
+          id: 'piece-1',
+          edges: ['bottom', 'right', 'top', 'left'],
+          allowances: [{ edge: 'right', width: 10, kind: 'double' }],
+        },
+      ],
+    });
+
+    const wrapper = await mountEditor(pinia);
+
+    await wrapper.find('[data-testid="download-svg"]').trigger('click');
+    const [, initial] = vi.mocked(downloadSvgFile).mock.calls[0]!;
+    expect(initial).toContain('data-layer="stitch"');
+    expect(initial).toContain('data-layer="fold"');
+
+    await openViewDrawer(wrapper);
+    await wrapper.find('[data-testid="toggle-stitch"]').setValue(false);
+    await wrapper.find('[data-testid="toggle-fold"]').setValue(false);
+    await wrapper.find('[data-testid="download-svg"]').trigger('click');
+
+    const [, svg] = vi.mocked(downloadSvgFile).mock.calls[1]!;
+    expect(svg).toContain('data-layer="cut"');
+    expect(svg).not.toContain('data-layer="stitch"');
+    expect(svg).not.toContain('data-layer="fold"');
+  });
+
   it('hides construction geometry without changing the document', async () => {
     const pinia = createPinia();
     setActivePinia(pinia);
