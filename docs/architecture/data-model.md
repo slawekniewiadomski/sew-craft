@@ -196,7 +196,8 @@ cut loop on every read, it adds no solver equation (`solveDocument` filters it
 out), and it is read-only: `update_constraint` accepts only `orientation` and
 `offset`. When the piece or an anchored edge is deleted, `delete_entity` or
 `delete_piece` removes the dimension, and a cut dimension whose anchors no longer
-resolve keeps its last reading and renders as broken.
+resolve keeps its references but has no reading to show, so it renders as broken
+without a number.
 
 See `docs/architecture/geometry-core.md` for
 entity semantics and `docs/domain/command-spec.json` for the machine-readable

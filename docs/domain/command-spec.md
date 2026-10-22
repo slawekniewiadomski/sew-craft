@@ -341,7 +341,8 @@ Add a read-only **cut dimension** between two loop vertices of one piece.
   every read, adds no solver equation, and is read-only in v1. `update_constraint`
   accepts only `orientation` and `offset` for it.
 - When the piece or an anchored edge disappears the dimension is **broken**: it
-  keeps its last reading and adds no equation, exactly like a dangling reference.
+  stores no reading, so it shows no number and adds no equation until its
+  anchors resolve again, exactly like a dangling reference.
 - Re-applying a command whose dimension id already exists is a no-op.
 - inverse: `remove_constraint`
 
