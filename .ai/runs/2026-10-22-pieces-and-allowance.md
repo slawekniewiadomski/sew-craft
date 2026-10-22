@@ -101,7 +101,7 @@ branch and PR**, and no second PR is opened.
 ### Phase 6: Documentation and gate
 
 - [x] 6.1 Glossary, export layer contract, backward-compatibility, roadmap, 007 supersede note
-- [ ] 6.2 Full validation gate, `om-auto-review-pr --autofix`, label normalization and PR finalization
+- [x] 6.2 Full validation gate, `om-auto-review-pr --autofix`, label normalization and PR finalization — 5389604
 
 ## Outcome
 
@@ -128,6 +128,10 @@ Implemented on this branch as one combined PR, per the maintainer's brief.
   220 × 210; the cut dimension reads 220 and 210 and follows the changes.
 - **Not done, by design:** fabric layout/nesting, PDF/DXF, annotations in SVG,
   editable derived dimensions, circle pieces and interior cutouts.
+- **Review:** the first review requested changes on seven findings (dangling
+  point, star selection, export fallback, stale geometry-core doc, missing
+  toggle/store tests, broken cut-dimension wording). All are fixed with tests,
+  the gate is green and the re-review approved on `5389604`.
 
 ### Gate
 
@@ -136,7 +140,7 @@ Implemented on this branch as one combined PR, per the maintainer's brief.
 | `npm run format:check` | pass |
 | `npm run typecheck` | pass |
 | `npm run lint` | pass |
-| `npm run test:coverage` | 100 % statements/branches/functions/lines (frontend 642 tests, geometry 526) |
+| `npm run test:coverage` | 100 % statements/branches/functions/lines (frontend 645 tests, geometry 530) |
 | `npm run build` | pass |
 | Pest `--coverage --min=100` | 23 passed, 100 % |
 | `vendor/bin/pint --test` | pass |
