@@ -177,7 +177,7 @@ export interface DerivedDistanceConstraint {
   b: CutAnchor;
   orientation?: DimensionOrientation;
   offset?: number;
-  /** Display only, for a broken anchor. Never read by anything that measures. */
+  /** Optional stored reading for a broken anchor. v1 never writes it. */
   lastKnownValue?: number;
 }
 

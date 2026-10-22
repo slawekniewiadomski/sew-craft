@@ -505,8 +505,9 @@ export function derivedDimensionState(
 }
 
 /**
- * The value a cut dimension reports. A broken anchor keeps its last reading, the
- * same way a dangling reference does, but never becomes an equation.
+ * The value a cut dimension reports. A broken anchor can display a stored
+ * reading, but v1 never writes one, so it usually shows no number and never
+ * becomes an equation.
  */
 export function derivedDimensionValue(
   document: PatternDocument,

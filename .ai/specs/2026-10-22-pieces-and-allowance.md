@@ -94,7 +94,7 @@ fold line exactly on the 220 × 210 outline.
 
 | # | Option | Trade-offs | Verdict |
 | - | ------ | ---------- | ------- |
-| A | A separate `derived_distance` constraint anchored to piece loop vertices, computed on read, no solver residual, own `derived` state | Reuses `dimensionGeometry` for layout; cannot corrupt the solver; a deleted edge reuses the existing `broken` state and `lastKnownValue` | **Recommended** |
+| A | A separate `derived_distance` constraint anchored to piece loop vertices, computed on read, no solver residual, own `derived` state | Reuses `dimensionGeometry` for layout; cannot corrupt the solver; a deleted anchor reuses the existing `broken` state without storing a stale reading | **Recommended** |
 | B | Extend `DistanceConstraint` with `derivedFrom` | Fewer types, but mixes "has an equation" and "has none" in one shape and forces every validator and solver branch to know the difference | Rejected |
 | C | Auto-annotate every piece's cut bounding box | Zero UI; but you cannot choose the span that matters, and the inspector already reports the box as a metric | Rejected for v1 |
 | D | Let a cut dimension drive by solving for the allowance width | Feels direct; but the distribution across the sides touching the span is ambiguous whenever widths differ | Rejected — see Behaviour 11 |
@@ -149,7 +149,8 @@ fold line exactly on the 220 × 210 outline.
     allowances. Typing a value into it is out of scope (it would have to rewrite
     the stitch dimension or an allowance width, and is ambiguous when the span
     touches edges with different widths). A missing piece or edge leaves the
-    dimension `broken` with its last reading, exactly like a dangling reference.
+    dimension `broken` with no number to show, exactly like a dangling reference;
+    a cut dimension never captures a stale `lastKnownValue`.
 12. **Legacy documents.** A 0.1 document's `seams` are adopted on load: every
     closed chain of seam-carrying edges becomes one piece with those allowances
     as `kind: 'seam'` and the stored width, and `side` is discarded. Seams on
@@ -269,7 +270,7 @@ export interface DerivedDistanceConstraint {
   b: CutAnchor;
   orientation?: DimensionOrientation;
   offset?: number;
-  /** Display only, for a broken anchor. Never read by anything that measures. */
+  /** Optional stored reading for a broken anchor. v1 never writes it. */
   lastKnownValue?: number;
 }
 ```
@@ -374,7 +375,7 @@ removed in 0.3.
 | Circle in a piece | Rejected in v1 with an explicit message (offsetting a closed curve needs a different join model) |
 | Piece edge deleted | `delete_entity` cascades: the piece and its cut dimensions go with it |
 | Piece deleted | Its cut dimensions go with it; the journal restores both |
-| Cut anchor's edge deleted | The dimension is `broken`, keeps its last reading, adds no equation |
+| Cut anchor's edge deleted | The dimension is `broken`, shows no number, adds no equation |
 | Quantity `0` or negative | Rejected |
 | 0.1 document with seams on a closed chain | Becomes a piece with those allowances, same rendering plus joined corners |
 | 0.1 document with seams on an open chain | Stays on the legacy dashed path |
