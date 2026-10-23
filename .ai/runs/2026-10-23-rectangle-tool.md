@@ -102,8 +102,8 @@ to start implementation, so the spec's recommended answers are taken as accepted
 
 ### Phase 4: Constraints
 
-- [ ] 4.1 Append the horizontal/vertical or 90° angle commands to the builder, skipping them when a corner is reused, and test both branches
-- [ ] 4.2 Test that a rectangle whose corner already carries an incompatible constraint surfaces the solve error instead of a distorted shape
+- [x] 4.1 Append the horizontal/vertical or 90° angle commands to the builder, skipping them when a corner is reused, and test both branches — 49ca726
+- [x] 4.2 Test that a rectangle whose corner already carries an incompatible constraint surfaces the solve error instead of a distorted shape — 49ca726
 
 ### Phase 5: Verification
 
