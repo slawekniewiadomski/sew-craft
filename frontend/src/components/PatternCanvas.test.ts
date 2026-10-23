@@ -136,6 +136,9 @@ function mountCanvas(
       | 'add_curve'
       | 'add_arc'
       | 'add_circle'
+      | 'add_rectangle'
+      | 'add_center_rectangle'
+      | 'add_3point_rectangle'
       | 'dimension'
       | 'cut_dimension';
     selectedEntityIds: EntityId[];
@@ -1290,6 +1293,175 @@ describe('PatternCanvas', () => {
     await nextTick();
 
     expect(wrapper.find('[data-testid="circle-preview"]').exists()).toBe(false);
+  });
+
+  it('commits a diagonal rectangle between two existing points', () => {
+    const wrapper = mountCanvas({ tool: 'add_rectangle' });
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    expect(wrapper.emitted('add-rectangle')).toBeUndefined();
+
+    down(pointCircle(wrapper, 'c').element, 400, 300);
+    expect(wrapper.emitted('add-rectangle')).toEqual([
+      [
+        'diagonal',
+        [
+          { kind: 'point', id: 'a' },
+          { kind: 'point', id: 'c' },
+        ],
+      ],
+    ]);
+  });
+
+  it('previews a diagonal rectangle from the snapped pointer', async () => {
+    const wrapper = mountCanvas({ tool: 'add_rectangle' });
+    const first = snappedAt(600, 400);
+    const second = snappedAt(300, 500);
+
+    down(wrapper.find('[data-testid="grid"]').element, 600, 400);
+    await nextTick();
+    pointerMove(wrapper, 300, 500);
+    await nextTick();
+
+    const preview = wrapper.find('[data-testid="rectangle-preview"]');
+    expect(preview.exists()).toBe(true);
+    expect(preview.attributes('d')).toBe(
+      `M ${first.x} ${first.y} L ${second.x} ${first.y} L ${second.x} ${second.y} L ${first.x} ${second.y} L ${first.x} ${first.y}`,
+    );
+    expect(preview.attributes('stroke-dasharray')).toBe('4 4');
+    expect(wrapper.findAll('[data-testid^="rectangle-pending-corner-"]')).toHaveLength(4);
+  });
+
+  it('previews a centred rectangle from the centre and the pointer', async () => {
+    const wrapper = mountCanvas({ tool: 'add_center_rectangle' });
+    const center = snappedAt(600, 400);
+    const corner = snappedAt(700, 500);
+    const dx = corner.x - center.x;
+    const dy = corner.y - center.y;
+
+    down(wrapper.find('[data-testid="grid"]').element, 600, 400);
+    await nextTick();
+    pointerMove(wrapper, 700, 500);
+    await nextTick();
+
+    const preview = wrapper.find('[data-testid="center-rectangle-preview"]');
+    expect(preview.exists()).toBe(true);
+    expect(preview.attributes('d')).toBe(
+      `M ${center.x - dx} ${center.y - dy} L ${center.x + dx} ${center.y - dy} L ${
+        center.x + dx
+      } ${center.y + dy} L ${center.x - dx} ${center.y + dy} L ${center.x - dx} ${center.y - dy}`,
+    );
+  });
+
+  it('previews a rotated rectangle after two three-point clicks', async () => {
+    const wrapper = mountCanvas({ tool: 'add_3point_rectangle' });
+    const start = snappedAt(300, 300);
+    const end = snappedAt(600, 300);
+
+    down(wrapper.find('[data-testid="grid"]').element, 300, 300);
+    down(wrapper.find('[data-testid="grid"]').element, 600, 300);
+    await nextTick();
+    expect(wrapper.emitted('add-rectangle')).toBeUndefined();
+
+    pointerMove(wrapper, 600, 500);
+    await nextTick();
+
+    const preview = wrapper.find('[data-testid="three-point-rectangle-preview"]');
+    expect(preview.exists()).toBe(true);
+    expect(preview.attributes('d')).toContain(`M ${start.x} ${start.y}`);
+
+    down(wrapper.find('[data-testid="grid"]').element, 600, 500);
+    expect(wrapper.emitted('add-rectangle')).toEqual([
+      [
+        'three_point',
+        [
+          { kind: 'new', x: start.x, y: start.y },
+          { kind: 'new', x: end.x, y: end.y },
+          { kind: 'new', x: snappedAt(600, 500).x, y: snappedAt(600, 500).y },
+        ],
+      ],
+    ]);
+  });
+
+  it('refuses a rectangle click that repeats a pending corner', () => {
+    const wrapper = mountCanvas({ tool: 'add_3point_rectangle' });
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    down(pointCircle(wrapper, 'b').element, 400, 300);
+    down(pointCircle(wrapper, 'c').element, 400, 300);
+
+    expect(wrapper.emitted('add-rectangle')).toEqual([
+      [
+        'three_point',
+        [
+          { kind: 'point', id: 'a' },
+          { kind: 'point', id: 'b' },
+          { kind: 'point', id: 'c' },
+        ],
+      ],
+    ]);
+  });
+
+  it('refuses a diagonal rectangle with no height and keeps the pending click', async () => {
+    const wrapper = mountCanvas({ tool: 'add_rectangle' });
+    const grid = wrapper.find('[data-testid="grid"]').element;
+
+    down(grid, 700, 200);
+    down(grid, 200, 200);
+    expect(wrapper.emitted('add-rectangle')).toBeUndefined();
+
+    pointerMove(wrapper, 200, 500);
+    await nextTick();
+    expect(wrapper.find('[data-testid="rectangle-preview"]').exists()).toBe(true);
+  });
+
+  it('shows no preview while the pointer cannot complete a rectangle', async () => {
+    const wrapper = mountCanvas({ tool: 'add_rectangle' });
+    const grid = wrapper.find('[data-testid="grid"]').element;
+
+    down(grid, 700, 200);
+    await nextTick();
+    pointerMove(wrapper, 700, 500);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="rectangle-preview"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-testid^="rectangle-pending-corner-"]')).toHaveLength(1);
+  });
+
+  it('clears the pending rectangle on Escape and on a tool change', async () => {
+    const wrapper = mountCanvas({ tool: 'add_rectangle' });
+
+    down(wrapper.find('[data-testid="grid"]').element, 600, 400);
+    await nextTick();
+    pointerMove(wrapper, 300, 500);
+    await nextTick();
+    expect(wrapper.find('[data-testid="rectangle-preview"]').exists()).toBe(true);
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+    expect(wrapper.find('[data-testid="rectangle-preview"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-testid^="rectangle-pending-corner-"]')).toHaveLength(0);
+
+    down(wrapper.find('[data-testid="grid"]').element, 600, 400);
+    await nextTick();
+    wrapper.setProps({ tool: 'select' });
+    await nextTick();
+    expect(wrapper.findAll('[data-testid^="rectangle-pending-corner-"]')).toHaveLength(0);
+  });
+
+  it('clears a pending rectangle corner when that point disappears', async () => {
+    const wrapper = mountCanvas({ tool: 'add_rectangle' });
+
+    down(pointCircle(wrapper, 'a').element, 400, 300);
+    await nextTick();
+
+    wrapper.setProps({ document: doc([pt('b', 100, 0), pt('c', 100, 100)]) });
+    await nextTick();
+
+    down(pointCircle(wrapper, 'b').element, 400, 300);
+    down(pointCircle(wrapper, 'c').element, 400, 300);
+    expect(wrapper.emitted('add-rectangle')).toBeUndefined();
   });
 
   it('ignores a repeated point when collecting a curve', () => {

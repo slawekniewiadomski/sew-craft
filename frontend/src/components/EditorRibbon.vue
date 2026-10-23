@@ -16,6 +16,8 @@ const props = defineProps<{
   canRedo: boolean;
   canDelete: boolean;
   canCreatePiece?: boolean;
+  /** A read-only document disables every tool and action. */
+  readOnly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -40,6 +42,10 @@ function variantFor(item: RibbonItem): ButtonVariant {
 }
 
 function isDisabled(item: RibbonItem): boolean {
+  if (props.readOnly) {
+    // Read-only keeps the view actions that do not mutate: fit and export.
+    return item.kind !== 'action' || (item.action !== 'fit' && item.action !== 'download_svg');
+  }
   if (item.kind !== 'action') return false;
   switch (item.action) {
     case 'undo':

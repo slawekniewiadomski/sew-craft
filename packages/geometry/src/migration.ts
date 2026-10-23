@@ -2,6 +2,18 @@ import { basicPieceForLoops } from './piece.js';
 import { PATTERN_SCHEMA, type EntityId, type PatternDocument, type Piece } from './types.js';
 
 /**
+ * Every document schema this build can open. A stored schema outside this list
+ * (a newer build, or a hand-edited value) is never migrated or guessed at: the
+ * editor offers read-only or nothing.
+ */
+export const KNOWN_PATTERN_SCHEMAS: readonly string[] = ['sewcraft.pattern/0.1', PATTERN_SCHEMA];
+
+/** Whether a stored `schema` string is one this build understands. */
+export function isKnownPatternSchema(schema: string): boolean {
+  return KNOWN_PATTERN_SCHEMAS.includes(schema);
+}
+
+/**
  * A document written before the pieces schema bump. Its `schema` is an older
  * string and it may not carry `pieces` at all.
  */

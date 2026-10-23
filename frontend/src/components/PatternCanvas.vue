@@ -93,6 +93,12 @@ import {
 import type { EditorTool } from '@/lib/editor-tools';
 import { anchorForPoint, edgeEndpoints, pieceOwningEdge, piecesAtPoint } from '@/lib/pieces';
 import {
+  newRectangleCorners,
+  RECTANGLE_CLICKS,
+  rectangleCorners,
+  type RectangleMode,
+} from '@/lib/rectangle-tool';
+import {
   applySelection,
   rectMode,
   selectionModeFrom,
@@ -272,6 +278,8 @@ const props = withDefaults(
     roundCornerActive?: boolean;
     roundCornerPicks?: CornerRoundPicks;
     cornerRoundPreviewRadius?: number | null;
+    /** A read-only document refuses every pointer gesture. */
+    readOnly?: boolean;
   }>(),
   {
     selectedEntityIds: () => [],
@@ -285,6 +293,7 @@ const props = withDefaults(
     roundCornerActive: false,
     roundCornerPicks: () => ({ first: null, second: null }),
     cornerRoundPreviewRadius: null,
+    readOnly: false,
   },
 );
 
@@ -297,6 +306,7 @@ const emit = defineEmits<{
   'add-arc': [start: DraftingEndpoint, end: DraftingEndpoint, through: DraftingEndpoint];
   'add-curve': [points: [EntityId, EntityId, EntityId, EntityId]];
   'add-circle': [center: CircleEndpoint, rim: CircleEndpoint];
+  'add-rectangle': [mode: RectangleMode, clicks: DraftingEndpoint[]];
   'constraint-pick': [pick: ConstraintPick];
   'add-dimension': [placement: DimensionPlacement];
   'add-cut-dimension': [placement: CutDimensionPlacement];
@@ -328,6 +338,10 @@ const arcHint = ref(false);
 const circleCenter = ref<CircleEndpoint | null>(null);
 /** The snapped pointer position while a circle gesture is pending. */
 const circlePreview = ref<Vec2 | null>(null);
+/** The rectangle gesture's clicks so far; empty when no gesture is pending. */
+const rectangleClicks = ref<DraftingEndpoint[]>([]);
+/** The snapped pointer while a rectangle gesture is pending; its next click. */
+const rectanglePointer = ref<Vec2 | null>(null);
 const spaceHeld = ref(false);
 
 /** Points picked for a dimension that has not yet been placed. */
@@ -825,6 +839,76 @@ const circlePreviewRadius = computed<number>(() => {
   const center = pendingCircleCenter.value!;
   const rim = circlePreview.value!;
   return Math.hypot(rim.x - center.x, rim.y - center.y);
+});
+/** The rectangle mode the active tool draws, or `null` for every other tool. */
+const rectangleMode = computed<RectangleMode | null>(() => {
+  switch (props.tool) {
+    case 'add_rectangle':
+      return 'diagonal';
+    case 'add_center_rectangle':
+      return 'center';
+    case 'add_3point_rectangle':
+      return 'three_point';
+    default:
+      return null;
+  }
+});
+/** The test id each mode's dashed preview carries. */
+const RECTANGLE_PREVIEW_TEST_IDS: Record<RectangleMode, string> = {
+  diagonal: 'rectangle-preview',
+  center: 'center-rectangle-preview',
+  three_point: 'three-point-rectangle-preview',
+};
+/**
+ * The clicks a commit would carry right now: the pending clicks plus the snapped
+ * pointer as the last one. Read only once the gesture is one click short.
+ */
+const rectanglePreviewClicks = computed<DraftingEndpoint[] | null>(() => {
+  const mode = rectangleMode.value;
+  const pointer = rectanglePointer.value;
+  if (
+    mode === null ||
+    pointer === null ||
+    rectangleClicks.value.length !== RECTANGLE_CLICKS[mode] - 1
+  ) {
+    return null;
+  }
+  return [...rectangleClicks.value, { kind: 'new', x: pointer.x, y: pointer.y }];
+});
+/**
+ * The dashed rectangle that follows the pointer, built by the same
+ * `rectangleCorners` guard the commit uses, so what is previewed is exactly what
+ * the next click stores.
+ */
+const rectanglePreview = computed<{
+  corners: Vec2[];
+  path: string;
+  testId: string;
+} | null>(() => {
+  const mode = rectangleMode.value;
+  const clicks = rectanglePreviewClicks.value;
+  if (mode === null || clicks === null) return null;
+
+  const corners = rectangleCorners(props.document, mode, clicks);
+  if (corners === null) return null;
+
+  return {
+    corners,
+    path: polylinePath([...corners, corners[0]!]),
+    testId: RECTANGLE_PREVIEW_TEST_IDS[mode],
+  };
+});
+/**
+ * Corners the gesture will turn into new points: the derived ones once the
+ * preview exists, otherwise the clicks that already landed on bare canvas.
+ */
+const rectanglePendingCorners = computed<Vec2[]>(() => {
+  const preview = rectanglePreview.value;
+  if (preview !== null) return newRectangleCorners(props.document, preview.corners);
+
+  return rectangleClicks.value.flatMap((click) =>
+    click.kind === 'new' ? [{ x: click.x, y: click.y }] : [],
+  );
 });
 const gridStep = computed(() => niceStep(viewport.value.scale));
 const gridPath = computed(() => `M ${gridStep.value} 0 L 0 0 0 ${gridStep.value}`);
@@ -1366,6 +1450,7 @@ function updateDimensionPlacement(screen: Vec2): void {
 }
 
 function beginDimensionDrag(constraint: DistanceConstraint, event: PointerEvent): void {
+  if (props.readOnly) return;
   event.stopPropagation();
   event.preventDefault();
   const offset = constraintOffset(constraint);
@@ -1385,6 +1470,7 @@ function beginDerivedDimensionDrag(
   constraint: DerivedDistanceConstraint,
   event: PointerEvent,
 ): void {
+  if (props.readOnly) return;
   event.stopPropagation();
   event.preventDefault();
   // The drag strip only renders for a drawing whose span already resolved.
@@ -1414,7 +1500,7 @@ function labelClass(label: DimensionLabelView): string {
 }
 
 function onDimensionDoubleClick(label: DimensionLabelView): void {
-  if (!label.editable) return;
+  if (props.readOnly || !label.editable) return;
   void beginDimensionEdit(label.constraint);
 }
 
@@ -1615,6 +1701,8 @@ function cancelCornerRoundEdit(): void {
 }
 
 function onPointerDown(event: PointerEvent): void {
+  if (props.readOnly) return;
+
   updateSize();
   const screen = screenPoint(event);
 
@@ -1668,6 +1756,11 @@ function onPointerDown(event: PointerEvent): void {
       break;
     case 'add_circle':
       onCirclePointer(hit, screen);
+      break;
+    case 'add_rectangle':
+    case 'add_center_rectangle':
+    case 'add_3point_rectangle':
+      onRectanglePointer(hit, screen);
       break;
     case 'add_curve':
       selectPendingPoint(hit, 4);
@@ -1767,6 +1860,10 @@ function onCanvasPointerMove(event: PointerEvent): void {
   if (props.tool === 'add_circle' && circleCenter.value !== null) {
     circlePreview.value = snappedPoint(screenToWorld(viewport.value, screenPoint(event)));
   }
+
+  if (rectangleMode.value !== null && rectangleClicks.value.length > 0) {
+    rectanglePointer.value = snappedPoint(screenToWorld(viewport.value, screenPoint(event)));
+  }
 }
 
 /** Drop every in-flight pointer interaction without emitting a command. */
@@ -1834,6 +1931,12 @@ function onKeyDown(event: KeyboardEvent): void {
   if (event.key === 'Escape' && marqueeState.value !== null) {
     event.preventDefault();
     cancelPointerInteraction();
+    return;
+  }
+
+  if (event.key === 'Escape' && rectangleClicks.value.length > 0) {
+    event.preventDefault();
+    clearRectangleGesture();
     return;
   }
 
@@ -1984,6 +2087,43 @@ function onCirclePointer(hit: Hit | null, screen: Vec2): void {
   emit('add-circle', center, endpoint);
 }
 
+/** Drop the pending rectangle gesture without emitting a command. */
+function clearRectangleGesture(): void {
+  rectangleClicks.value = [];
+  rectanglePointer.value = null;
+}
+
+/**
+ * The rectangle gesture: each click resolves like the Line tool, a click on a
+ * corner the gesture already holds is ignored, and the click that completes the
+ * mode emits every click so the editor can commit the points, the four sides and
+ * their constraints as one undoable gesture. A click that cannot complete a
+ * rectangle leaves the pending clicks in place so the user can try again.
+ */
+function onRectanglePointer(hit: Hit | null, screen: Vec2): void {
+  // Only the three rectangle tool cases below call this, so a mode always exists.
+  const mode = rectangleMode.value!;
+
+  const endpoint: DraftingEndpoint =
+    hit !== null && hit.kind === 'point'
+      ? { kind: 'point', id: hit.id }
+      : resolveDraftingEndpoint(props.document, screenToWorld(viewport.value, screen));
+
+  if (rectangleClicks.value.some((click) => sameDraftingEndpoint(click, endpoint))) return;
+
+  const clicks = [...rectangleClicks.value, endpoint];
+  if (clicks.length < RECTANGLE_CLICKS[mode]) {
+    rectangleClicks.value = clicks;
+    rectanglePointer.value = null;
+    return;
+  }
+
+  if (rectangleCorners(props.document, mode, clicks) === null) return;
+
+  clearRectangleGesture();
+  emit('add-rectangle', mode, clicks);
+}
+
 /** Combine one clicked entity with the current selection under `mode`. */
 function selectEntity(id: EntityId, mode: SelectionMode): void {
   const current = props.selectedEntityIds;
@@ -2109,6 +2249,7 @@ watch(
     clearArcGesture();
     circleCenter.value = null;
     circlePreview.value = null;
+    clearRectangleGesture();
     dimensionPending.value = [];
     dimensionPlacement.value = null;
     clearCutDimensionGesture();
@@ -2142,6 +2283,10 @@ watch(
       circlePreview.value = null;
     }
 
+    if (rectangleClicks.value.some((endpoint) => endpointMissing(props.document, endpoint))) {
+      clearRectangleGesture();
+    }
+
     const cutPiece = cutDimensionPending.value?.piece.id ?? cutDimensionPlacement.value?.piece;
     if (cutPiece !== undefined && !props.document.pieces.some((piece) => piece.id === cutPiece)) {
       clearCutDimensionGesture();
@@ -2163,6 +2308,7 @@ watch(
   <div
     class="relative h-full min-h-0 w-full overflow-hidden rounded-md border bg-muted/30"
     :class="cursorClass"
+    :aria-readonly="readOnly ? 'true' : undefined"
   >
     <svg
       ref="svg"
@@ -2536,6 +2682,32 @@ watch(
             class="roundable-corner fill-primary/60"
             data-testid="roundable-corner"
             :data-roundable-corner="corner.id"
+          />
+        </g>
+
+        <g v-if="rectanglePreview !== null" class="pointer-events-none" aria-hidden="true">
+          <path
+            :d="rectanglePreview.path"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-dasharray="4 4"
+            vector-effect="non-scaling-stroke"
+            class="text-muted-foreground"
+            :data-testid="rectanglePreview.testId"
+          />
+        </g>
+
+        <g v-if="rectanglePendingCorners.length > 0" class="pointer-events-none" aria-hidden="true">
+          <circle
+            v-for="(corner, index) in rectanglePendingCorners"
+            :key="`rectangle-corner-${index}`"
+            :cx="corner.x"
+            :cy="corner.y"
+            r="4"
+            class="fill-accent stroke-accent-foreground"
+            stroke-width="1"
+            :data-testid="`rectangle-pending-corner-${index}`"
           />
         </g>
 

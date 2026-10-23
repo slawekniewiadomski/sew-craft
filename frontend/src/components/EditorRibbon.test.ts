@@ -10,6 +10,7 @@ function mountRibbon(
     canUndo: boolean;
     canRedo: boolean;
     canDelete: boolean;
+    readOnly: boolean;
   }> = {},
 ): VueWrapper {
   return mount(EditorRibbon, {
@@ -37,6 +38,9 @@ const RIBBON_LABELS = [
   'Curve',
   'Arc',
   'Circle',
+  'Rectangle',
+  'Centre rectangle',
+  '3-point rectangle',
   'Dimension',
   'Cut dimension',
   'Coincident',
@@ -54,7 +58,7 @@ describe('EditorRibbon', () => {
     const wrapper = mountRibbon();
 
     const buttons = wrapper.findAll('button');
-    expect(buttons).toHaveLength(22);
+    expect(buttons).toHaveLength(25);
     expect(buttons.every((button) => button.find('svg').exists())).toBe(true);
     expect(buttons.map((button) => button.attributes('aria-label'))).toEqual(RIBBON_LABELS);
 
@@ -147,6 +151,16 @@ describe('EditorRibbon', () => {
     await wrapper.find('[data-testid="constraint-vertical"]').trigger('click');
 
     expect(wrapper.emitted('select-constraint')).toEqual([['vertical']]);
+  });
+
+  it('disables mutations but keeps fit and export in read-only mode', () => {
+    const wrapper = mountRibbon({ readOnly: true, canUndo: true, canRedo: true });
+
+    expect(wrapper.find('[data-testid="tool-add_point"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.find('[data-testid="undo"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.find('[data-testid="delete"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.find('[data-testid="fit"]').attributes('disabled')).toBeUndefined();
+    expect(wrapper.find('[data-testid="download-svg"]').attributes('disabled')).toBeUndefined();
   });
 
   it('disables undo, redo and delete without history or a selection', () => {

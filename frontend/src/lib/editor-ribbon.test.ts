@@ -58,6 +58,27 @@ describe('RIBBON_GROUPS', () => {
       { kind: 'tool', id: 'tool-add_circle', label: 'Circle', icon: 'circle', tool: 'add_circle' },
       {
         kind: 'tool',
+        id: 'tool-add_rectangle',
+        label: 'Rectangle',
+        icon: 'rectangle',
+        tool: 'add_rectangle',
+      },
+      {
+        kind: 'tool',
+        id: 'tool-add_center_rectangle',
+        label: 'Centre rectangle',
+        icon: 'rectangle-center',
+        tool: 'add_center_rectangle',
+      },
+      {
+        kind: 'tool',
+        id: 'tool-add_3point_rectangle',
+        label: '3-point rectangle',
+        icon: 'rectangle-aligned',
+        tool: 'add_3point_rectangle',
+      },
+      {
+        kind: 'tool',
         id: 'tool-dimension',
         label: 'Dimension',
         icon: 'dimension',
