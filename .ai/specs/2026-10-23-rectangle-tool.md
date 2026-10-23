@@ -1,9 +1,11 @@
 # Rectangle sketching (rectangle tool)
 
-Status: **draft** — Q1 (what "3 point" means), Q2 (whether the tool adds
-constraints) and Q3 (one ribbon control or three) are unanswered; implementation
-must not start before they are resolved.
+Status: **implementing** — Q1, Q2 and Q3 were accepted with `spec-ready` and the
+recommended answer of each is being built: I1 (a rotated third mode), A (constrain
+fresh corners only) and A (three ribbon buttons). The execution plan is
+`.ai/runs/2026-10-23-rectangle-tool.md`.
 Refs #60
+Closes #60
 Related: 002 (geometry core primitives), 005 (canvas editor interactions),
 2026-10-21-circle-sketching (#52), 2026-10-21-arc-sketching (#53),
 2026-10-19-constraint-tools-ribbon, 2026-10-20-multi-entity-selection (#50)
