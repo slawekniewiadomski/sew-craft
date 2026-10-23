@@ -135,15 +135,15 @@ drawer has a pattern to follow instead of inventing classes. The scale lives in
 `frontend/src/assets/main.css` as the `--text-2xs` token; the primitives live in
 `frontend/src/components/sidebar/`.
 
-| Role               | Classes                                                                                           | Where                                                       |
-| ------------------ | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| Drawer header      | `text-2xs font-semibold tracking-[0.06em] text-muted-foreground uppercase`, hover `text-foreground` | `SidebarDrawer` trigger                                     |
-| Sub-section heading | the same, plus `mb-1.5`                                                                           | `SidebarHeading` in Geometry, Dimensions, Constraints, View |
-| Field label        | `text-2xs text-muted-foreground`                                                                  | `SidebarField` `dt` and standalone `<label>`                |
-| Field value        | `text-[13px] font-medium tabular-nums text-foreground`                                            | `SidebarField` `dd` and read-only values                    |
-| Object title       | `text-[13px] font-semibold`                                                                       | Inspector header, piece name                                |
-| Metadata           | `font-mono text-2xs text-muted-foreground`                                                        | ids, endpoints, source refs                                 |
-| Secondary sentence | `text-2xs leading-snug text-muted-foreground`                                                     | hints, empty-state text                                     |
+| Role                | Classes                                                                                             | Where                                                       |
+| ------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Drawer header       | `text-2xs font-semibold tracking-[0.06em] text-muted-foreground uppercase`, hover `text-foreground` | `SidebarDrawer` trigger                                     |
+| Sub-section heading | the same, plus `mb-1.5`                                                                             | `SidebarHeading` in Geometry, Dimensions, Constraints, View |
+| Field label         | `text-2xs text-muted-foreground`                                                                    | `SidebarField` `dt` and standalone `<label>`                |
+| Field value         | `text-[13px] font-medium tabular-nums text-foreground`                                              | `SidebarField` `dd` and read-only values                    |
+| Object title        | `text-[13px] font-semibold`                                                                         | Inspector header, piece name                                |
+| Metadata            | `font-mono text-2xs text-muted-foreground`                                                          | ids, endpoints, source refs                                 |
+| Secondary sentence  | `text-2xs leading-snug text-muted-foreground`                                                       | hints, empty-state text                                     |
 
 Rules:
 
