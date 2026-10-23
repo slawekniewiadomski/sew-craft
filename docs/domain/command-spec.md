@@ -243,8 +243,9 @@ sketch.
   least `0.001` mm of each line outside the tangent point. The corner angle must
   be strictly between `0°` and `180°` with a `1°` guard at each end.
 - Derived ids are deterministic: `<id>:a` and `<id>:b` (tangent points),
-  `<id>:c1`/`<id>:c2` (controls) and `<id>:arc`. Re-applying a command whose
-  feature exists is a no-op.
+  `<id>:c1`/`<id>:c2` (controls), `<id>:arc` and `<id>:center` (the radius
+  centre, a fixed construction point). Re-applying a command whose feature
+  exists is a no-op.
 - inverse: `remove_corner_round` with the feature id.
 
 ### `set_corner_round_radius`

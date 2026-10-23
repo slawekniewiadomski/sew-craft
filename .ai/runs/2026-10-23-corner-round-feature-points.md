@@ -38,19 +38,19 @@ by the maintainer after review without a different answer on the issue:
 
 ### Phase 1: Geometry
 
-- [ ] 1.1 Add the centre to `CornerRoundGeometry` and `cornerRoundGeometry`
-- [ ] 1.2 Create the centre entity in `add_corner_round` and persist the field
-- [ ] 1.3 Regenerate the centre and remove it with the round
-- [ ] 1.4 Treat the centre as derived in `cornerRoundsForEntity` / `isCornerRoundDerived`
-- [ ] 1.5 Mint the centre in `normalizeCornerRounds` without moving geometry
+- [x] 1.1 Add the centre to `CornerRoundGeometry` and `cornerRoundGeometry` — 74d6899
+- [x] 1.2 Create the centre entity in `add_corner_round` and persist the field — 74d6899
+- [x] 1.3 Regenerate the centre and remove it with the round — 74d6899
+- [x] 1.4 Treat the centre as derived in `cornerRoundsForEntity` / `isCornerRoundDerived` — 74d6899
+- [x] 1.5 Mint the centre in `normalizeCornerRounds` without moving geometry — 74d6899
 
 ### Phase 2: Canvas
 
-- [ ] 2.1 Add the always-visible feature-point layer with selected styling
-- [ ] 2.2 Select a derived point without starting a drag
-- [ ] 2.3 Verify snapping and dimension picks on a feature point
+- [x] 2.1 Add the always-visible feature-point layer with selected styling — bb41444
+- [x] 2.2 Select a derived point without starting a drag — bb41444
+- [x] 2.3 Verify snapping and dimension picks on a feature point — bb41444
 
 ### Phase 3: Docs and gate
 
-- [ ] 3.1 Update the data-model, command-spec and geometry-core docs
-- [ ] 3.2 Run the full validation gate and record results
+- [x] 3.1 Update the data-model, command-spec and geometry-core docs — see this commit
+- [x] 3.2 Run the full validation gate and record results — gate green: format, typecheck, lint, format:check, build, Vitest 100% coverage (847 frontend + 608 geometry), Pest 100%, Pint

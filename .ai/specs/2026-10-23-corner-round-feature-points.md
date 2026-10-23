@@ -1,6 +1,6 @@
 # Corner round feature points
 
-Status: draft — design review
+Status: implemented — shipped on PR #75
 Refs #73
 Builds on: `2026-10-20-corner-rounding-tool.md` (round command and derived
 geometry), `2026-10-23-feature-group-and-piece-corner-rounds.md` (rounds inside
