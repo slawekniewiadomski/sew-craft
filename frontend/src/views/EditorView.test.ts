@@ -1,5 +1,6 @@
 import {
   createEmptyDocument,
+  type Command,
   type Constraint,
   type EntityId,
   executeCommand,
@@ -9,7 +10,9 @@ import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from '@vue/t
 import { createPinia, setActivePinia, type Pinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
+import { createMemoryHistory, createRouter, RouterView, type Router } from 'vue-router';
 
+import { ApiError, projectsApi } from '@/api/projects';
 import PatternCanvas from '@/components/PatternCanvas.vue';
 import CornerRoundPromptBar from '@/components/CornerRoundPromptBar.vue';
 import EditorRibbon from '@/components/EditorRibbon.vue';
@@ -20,6 +23,31 @@ import { useEditorStore } from '@/stores/editor';
 import EditorView from './EditorView.vue';
 
 vi.mock('@/lib/download', () => ({ downloadSvgFile: vi.fn() }));
+
+vi.mock('@/api/projects', () => {
+  class ApiError extends Error {
+    constructor(
+      public status: number,
+      public body: unknown,
+    ) {
+      super(
+        (body as { message?: string } | null)?.message ?? `Request failed with status ${status}`,
+      );
+      this.name = 'ApiError';
+    }
+  }
+
+  return {
+    ApiError,
+    projectsApi: {
+      list: vi.fn(),
+      create: vi.fn(),
+      remove: vi.fn(),
+      getPattern: vi.fn(),
+      savePattern: vi.fn(),
+    },
+  };
+});
 
 const RECT = {
   x: 0,
@@ -35,17 +63,90 @@ const RECT = {
 
 enableAutoUnmount(afterEach);
 
+/** The starter sketch the old seed produced, now a stored fixture. */
+const seedCommands: Command[] = [
+  { id: 'a', type: 'add_point', params: { x: 60, y: 260 } },
+  { id: 'b', type: 'add_point', params: { x: 220, y: 260 } },
+  { id: 'c', type: 'add_point', params: { x: 220, y: 170 } },
+  { id: 'd', type: 'add_point', params: { x: 60, y: 170 } },
+  { id: 'ab', type: 'add_line', params: { start: 'a', end: 'b' } },
+  { id: 'bc', type: 'add_line', params: { start: 'b', end: 'c' } },
+  { id: 'cd', type: 'add_line', params: { start: 'c', end: 'd' } },
+  { id: 'da', type: 'add_line', params: { start: 'd', end: 'a' } },
+  { id: 'bottom', type: 'add_constraint', params: { type: 'horizontal', entities: ['a', 'b'] } },
+  { id: 'right', type: 'add_constraint', params: { type: 'vertical', entities: ['b', 'c'] } },
+  { id: 'top', type: 'add_constraint', params: { type: 'horizontal', entities: ['c', 'd'] } },
+  { id: 'left', type: 'add_constraint', params: { type: 'vertical', entities: ['d', 'a'] } },
+  {
+    id: 'width',
+    type: 'add_constraint',
+    params: { type: 'distance', entities: ['a', 'b'], value: 160 },
+  },
+  {
+    id: 'height',
+    type: 'add_constraint',
+    params: { type: 'distance', entities: ['b', 'c'], value: 90 },
+  },
+];
+
+const seededDocument = seedCommands.reduce(
+  (document, command) => executeCommand(document, command).document,
+  createEmptyDocument(),
+);
+
+/** The document the mocked load endpoint returns; null means a new project. */
+let loadedDocument: PatternDocument | null = seededDocument;
+let currentPinia: Pinia;
+let currentRouter: Router;
+let savedAt: string | null = '2026-10-23T14:32:00.000Z';
+
+function testRouter() {
+  return createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', redirect: '/projects' },
+      { path: '/projects', name: 'projects', component: { template: '<div />' } },
+      { path: '/projects/:id/edit', name: 'editor', component: EditorView, props: true },
+    ],
+  });
+}
+
 beforeEach(() => {
   setActivePinia(createPinia());
+  loadedDocument = seededDocument;
+  savedAt = '2026-10-23T14:32:00.000Z';
   vi.mocked(downloadSvgFile).mockClear();
+  vi.mocked(projectsApi.getPattern).mockClear();
+  vi.mocked(projectsApi.savePattern).mockClear();
   window.localStorage.clear();
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(RECT);
+
+  vi.mocked(projectsApi.getPattern).mockImplementation(async () => {
+    const store = useEditorStore(currentPinia);
+    const preloaded = store.journal.length > 0 || store.document.entities.length > 0;
+
+    return {
+      data: {
+        id: 1,
+        project_id: 1,
+        name: 'Bodice',
+        document: preloaded ? store.document : loadedDocument,
+        version: preloaded ? store.savedVersion : 1,
+        saved_at: preloaded ? store.lastSavedAt : savedAt,
+      },
+    };
+  });
+  vi.mocked(projectsApi.savePattern).mockResolvedValue({
+    data: { id: 1, version: 2, saved_at: '2026-10-23T16:00:00.000Z', created: false },
+  });
 });
 
 async function mountEditor(pinia: Pinia): Promise<VueWrapper> {
+  currentPinia = pinia;
+  currentRouter = testRouter();
   const wrapper = mount(EditorView, {
     props: { id: '1' },
-    global: { plugins: [pinia] },
+    global: { plugins: [pinia, currentRouter] },
   });
   await flushPromises();
   return wrapper;
@@ -90,8 +191,8 @@ function pointDown(wrapper: VueWrapper, id: EntityId): void {
   entityDown(wrapper, 'point', id);
 }
 
-function keydown(key: string): void {
-  window.dispatchEvent(new KeyboardEvent('keydown', { key, cancelable: true }));
+function keydown(key: string, init: KeyboardEventInit = {}): void {
+  window.dispatchEvent(new KeyboardEvent('keydown', { key, cancelable: true, ...init }));
 }
 
 /** Presentation offset of a distance constraint, or undefined for other kinds. */
@@ -200,17 +301,19 @@ async function mountLoaded(
   setActivePinia(pinia);
   const store = useEditorStore();
   store.load(document);
+  loadedDocument = document;
   const wrapper = await mountEditor(pinia);
   return { wrapper, store };
 }
 
 describe('EditorView', () => {
-  it('seeds a starter sketch on first mount', async () => {
+  it('loads the stored sketch on mount', async () => {
     const wrapper = await mountEditor(createPinia());
 
     expect(points(wrapper)).toHaveLength(4);
     expect(wrapper.findAll('[data-kind="line"]')).toHaveLength(8);
-    expect(wrapper.text()).toContain('14 command(s)');
+    expect(wrapper.text()).toContain('0 command(s)');
+    expect(wrapper.find('[data-testid="save-status"]').text()).toContain('Saved');
   });
 
   it('switches the active tool and reflects it on the canvas', async () => {
@@ -239,7 +342,7 @@ describe('EditorView', () => {
     canvasDown(wrapper, 400, 300);
     await flushPromises();
     expect(points(wrapper)).toHaveLength(5);
-    expect(wrapper.text()).toContain('15 command(s)');
+    expect(wrapper.text()).toContain('1 command(s)');
 
     await wrapper.find('[data-testid="undo"]').trigger('click');
     expect(points(wrapper)).toHaveLength(4);
@@ -1116,7 +1219,7 @@ describe('EditorView', () => {
     await nextTick();
 
     expect(wrapper.findAll('[aria-label="Constraints"] li')).toHaveLength(3);
-    expect(wrapper.text()).toContain('15 command(s)');
+    expect(wrapper.text()).toContain('1 command(s)');
   });
 
   it('lists seeded dimensions with editable value, orientation and offset', async () => {
@@ -2699,5 +2802,416 @@ describe('EditorView Outline selection', () => {
     expect(wrapper.find('[data-testid="seam-label-da"]').text()).toBe('Allowance 10 mm');
     expect(wrapper.find('[data-testid="edge-piece-ab"]').text()).toContain('In piece p1');
     expect(wrapper.find(`[data-testid="seam-width-da"]`).exists()).toBe(false);
+  });
+});
+
+describe('EditorView persistence', () => {
+  function markDirty(pinia: Pinia): void {
+    useEditorStore(pinia).dispatch({ id: 'dirty', type: 'add_point', params: { x: 1, y: 2 } });
+  }
+
+  it('opens a project without a pattern as new and saves the first edit', async () => {
+    loadedDocument = null;
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+    const store = useEditorStore(pinia);
+
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('New pattern — not saved yet');
+    expect(wrapper.find('[data-testid="save-project"]').attributes('disabled')).toBeDefined();
+
+    markDirty(pinia);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Unsaved changes');
+    await wrapper.find('[data-testid="save-project"]').trigger('click');
+    await flushPromises();
+
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledWith(1, {
+      document: store.document,
+      expected_version: 0,
+    });
+    expect(wrapper.find('[data-testid="save-status"]').text()).toContain('Saved');
+    expect(store.savedVersion).toBe(2);
+    expect(store.isDirty).toBe(false);
+  });
+
+  it('shows a load error with a way back to Projects', async () => {
+    vi.mocked(projectsApi.getPattern).mockRejectedValueOnce(new Error('Load failed badly'));
+    const wrapper = await mountEditor(createPinia());
+
+    expect(wrapper.find('[data-testid="editor-load-error"]').text()).toContain('Load failed badly');
+    expect(wrapper.find('[data-testid="editor-load-error"] a').attributes('href')).toBe(
+      '/projects',
+    );
+  });
+
+  it('saves with Cmd/Ctrl+S and ignores it while clean', async () => {
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+
+    keydown('s', { ctrlKey: true });
+    await flushPromises();
+    expect(vi.mocked(projectsApi.savePattern)).not.toHaveBeenCalled();
+
+    markDirty(pinia);
+    await nextTick();
+    keydown('s', { metaKey: true });
+    await flushPromises();
+
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+    expect(wrapper.find('[data-testid="save-status"]').text()).toContain('Saved');
+  });
+
+  it('keeps the work and offers a retry when a save fails', async () => {
+    vi.mocked(projectsApi.savePattern).mockRejectedValueOnce(new Error('Network down'));
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+    const store = useEditorStore(pinia);
+
+    markDirty(pinia);
+    await nextTick();
+    await wrapper.find('[data-testid="save-project"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed — retry');
+    expect(wrapper.text()).toContain('Network down');
+    expect(store.isDirty).toBe(true);
+    expect(points(wrapper)).toHaveLength(5);
+    expect(wrapper.find('[data-testid="save-project"]').attributes('disabled')).toBeUndefined();
+  });
+
+  it('explains a project deleted while the editor was open', async () => {
+    vi.mocked(projectsApi.savePattern).mockRejectedValueOnce(
+      new ApiError(404, { message: 'Not found' }),
+    );
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+
+    markDirty(pinia);
+    await nextTick();
+    await wrapper.find('[data-testid="save-project"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="editor-load-error"]').text()).toContain(
+      'This project no longer exists.',
+    );
+  });
+
+  it('disables the save while one is in flight', async () => {
+    let resolveSave: (value: unknown) => void = () => {};
+    vi.mocked(projectsApi.savePattern).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSave = resolve as (value: unknown) => void;
+        }),
+    );
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+
+    markDirty(pinia);
+    await nextTick();
+    await wrapper.find('[data-testid="save-project"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Saving…');
+    expect(wrapper.find('[data-testid="save-project"]').attributes('disabled')).toBeDefined();
+
+    keydown('s', { ctrlKey: true });
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+
+    resolveSave({
+      data: { id: 1, version: 2, saved_at: '2026-10-23T16:00:00.000Z', created: false },
+    });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="save-status"]').text()).toContain('Saved');
+  });
+
+  it('reloads the stored document after a conflict', async () => {
+    vi.mocked(projectsApi.savePattern).mockRejectedValueOnce(
+      new ApiError(409, {
+        message: 'The project was saved by someone else.',
+        current_version: 4,
+        saved_at: '2026-10-23T16:05:00.000Z',
+      }),
+    );
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+    const store = useEditorStore(pinia);
+
+    markDirty(pinia);
+    await nextTick();
+    await wrapper.find('[data-testid="save-project"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="conflict-dialog"]').exists()).toBe(true);
+
+    // The shortcut is ignored while the dialog is open.
+    keydown('s', { ctrlKey: true });
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+
+    vi.mocked(projectsApi.getPattern).mockResolvedValueOnce({
+      data: {
+        id: 1,
+        project_id: 1,
+        name: 'Bodice',
+        document: simpleDoc,
+        version: 4,
+        saved_at: '2026-10-23T16:05:00.000Z',
+      },
+    });
+    await wrapper.find('[data-testid="conflict-reload"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="conflict-dialog"]').exists()).toBe(false);
+    expect(store.document).toEqual(simpleDoc);
+    expect(store.savedVersion).toBe(4);
+    expect(store.saveState).toBe('idle');
+  });
+
+  it('overwrites explicitly from the conflict dialog', async () => {
+    vi.mocked(projectsApi.savePattern)
+      .mockRejectedValueOnce(new ApiError(409, { current_version: 4, saved_at: null }))
+      .mockResolvedValueOnce({
+        data: { id: 1, version: 5, saved_at: '2026-10-23T17:00:00.000Z', created: false },
+      });
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+
+    markDirty(pinia);
+    await nextTick();
+    await wrapper.find('[data-testid="save-project"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="conflict-overwrite"]').trigger('click');
+    await flushPromises();
+
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenLastCalledWith(
+      1,
+      expect.objectContaining({ expected_version: null }),
+    );
+    expect(wrapper.find('[data-testid="conflict-dialog"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="save-status"]').text()).toContain('Saved');
+  });
+
+  it('upgrades an older document through the modal and archives it on save', async () => {
+    loadedDocument = {
+      ...createEmptyDocument(),
+      schema: 'sewcraft.pattern/0.1',
+    } as unknown as PatternDocument;
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+    const store = useEditorStore(pinia);
+
+    expect(wrapper.find('[data-testid="upgrade-dialog"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="saved-schema"]').text()).toBe('sewcraft.pattern/0.1');
+    expect(wrapper.find('[data-testid="editor-schema"]').text()).toBe('sewcraft.pattern/0.2');
+    expect(wrapper.find('[data-testid="read-only-pill"]').exists()).toBe(true);
+    expect(store.readOnly).toBe(true);
+
+    await wrapper.find('[data-testid="upgrade-update"]').trigger('click');
+    await flushPromises();
+
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledWith(1, {
+      document: store.document,
+      expected_version: 1,
+      expected_schema: 'sewcraft.pattern/0.1',
+    });
+    expect(store.readOnly).toBe(false);
+    expect(store.saveState).toBe('saved');
+    expect(wrapper.find('[data-testid="upgrade-dialog"]').exists()).toBe(false);
+  });
+
+  it('stays read-only on the unmigrated document when the upgrade save fails', async () => {
+    loadedDocument = {
+      ...createEmptyDocument(),
+      schema: 'sewcraft.pattern/0.1',
+    } as unknown as PatternDocument;
+    vi.mocked(projectsApi.savePattern).mockRejectedValueOnce(new Error('Upgrade refused'));
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+    const store = useEditorStore(pinia);
+
+    await wrapper.find('[data-testid="upgrade-update"]').trigger('click');
+    await flushPromises();
+
+    expect(store.readOnly).toBe(true);
+    expect(store.document.schema).toBe('sewcraft.pattern/0.1');
+    expect(wrapper.find('[data-testid="upgrade-dialog"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed — retry');
+  });
+
+  it('opens an older document read-only without saving', async () => {
+    loadedDocument = {
+      ...createEmptyDocument(),
+      schema: 'sewcraft.pattern/0.1',
+    } as unknown as PatternDocument;
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+    const store = useEditorStore(pinia);
+
+    await wrapper.find('[data-testid="upgrade-readonly"]').trigger('click');
+    await flushPromises();
+
+    expect(store.readOnly).toBe(true);
+    expect(wrapper.find('[data-testid="upgrade-dialog"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="read-only-pill"]').exists()).toBe(true);
+    expect(vi.mocked(projectsApi.savePattern)).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="tool-add_point"]').attributes('disabled')).toBeDefined();
+
+    const before = points(wrapper).length;
+    canvasDown(wrapper, 400, 300);
+    await nextTick();
+    expect(points(wrapper)).toHaveLength(before);
+    expect(wrapper.findComponent(PatternCanvas).attributes('aria-readonly')).toBe('true');
+  });
+
+  it('never migrates an unknown schema and offers read-only or cancel', async () => {
+    loadedDocument = {
+      ...createEmptyDocument(),
+      schema: 'sewcraft.pattern/0.3',
+    } as unknown as PatternDocument;
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+    const store = useEditorStore(pinia);
+
+    expect(wrapper.find('[data-testid="upgrade-dialog"]').text()).toContain(
+      'newer version of SewCraft',
+    );
+    expect(wrapper.find('[data-testid="upgrade-update"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="upgrade-readonly"]').trigger('click');
+    await flushPromises();
+
+    expect(store.readOnly).toBe(true);
+    expect(store.document.schema).toBe('sewcraft.pattern/0.3');
+    expect(vi.mocked(projectsApi.savePattern)).not.toHaveBeenCalled();
+  });
+
+  it('returns to Projects when the upgrade is cancelled', async () => {
+    loadedDocument = {
+      ...createEmptyDocument(),
+      schema: 'sewcraft.pattern/0.1',
+    } as unknown as PatternDocument;
+    const wrapper = await mountEditor(createPinia());
+
+    await wrapper.find('[data-testid="upgrade-cancel"]').trigger('click');
+    await flushPromises();
+
+    expect(currentRouter.currentRoute.value.name).toBe('projects');
+  });
+
+  it('prompts before leaving with unsaved changes', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const pinia = createPinia();
+    currentPinia = pinia;
+    const router = testRouter();
+    await router.push('/projects/1/edit');
+    await router.isReady();
+    const wrapper = mount(RouterView, { global: { plugins: [pinia, router] } });
+    await flushPromises();
+
+    await router.push('/projects');
+    await flushPromises();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.name).toBe('projects');
+
+    await router.push('/projects/1/edit');
+    await flushPromises();
+    markDirty(pinia);
+    await nextTick();
+
+    await router.push('/projects');
+    await flushPromises();
+    expect(confirm).toHaveBeenCalledWith('You have unsaved changes. Leave without saving?');
+    expect(router.currentRoute.value.name).toBe('editor');
+
+    confirm.mockReturnValue(true);
+    await router.push('/projects');
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe('projects');
+    expect(wrapper.findComponent(EditorView).exists()).toBe(false);
+    confirm.mockRestore();
+  });
+
+  it('asks the browser before closing a dirty tab', async () => {
+    const pinia = createPinia();
+    await mountEditor(pinia);
+
+    const clean = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(clean);
+    expect(clean.defaultPrevented).toBe(false);
+
+    markDirty(pinia);
+    await nextTick();
+
+    const dirty = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(dirty);
+    expect(dirty.defaultPrevented).toBe(true);
+  });
+
+  it('falls back to a generic save failure for a non-Error throw', async () => {
+    vi.mocked(projectsApi.savePattern).mockRejectedValueOnce('offline');
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+
+    markDirty(pinia);
+    await nextTick();
+    await wrapper.find('[data-testid="save-project"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Save failed');
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed — retry');
+  });
+
+  it('ignores a repeated upgrade action while the save is in flight', async () => {
+    loadedDocument = {
+      ...createEmptyDocument(),
+      schema: 'sewcraft.pattern/0.1',
+    } as unknown as PatternDocument;
+    let resolveSave: (value: unknown) => void = () => {};
+    vi.mocked(projectsApi.savePattern).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSave = resolve as (value: unknown) => void;
+        }),
+    );
+    const wrapper = await mountEditor(createPinia());
+    const dialog = wrapper.findComponent({ name: 'UpgradeDocumentDialog' });
+
+    dialog.vm.$emit('update');
+    dialog.vm.$emit('update');
+    await nextTick();
+
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+
+    resolveSave({
+      data: { id: 1, version: 2, saved_at: '2026-10-23T16:00:00.000Z', created: false },
+    });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="upgrade-dialog"]').exists()).toBe(false);
+  });
+
+  it('ignores a stale read-only choice once the dialog is closed', async () => {
+    loadedDocument = {
+      ...createEmptyDocument(),
+      schema: 'sewcraft.pattern/0.1',
+    } as unknown as PatternDocument;
+    const wrapper = await mountEditor(createPinia());
+    const dialog = wrapper.findComponent({ name: 'UpgradeDocumentDialog' });
+
+    dialog.vm.$emit('readonly');
+    dialog.vm.$emit('readonly');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="upgrade-dialog"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="read-only-pill"]').exists()).toBe(true);
+  });
+
+  it('falls back to a generic load error for a non-Error failure', async () => {
+    vi.mocked(projectsApi.getPattern).mockRejectedValueOnce('offline');
+    const wrapper = await mountEditor(createPinia());
+
+    expect(wrapper.find('[data-testid="editor-load-error"]').text()).toContain(
+      'Failed to load the project',
+    );
   });
 });

@@ -12,7 +12,10 @@ import {
   findDistanceConstraint,
   getEntity,
   isDrivenDimension,
+  isKnownPatternSchema,
   measureLinearDimension,
+  normalizeDocument,
+  PATTERN_SCHEMA,
   seamForEdge,
   toSvg,
 } from '@sewcraft/geometry';
@@ -26,24 +29,30 @@ import type {
   DimensionState,
   DistanceConstraint,
   EntityId,
+  PatternDocument,
 } from '@sewcraft/geometry';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { onBeforeRouteLeave, RouterLink, useRouter } from 'vue-router';
 
+import { ApiError, projectsApi, type Pattern } from '@/api/projects';
 import ConstraintPromptBar from '@/components/ConstraintPromptBar.vue';
 import CornerRoundPromptBar from '@/components/CornerRoundPromptBar.vue';
 import DimensionReferencePicker from '@/components/DimensionReferencePicker.vue';
 import EditorRibbon from '@/components/EditorRibbon.vue';
+import EditorSaveBar from '@/components/EditorSaveBar.vue';
 import EditorSidebar from '@/components/EditorSidebar.vue';
 import EntityPropertiesPanel from '@/components/EntityPropertiesPanel.vue';
 import PatternCanvas from '@/components/PatternCanvas.vue';
 import PiecePanel from '@/components/PiecePanel.vue';
 import RibbonIcon from '@/components/RibbonIcon.vue';
+import SaveConflictDialog from '@/components/SaveConflictDialog.vue';
 import Pill from '@/components/sidebar/Pill.vue';
 import SidebarAction from '@/components/sidebar/SidebarAction.vue';
 import SidebarEmpty from '@/components/sidebar/SidebarEmpty.vue';
 import SidebarHeading from '@/components/sidebar/SidebarHeading.vue';
 import SidebarStat from '@/components/sidebar/SidebarStat.vue';
 import SelectionSummary from '@/components/SelectionSummary.vue';
+import UpgradeDocumentDialog from '@/components/UpgradeDocumentDialog.vue';
 import { Button } from '@/components/ui/button';
 import { useCommandBus } from '@/composables/use-command-bus';
 import { useSidebarLayout } from '@/composables/use-sidebar-layout';
@@ -107,6 +116,7 @@ import {
 } from '@/lib/pieces';
 import { ribbonIcon, type RibbonIconName } from '@/lib/ribbon-icons';
 import { applySelection, orphanedEdges, selectionModeFrom, toggleSelection } from '@/lib/selection';
+import { useEditorStore } from '@/stores/editor';
 
 const props = defineProps<{ id: string }>();
 
@@ -120,6 +130,8 @@ const {
   undo,
   redo,
 } = useCommandBus();
+const editor = useEditorStore();
+const router = useRouter();
 const { width, collapsed, setWidth } = useSidebarLayout(window.localStorage);
 
 const error = ref<string | null>(null);
@@ -568,7 +580,7 @@ function onOutlineSelect(id: EntityId, event: MouseEvent): void {
 
 function deleteSelected(): void {
   const ids = selectedEntityIds.value;
-  if (ids.length === 0 || marqueeActive.value) return;
+  if (ids.length === 0 || marqueeActive.value || editor.readOnly) return;
 
   const orphans = orphanCandidates.value;
   if (orphans.length > 0) {
@@ -958,6 +970,13 @@ function isEditing(target: EventTarget | null): boolean {
 }
 
 function onKeyDown(event: KeyboardEvent): void {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+    event.preventDefault();
+    if (pendingUpgrade.value !== null || conflict.value !== null) return;
+    save();
+    return;
+  }
+
   // The canvas owns Escape/Delete while a marquee gesture is in flight.
   if (
     marqueeActive.value &&
@@ -1023,520 +1042,727 @@ watch(pattern, (next) => {
   exitCornerRound();
 });
 
-function seed(): void {
-  const commands: Command[] = [
-    { id: 'a', type: 'add_point', params: { x: 60, y: 260 } },
-    { id: 'b', type: 'add_point', params: { x: 220, y: 260 } },
-    { id: 'c', type: 'add_point', params: { x: 220, y: 170 } },
-    { id: 'd', type: 'add_point', params: { x: 60, y: 170 } },
-    { id: 'ab', type: 'add_line', params: { start: 'a', end: 'b' } },
-    { id: 'bc', type: 'add_line', params: { start: 'b', end: 'c' } },
-    { id: 'cd', type: 'add_line', params: { start: 'c', end: 'd' } },
-    { id: 'da', type: 'add_line', params: { start: 'd', end: 'a' } },
-    { id: 'bottom', type: 'add_constraint', params: { type: 'horizontal', entities: ['a', 'b'] } },
-    { id: 'right', type: 'add_constraint', params: { type: 'vertical', entities: ['b', 'c'] } },
-    { id: 'top', type: 'add_constraint', params: { type: 'horizontal', entities: ['c', 'd'] } },
-    { id: 'left', type: 'add_constraint', params: { type: 'vertical', entities: ['d', 'a'] } },
-    {
-      id: 'width',
-      type: 'add_constraint',
-      params: { type: 'distance', entities: ['a', 'b'], value: 160 },
-    },
-    {
-      id: 'height',
-      type: 'add_constraint',
-      params: { type: 'distance', entities: ['b', 'c'], value: 90 },
-    },
-  ];
-  run(() => commands.forEach((command) => dispatch(command)));
+type LoadState = 'loading' | 'ready' | 'error';
+type SaveBarState = 'new' | 'dirty' | 'saving' | 'saved' | 'failed';
+
+interface PendingUpgrade {
+  /** The document exactly as stored; a failed upgrade keeps this read-only. */
+  stored: PatternDocument;
+  /** The document to open: normalised for an older known schema. */
+  document: PatternDocument;
+  schema: string;
+  version: number;
+  savedAt: string | null;
+  unknown: boolean;
 }
+
+const loadState = ref<LoadState>('loading');
+const loadError = ref<string | null>(null);
+const patternName = ref('');
+const pendingUpgrade = ref<PendingUpgrade | null>(null);
+/** Set when a save lost the version race; `savedAt` is the winner's checkpoint. */
+const conflict = ref<{ savedAt: string | null } | null>(null);
+
+/** The one status the save bar shows, in priority order. */
+const saveBarState = computed<SaveBarState>(() => {
+  if (editor.saveState === 'saving') return 'saving';
+  if (editor.isDirty) return editor.saveState === 'failed' ? 'failed' : 'dirty';
+  return editor.isNew ? 'new' : 'saved';
+});
+
+/** Load the stored pattern; a new project opens empty, a missing one errors. */
+async function loadPattern(): Promise<void> {
+  loadState.value = 'loading';
+  loadError.value = null;
+
+  try {
+    const response = await projectsApi.getPattern(Number(props.id));
+    applySnapshot(response.data);
+    loadState.value = 'ready';
+  } catch (cause) {
+    loadError.value = cause instanceof Error ? cause.message : 'Failed to load the project';
+    loadState.value = 'error';
+  }
+}
+
+/**
+ * Adopt a stored pattern. An older known schema is migrated only through the
+ * upgrade modal; an unknown schema is rendered read-only and never normalised.
+ */
+function applySnapshot(snapshot: Pattern): void {
+  patternName.value = snapshot.name;
+  const stored = snapshot.document;
+
+  if (stored === null) {
+    editor.markNew();
+    return;
+  }
+
+  if (stored.schema === PATTERN_SCHEMA) {
+    editor.markLoaded(stored, snapshot.version, snapshot.saved_at);
+    return;
+  }
+
+  if (isKnownPatternSchema(stored.schema)) {
+    const migrated = normalizeDocument(stored);
+    editor.markLoaded(migrated, snapshot.version, snapshot.saved_at);
+    editor.setReadOnly(true);
+    pendingUpgrade.value = {
+      stored,
+      document: migrated,
+      schema: stored.schema,
+      version: snapshot.version,
+      savedAt: snapshot.saved_at,
+      unknown: false,
+    };
+    return;
+  }
+
+  editor.loadRaw(stored);
+  editor.setReadOnly(true);
+  pendingUpgrade.value = {
+    stored,
+    document: stored,
+    schema: stored.schema,
+    version: snapshot.version,
+    savedAt: snapshot.saved_at,
+    unknown: true,
+  };
+}
+
+/**
+ * Write the current document. Returns whether a checkpoint landed; a conflict
+ * opens the dialog instead and leaves the work untouched.
+ */
+async function persist(expectedVersion: number | null, expectedSchema?: string): Promise<boolean> {
+  const snapshot = pattern.value;
+  editor.markSaving();
+
+  try {
+    const response = await projectsApi.savePattern(Number(props.id), {
+      document: snapshot,
+      expected_version: expectedVersion,
+      ...(expectedSchema === undefined ? {} : { expected_schema: expectedSchema }),
+    });
+    editor.markSaved(snapshot, response.data.version, response.data.saved_at);
+    error.value = null;
+    return true;
+  } catch (cause) {
+    if (cause instanceof ApiError && cause.status === 409) {
+      const body = cause.body as { saved_at?: string | null } | null;
+      conflict.value = { savedAt: body?.saved_at ?? null };
+      editor.markSaveFailed();
+      return false;
+    }
+
+    if (cause instanceof ApiError && cause.status === 404) {
+      loadError.value = 'This project no longer exists.';
+      loadState.value = 'error';
+      return false;
+    }
+
+    editor.markSaveFailed();
+    error.value = cause instanceof Error ? cause.message : 'Save failed';
+    return false;
+  }
+}
+
+/** Save through the button and Cmd/Ctrl+S; clean, saving or read-only is a no-op. */
+function save(): void {
+  if (editor.readOnly || editor.saveState === 'saving' || !editor.isDirty) return;
+  void persist(editor.savedVersion);
+}
+
+function reloadFromConflict(): void {
+  conflict.value = null;
+  void loadPattern();
+}
+
+/** Explicit overwrite: no expected version, so the save appends a checkpoint. */
+function overwrite(): void {
+  conflict.value = null;
+  void persist(null);
+}
+
+async function updateDocument(): Promise<void> {
+  const pending = pendingUpgrade.value;
+  if (pending === null || editor.saveState === 'saving') return;
+
+  if (!(await persist(pending.version, pending.schema))) {
+    editor.loadRaw(pending.stored);
+    editor.setReadOnly(true);
+  } else {
+    editor.setReadOnly(false);
+  }
+
+  pendingUpgrade.value = null;
+}
+
+function openReadOnlyDocument(): void {
+  const pending = pendingUpgrade.value;
+  if (pending === null) return;
+
+  if (pending.unknown) {
+    editor.loadRaw(pending.stored);
+  } else {
+    editor.markLoaded(pending.document, pending.version, pending.savedAt);
+  }
+
+  editor.setReadOnly(true);
+  pendingUpgrade.value = null;
+}
+
+function cancelUpgrade(): void {
+  pendingUpgrade.value = null;
+  void router.push({ name: 'projects' });
+}
+
+/** The browser's own prompt; there is no silent discard on a reload or close. */
+function onBeforeUnload(event: BeforeUnloadEvent): void {
+  if (!editor.isDirty) return;
+  event.preventDefault();
+  event.returnValue = '';
+}
+
+onBeforeRouteLeave(() => {
+  if (!editor.isDirty) return true;
+  return window.confirm('You have unsaved changes. Leave without saving?');
+});
 
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown);
-
-  if (pattern.value.entities.length === 0 && journal.value.length === 0) {
-    seed();
-  }
+  window.addEventListener('beforeunload', onBeforeUnload);
+  void loadPattern();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown);
+  window.removeEventListener('beforeunload', onBeforeUnload);
 });
 </script>
 
 <template>
   <section class="flex h-full min-h-0 flex-col">
-    <EditorRibbon
-      :active-tool="activeTool"
-      :active-constraint="activeConstraint"
-      :can-undo="canUndo"
-      :can-redo="canRedo"
-      :can-delete="selectedEntityIds.length > 0"
-      :can-create-piece="canCreatePiece"
-      @select-tool="selectTool"
-      @select-constraint="selectConstraint"
-      @action="onRibbonAction"
-    />
-
-    <ConstraintPromptBar
-      v-if="activeConstraint"
-      :type="activeConstraint"
-      :prompt="constraintPromptText"
-      :rejection="constraintRejectionMessage"
-      :value-ready="constraintValueReady"
-      :initial-value="constraintInitial"
-      @apply="applyConstraintValue"
-      @cancel="exitConstraint"
-    />
-
-    <CornerRoundPromptBar
-      v-if="cornerRoundActive"
-      :prompt="cornerRoundPromptText"
-      :rejection="cornerRoundRejectionMessage"
-      :ready="cornerRoundReady"
-      :initial-value="cornerRoundInitial"
-      :max-radius="cornerRoundMax ?? 0"
-      @apply="applyCornerRound"
-      @cancel="exitCornerRound"
-      @preview="cornerRoundPreviewRadius = $event"
-    />
-
-    <p v-if="error" class="border-b px-3 py-1 text-sm text-destructive">{{ error }}</p>
-
-    <p class="sr-only" aria-live="polite" data-testid="selection-status">
-      {{ selectionStatus }}
+    <p
+      v-if="loadState === 'loading'"
+      class="p-4 text-sm text-muted-foreground"
+      data-testid="editor-loading"
+    >
+      Loading project…
     </p>
 
-    <div class="flex min-h-0 flex-1">
-      <div class="min-h-0 flex-1 p-2">
-        <PatternCanvas
-          v-model:selected-entity-ids="selectedEntityIds"
-          :document="visibleDocument"
-          :tool="activeTool"
-          :fit-token="fitToken"
-          :show-allowances="showAllowances"
-          :selected-piece-id="selectedPieceId"
-          :show-constraints="showConstraints"
-          :show-dimensions="showDimensions"
-          :constraint-active="activeConstraint !== null"
-          :constraint-picks="constraintPicks"
-          :round-corner-active="cornerRoundActive"
-          :round-corner-picks="cornerRoundPicks"
-          :corner-round-preview-radius="cornerRoundPreviewRadius"
-          @move-point="onMovePoint"
-          @add-point="onAddPoint"
-          @add-line="onAddLine"
-          @add-curve="onAddCurve"
-          @add-arc="onAddArc"
-          @add-circle="onAddCircle"
-          @add-rectangle="onAddRectangle"
-          @constraint-pick="onConstraintPick"
-          @round-corner-pick="onRoundCornerPick"
-          @set-corner-round-radius="setCornerRoundRadius"
-          @add-dimension="onAddDimension"
-          @add-cut-dimension="onAddCutDimension"
-          @update-dimension="onUpdateDimension"
-          @marquee-change="marqueeActive = $event"
-        />
-      </div>
+    <div v-else-if="loadState === 'error'" class="p-4 text-sm" data-testid="editor-load-error">
+      <p class="text-destructive">{{ loadError }}</p>
+      <RouterLink to="/projects" class="mt-2 inline-block text-primary underline">
+        Back to Projects
+      </RouterLink>
+    </div>
 
-      <EditorSidebar
-        :width="width"
-        :collapsed="collapsed"
-        :counts="drawerCounts"
-        @update:width="setWidth"
-        @update:collapsed="collapsed = $event"
-      >
-        <template #properties>
-          <SelectionSummary
-            v-if="selectedEntityIds.length > 1"
-            :entities="selectedEntities"
-            :delete-disabled="orphanCandidates.length > 0"
-            :delete-hint="orphanHint"
-            @delete="deleteSelected"
-          />
+    <template v-else>
+      <EditorSaveBar
+        :name="patternName"
+        :state="saveBarState"
+        :saved-at="editor.lastSavedAt"
+        :read-only="editor.readOnly"
+        @save="save"
+      />
 
-          <EntityPropertiesPanel
-            v-else-if="selectedEntity"
-            :document="pattern"
-            :entity="selectedEntity"
-            @set-construction="convert"
-            @update-dimension="onUpdateDimension"
-            @remove-constraint="removeConstraint"
+      <EditorRibbon
+        :active-tool="activeTool"
+        :active-constraint="activeConstraint"
+        :can-undo="canUndo"
+        :can-redo="canRedo"
+        :can-delete="selectedEntityIds.length > 0"
+        :can-create-piece="canCreatePiece"
+        :read-only="editor.readOnly"
+        @select-tool="selectTool"
+        @select-constraint="selectConstraint"
+        @action="onRibbonAction"
+      />
+
+      <ConstraintPromptBar
+        v-if="activeConstraint"
+        :type="activeConstraint"
+        :prompt="constraintPromptText"
+        :rejection="constraintRejectionMessage"
+        :value-ready="constraintValueReady"
+        :initial-value="constraintInitial"
+        @apply="applyConstraintValue"
+        @cancel="exitConstraint"
+      />
+
+      <CornerRoundPromptBar
+        v-if="cornerRoundActive"
+        :prompt="cornerRoundPromptText"
+        :rejection="cornerRoundRejectionMessage"
+        :ready="cornerRoundReady"
+        :initial-value="cornerRoundInitial"
+        :max-radius="cornerRoundMax ?? 0"
+        @apply="applyCornerRound"
+        @cancel="exitCornerRound"
+        @preview="cornerRoundPreviewRadius = $event"
+      />
+
+      <p v-if="error" class="border-b px-3 py-1 text-sm text-destructive">{{ error }}</p>
+
+      <p class="sr-only" aria-live="polite" data-testid="selection-status">
+        {{ selectionStatus }}
+      </p>
+
+      <div class="flex min-h-0 flex-1">
+        <div class="min-h-0 flex-1 p-2">
+          <PatternCanvas
+            v-model:selected-entity-ids="selectedEntityIds"
+            :document="visibleDocument"
+            :tool="activeTool"
+            :fit-token="fitToken"
+            :show-allowances="showAllowances"
+            :selected-piece-id="selectedPieceId"
+            :show-constraints="showConstraints"
+            :show-dimensions="showDimensions"
+            :constraint-active="activeConstraint !== null"
+            :constraint-picks="constraintPicks"
+            :round-corner-active="cornerRoundActive"
+            :round-corner-picks="cornerRoundPicks"
+            :corner-round-preview-radius="cornerRoundPreviewRadius"
+            :read-only="editor.readOnly"
+            @move-point="onMovePoint"
+            @add-point="onAddPoint"
+            @add-line="onAddLine"
+            @add-curve="onAddCurve"
+            @add-arc="onAddArc"
+            @add-circle="onAddCircle"
+            @add-rectangle="onAddRectangle"
+            @constraint-pick="onConstraintPick"
+            @round-corner-pick="onRoundCornerPick"
             @set-corner-round-radius="setCornerRoundRadius"
-            @remove-corner-round="removeCornerRound"
-            @set-circle-radius="onSetCircleRadius"
-            @update-piece="onUpdatePiece"
-            @set-piece-allowance="onSetPieceAllowance"
-            @remove-piece="onRemovePiece"
+            @add-dimension="onAddDimension"
+            @add-cut-dimension="onAddCutDimension"
+            @update-dimension="onUpdateDimension"
+            @marquee-change="marqueeActive = $event"
           />
+        </div>
 
-          <SidebarEmpty
-            v-else
-            icon="select"
-            message="Nothing selected"
-            hint="Select a point, line, curve, arc or circle on the canvas."
-            data-testid="properties-empty"
-          />
-        </template>
+        <EditorSidebar
+          :width="width"
+          :collapsed="collapsed"
+          :counts="drawerCounts"
+          @update:width="setWidth"
+          @update:collapsed="collapsed = $event"
+        >
+          <template #properties>
+            <SelectionSummary
+              v-if="selectedEntityIds.length > 1"
+              :entities="selectedEntities"
+              :delete-disabled="orphanCandidates.length > 0"
+              :delete-hint="orphanHint"
+              @delete="deleteSelected"
+            />
 
-        <template #stats>
-          <SidebarStat data-testid="workspace-summary">
-            <span data-testid="active-tool">{{ activeToolLabel }}</span>
-            <span aria-hidden="true">·</span>
-            <span>{{ journal.length }} command(s)</span>
-            <span aria-hidden="true">·</span>
-            <span>{{ cutEdgeCount }} cut edge(s)</span>
-          </SidebarStat>
-        </template>
+            <EntityPropertiesPanel
+              v-else-if="selectedEntity"
+              :document="pattern"
+              :entity="selectedEntity"
+              @set-construction="convert"
+              @update-dimension="onUpdateDimension"
+              @remove-constraint="removeConstraint"
+              @set-corner-round-radius="setCornerRoundRadius"
+              @remove-corner-round="removeCornerRound"
+              @set-circle-radius="onSetCircleRadius"
+              @update-piece="onUpdatePiece"
+              @set-piece-allowance="onSetPieceAllowance"
+              @remove-piece="onRemovePiece"
+            />
 
-        <template #pieces>
-          <div class="space-y-2">
-            <ul v-if="pieces.length > 0" class="space-y-1" aria-label="Pieces">
-              <li v-for="(piece, index) in pieces" :key="piece.id">
+            <SidebarEmpty
+              v-else
+              icon="select"
+              message="Nothing selected"
+              hint="Select a point, line, curve, arc or circle on the canvas."
+              data-testid="properties-empty"
+            />
+          </template>
+
+          <template #stats>
+            <SidebarStat data-testid="workspace-summary">
+              <span data-testid="active-tool">{{ activeToolLabel }}</span>
+              <span aria-hidden="true">·</span>
+              <span>{{ journal.length }} command(s)</span>
+              <span aria-hidden="true">·</span>
+              <span>{{ cutEdgeCount }} cut edge(s)</span>
+            </SidebarStat>
+          </template>
+
+          <template #pieces>
+            <div class="space-y-2">
+              <ul v-if="pieces.length > 0" class="space-y-1" aria-label="Pieces">
+                <li v-for="(piece, index) in pieces" :key="piece.id">
+                  <button
+                    type="button"
+                    class="flex w-full items-start justify-between gap-2 rounded-sm px-1 py-1 text-left hover:bg-accent"
+                    :class="selectedPieceId === piece.id ? 'bg-accent text-accent-foreground' : ''"
+                    :aria-expanded="selectedPieceId === piece.id"
+                    :aria-label="`${pieceLabel(piece, index)}: toggle piece details`"
+                    :data-testid="`piece-row-${piece.id}`"
+                    @click="selectPiece(piece.id)"
+                  >
+                    <span class="min-w-0 flex-1 space-y-0.5">
+                      <span class="flex items-center gap-1.5">
+                        <span class="truncate text-[13px] font-semibold">
+                          {{ pieceTitleLine(piece, index) }}
+                        </span>
+                        <Pill tone="neutral">×{{ piece.quantity }}</Pill>
+                      </span>
+                      <span class="block text-2xs leading-snug text-muted-foreground">
+                        {{ pieceSizeLine(piece.metrics) }}
+                      </span>
+                    </span>
+                    <span aria-hidden="true" class="shrink-0 text-muted-foreground">
+                      {{ selectedPieceId === piece.id ? '▾' : '▸' }}
+                    </span>
+                  </button>
+
+                  <div v-if="selectedPieceId === piece.id" class="mt-1 px-1">
+                    <PiecePanel
+                      :summary="piece"
+                      :label="pieceLabel(piece, index)"
+                      prefix="piece-drawer"
+                      @update-piece="onUpdatePiece"
+                      @set-piece-allowance="onSetPieceAllowance"
+                      @remove-piece="onRemovePiece"
+                    />
+                  </div>
+                </li>
+              </ul>
+
+              <SidebarEmpty v-else message="No pieces yet." data-testid="pieces-empty" />
+
+              <Button
+                variant="outline"
+                size="sm"
+                :disabled="!canCreatePiece"
+                :title="pieceCreation.ok ? undefined : pieceCreation.message"
+                data-testid="pieces-create"
+                @click="createPiece"
+              >
+                Create piece
+              </Button>
+            </div>
+          </template>
+
+          <template #outline>
+            <ul v-if="edges.length > 0" class="space-y-1" aria-label="Edges">
+              <li
+                v-for="edge in edges"
+                :key="edge.id"
+                class="flex items-center gap-1 border-l-2 border-transparent pl-1"
+                :class="selectedIds.has(edge.id) ? 'rounded-r-sm border-primary bg-primary/10' : ''"
+                :data-testid="`outline-row-${edge.id}`"
+              >
                 <button
                   type="button"
-                  class="flex w-full items-start justify-between gap-2 rounded-sm px-1 py-1 text-left hover:bg-accent"
-                  :class="selectedPieceId === piece.id ? 'bg-accent text-accent-foreground' : ''"
-                  :aria-expanded="selectedPieceId === piece.id"
-                  :aria-label="`${pieceLabel(piece, index)}: toggle piece details`"
-                  :data-testid="`piece-row-${piece.id}`"
-                  @click="selectPiece(piece.id)"
+                  class="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm py-1 text-left hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  :aria-label="`Select entity ${edge.id}`"
+                  :aria-current="selectedIds.has(edge.id) ? 'true' : undefined"
+                  :data-testid="`outline-select-${edge.id}`"
+                  @click="onOutlineSelect(edge.id, $event)"
                 >
-                  <span class="min-w-0 flex-1 space-y-0.5">
-                    <span class="flex items-center gap-1.5">
-                      <span class="truncate text-[13px] font-semibold">
-                        {{ pieceTitleLine(piece, index) }}
-                      </span>
-                      <Pill tone="neutral">×{{ piece.quantity }}</Pill>
-                    </span>
-                    <span class="block text-2xs leading-snug text-muted-foreground">
-                      {{ pieceSizeLine(piece.metrics) }}
-                    </span>
+                  <RibbonIcon
+                    :icon="ribbonIcon(EDGE_KIND_ICONS[edge.kind])"
+                    :size="12"
+                    class="shrink-0 text-muted-foreground"
+                  />
+                  <span class="shrink-0 text-[13px] font-medium">
+                    {{ EDGE_KIND_LABELS[edge.kind] }}
                   </span>
-                  <span aria-hidden="true" class="shrink-0 text-muted-foreground">
-                    {{ selectedPieceId === piece.id ? '▾' : '▸' }}
+                  <span class="truncate font-mono text-2xs text-muted-foreground">
+                    {{ edge.label }}
                   </span>
+
+                  <Pill
+                    v-if="edge.seamWidth !== null"
+                    tone="accent"
+                    class="ml-auto"
+                    :data-testid="`seam-label-${edge.id}`"
+                  >
+                    Allowance {{ edge.seamWidth }} mm
+                  </Pill>
+                  <span
+                    v-else-if="edge.pieceId !== null"
+                    class="ml-auto flex items-center gap-1"
+                    :data-testid="`edge-piece-${edge.id}`"
+                  >
+                    <span class="text-2xs text-muted-foreground">In piece {{ edge.pieceId }}</span>
+                    <Pill v-if="edge.allowanceKind !== null" tone="accent">
+                      {{ edge.allowanceKind }} {{ edge.allowanceWidth }} mm
+                    </Pill>
+                  </span>
+                  <Pill
+                    v-else
+                    tone="neutral"
+                    class="ml-auto border-dashed"
+                    :data-testid="`seam-empty-${edge.id}`"
+                  >
+                    No allowance
+                  </Pill>
                 </button>
 
-                <div v-if="selectedPieceId === piece.id" class="mt-1 px-1">
-                  <PiecePanel
-                    :summary="piece"
-                    :label="pieceLabel(piece, index)"
-                    prefix="piece-drawer"
-                    @update-piece="onUpdatePiece"
-                    @set-piece-allowance="onSetPieceAllowance"
-                    @remove-piece="onRemovePiece"
+                <SidebarAction
+                  icon="line"
+                  :label="edge.construction ? 'Make cut edge' : 'Make construction'"
+                  :data-testid="`outline-construction-${edge.id}`"
+                  @click="convert(edge.id, !edge.construction)"
+                />
+              </li>
+            </ul>
+            <SidebarEmpty v-else message="No edges yet." />
+          </template>
+
+          <template #dimensions>
+            <ul v-if="dimensions.length > 0" class="space-y-2" aria-label="Dimensions">
+              <li
+                v-for="dimension in dimensions"
+                :key="dimension.id"
+                class="space-y-1.5 border-t pt-2 first:border-t-0 first:pt-0"
+                :data-testid="`dimension-${dimension.id}`"
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <div class="min-w-0 flex flex-wrap items-baseline gap-1">
+                    <span class="font-mono text-2xs text-muted-foreground">{{ dimension.id }}</span>
+                    <span class="text-2xs text-muted-foreground">
+                      ({{ dimension.entities.join(', ') }})
+                    </span>
+                  </div>
+                  <SidebarAction
+                    icon="delete"
+                    :label="`Remove dimension ${dimension.id}`"
+                    :data-testid="`remove-dimension-${dimension.id}`"
+                    @click="removeConstraint(dimension.id)"
                   />
+                </div>
+
+                <div class="relative flex flex-wrap items-center gap-1.5">
+                  <input
+                    type="text"
+                    inputmode="decimal"
+                    class="h-7 w-24 rounded-sm border px-2 text-[13px] font-medium tabular-nums"
+                    :class="dimension.readOnly ? 'bg-muted' : ''"
+                    :value="dimension.field"
+                    :readonly="dimension.readOnly"
+                    :aria-label="`Value for ${dimension.id} (${dimension.stateLabel.toLowerCase()})`"
+                    :data-testid="`dimension-value-${dimension.id}`"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    :aria-expanded="dimensionPicker?.id === dimension.id"
+                    :aria-controls="
+                      dimensionPicker?.id === dimension.id
+                        ? `dimension-drawer-reference-list-${dimension.id}`
+                        : undefined
+                    "
+                    :aria-activedescendant="
+                      dimensionPicker?.id === dimension.id && activeDimensionPickerOption !== null
+                        ? `dimension-drawer-reference-list-${dimension.id}-${activeDimensionPickerOption.id}`
+                        : undefined
+                    "
+                    @input="onDimensionInput(dimension.id, $event)"
+                    @keydown="onDimensionKeydown(dimension.id, $event)"
+                    @change="onDimensionValueEdit(dimension.id, $event)"
+                  />
+                  <span class="text-2xs text-muted-foreground">mm</span>
+                  <Pill
+                    :tone="dimensionTone(dimension.state)"
+                    :data-dimension-state="dimension.state"
+                    :data-testid="`dimension-state-${dimension.id}`"
+                  >
+                    {{ dimension.stateLabel }}
+                  </Pill>
+                  <Button
+                    v-if="!dimension.readOnly"
+                    variant="outline"
+                    size="sm"
+                    :data-testid="`dimension-reference-${dimension.id}`"
+                    @click="openDimensionPicker(dimension.id)"
+                  >
+                    {{ dimension.state === 'broken' ? 'Re-link' : 'Reference' }}
+                  </Button>
+
+                  <DimensionReferencePicker
+                    v-if="dimensionPicker?.id === dimension.id"
+                    :list-id="`dimension-drawer-reference-list-${dimension.id}`"
+                    class="top-full left-0 mt-1"
+                    :options="dimensionPickerOptions"
+                    :active-index="activeDimensionPickerIndex"
+                    @select="selectDimensionReference(dimension.id, $event)"
+                  />
+                </div>
+
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <select
+                    class="h-7 rounded-sm border px-1.5 text-2xs"
+                    :value="dimension.orientation"
+                    :aria-label="`Orientation for ${dimension.id}`"
+                    :data-testid="`dimension-orientation-${dimension.id}`"
+                    @change="onDimensionOrientationEdit(dimension.id, $event)"
+                  >
+                    <option
+                      v-for="option in DIMENSION_ORIENTATION_OPTIONS"
+                      :key="option.value"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </option>
+                  </select>
+                  <input
+                    type="number"
+                    step="1"
+                    class="h-7 w-24 rounded-sm border px-2 text-[13px] tabular-nums"
+                    :value="dimension.offset"
+                    :aria-label="`Offset for ${dimension.id}`"
+                    :data-testid="`dimension-offset-${dimension.id}`"
+                    @change="onDimensionOffsetEdit(dimension.id, $event)"
+                  />
+                  <span class="text-2xs text-muted-foreground">offset (mm)</span>
+                </div>
+
+                <p
+                  v-if="dimension.readOnly"
+                  class="text-2xs leading-snug text-muted-foreground"
+                  :data-testid="`dimension-readonly-${dimension.id}`"
+                >
+                  Cut dimension — read-only; it follows the stitch dimension and the allowance
+                  widths.
+                </p>
+                <p
+                  v-else-if="dimension.state === 'referenced'"
+                  class="text-2xs leading-snug text-muted-foreground"
+                  :data-testid="`dimension-source-${dimension.id}`"
+                >
+                  Source: <span class="font-mono">{{ dimension.sourceId }}</span>
+                </p>
+                <p
+                  v-else-if="dimension.state === 'broken'"
+                  class="text-2xs leading-snug text-destructive"
+                  :data-testid="`dimension-broken-${dimension.id}`"
+                >
+                  Source {{ dimension.sourceId }} is missing. Type a value or press # to re-link.
+                </p>
+
+                <div v-if="dimension.sourceId !== null" class="flex flex-wrap items-center gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    :data-testid="`dimension-unlink-${dimension.id}`"
+                    @click="onUpdateDimension(dimension.id, { reference: null })"
+                  >
+                    Remove reference
+                  </Button>
                 </div>
               </li>
             </ul>
+            <SidebarEmpty v-else message="No dimensions yet." />
+          </template>
 
-            <SidebarEmpty v-else message="No pieces yet." data-testid="pieces-empty" />
-
-            <Button
-              variant="outline"
-              size="sm"
-              :disabled="!canCreatePiece"
-              :title="pieceCreation.ok ? undefined : pieceCreation.message"
-              data-testid="pieces-create"
-              @click="createPiece"
-            >
-              Create piece
-            </Button>
-          </div>
-        </template>
-
-        <template #outline>
-          <ul v-if="edges.length > 0" class="space-y-1" aria-label="Edges">
-            <li
-              v-for="edge in edges"
-              :key="edge.id"
-              class="flex items-center gap-1 border-l-2 border-transparent pl-1"
-              :class="selectedIds.has(edge.id) ? 'rounded-r-sm border-primary bg-primary/10' : ''"
-              :data-testid="`outline-row-${edge.id}`"
-            >
-              <button
-                type="button"
-                class="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm py-1 text-left hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                :aria-label="`Select entity ${edge.id}`"
-                :aria-current="selectedIds.has(edge.id) ? 'true' : undefined"
-                :data-testid="`outline-select-${edge.id}`"
-                @click="onOutlineSelect(edge.id, $event)"
+          <template #constraints>
+            <ul v-if="otherConstraints.length > 0" class="space-y-2" aria-label="Constraints">
+              <li
+                v-for="constraint in otherConstraints"
+                :key="constraint.id"
+                class="flex items-center justify-between gap-2 border-t pt-2 first:border-t-0 first:pt-0"
               >
-                <RibbonIcon
-                  :icon="ribbonIcon(EDGE_KIND_ICONS[edge.kind])"
-                  :size="12"
-                  class="shrink-0 text-muted-foreground"
-                />
-                <span class="shrink-0 text-[13px] font-medium">
-                  {{ EDGE_KIND_LABELS[edge.kind] }}
-                </span>
-                <span class="truncate font-mono text-2xs text-muted-foreground">
-                  {{ edge.label }}
-                </span>
-
-                <Pill
-                  v-if="edge.seamWidth !== null"
-                  tone="accent"
-                  class="ml-auto"
-                  :data-testid="`seam-label-${edge.id}`"
-                >
-                  Allowance {{ edge.seamWidth }} mm
-                </Pill>
-                <span
-                  v-else-if="edge.pieceId !== null"
-                  class="ml-auto flex items-center gap-1"
-                  :data-testid="`edge-piece-${edge.id}`"
-                >
-                  <span class="text-2xs text-muted-foreground">In piece {{ edge.pieceId }}</span>
-                  <Pill v-if="edge.allowanceKind !== null" tone="accent">
-                    {{ edge.allowanceKind }} {{ edge.allowanceWidth }} mm
-                  </Pill>
-                </span>
-                <Pill
-                  v-else
-                  tone="neutral"
-                  class="ml-auto border-dashed"
-                  :data-testid="`seam-empty-${edge.id}`"
-                >
-                  No allowance
-                </Pill>
-              </button>
-
-              <SidebarAction
-                icon="line"
-                :label="edge.construction ? 'Make cut edge' : 'Make construction'"
-                :data-testid="`outline-construction-${edge.id}`"
-                @click="convert(edge.id, !edge.construction)"
-              />
-            </li>
-          </ul>
-          <SidebarEmpty v-else message="No edges yet." />
-        </template>
-
-        <template #dimensions>
-          <ul v-if="dimensions.length > 0" class="space-y-2" aria-label="Dimensions">
-            <li
-              v-for="dimension in dimensions"
-              :key="dimension.id"
-              class="space-y-1.5 border-t pt-2 first:border-t-0 first:pt-0"
-              :data-testid="`dimension-${dimension.id}`"
-            >
-              <div class="flex items-center justify-between gap-2">
-                <div class="min-w-0 flex flex-wrap items-baseline gap-1">
-                  <span class="font-mono text-2xs text-muted-foreground">{{ dimension.id }}</span>
-                  <span class="text-2xs text-muted-foreground">
-                    ({{ dimension.entities.join(', ') }})
+                <div class="min-w-0">
+                  <span class="text-[13px] font-medium">{{ constraintLabel(constraint) }}</span>
+                  <span class="ml-1.5 font-mono text-2xs text-muted-foreground">
+                    {{ constraint.id }}
+                  </span>
+                  <span class="ml-1.5 text-2xs text-muted-foreground">
+                    ({{ constraintEntityIds(constraint).join(', ') }})
                   </span>
                 </div>
                 <SidebarAction
                   icon="delete"
-                  :label="`Remove dimension ${dimension.id}`"
-                  :data-testid="`remove-dimension-${dimension.id}`"
-                  @click="removeConstraint(dimension.id)"
+                  :label="`Remove constraint ${constraint.id}`"
+                  :data-testid="`remove-constraint-${constraint.id}`"
+                  @click="removeConstraint(constraint.id)"
                 />
-              </div>
+              </li>
+            </ul>
+            <SidebarEmpty v-else message="No constraints yet." />
+          </template>
 
-              <div class="relative flex flex-wrap items-center gap-1.5">
-                <input
-                  type="text"
-                  inputmode="decimal"
-                  class="h-7 w-24 rounded-sm border px-2 text-[13px] font-medium tabular-nums"
-                  :class="dimension.readOnly ? 'bg-muted' : ''"
-                  :value="dimension.field"
-                  :readonly="dimension.readOnly"
-                  :aria-label="`Value for ${dimension.id} (${dimension.stateLabel.toLowerCase()})`"
-                  :data-testid="`dimension-value-${dimension.id}`"
-                  role="combobox"
-                  aria-autocomplete="list"
-                  :aria-expanded="dimensionPicker?.id === dimension.id"
-                  :aria-controls="
-                    dimensionPicker?.id === dimension.id
-                      ? `dimension-drawer-reference-list-${dimension.id}`
-                      : undefined
-                  "
-                  :aria-activedescendant="
-                    dimensionPicker?.id === dimension.id && activeDimensionPickerOption !== null
-                      ? `dimension-drawer-reference-list-${dimension.id}-${activeDimensionPickerOption.id}`
-                      : undefined
-                  "
-                  @input="onDimensionInput(dimension.id, $event)"
-                  @keydown="onDimensionKeydown(dimension.id, $event)"
-                  @change="onDimensionValueEdit(dimension.id, $event)"
-                />
-                <span class="text-2xs text-muted-foreground">mm</span>
-                <Pill
-                  :tone="dimensionTone(dimension.state)"
-                  :data-dimension-state="dimension.state"
-                  :data-testid="`dimension-state-${dimension.id}`"
-                >
-                  {{ dimension.stateLabel }}
-                </Pill>
-                <Button
-                  v-if="!dimension.readOnly"
-                  variant="outline"
-                  size="sm"
-                  :data-testid="`dimension-reference-${dimension.id}`"
-                  @click="openDimensionPicker(dimension.id)"
-                >
-                  {{ dimension.state === 'broken' ? 'Re-link' : 'Reference' }}
-                </Button>
+          <template #view>
+            <div class="space-y-3">
+              <section aria-label="Display">
+                <SidebarHeading label="Display" />
+                <div class="space-y-1.5">
+                  <label class="flex items-center gap-2 text-[13px]">
+                    <input
+                      v-model="showConstruction"
+                      type="checkbox"
+                      data-testid="show-construction"
+                    />
+                    Show construction
+                  </label>
+                  <label class="flex items-center gap-2 text-[13px]">
+                    <input v-model="showAllowances" type="checkbox" data-testid="show-allowances" />
+                    Show allowances
+                  </label>
+                  <label class="flex items-center gap-2 text-[13px]">
+                    <input
+                      v-model="showConstraints"
+                      type="checkbox"
+                      data-testid="show-constraints"
+                    />
+                    Show constraints
+                  </label>
+                  <label class="flex items-center gap-2 text-[13px]">
+                    <input v-model="showDimensions" type="checkbox" data-testid="show-dimensions" />
+                    Show dimensions
+                  </label>
+                </div>
+              </section>
 
-                <DimensionReferencePicker
-                  v-if="dimensionPicker?.id === dimension.id"
-                  :list-id="`dimension-drawer-reference-list-${dimension.id}`"
-                  class="top-full left-0 mt-1"
-                  :options="dimensionPickerOptions"
-                  :active-index="activeDimensionPickerIndex"
-                  @select="selectDimensionReference(dimension.id, $event)"
-                />
-              </div>
+              <section aria-label="Export">
+                <SidebarHeading label="Export" />
+                <div class="space-y-1.5">
+                  <label class="flex items-center gap-2 text-[13px]">
+                    <input
+                      v-model="includeConstruction"
+                      type="checkbox"
+                      data-testid="toggle-construction"
+                    />
+                    Include construction
+                  </label>
+                  <label class="flex items-center gap-2 text-[13px]">
+                    <input v-model="exportStitch" type="checkbox" data-testid="toggle-stitch" />
+                    Include stitch layer
+                  </label>
+                  <label class="flex items-center gap-2 text-[13px]">
+                    <input v-model="exportFold" type="checkbox" data-testid="toggle-fold" />
+                    Include fold lines
+                  </label>
+                </div>
+              </section>
+            </div>
+          </template>
+        </EditorSidebar>
+      </div>
 
-              <div class="flex flex-wrap items-center gap-1.5">
-                <select
-                  class="h-7 rounded-sm border px-1.5 text-2xs"
-                  :value="dimension.orientation"
-                  :aria-label="`Orientation for ${dimension.id}`"
-                  :data-testid="`dimension-orientation-${dimension.id}`"
-                  @change="onDimensionOrientationEdit(dimension.id, $event)"
-                >
-                  <option
-                    v-for="option in DIMENSION_ORIENTATION_OPTIONS"
-                    :key="option.value"
-                    :value="option.value"
-                  >
-                    {{ option.label }}
-                  </option>
-                </select>
-                <input
-                  type="number"
-                  step="1"
-                  class="h-7 w-24 rounded-sm border px-2 text-[13px] tabular-nums"
-                  :value="dimension.offset"
-                  :aria-label="`Offset for ${dimension.id}`"
-                  :data-testid="`dimension-offset-${dimension.id}`"
-                  @change="onDimensionOffsetEdit(dimension.id, $event)"
-                />
-                <span class="text-2xs text-muted-foreground">offset (mm)</span>
-              </div>
+      <SaveConflictDialog
+        v-if="conflict"
+        :saved-at="conflict.savedAt"
+        @reload="reloadFromConflict"
+        @overwrite="overwrite"
+      />
 
-              <p
-                v-if="dimension.readOnly"
-                class="text-2xs leading-snug text-muted-foreground"
-                :data-testid="`dimension-readonly-${dimension.id}`"
-              >
-                Cut dimension — read-only; it follows the stitch dimension and the allowance widths.
-              </p>
-              <p
-                v-else-if="dimension.state === 'referenced'"
-                class="text-2xs leading-snug text-muted-foreground"
-                :data-testid="`dimension-source-${dimension.id}`"
-              >
-                Source: <span class="font-mono">{{ dimension.sourceId }}</span>
-              </p>
-              <p
-                v-else-if="dimension.state === 'broken'"
-                class="text-2xs leading-snug text-destructive"
-                :data-testid="`dimension-broken-${dimension.id}`"
-              >
-                Source {{ dimension.sourceId }} is missing. Type a value or press # to re-link.
-              </p>
-
-              <div v-if="dimension.sourceId !== null" class="flex flex-wrap items-center gap-1.5">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  :data-testid="`dimension-unlink-${dimension.id}`"
-                  @click="onUpdateDimension(dimension.id, { reference: null })"
-                >
-                  Remove reference
-                </Button>
-              </div>
-            </li>
-          </ul>
-          <SidebarEmpty v-else message="No dimensions yet." />
-        </template>
-
-        <template #constraints>
-          <ul v-if="otherConstraints.length > 0" class="space-y-2" aria-label="Constraints">
-            <li
-              v-for="constraint in otherConstraints"
-              :key="constraint.id"
-              class="flex items-center justify-between gap-2 border-t pt-2 first:border-t-0 first:pt-0"
-            >
-              <div class="min-w-0">
-                <span class="text-[13px] font-medium">{{ constraintLabel(constraint) }}</span>
-                <span class="ml-1.5 font-mono text-2xs text-muted-foreground">
-                  {{ constraint.id }}
-                </span>
-                <span class="ml-1.5 text-2xs text-muted-foreground">
-                  ({{ constraintEntityIds(constraint).join(', ') }})
-                </span>
-              </div>
-              <SidebarAction
-                icon="delete"
-                :label="`Remove constraint ${constraint.id}`"
-                :data-testid="`remove-constraint-${constraint.id}`"
-                @click="removeConstraint(constraint.id)"
-              />
-            </li>
-          </ul>
-          <SidebarEmpty v-else message="No constraints yet." />
-        </template>
-
-        <template #view>
-          <div class="space-y-3">
-            <section aria-label="Display">
-              <SidebarHeading label="Display" />
-              <div class="space-y-1.5">
-                <label class="flex items-center gap-2 text-[13px]">
-                  <input
-                    v-model="showConstruction"
-                    type="checkbox"
-                    data-testid="show-construction"
-                  />
-                  Show construction
-                </label>
-                <label class="flex items-center gap-2 text-[13px]">
-                  <input v-model="showAllowances" type="checkbox" data-testid="show-allowances" />
-                  Show allowances
-                </label>
-                <label class="flex items-center gap-2 text-[13px]">
-                  <input v-model="showConstraints" type="checkbox" data-testid="show-constraints" />
-                  Show constraints
-                </label>
-                <label class="flex items-center gap-2 text-[13px]">
-                  <input v-model="showDimensions" type="checkbox" data-testid="show-dimensions" />
-                  Show dimensions
-                </label>
-              </div>
-            </section>
-
-            <section aria-label="Export">
-              <SidebarHeading label="Export" />
-              <div class="space-y-1.5">
-                <label class="flex items-center gap-2 text-[13px]">
-                  <input
-                    v-model="includeConstruction"
-                    type="checkbox"
-                    data-testid="toggle-construction"
-                  />
-                  Include construction
-                </label>
-                <label class="flex items-center gap-2 text-[13px]">
-                  <input v-model="exportStitch" type="checkbox" data-testid="toggle-stitch" />
-                  Include stitch layer
-                </label>
-                <label class="flex items-center gap-2 text-[13px]">
-                  <input v-model="exportFold" type="checkbox" data-testid="toggle-fold" />
-                  Include fold lines
-                </label>
-              </div>
-            </section>
-          </div>
-        </template>
-      </EditorSidebar>
-    </div>
+      <UpgradeDocumentDialog
+        v-if="pendingUpgrade"
+        :saved-schema="pendingUpgrade.schema"
+        :editor-schema="PATTERN_SCHEMA"
+        :unknown="pendingUpgrade.unknown"
+        @update="updateDocument"
+        @readonly="openReadOnlyDocument"
+        @cancel="cancelUpgrade"
+      />
+    </template>
   </section>
 </template>

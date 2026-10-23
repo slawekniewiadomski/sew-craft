@@ -1,12 +1,53 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { createEmptyDocument, type PatternDocument } from '@sewcraft/geometry';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import { createPinia } from 'pinia';
 import { describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
+import { createMemoryHistory, createRouter } from 'vue-router';
 
 import EditorRibbon from '@/components/EditorRibbon.vue';
 import PatternCanvas from '@/components/PatternCanvas.vue';
 
 // Force the command bus to throw so the view's error handling is exercised.
 const state = vi.hoisted(() => ({ thrown: new Error('command exploded') as unknown }));
+
+const storedDocument: PatternDocument = {
+  ...createEmptyDocument(),
+  entities: [
+    { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+    { id: 'q', kind: 'point', x: 100, y: 0, construction: false, fixed: false },
+    { id: 'l', kind: 'line', start: 'p', end: 'q', construction: false },
+  ],
+};
+
+vi.mock('@/api/projects', () => {
+  class ApiError extends Error {
+    constructor(
+      public status: number,
+      public body: unknown,
+    ) {
+      super(`Request failed with status ${status}`);
+      this.name = 'ApiError';
+    }
+  }
+
+  return {
+    ApiError,
+    projectsApi: {
+      getPattern: vi.fn(async () => ({
+        data: {
+          id: 1,
+          project_id: 2,
+          name: 'Bodice',
+          document: storedDocument,
+          version: 1,
+          saved_at: '2026-10-23T14:32:00.000Z',
+        },
+      })),
+      savePattern: vi.fn(),
+    },
+  };
+});
 
 vi.mock('@/composables/use-command-bus', async () => {
   const { ref } = await import('vue');
@@ -40,12 +81,30 @@ vi.mock('@/composables/use-command-bus', async () => {
   };
 });
 
+async function mountView(): Promise<VueWrapper> {
+  const { default: EditorView } = await import('./EditorView.vue');
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/projects', name: 'projects', component: { template: '<div />' } },
+      { path: '/projects/:id/edit', name: 'editor', component: EditorView, props: true },
+    ],
+  });
+  await router.push('/projects/2/edit');
+  await router.isReady();
+
+  const wrapper = mount(EditorView, {
+    props: { id: '2' },
+    global: { plugins: [createPinia(), router] },
+  });
+  await flushPromises();
+  return wrapper;
+}
+
 describe('EditorView error handling', () => {
   it('surfaces an Error thrown by a command', async () => {
     state.thrown = new Error('command exploded');
-    const { default: EditorView } = await import('./EditorView.vue');
-    const wrapper = mount(EditorView, { props: { id: '2' } });
-    await flushPromises();
+    const wrapper = await mountView();
 
     wrapper.findComponent(PatternCanvas).vm.$emit('add-point', 1, 2);
     await nextTick();
@@ -55,9 +114,7 @@ describe('EditorView error handling', () => {
 
   it('falls back to a generic message for non-Error throws', async () => {
     state.thrown = 'plain failure';
-    const { default: EditorView } = await import('./EditorView.vue');
-    const wrapper = mount(EditorView, { props: { id: '2' } });
-    await flushPromises();
+    const wrapper = await mountView();
 
     wrapper.findComponent(PatternCanvas).vm.$emit('add-point', 1, 2);
     await nextTick();
@@ -67,9 +124,7 @@ describe('EditorView error handling', () => {
 
   it('routes canvas intents through the error handler', async () => {
     state.thrown = new Error('command exploded');
-    const { default: EditorView } = await import('./EditorView.vue');
-    const wrapper = mount(EditorView, { props: { id: '2' } });
-    await flushPromises();
+    const wrapper = await mountView();
 
     const canvas = wrapper.findComponent(PatternCanvas);
     canvas.vm.$emit('add-point', 1, 2);
@@ -87,9 +142,7 @@ describe('EditorView error handling', () => {
 
   it('retains constraint picks when a constraint command fails', async () => {
     state.thrown = new Error('command exploded');
-    const { default: EditorView } = await import('./EditorView.vue');
-    const wrapper = mount(EditorView, { props: { id: '2' } });
-    await flushPromises();
+    const wrapper = await mountView();
 
     const ribbon = wrapper.findComponent(EditorRibbon);
     ribbon.vm.$emit('select-constraint', 'horizontal');
