@@ -40,6 +40,8 @@ import {
 } from '@/lib/dimensions';
 import { ribbonIcon, type RibbonIconName } from '@/lib/ribbon-icons';
 import DimensionReferencePicker from './DimensionReferencePicker.vue';
+import { defaultAllowanceSummary } from '@/lib/allowance-defaults';
+
 import PiecePanel from './PiecePanel.vue';
 
 const props = defineProps<{
@@ -61,6 +63,7 @@ const emit = defineEmits<{
     edge: EntityId,
     value: { kind: AllowanceKind; width: number } | null,
   ];
+  'set-all-allowances': [piece: EntityId, value: { kind: AllowanceKind; width: number } | null];
   'remove-piece': [id: EntityId];
 }>();
 
@@ -444,9 +447,11 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
     <PiecePanel
       v-if="props.entity.piece"
       :summary="props.entity.piece"
+      :default-allowance="defaultAllowanceSummary(props.document)"
       label="Piece"
       @update-piece="(id, patch) => emit('update-piece', id, patch)"
       @set-piece-allowance="(piece, edge, value) => emit('set-piece-allowance', piece, edge, value)"
+      @set-all-allowances="(piece, value) => emit('set-all-allowances', piece, value)"
       @remove-piece="(id) => emit('remove-piece', id)"
     />
 

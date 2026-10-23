@@ -14,6 +14,7 @@ import {
   type PieceMetrics,
 } from '@sewcraft/geometry';
 
+import { uniformAllowance, type AllowanceChoice } from './allowance-defaults';
 import { formatDimensionValue } from './dimensions';
 
 /** One row of the piece allowance editor. */
@@ -33,6 +34,8 @@ export interface PieceSummary {
   quantity: number;
   edges: EntityId[];
   allowances: PieceAllowanceRow[];
+  /** The allowance every edge shares, or `null` when the edges differ. */
+  uniform: AllowanceChoice | null;
   metrics: PieceMetrics | null;
 }
 
@@ -60,6 +63,7 @@ export function pieceSummary(document: PatternDocument, piece: Piece): PieceSumm
     quantity: piece.quantity ?? 1,
     edges: [...piece.edges],
     allowances: pieceAllowanceRows(piece),
+    uniform: uniformAllowance(piece),
     metrics: pieceMetrics(document, piece),
   };
 }
