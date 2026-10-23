@@ -27,6 +27,9 @@ vi.mock('@/composables/use-command-bus', async () => {
       dispatch: () => {
         throw state.thrown;
       },
+      dispatchGroup: () => {
+        throw state.thrown;
+      },
       undo: () => {
         throw state.thrown;
       },
@@ -73,6 +76,10 @@ describe('EditorView error handling', () => {
     canvas.vm.$emit('move-point', 'p', 1, 2);
     canvas.vm.$emit('add-line', 'p', 'q');
     canvas.vm.$emit('add-curve', ['p', 'q', 'r', 's']);
+    canvas.vm.$emit('add-rectangle', 'diagonal', [
+      { kind: 'point', id: 'p' },
+      { kind: 'point', id: 'q' },
+    ]);
     await nextTick();
 
     expect(wrapper.text()).toContain('command exploded');
