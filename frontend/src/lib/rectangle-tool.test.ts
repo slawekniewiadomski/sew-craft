@@ -233,7 +233,7 @@ describe('newRectangleCorners', () => {
 });
 
 describe('buildRectangleCommands', () => {
-  it('creates four points then the four sides in traversal order', () => {
+  it('creates four points, the four sides and the axis constraints in order', () => {
     const commands = buildRectangleCommands(
       empty,
       'diagonal',
@@ -250,10 +250,30 @@ describe('buildRectangleCommands', () => {
       { id: 'line-6', type: 'add_line', params: { start: 'point-2', end: 'point-3' } },
       { id: 'line-7', type: 'add_line', params: { start: 'point-3', end: 'point-4' } },
       { id: 'line-8', type: 'add_line', params: { start: 'point-4', end: 'point-1' } },
+      {
+        id: 'constraint-9',
+        type: 'add_constraint',
+        params: { type: 'horizontal', entities: ['point-1', 'point-2'] },
+      },
+      {
+        id: 'constraint-10',
+        type: 'add_constraint',
+        params: { type: 'vertical', entities: ['point-2', 'point-3'] },
+      },
+      {
+        id: 'constraint-11',
+        type: 'add_constraint',
+        params: { type: 'horizontal', entities: ['point-3', 'point-4'] },
+      },
+      {
+        id: 'constraint-12',
+        type: 'add_constraint',
+        params: { type: 'vertical', entities: ['point-4', 'point-1'] },
+      },
     ]);
   });
 
-  it('reuses the points a gesture snapped to', () => {
+  it('reuses the points a gesture snapped to and constrains nothing', () => {
     const document = doc([pt('a', 0, 0), pt('b', 100, 50)]);
 
     const commands = buildRectangleCommands(
@@ -270,6 +290,51 @@ describe('buildRectangleCommands', () => {
       { id: 'line-4', type: 'add_line', params: { start: 'point-1', end: 'b' } },
       { id: 'line-5', type: 'add_line', params: { start: 'b', end: 'point-2' } },
       { id: 'line-6', type: 'add_line', params: { start: 'point-2', end: 'a' } },
+    ]);
+  });
+
+  it('constrains a centred rectangle the same way as a diagonal one', () => {
+    const commands = buildRectangleCommands(
+      empty,
+      'center',
+      [fresh(50, 50), fresh(70, 90)],
+      idGenerator(),
+    );
+
+    expect(commands.filter((command) => command.type === 'add_constraint')).toHaveLength(4);
+  });
+
+  it('adds signed right angles for the rotated mode', () => {
+    const above = buildRectangleCommands(
+      empty,
+      'three_point',
+      [fresh(0, 0), fresh(100, 0), fresh(50, 40)],
+      idGenerator(),
+    );
+    const below = buildRectangleCommands(
+      empty,
+      'three_point',
+      [fresh(0, 0), fresh(100, 0), fresh(50, -40)],
+      idGenerator(),
+    );
+
+    const angles = (commands: Command[]) =>
+      commands.flatMap((command) =>
+        command.type === 'add_constraint' && command.params.type === 'angle'
+          ? [command.params.value]
+          : [],
+      );
+
+    expect(angles(above)).toEqual([-Math.PI / 2, -Math.PI / 2, -Math.PI / 2]);
+    expect(angles(below)).toEqual([Math.PI / 2, Math.PI / 2, Math.PI / 2]);
+    expect(
+      above
+        .filter((command) => command.type === 'add_constraint')
+        .map((command) => (command.type === 'add_constraint' ? command.params.entities : [])),
+    ).toEqual([
+      ['point-1', 'point-2', 'point-3'],
+      ['point-2', 'point-3', 'point-4'],
+      ['point-3', 'point-4', 'point-1'],
     ]);
   });
 
@@ -299,13 +364,13 @@ describe('buildRectangleCommands', () => {
   });
 
   it('builds a batch the command core accepts as one rectangle', () => {
-    const modes: [RectangleMode, Parameters<typeof buildRectangleCommands>[2]][] = [
-      ['diagonal', [fresh(0, 0), fresh(100, 50)]],
-      ['center', [fresh(50, 50), fresh(70, 90)]],
-      ['three_point', [fresh(0, 0), fresh(100, 0), fresh(50, 40)]],
+    const modes: [RectangleMode, Parameters<typeof buildRectangleCommands>[2], number][] = [
+      ['diagonal', [fresh(0, 0), fresh(100, 50)], 4],
+      ['center', [fresh(50, 50), fresh(70, 90)], 4],
+      ['three_point', [fresh(0, 0), fresh(100, 0), fresh(50, 40)], 3],
     ];
 
-    for (const [mode, clicks] of modes) {
+    for (const [mode, clicks, constraints] of modes) {
       let sequence = 0;
       const commands: Command[] = buildRectangleCommands(empty, mode, clicks, () => {
         sequence += 1;
@@ -328,8 +393,90 @@ describe('buildRectangleCommands', () => {
         points: 4,
         lines: 4,
       });
-      expect(applied.constraints).toEqual([]);
+      expect(applied.constraints).toHaveLength(constraints);
       expect(new Set(points.map((point) => `${point.x},${point.y}`)).size).toBe(4);
+    }
+  });
+
+  it('keeps a fresh rectangle rectangular when one corner is dragged', () => {
+    let sequence = 0;
+    const nextId = (prefix: string) => {
+      sequence += 1;
+      return `${prefix}-${sequence}`;
+    };
+    const built = buildRectangleCommands(
+      empty,
+      'diagonal',
+      [fresh(0, 0), fresh(100, 50)],
+      nextId,
+    ).reduce<PatternDocument>(
+      (document, command) => executeCommand(document, command).document,
+      empty,
+    );
+    const corner = built.entities.find(
+      (entity): entity is PointEntity =>
+        entity.kind === 'point' && entity.x === 0 && entity.y === 0,
+    )!;
+
+    const dragged = executeCommand(built, {
+      id: 'move',
+      type: 'move_point',
+      params: { id: corner.id, x: 10, y: 10 },
+    }).document;
+    const positioned = new Map(
+      dragged.entities.flatMap((entity) =>
+        entity.kind === 'point' ? [[entity.id, entity] as const] : [],
+      ),
+    );
+    const [a, b, c, d] = ['point-1', 'point-2', 'point-3', 'point-4'].map((id) =>
+      positioned.get(id)!,
+    );
+
+    // The drag moved the corner, and the four sides stayed on their axes.
+    expect(a.x).not.toBeCloseTo(0, 3);
+    expect(a.y).toBeCloseTo(b!.y);
+    expect(b!.x).toBeCloseTo(c!.x);
+    expect(c!.y).toBeCloseTo(d!.y);
+    expect(d!.x).toBeCloseTo(a.x);
+  });
+
+  it('keeps a rotated rectangle rectangular when one corner is dragged', () => {
+    let sequence = 0;
+    const nextId = (prefix: string) => {
+      sequence += 1;
+      return `${prefix}-${sequence}`;
+    };
+    const built = buildRectangleCommands(
+      empty,
+      'three_point',
+      [fresh(0, 0), fresh(100, 0), fresh(50, 40)],
+      nextId,
+    ).reduce<PatternDocument>(
+      (document, command) => executeCommand(document, command).document,
+      empty,
+    );
+    const start = built.entities.find(
+      (entity): entity is PointEntity =>
+        entity.kind === 'point' && entity.x === 0 && entity.y === 0,
+    )!;
+
+    const dragged = executeCommand(built, {
+      id: 'move',
+      type: 'move_point',
+      params: { id: start.id, x: -10, y: -10 },
+    }).document;
+    const points = dragged.entities.filter(
+      (entity): entity is PointEntity => entity.kind === 'point',
+    );
+    expect(points).toHaveLength(4);
+
+    const rightAngleAt = (vertex: PointEntity, a: PointEntity, b: PointEntity): number =>
+      (a.x - vertex.x) * (b.x - vertex.x) + (a.y - vertex.y) * (b.y - vertex.y);
+    const ordered = points.slice().sort((first, second) => first.id.localeCompare(second.id));
+    for (const [index, vertex] of ordered.entries()) {
+      const previous = ordered[(index + 3) % 4]!;
+      const next = ordered[(index + 1) % 4]!;
+      expect(Math.abs(rightAngleAt(vertex, previous, next))).toBeCloseTo(0, 6);
     }
   });
 });

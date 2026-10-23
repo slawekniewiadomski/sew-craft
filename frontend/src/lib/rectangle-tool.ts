@@ -146,9 +146,36 @@ export function newRectangleCorners(document: PatternDocument, corners: Vec2[]):
 }
 
 /**
+ * The signed right angle at `vertex`, in the winding the gesture produced. The
+ * solver measures a signed angle, so the sign has to follow the corners or it
+ * would fold the rectangle while converging.
+ */
+function rightAngle(a: Vec2, vertex: Vec2, b: Vec2): number {
+  const cross = (a.x - vertex.x) * (b.y - vertex.y) - (a.y - vertex.y) * (b.x - vertex.x);
+  return Math.sign(cross) * (Math.PI / 2);
+}
+
+/**
+ * The constraints that keep an axis-aligned rectangle rectangular: two
+ * horizontal sides and two vertical ones, which leave position and size free.
+ */
+const AXIS_ALIGNED_EDGES: ['horizontal' | 'vertical', number, number][] = [
+  ['horizontal', 0, 1],
+  ['vertical', 1, 2],
+  ['horizontal', 2, 3],
+  ['vertical', 3, 0],
+];
+
+/**
  * The command batch for one gesture: `add_point` for each corner no existing
- * point covers, then the four lines in traversal order (A→B, B→C, C→D, D→A).
- * A degenerate gesture yields an empty batch, so nothing is written.
+ * point covers, then the four lines in traversal order (A→B, B→C, C→D, D→A),
+ * then the constraints that hold the rectangle square. A degenerate gesture
+ * yields an empty batch, so nothing is written.
+ *
+ * Constraints are added only when every corner is a new point. A corner that
+ * reuses an existing point may already carry constraints the user set, and
+ * `add_constraint` does not detect a conflict, so a batch that constrained it
+ * could fail to solve and leave nothing behind instead of a rectangle.
  */
 export function buildRectangleCommands(
   document: PatternDocument,
@@ -160,9 +187,13 @@ export function buildRectangleCommands(
   if (corners === null) return [];
 
   const commands: Command[] = [];
+  let reusedCorner = false;
   const ids = corners.map((corner): EntityId => {
     const existing = pointAt(document, corner);
-    if (existing !== null) return existing;
+    if (existing !== null) {
+      reusedCorner = true;
+      return existing;
+    }
 
     const id = nextId('point');
     commands.push({ id, type: 'add_point', params: { x: corner.x, y: corner.y } });
@@ -176,6 +207,35 @@ export function buildRectangleCommands(
       params: { start, end: ids[(index + 1) % ids.length]! },
     });
   });
+
+  if (reusedCorner) return commands;
+
+  if (mode === 'three_point') {
+    // Three right angles make a rectangle; the fourth angle follows the other three.
+    [1, 2, 3].forEach((index) => {
+      const previous = ids[(index + 3) % 4]!;
+      const vertex = ids[index]!;
+      const next = ids[(index + 1) % 4]!;
+      commands.push({
+        id: nextId('constraint'),
+        type: 'add_constraint',
+        params: {
+          type: 'angle',
+          entities: [previous, vertex, next],
+          value: rightAngle(corners[(index + 3) % 4]!, corners[index]!, corners[(index + 1) % 4]!),
+        },
+      });
+    });
+    return commands;
+  }
+
+  for (const [type, from, to] of AXIS_ALIGNED_EDGES) {
+    commands.push({
+      id: nextId('constraint'),
+      type: 'add_constraint',
+      params: { type, entities: [ids[from]!, ids[to]!] },
+    });
+  }
 
   return commands;
 }
