@@ -87,13 +87,15 @@ project is distinguishable from a missing one. A missing project is `404`.
   "document": { "schema": "sewcraft.pattern/0.2", "units": "mm", "...": "..." },
   "expected_version": 12, // null forces a create/overwrite
   "expected_schema": "sewcraft.pattern/0.1", // optional: archive the old copy first
+  "origin": "autosave", // optional: "manual" (default) | "autosave"
 }
 ```
 
 Validation: `document` must be an object with a string `schema` and
 `units === "mm"`, serialised at most 2 MB; `expected_version` is an integer ≥ 0
-or null; `expected_schema` is a string. Failures are `422` with
-`errors.document` / `errors.expected_version` / `errors.expected_schema`.
+or null; `expected_schema` is a string; `origin` is `manual` or `autosave`.
+Failures are `422` with `errors.document` / `errors.expected_version` /
+`errors.expected_schema` / `errors.origin`.
 
 Success `200`:
 
@@ -106,6 +108,13 @@ appends exactly one checkpoint; an unchanged document appends nothing and
 returns the current version. When `expected_schema` differs from the incoming
 `document.schema`, the server first appends the existing working copy as a
 checkpoint, so the pre-upgrade state survives the one-way migration.
+
+`origin` is omitted by clients that only save explicitly and then means
+`manual`. A checkpoint written with `origin: "autosave"` is transient history:
+appending it prunes earlier autosave rows of the same pattern in the same
+transaction. Manual rows (explicit saves and upgrade archives) are never pruned.
+Version numbers stay `max(version) + 1`, so pruning leaves gaps — a version is a
+token, not a count, and `(pattern_id, version)` stays unique.
 
 Conflict `409` (the expected version no longer matches):
 

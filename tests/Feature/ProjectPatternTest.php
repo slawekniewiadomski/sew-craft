@@ -356,3 +356,118 @@ it('rolls the transaction back when the expected version conflicts', function ()
     expect(Pattern::query()->count())->toBe(0)
         ->and(DB::table('pattern_versions')->count())->toBe(0);
 });
+
+it('tags a save without an origin as a manual checkpoint', function () {
+    $project = Project::factory()->create();
+
+    $this->putJson("/api/projects/{$project->id}/pattern", [
+        'document' => patternDocument(),
+        'expected_version' => null,
+    ])->assertOk();
+
+    expect(PatternVersion::query()->sole()->origin)->toBe('manual');
+});
+
+it('coalesces autosave checkpoints and keeps every manual one', function () {
+    $project = Project::factory()->create();
+
+    $this->putJson("/api/projects/{$project->id}/pattern", [
+        'document' => patternDocument(),
+        'expected_version' => null,
+    ])->assertOk();
+
+    $first = patternDocument();
+    $first['entities'] = [
+        ['id' => 'p', 'kind' => 'point', 'x' => 1, 'y' => 2, 'construction' => false, 'fixed' => false],
+    ];
+
+    $this->putJson("/api/projects/{$project->id}/pattern", [
+        'document' => $first,
+        'expected_version' => 1,
+        'origin' => 'autosave',
+    ])
+        ->assertOk()
+        ->assertJsonPath('data.version', 2);
+
+    $second = patternDocument();
+    $second['entities'] = [
+        ['id' => 'p', 'kind' => 'point', 'x' => 3, 'y' => 4, 'construction' => false, 'fixed' => false],
+    ];
+
+    $this->putJson("/api/projects/{$project->id}/pattern", [
+        'document' => $second,
+        'expected_version' => 2,
+        'origin' => 'autosave',
+    ])
+        ->assertOk()
+        ->assertJsonPath('data.version', 3);
+
+    $pattern = Pattern::query()->sole();
+    $versions = $pattern->versions()->orderBy('version')->get();
+
+    // Only the newest autosave survives; the manual checkpoint is untouched and
+    // version numbers keep advancing, so a gap is expected and harmless.
+    expect($versions->pluck('version')->all())->toBe([1, 3])
+        ->and($versions->pluck('origin')->all())->toBe(['manual', 'autosave'])
+        ->and($versions[1]->geometry['entities'][0]['x'])->toBe(3);
+
+    $this->putJson("/api/projects/{$project->id}/pattern", [
+        'document' => patternDocument(),
+        'expected_version' => 3,
+        'origin' => 'manual',
+    ])
+        ->assertOk()
+        ->assertJsonPath('data.version', 4);
+
+    expect($pattern->versions()->orderBy('version')->pluck('version')->all())->toBe([1, 3, 4])
+        ->and($pattern->versions()->where('origin', 'autosave')->count())->toBe(1);
+});
+
+it('appends nothing for an unchanged autosave document', function () {
+    $project = Project::factory()->create();
+
+    $this->putJson("/api/projects/{$project->id}/pattern", [
+        'document' => patternDocument(),
+        'expected_version' => null,
+        'origin' => 'autosave',
+    ])->assertOk();
+
+    $this->putJson("/api/projects/{$project->id}/pattern", [
+        'document' => patternDocument(),
+        'expected_version' => 1,
+        'origin' => 'autosave',
+    ])
+        ->assertOk()
+        ->assertJsonPath('data.version', 1);
+
+    expect(PatternVersion::query()->count())->toBe(1);
+});
+
+it('still rejects a stale autosave write with the current checkpoint', function () {
+    $project = Project::factory()->create();
+
+    $this->putJson("/api/projects/{$project->id}/pattern", [
+        'document' => patternDocument(),
+        'expected_version' => null,
+    ])->assertOk();
+
+    $this->putJson("/api/projects/{$project->id}/pattern", [
+        'document' => patternDocument(),
+        'expected_version' => 0,
+        'origin' => 'autosave',
+    ])
+        ->assertStatus(409)
+        ->assertJsonPath('current_version', 1);
+});
+
+it('rejects an unknown write origin', function () {
+    $project = Project::factory()->create();
+
+    $this->putJson("/api/projects/{$project->id}/pattern", [
+        'document' => patternDocument(),
+        'expected_version' => null,
+        'origin' => 'scheduled',
+    ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('origin');
+});

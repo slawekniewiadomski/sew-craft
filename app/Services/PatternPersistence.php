@@ -60,8 +60,9 @@ final class PatternPersistence
         array $document,
         ?int $expectedVersion,
         ?string $expectedSchema,
+        string $origin = PatternVersion::ORIGIN_MANUAL,
     ): PatternSaveResult {
-        return DB::transaction(function () use ($project, $document, $expectedVersion, $expectedSchema) {
+        return DB::transaction(function () use ($project, $document, $expectedVersion, $expectedSchema, $origin) {
             $project->newQuery()->whereKey($project->getKey())->lockForUpdate()->first();
 
             $pattern = $this->patternFor($project);
@@ -91,7 +92,7 @@ final class PatternPersistence
                 && $pattern->geometry !== null
             ) {
                 $version++;
-                $this->append($pattern, $version, $pattern->geometry);
+                $this->append($pattern, $version, $pattern->geometry, PatternVersion::ORIGIN_MANUAL);
                 $archived = true;
             }
 
@@ -105,7 +106,7 @@ final class PatternPersistence
                 $pattern->save();
 
                 $version++;
-                $checkpoint = $this->append($pattern, $version, $document);
+                $checkpoint = $this->append($pattern, $version, $document, $origin);
             }
 
             $savedAt = $checkpoint?->created_at ?? $latest?->created_at;
@@ -130,15 +131,34 @@ final class PatternPersistence
     }
 
     /**
+     * Append one checkpoint. An autosave row is transient history: earlier
+     * autosave rows of the same pattern are pruned in the same transaction so a
+     * drafting session cannot flood history. Manual rows (explicit saves and
+     * upgrade archives) are never pruned.
+     *
      * @param  array<string, mixed>  $document
      */
-    private function append(Pattern $pattern, int $version, array $document): PatternVersion
-    {
-        return PatternVersion::create([
+    private function append(
+        Pattern $pattern,
+        int $version,
+        array $document,
+        string $origin,
+    ): PatternVersion {
+        $checkpoint = PatternVersion::create([
             'pattern_id' => $pattern->id,
             'version' => $version,
             'geometry' => $document,
+            'origin' => $origin,
         ])->refresh();
+
+        if ($origin === PatternVersion::ORIGIN_AUTOSAVE) {
+            $pattern->versions()
+                ->where('origin', PatternVersion::ORIGIN_AUTOSAVE)
+                ->whereKeyNot($checkpoint->getKey())
+                ->delete();
+        }
+
+        return $checkpoint;
     }
 
     /**
