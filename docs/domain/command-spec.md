@@ -266,8 +266,9 @@ Restore a rounded corner.
 
 - params: `id: entity_id` (the feature id)
 - Restores both line endpoints to the sharp corner, restores the corner's
-  previous construction flag, deletes the tangent points, control points and arc,
-  and removes the feature. A line with a round at its other end keeps that round.
+  previous construction flag, deletes the tangent points, control points, radius
+  centre and arc, and removes the feature. A line with a round at its other end
+  keeps that round.
 - inverse: `add_corner_round` with the original lines and radius.
 
 ### `create_piece`
