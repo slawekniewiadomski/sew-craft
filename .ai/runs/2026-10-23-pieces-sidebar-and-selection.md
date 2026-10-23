@@ -88,5 +88,5 @@ and PR**, and no second PR is opened.
 
 ### Phase 4: Docs and gate
 
-- [ ] 4.1 Spec statuses, compatibility/deprecation docs, run outcome
-- [ ] 4.2 Full validation gate, `om-auto-review-pr --autofix`, label normalization, PR finalization
+- [x] 4.1 Spec statuses, compatibility/deprecation docs, run outcome
+- [x] 4.2 Full validation gate, `om-auto-review-pr --autofix`, label normalization, PR finalization
