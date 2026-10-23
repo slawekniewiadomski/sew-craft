@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createEmptyDocument,
+  isKnownPatternSchema,
+  KNOWN_PATTERN_SCHEMAS,
   normalizeDocument,
   type Entity,
   type EntityId,
@@ -166,5 +168,21 @@ describe('normalizeDocument', () => {
     expect(migrated.pieces).toHaveLength(1);
     expect(migrated.seams).toHaveLength(3);
     expect(migrated.seams.every((seam) => seam.edge.startsWith('b-'))).toBe(true);
+  });
+});
+
+describe('known pattern schemas', () => {
+  it('lists the legacy and current schemas', () => {
+    expect(KNOWN_PATTERN_SCHEMAS).toEqual(['sewcraft.pattern/0.1', 'sewcraft.pattern/0.2']);
+  });
+
+  it('accepts both schemas this build understands', () => {
+    expect(isKnownPatternSchema('sewcraft.pattern/0.1')).toBe(true);
+    expect(isKnownPatternSchema('sewcraft.pattern/0.2')).toBe(true);
+  });
+
+  it('refuses a newer or hand-edited schema', () => {
+    expect(isKnownPatternSchema('sewcraft.pattern/0.3')).toBe(false);
+    expect(isKnownPatternSchema('')).toBe(false);
   });
 });
