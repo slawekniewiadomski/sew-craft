@@ -352,7 +352,9 @@ Pieces are new. `create_piece`, `update_piece`, `delete_piece`,
 `set_piece_allowance` and `add_derived_dimension` are additive commands, and the
 `pieces` document collection and the `derived_distance` constraint type are
 additive, so every 0.9.0 payload still applies unchanged. The `seam` commands stay
-available, marked deprecated, for edges outside any piece.
+available, marked deprecated, for edges outside any piece. They have **no editor
+surface**: the app renders a legacy seam read-only and edits allowances only per
+piece (`set_piece_allowance`).
 
 The pattern schema moves from `sewcraft.pattern/0.1` to `sewcraft.pattern/0.2`.
 A 0.1 document is migrated on load: every closed chain of seam-carrying edges

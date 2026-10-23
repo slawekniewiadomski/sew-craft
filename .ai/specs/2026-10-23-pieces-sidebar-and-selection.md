@@ -1,6 +1,6 @@
 # Pieces sidebar, Outline selection and allowance authoring retirement
 
-Status: proposed
+Status: implemented (PR #57; spec and implementation on one branch)
 Builds on: 2026-10-22-pieces-and-allowance (pieces and per-edge allowances),
 2026-10-20-selected-entity-properties (the per-entity inspector)
 Supersedes (UI only): 2026-10-19-seam-allowance-sketch-tool and
@@ -295,25 +295,25 @@ outcome in `.ai/runs/2026-10-23-pieces-sidebar-and-selection.md`.
 
 ## ✅ Acceptance criteria
 
-- [ ] No Seam allowance tool appears in the ribbon, and no `add_allowance` value
+- [x] No Seam allowance tool appears in the ribbon, and no `add_allowance` value
       remains in the editor-tool union.
-- [ ] The legacy dashed allowance renders for an old open-chain document but
+- [x] The legacy dashed allowance renders for an old open-chain document but
       cannot be added, edited, flipped or removed anywhere in the UI.
-- [ ] The Properties inspector has no Seam allowance section; piece allowances
+- [x] The Properties inspector has no Seam allowance section; piece allowances
       remain editable through the piece card.
-- [ ] A Pieces drawer lists every piece with name, quantity, finished and cut
+- [x] A Pieces drawer lists every piece with name, quantity, finished and cut
       size; clicking a row highlights the piece, expands the full card, and
       clicking it again collapses it.
-- [ ] The same `PiecePanel` renders in the drawer and the inspector, and edits
+- [x] The same `PiecePanel` renders in the drawer and the inspector, and edits
       from either place update both.
-- [ ] Clicking an Outline entity id selects it; Ctrl/Cmd toggles, Ctrl/Cmd+Shift
+- [x] Clicking an Outline entity id selects it; Ctrl/Cmd toggles, Ctrl/Cmd+Shift
       subtracts, selected rows are marked, and row controls never change the
       selection.
-- [ ] Selecting an entity clears the piece selection and selecting a piece
+- [x] Selecting an entity clears the piece selection and selecting a piece
       clears the entity selection.
-- [ ] The document schema, command spec version and geometry package are
+- [x] The document schema, command spec version and geometry package are
       unchanged.
-- [ ] 100% statements, branches, functions and lines stay green across
+- [x] 100% statements, branches, functions and lines stay green across
       `packages/geometry/src`, `frontend/src` and backend `app/`.
 
 ## Out of scope

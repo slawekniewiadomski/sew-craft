@@ -201,7 +201,11 @@ function pieceQuantity(event: Event): void {
           :data-testid="testId(`piece-kind-${row.edge}`)"
           @change="allowanceKind(row, $event)"
         >
-          <option v-for="option in ALLOWANCE_KIND_OPTIONS" :key="option.value" :value="option.value">
+          <option
+            v-for="option in ALLOWANCE_KIND_OPTIONS"
+            :key="option.value"
+            :value="option.value"
+          >
             {{ option.label }}
           </option>
         </select>

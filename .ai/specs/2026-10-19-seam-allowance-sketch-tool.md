@@ -1,6 +1,6 @@
 # Seam allowance as a sketch tool
 
-Status: proposed
+Status: superseded (UI) by 2026-10-23-pieces-sidebar-and-selection; the ribbon tool is removed and allowances are authored per piece
 Implements: [#29 — Seam allowance should be a sketch tool](https://github.com/slawekniewiadomski/sew-craft/issues/29)
 Depends on: spec 007 (seam-allowance offset engine), spec 014 (inline value editing pattern)
 

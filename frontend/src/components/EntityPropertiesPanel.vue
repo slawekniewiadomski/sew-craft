@@ -446,9 +446,7 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
       :summary="props.entity.piece"
       label="Piece"
       @update-piece="(id, patch) => emit('update-piece', id, patch)"
-      @set-piece-allowance="
-        (piece, edge, value) => emit('set-piece-allowance', piece, edge, value)
-      "
+      @set-piece-allowance="(piece, edge, value) => emit('set-piece-allowance', piece, edge, value)"
       @remove-piece="(id) => emit('remove-piece', id)"
     />
 

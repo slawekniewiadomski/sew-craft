@@ -2356,9 +2356,7 @@ describe('EditorView pieces drawer', () => {
     expect(wrapper.find('[data-testid="pieces-empty"]').text()).toBe('No pieces yet.');
     const create = wrapper.find('[data-testid="pieces-create-empty"]');
     expect(create.attributes('disabled')).toBeDefined();
-    expect(create.attributes('title')).toBe(
-      'Select at least three cut edges to create a piece.',
-    );
+    expect(create.attributes('title')).toBe('Select at least three cut edges to create a piece.');
   });
 
   it('creates a piece from the drawer once a closed chain is selected', async () => {
@@ -2399,7 +2397,6 @@ describe('EditorView pieces drawer', () => {
     expect(wrapper.find('[data-testid="piece-drawer-piece"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
   });
-
 });
 
 describe('EditorView Outline selection', () => {

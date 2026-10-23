@@ -94,12 +94,7 @@ import {
   pieceSummaries,
   type PieceSummary,
 } from '@/lib/pieces';
-import {
-  applySelection,
-  orphanedEdges,
-  selectionModeFrom,
-  toggleSelection,
-} from '@/lib/selection';
+import { applySelection, orphanedEdges, selectionModeFrom, toggleSelection } from '@/lib/selection';
 
 const props = defineProps<{ id: string }>();
 
@@ -1170,9 +1165,7 @@ onBeforeUnmount(() => {
                 <button
                   type="button"
                   class="flex w-full items-center justify-between gap-2 rounded-md px-1 py-1 text-left hover:bg-accent"
-                  :class="
-                    selectedPieceId === piece.id ? 'bg-accent text-accent-foreground' : ''
-                  "
+                  :class="selectedPieceId === piece.id ? 'bg-accent text-accent-foreground' : ''"
                   :aria-expanded="selectedPieceId === piece.id"
                   :aria-label="`${pieceLabel(piece, index)}: toggle piece details`"
                   :data-testid="`piece-row-${piece.id}`"
