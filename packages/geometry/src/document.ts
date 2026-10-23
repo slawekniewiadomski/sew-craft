@@ -1,4 +1,5 @@
 import { arcExtents, arcGeometry } from './arc.js';
+import { DEFAULT_ALLOWANCE_PRESET } from './defaults.js';
 import {
   PATTERN_SCHEMA,
   type ArcEntity,
@@ -28,6 +29,7 @@ export function createEmptyDocument(): PatternDocument {
     constraints: [],
     pieces: [],
     seams: [],
+    defaults: { allowance: { ...DEFAULT_ALLOWANCE_PRESET } },
   };
 }
 

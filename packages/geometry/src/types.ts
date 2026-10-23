@@ -144,6 +144,21 @@ export interface Allowance {
   kind?: AllowanceKind;
 }
 
+/** The allowance copied onto a new piece; `width` is the finished width. */
+export interface AllowancePreset {
+  width: number;
+  /** Omitted means `seam`. */
+  kind?: AllowanceKind;
+}
+
+export interface PatternDefaults {
+  /**
+   * `null` means new pieces start with no allowance. An absent `defaults`
+   * object resolves to the built-in 10 mm seam preset.
+   */
+  allowance: AllowancePreset | null;
+}
+
 /** A closed loop of existing cut edges cut from fabric. */
 export interface Piece {
   id: EntityId;
@@ -253,4 +268,6 @@ export interface PatternDocument {
   seams?: Seam[];
   /** Optional so documents written before corner rounds load unchanged. */
   cornerRounds?: CornerRound[];
+  /** Optional and additive; a document without it resolves the built-in preset. */
+  defaults?: PatternDefaults;
 }
