@@ -25,6 +25,9 @@ describe('RIBBON_ICONS', () => {
       'piece',
       'point',
       'point_on_line',
+      'rectangle',
+      'rectangle-aligned',
+      'rectangle-center',
       'redo',
       'round-corner',
       'select',
@@ -50,6 +53,9 @@ describe('RIBBON_ICONS', () => {
     expect(RIBBON_ICONS['cut-dimension'].paths).toHaveLength(5);
     expect(RIBBON_ICONS['cut-dimension'].paths).not.toEqual(RIBBON_ICONS.dimension.paths);
     expect(RIBBON_ICONS.download.paths).toHaveLength(3);
+    expect(RIBBON_ICONS.rectangle.paths).toHaveLength(1);
+    expect(RIBBON_ICONS['rectangle-center'].dots).toHaveLength(1);
+    expect(RIBBON_ICONS['rectangle-aligned'].paths).toHaveLength(1);
   });
 
   it('resolves a glyph by name', () => {
