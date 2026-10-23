@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.10.0',
+    'spec_version' => '0.11.0',
 
     /*
     |--------------------------------------------------------------------------
@@ -199,6 +199,7 @@ return [
                 'edges' => 'entity_id[]',
                 'name' => 'string?',
                 'quantity' => 'int?',
+                'allowance' => 'default|none|preset?',
             ],
             'inverse' => 'delete_piece',
         ],
@@ -227,6 +228,15 @@ return [
                 'remove' => 'bool?',
             ],
             'inverse' => 'set_piece_allowance',
+        ],
+        'set_default_allowance' => [
+            'description' => 'Set, change or clear the allowance copied onto newly created pieces. Width is the finished width in mm; remove clears it.',
+            'params' => [
+                'width' => 'number?',
+                'kind' => 'seam|single|double?',
+                'remove' => 'bool?',
+            ],
+            'inverse' => 'set_default_allowance',
         ],
         'add_derived_dimension' => [
             'description' => 'Add a read-only cut dimension between two loop vertices of one piece. Its value follows the cut loop and adds no solver equation.',

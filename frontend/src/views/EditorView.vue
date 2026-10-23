@@ -15,6 +15,7 @@ import {
   isKnownPatternSchema,
   measureLinearDimension,
   normalizeDocument,
+  ALLOWANCE_KIND_LABELS,
   PATTERN_SCHEMA,
   seamForEdge,
   toSvg,
@@ -56,6 +57,8 @@ import UpgradeDocumentDialog from '@/components/UpgradeDocumentDialog.vue';
 import { Button } from '@/components/ui/button';
 import { useCommandBus } from '@/composables/use-command-bus';
 import { useSidebarLayout } from '@/composables/use-sidebar-layout';
+import { defaultAllowanceSummary } from '@/lib/allowance-defaults';
+import { parseAllowanceWidth } from '@/lib/allowance-width';
 import { buildCircleCommands, type CircleEndpoint } from '@/lib/circle-tool';
 import { nextCommandId } from '@/lib/command-ids';
 import {
@@ -209,6 +212,14 @@ const selectedEntity = computed(() =>
 const pieceCreation = computed(() =>
   pieceCreationFromSelection(pattern.value, selectedEntityIds.value),
 );
+
+const defaultAllowance = computed(() => defaultAllowanceSummary(pattern.value));
+const defaultAllowanceHint = computed(() => {
+  const choice = defaultAllowance.value;
+  return choice.kind === 'none'
+    ? 'New pieces start with no allowance.'
+    : `New pieces get ${choice.width} mm ${ALLOWANCE_KIND_LABELS[choice.kind].toLowerCase()}.`;
+});
 const canCreatePiece = computed(() => pieceCreation.value.ok);
 
 /** The entity selection as a set, for row highlighting and `aria-current`. */
@@ -550,12 +561,77 @@ function createPiece(): void {
       dispatch({
         id: nextCommandId('piece'),
         type: 'create_piece',
-        params: { edges: result.edges },
+        params: { edges: result.edges, allowance: 'default' },
       }),
     )
   ) {
     selectedEntityIds.value = [];
   }
+}
+
+/** Change the default kind; None clears the default. */
+function onDefaultAllowanceKind(event: Event): void {
+  const kind = (event.target as HTMLSelectElement).value as AllowanceKind | 'none';
+  if (kind === 'none') {
+    run(() =>
+      dispatch({
+        id: nextCommandId('default-allowance'),
+        type: 'set_default_allowance',
+        params: { remove: true },
+      }),
+    );
+    return;
+  }
+
+  const width = defaultAllowance.value.width > 0 ? defaultAllowance.value.width : 10;
+  run(() =>
+    dispatch({
+      id: nextCommandId('default-allowance'),
+      type: 'set_default_allowance',
+      params: { width, kind },
+    }),
+  );
+}
+
+/** An invalid or unchanged default width snaps back without a command. */
+function onDefaultAllowanceWidth(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const width = parseAllowanceWidth(input.value);
+  const current = defaultAllowance.value;
+  const currentKind = current.kind;
+  if (width === null || currentKind === 'none') {
+    input.value = String(current.width);
+    return;
+  }
+  if (width === current.width) return;
+
+  run(() =>
+    dispatch({
+      id: nextCommandId('default-allowance'),
+      type: 'set_default_allowance',
+      params: { width, kind: currentKind },
+    }),
+  );
+}
+
+/** Apply one allowance to every edge of a piece as a single journal entry. */
+function onSetAllAllowances(
+  pieceId: EntityId,
+  value: { kind: AllowanceKind; width: number } | null,
+): void {
+  const piece = pattern.value.pieces.find((candidate) => candidate.id === pieceId);
+  /* v8 ignore next -- the card emits only for a piece in the current document */
+  if (piece === undefined) return;
+
+  const commands: Command[] = piece.edges.map((edge) => ({
+    id: nextCommandId('allowance'),
+    type: 'set_piece_allowance',
+    params:
+      value === null
+        ? { piece: pieceId, edge, remove: true }
+        : { piece: pieceId, edge, width: value.width, kind: value.kind },
+  }));
+  run(() => dispatchGroup(commands));
 }
 
 watch(selectedEntityIds, (ids) => {
@@ -1410,6 +1486,7 @@ onBeforeUnmount(() => {
               @set-circle-radius="onSetCircleRadius"
               @update-piece="onUpdatePiece"
               @set-piece-allowance="onSetPieceAllowance"
+              @set-all-allowances="onSetAllAllowances"
               @remove-piece="onRemovePiece"
             />
 
@@ -1434,6 +1511,38 @@ onBeforeUnmount(() => {
 
           <template #pieces>
             <div class="space-y-2">
+              <div class="space-y-1 rounded-md border p-2" data-testid="default-allowance">
+                <SidebarHeading label="Default allowance" />
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <select
+                    class="h-7 rounded-sm border px-1.5 text-2xs"
+                    :value="defaultAllowance.kind"
+                    :disabled="editor.readOnly"
+                    aria-label="Default allowance kind"
+                    data-testid="default-allowance-kind"
+                    @change="onDefaultAllowanceKind"
+                  >
+                    <option value="none" data-testid="default-allowance-none">None</option>
+                    <option value="seam">Seam</option>
+                    <option value="single">Single fold</option>
+                    <option value="double">Double fold</option>
+                  </select>
+                  <input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    class="h-7 w-16 rounded-sm border px-1.5 text-2xs tabular-nums"
+                    :value="defaultAllowance.kind === 'none' ? '' : defaultAllowance.width"
+                    :disabled="defaultAllowance.kind === 'none' || editor.readOnly"
+                    aria-label="Default allowance width"
+                    data-testid="default-allowance-width"
+                    @change="onDefaultAllowanceWidth"
+                  />
+                  <span class="text-2xs text-muted-foreground">mm</span>
+                </div>
+                <p class="text-2xs leading-snug text-muted-foreground">Applied to new pieces.</p>
+              </div>
+
               <ul v-if="pieces.length > 0" class="space-y-1" aria-label="Pieces">
                 <li v-for="(piece, index) in pieces" :key="piece.id">
                   <button
@@ -1464,10 +1573,12 @@ onBeforeUnmount(() => {
                   <div v-if="selectedPieceId === piece.id" class="mt-1 px-1">
                     <PiecePanel
                       :summary="piece"
+                      :default-allowance="defaultAllowance"
                       :label="pieceLabel(piece, index)"
                       prefix="piece-drawer"
                       @update-piece="onUpdatePiece"
                       @set-piece-allowance="onSetPieceAllowance"
+                      @set-all-allowances="onSetAllAllowances"
                       @remove-piece="onRemovePiece"
                     />
                   </div>
@@ -1486,6 +1597,12 @@ onBeforeUnmount(() => {
               >
                 Create piece
               </Button>
+              <p
+                class="text-2xs leading-snug text-muted-foreground"
+                data-testid="pieces-create-hint"
+              >
+                {{ defaultAllowanceHint }}
+              </p>
             </div>
           </template>
 

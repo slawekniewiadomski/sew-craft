@@ -25,6 +25,7 @@ const summary: PieceSummary = {
     { edge: 'bc', kind: 'double', width: 5, cutDistance: 10 },
     { edge: 'cd', kind: 'none', width: 0, cutDistance: 0 },
   ],
+  uniform: null,
   metrics,
 };
 
@@ -186,5 +187,89 @@ describe('PiecePanel', () => {
     await wrapper.find('[data-testid="entity-remove-piece-p1"]').trigger('click');
 
     expect(wrapper.emitted('remove-piece')).toEqual([['p1']]);
+  });
+});
+
+describe('PiecePanel all edges', () => {
+  const uniformSummary = (): PieceSummary => ({
+    ...summary,
+    allowances: summary.edges.map((edge) => ({
+      edge,
+      kind: 'seam' as const,
+      width: 10,
+      cutDistance: 10,
+    })),
+    uniform: { kind: 'seam', width: 10 },
+  });
+
+  it('starts from the shared value and applies it to every edge', async () => {
+    const wrapper = mountPanel(uniformSummary());
+
+    expect(wrapper.find('[data-testid="entity-piece-all-kind"]').element).toHaveProperty(
+      'value',
+      'seam',
+    );
+    expect(wrapper.find('[data-testid="entity-piece-all-width"]').element).toHaveProperty(
+      'value',
+      '10',
+    );
+    expect(wrapper.find('[data-testid="entity-piece-all-mixed"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="entity-piece-all-kind"]').setValue('double');
+    await wrapper.find('[data-testid="entity-piece-all-width"]').setValue('15');
+    await wrapper.find('[data-testid="entity-piece-all-apply"]').trigger('click');
+
+    expect(wrapper.emitted('set-all-allowances')?.at(-1)).toEqual([
+      'p1',
+      { kind: 'double', width: 15 },
+    ]);
+  });
+
+  it('shows the mixed pill and starts from the project default', () => {
+    const wrapper = mountPanel({}, { defaultAllowance: { kind: 'single', width: 12 } });
+
+    expect(wrapper.find('[data-testid="entity-piece-all-mixed"]').text()).toBe('Mixed');
+    expect(wrapper.find('[data-testid="entity-piece-all-kind"]').element).toHaveProperty(
+      'value',
+      'single',
+    );
+    expect(wrapper.find('[data-testid="entity-piece-all-width"]').element).toHaveProperty(
+      'value',
+      '12',
+    );
+  });
+
+  it('removes every allowance with the none kind', async () => {
+    const wrapper = mountPanel(uniformSummary());
+
+    await wrapper.find('[data-testid="entity-piece-all-kind"]').setValue('none');
+    expect(
+      (wrapper.find('[data-testid="entity-piece-all-width"]').element as HTMLInputElement).disabled,
+    ).toBe(true);
+
+    await wrapper.find('[data-testid="entity-piece-all-apply"]').trigger('click');
+    expect(wrapper.emitted('set-all-allowances')?.at(-1)).toEqual(['p1', null]);
+  });
+
+  it('snaps an invalid width back and keeps apply disabled', async () => {
+    const wrapper = mountPanel(uniformSummary());
+    const width = wrapper.find('[data-testid="entity-piece-all-width"]');
+
+    await width.setValue('0');
+    await width.trigger('change');
+    expect((width.element as HTMLInputElement).value).toBe('10');
+
+    await width.setValue('abc');
+    await width.trigger('change');
+    expect((width.element as HTMLInputElement).value).toBe('10');
+  });
+
+  it('disables apply for a piece with no edges', () => {
+    const wrapper = mountPanel({ ...summary, edges: [], allowances: [], uniform: null });
+
+    expect(
+      (wrapper.find('[data-testid="entity-piece-all-apply"]').element as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 });

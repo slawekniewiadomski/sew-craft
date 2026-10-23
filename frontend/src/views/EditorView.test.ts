@@ -2384,9 +2384,19 @@ describe('EditorView', () => {
     expect(store.document.pieces).toHaveLength(1);
     expect(store.document.pieces[0]).toMatchObject({
       edges: ['ab', 'bc', 'cd', 'da'],
-      allowances: [],
+      // The built-in 10 mm seam is copied onto every loop edge.
+      allowances: [
+        { edge: 'ab', width: 10, kind: 'seam' },
+        { edge: 'bc', width: 10, kind: 'seam' },
+        { edge: 'cd', width: 10, kind: 'seam' },
+        { edge: 'da', width: 10, kind: 'seam' },
+      ],
     });
     expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
+
+    store.undo();
+    await nextTick();
+    expect(store.document.pieces).toHaveLength(0);
   });
 
   it('explains why a selection cannot become a piece', async () => {
@@ -2665,6 +2675,90 @@ describe('EditorView pieces drawer', () => {
     await flushPromises();
 
     expect(store.document.pieces[0]!.allowances[0]).toMatchObject({ edge: 'ab', width: 15 });
+  });
+
+  it('shows and edits the default allowance for new pieces', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+    const kind = () => wrapper.find('[data-testid="default-allowance-kind"]');
+    const width = () => wrapper.find('[data-testid="default-allowance-width"]');
+    const hint = () => wrapper.find('[data-testid="pieces-create-hint"]').text();
+
+    expect(kind().element).toHaveProperty('value', 'seam');
+    expect(width().element).toHaveProperty('value', '10');
+    expect(hint()).toBe('New pieces get 10 mm seam.');
+
+    await kind().setValue('double');
+    await flushPromises();
+    expect(store.document.defaults).toEqual({ allowance: { width: 10, kind: 'double' } });
+    expect(hint()).toBe('New pieces get 10 mm double fold.');
+
+    await width().setValue('15');
+    await width().trigger('change');
+    await flushPromises();
+    expect(store.document.defaults).toEqual({ allowance: { width: 15, kind: 'double' } });
+    expect(hint()).toBe('New pieces get 15 mm double fold.');
+
+    await width().setValue('0');
+    await width().trigger('change');
+    await flushPromises();
+    expect((width().element as HTMLInputElement).value).toBe('15');
+    expect(store.document.defaults).toEqual({ allowance: { width: 15, kind: 'double' } });
+
+    await kind().setValue('none');
+    await flushPromises();
+    expect(store.document.defaults).toEqual({ allowance: null });
+    expect(hint()).toBe('New pieces start with no allowance.');
+    expect((width().element as HTMLInputElement).disabled).toBe(true);
+
+    // Turning the default back on starts from the built-in 10 mm.
+    await kind().setValue('seam');
+    await flushPromises();
+    expect(store.document.defaults).toEqual({ allowance: { width: 10, kind: 'seam' } });
+  });
+
+  it('applies one allowance to every edge in a single undo step', async () => {
+    const { wrapper, store } = await mountLoaded(pieceDoc);
+
+    await wrapper.find('[data-testid="piece-row-p1"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="piece-drawer-piece-all-mixed"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="piece-drawer-piece-all-apply"]').trigger('click');
+    await flushPromises();
+
+    // `ab` already matched the value, so its stored shape is unchanged.
+    expect(store.document.pieces[0]!.allowances).toEqual([
+      { edge: 'ab', width: 10 },
+      { edge: 'bc', width: 10, kind: 'seam' },
+      { edge: 'cd', width: 10, kind: 'seam' },
+      { edge: 'da', width: 10, kind: 'seam' },
+    ]);
+
+    store.undo();
+    await nextTick();
+    expect(store.document.pieces[0]!.allowances).toEqual([{ edge: 'ab', width: 10 }]);
+  });
+
+  it('removes every allowance from the drawer with the none kind', async () => {
+    const uniformDoc: PatternDocument = {
+      ...pieceDoc,
+      pieces: [
+        {
+          id: 'p1',
+          edges: ['ab', 'bc', 'cd', 'da'],
+          allowances: ['ab', 'bc', 'cd', 'da'].map((edge) => ({ edge, width: 10 })),
+        },
+      ],
+    };
+    const { wrapper, store } = await mountLoaded(uniformDoc);
+
+    await wrapper.find('[data-testid="piece-row-p1"]').trigger('click');
+    await nextTick();
+    await wrapper.find('[data-testid="piece-drawer-piece-all-kind"]').setValue('none');
+    await wrapper.find('[data-testid="piece-drawer-piece-all-apply"]').trigger('click');
+    await flushPromises();
+
+    expect(store.document.pieces[0]!.allowances).toEqual([]);
   });
 
   it('removes a piece from the drawer card and clears the selection', async () => {

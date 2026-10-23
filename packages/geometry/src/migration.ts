@@ -1,3 +1,4 @@
+import { normalizeDefaults } from './defaults.js';
 import { basicPieceForLoops } from './piece.js';
 import { PATTERN_SCHEMA, type EntityId, type PatternDocument, type Piece } from './types.js';
 
@@ -43,17 +44,20 @@ export function normalizeDocument(
   document: PatternDocument | LegacyPatternDocument,
 ): PatternDocument {
   const existingPieces = document.pieces ?? [];
+  const normalized = normalizeDefaults(document);
+
   if (document.schema === PATTERN_SCHEMA) {
     // Keep the caller's object identity for an already-current document; the
     // store relies on `load` not copying an unmodified document.
-    return document.pieces === undefined
-      ? { ...document, schema: PATTERN_SCHEMA, pieces: existingPieces }
-      : (document as PatternDocument);
+    if (normalized === document && document.pieces !== undefined) {
+      return document as PatternDocument;
+    }
+    return { ...normalized, schema: PATTERN_SCHEMA, pieces: existingPieces };
   }
 
   const seams = document.seams ?? [];
   const working: PatternDocument = {
-    ...document,
+    ...normalized,
     schema: PATTERN_SCHEMA,
     pieces: existingPieces,
     seams,

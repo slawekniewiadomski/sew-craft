@@ -3,6 +3,7 @@ export * from './types.js';
 export * from './document.js';
 export * from './errors.js';
 export * from './number.js';
+export * from './defaults.js';
 export * from './flatten.js';
 export * from './arc.js';
 export * from './corner-round.js';
