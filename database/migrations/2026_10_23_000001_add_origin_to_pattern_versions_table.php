@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::table('pattern_versions', function (Blueprint $table) {
             // `manual` keeps every checkpoint; `autosave` rows are coalesced so
             // a background writer cannot flood history. Existing rows are manual.
-            $table->string('origin', 16)->default('manual')->after('version');
+            $table->string('origin', 16)->default('manual');
         });
     }
 
