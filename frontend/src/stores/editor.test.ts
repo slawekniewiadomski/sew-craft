@@ -344,3 +344,136 @@ describe('editor store', () => {
     expect(store.document.entities).toHaveLength(rounded.entities.length);
   });
 });
+
+describe('editor store persistence', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it('starts a new project as clean but without a stored copy', () => {
+    const store = useEditorStore();
+    store.setReadOnly(true);
+
+    store.markNew();
+
+    expect(store.isNew).toBe(true);
+    expect(store.isDirty).toBe(false);
+    expect(store.readOnly).toBe(false);
+    expect(store.savedVersion).toBe(0);
+    expect(store.lastSavedAt).toBeNull();
+    expect(store.saveState).toBe('idle');
+    expect(store.document).toEqual(createEmptyDocument());
+  });
+
+  it('adopts a loaded document as the clean baseline', () => {
+    const store = useEditorStore();
+    const loaded: PatternDocument = {
+      ...createEmptyDocument(),
+      entities: [point('p', 1, 2)],
+    };
+
+    store.markLoaded(loaded, 12, '2026-10-23T14:32:00Z');
+
+    expect(store.isNew).toBe(false);
+    expect(store.isDirty).toBe(false);
+    expect(store.savedVersion).toBe(12);
+    expect(store.lastSavedAt).toBe('2026-10-23T14:32:00Z');
+
+    store.dispatch(addPoint('q', 3, 4));
+    expect(store.isDirty).toBe(true);
+
+    // Undo restores the exact saved object, so the document is clean again.
+    store.undo();
+    expect(store.isDirty).toBe(false);
+  });
+
+  it('records the sent snapshot so edits during a save stay dirty', () => {
+    const store = useEditorStore();
+    store.dispatch(addPoint('p', 1, 2));
+    const snapshot = store.document;
+
+    store.markSaving();
+    expect(store.saveState).toBe('saving');
+
+    store.markSaved(snapshot, 3, '2026-10-23T15:00:00Z');
+
+    expect(store.saveState).toBe('saved');
+    expect(store.savedVersion).toBe(3);
+    expect(store.lastSavedAt).toBe('2026-10-23T15:00:00Z');
+    expect(store.isDirty).toBe(false);
+
+    store.dispatch(addPoint('q', 3, 4));
+    expect(store.isDirty).toBe(true);
+    expect(store.saveState).toBe('saved');
+  });
+
+  it('marks a failed save while keeping the document', () => {
+    const store = useEditorStore();
+    store.dispatch(addPoint('p', 1, 2));
+
+    store.markSaveFailed();
+
+    expect(store.saveState).toBe('failed');
+    expect(store.isDirty).toBe(true);
+    expect(store.document.entities).toHaveLength(1);
+  });
+
+  it('rejects every mutation in read-only mode', () => {
+    const store = useEditorStore();
+    store.dispatch(addPoint('p', 1, 2));
+    store.undo();
+    const document = store.document;
+    const journal = store.journal;
+
+    store.setReadOnly(true);
+    store.dispatch(addPoint('q', 3, 4));
+    store.dispatchGroup([addPoint('r', 5, 6)]);
+    store.undo();
+    store.redo();
+
+    expect(store.document).toBe(document);
+    expect(store.journal).toBe(journal);
+    expect(store.future).toHaveLength(1);
+    expect(store.canRedo).toBe(true);
+  });
+
+  it('adopts an unknown document as a clean read-only baseline', () => {
+    const store = useEditorStore();
+    const unknown = {
+      schema: 'sewcraft.pattern/0.3',
+      units: 'mm',
+      entities: [],
+      constraints: [],
+      pieces: [],
+    } as unknown as PatternDocument;
+
+    store.markReadOnlyLoaded(unknown, 4, '2026-10-23T16:00:00Z');
+
+    expect(store.document).toBe(unknown);
+    expect(store.isNew).toBe(false);
+    expect(store.isDirty).toBe(false);
+    expect(store.readOnly).toBe(true);
+    expect(store.savedVersion).toBe(4);
+    expect(store.lastSavedAt).toBe('2026-10-23T16:00:00Z');
+    expect(store.saveState).toBe('idle');
+  });
+
+  it('loads a document without normalising it', () => {
+    const store = useEditorStore();
+    store.dispatch(addPoint('p', 1, 2));
+
+    const legacy = {
+      schema: 'sewcraft.pattern/0.3',
+      units: 'mm',
+      entities: [],
+      constraints: [],
+    } as unknown as PatternDocument;
+
+    store.loadRaw(legacy);
+
+    expect(store.document).toBe(legacy);
+    expect(store.document.pieces).toBeUndefined();
+    expect(store.journal).toEqual([]);
+    expect(store.future).toEqual([]);
+  });
+});

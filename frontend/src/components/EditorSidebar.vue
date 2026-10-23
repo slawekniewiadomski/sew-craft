@@ -13,6 +13,8 @@ const props = defineProps<{
   collapsed: boolean;
   /** Per-drawer row counts, forwarded to the drawer header badges. */
   counts?: Partial<Record<DrawerId, number>>;
+  /** Mutating drawer controls are disabled; the View drawer keeps export toggles. */
+  readOnly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -106,7 +108,9 @@ onBeforeUnmount(removeResizeListeners);
             :count="props.counts?.[drawer.id]"
             @update:open="(value: boolean) => setOpen(drawer.id, value)"
           >
-            <slot :name="drawer.id" />
+            <fieldset class="contents" :disabled="readOnly && drawer.id !== 'view'">
+              <slot :name="drawer.id" />
+            </fieldset>
           </SidebarDrawer>
         </ScrollArea>
 
