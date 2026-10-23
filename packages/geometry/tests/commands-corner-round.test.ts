@@ -607,6 +607,30 @@ describe('corner-round cascade and guards', () => {
     expect((entity(moved, 'r1:a') as PointEntity).x).toBeCloseTo(19.05, 1);
   });
 
+  it('measures from a feature point without driving it', () => {
+    const measured = applyCommand(rounded(), {
+      id: 'd1',
+      type: 'add_constraint',
+      params: { type: 'distance', entities: ['r1:center', 'a'] },
+    }).document;
+
+    expect(measured.constraints).toHaveLength(1);
+    expect(measured.constraints[0]).toMatchObject({
+      id: 'd1',
+      type: 'distance',
+      a: 'r1:center',
+      b: 'a',
+    });
+
+    expect(() =>
+      applyCommand(rounded(), {
+        id: 'd2',
+        type: 'add_constraint',
+        params: { type: 'distance', entities: ['r1:center', 'a'], value: 10 },
+      }),
+    ).toThrow('This point is derived by a corner round; edit the radius.');
+  });
+
   it('rejects new geometry and constraints on derived points', () => {
     const document = rounded();
     expect(() =>

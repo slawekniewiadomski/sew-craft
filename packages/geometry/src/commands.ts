@@ -864,8 +864,13 @@ function applyAddConstraint(
       `${type} needs ${arity} entities, got ${entities.length}`,
     );
   }
+  // A driven distance measurement anchors on whatever points it measures, so a
+  // fixed corner-round feature point is a legitimate anchor. A constraint that
+  // drives a value still needs draggable points.
+  const drivenMeasurement = type === 'distance' && value === undefined;
   for (const id of entities) {
-    requireDraftingPoint(document, id, 'add_constraint');
+    if (drivenMeasurement) requirePoint(document, id, 'add_constraint');
+    else requireDraftingPoint(document, id, 'add_constraint');
   }
 
   if (
