@@ -139,7 +139,7 @@ const router = useRouter();
  * through `persist`, so autosave and the Save button share one code path.
  */
 const autosave = createAutosave({
-  write: (origin) => persist(editor.savedVersion, origin),
+  write: (origin) => persist(editor.savedVersion, { origin }),
   shouldWrite: canAutosave,
 });
 const { width, collapsed, setWidth } = useSidebarLayout(window.localStorage);
@@ -1066,6 +1066,14 @@ type LoadState = 'loading' | 'ready' | 'error';
 type SaveBarState = 'new' | 'dirty' | 'saving' | 'saved' | 'failed' | 'paused' | 'error';
 type SaveOutcome = 'saved' | 'retry' | 'stop';
 
+interface SaveOptions {
+  origin?: SaveOrigin;
+  /** The schema the stored document had, so the server archives it first. */
+  expectedSchema?: string;
+  /** Keep the request alive when the page is hidden or unloading. */
+  keepalive?: boolean;
+}
+
 interface PendingUpgrade {
   /** The document exactly as stored; a failed upgrade keeps this read-only. */
   stored: PatternDocument;
@@ -1101,6 +1109,8 @@ function canAutosave(): boolean {
   if (editor.readOnly) return false;
   if (dialogOpen.value) return false;
   if (editor.saveState === 'paused') return false;
+  // A manual save (or a lifecycle flush) already writes this document.
+  if (editor.saveState === 'saving') return false;
   return editor.isDirty;
 }
 
@@ -1192,19 +1202,22 @@ function applySnapshot(snapshot: Pattern): void {
  */
 async function persist(
   expectedVersion: number | null,
-  origin: SaveOrigin = 'manual',
-  expectedSchema?: string,
+  { origin = 'manual', expectedSchema, keepalive = false }: SaveOptions = {},
 ): Promise<SaveOutcome> {
   const snapshot = pattern.value;
   editor.markSaving();
 
   try {
-    const response = await projectsApi.savePattern(Number(props.id), {
+    const payload = {
       document: snapshot,
       expected_version: expectedVersion,
       ...(expectedSchema === undefined ? {} : { expected_schema: expectedSchema }),
       ...(origin === 'autosave' ? { origin } : {}),
-    });
+    };
+
+    const response = keepalive
+      ? await projectsApi.savePattern(Number(props.id), payload, { keepalive: true })
+      : await projectsApi.savePattern(Number(props.id), payload);
     editor.markSaved(snapshot, response.data.version, response.data.saved_at, origin);
     error.value = null;
     return 'saved';
@@ -1274,7 +1287,7 @@ async function updateDocument(): Promise<void> {
   const pending = pendingUpgrade.value;
   if (pending === null || editor.saveState === 'saving') return;
 
-  if ((await persist(pending.version, 'manual', pending.schema)) !== 'saved') {
+  if ((await persist(pending.version, { expectedSchema: pending.schema })) !== 'saved') {
     // A stale version during an upgrade must reload, not run the generic
     // overwrite path: that path would write the migrated document without
     // archiving the stored one.
@@ -1342,9 +1355,9 @@ function flushBeforeUnload(): void {
   if (!fitsKeepaliveBudget(JSON.stringify(payload))) return;
 
   autosave.cancel();
-  void projectsApi
-    .savePattern(Number(props.id), payload, { keepalive: true })
-    .catch(() => undefined);
+  // The response still updates the bar when the tab merely lost focus; during a
+  // real unload there is nothing left to update, which is harmless.
+  void persist(editor.savedVersion, { origin: 'autosave', keepalive: true });
 }
 
 function onVisibilityChange(): void {

@@ -3685,7 +3685,7 @@ describe('EditorView autosave', () => {
     expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
   });
 
-  it('flushes a hidden tab with keepalive and re-arms when it returns', async () => {
+  it('flushes a hidden tab with keepalive and reports the write', async () => {
     const pinia = createPinia();
     const wrapper = await mountEditor(pinia);
     const store = useEditorStore(pinia);
@@ -3698,7 +3698,6 @@ describe('EditorView autosave', () => {
 
     markDirty(pinia);
     await nextTick();
-    setHidden(true);
     document.dispatchEvent(new Event('visibilitychange'));
 
     expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledWith(
@@ -3710,7 +3709,34 @@ describe('EditorView autosave', () => {
       },
       { keepalive: true },
     );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(wrapper.find('[data-testid="save-status"]').text()).toContain('Autosaved');
 
+    // Returning to a clean tab writes nothing more.
+    setHidden(false);
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-arms autosave when the tab returns with a failed lifecycle flush', async () => {
+    vi.mocked(projectsApi.savePattern)
+      .mockRejectedValueOnce(new Error('Network down'))
+      .mockResolvedValueOnce({
+        data: { id: 1, version: 2, saved_at: '2026-10-23T16:00:00.000Z', created: false },
+      });
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+    vi.useFakeTimers();
+
+    markDirty(pinia);
+    await nextTick();
+    setHidden(true);
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed — retrying');
+
+    // Leaving the tab paused the retry ladder; returning re-arms the writer.
     setHidden(false);
     document.dispatchEvent(new Event('visibilitychange'));
     await vi.advanceTimersByTimeAsync(1500);
@@ -3759,6 +3785,37 @@ describe('EditorView autosave', () => {
     window.dispatchEvent(new Event('pagehide'));
 
     expect(vi.mocked(projectsApi.savePattern)).not.toHaveBeenCalled();
+  });
+
+  it('does not schedule a write while a lifecycle flush is in flight', async () => {
+    let resolveSave: (value: unknown) => void = () => {};
+    vi.mocked(projectsApi.savePattern).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSave = resolve as (value: unknown) => void;
+        }),
+    );
+    const pinia = createPinia();
+    await mountEditor(pinia);
+    vi.useFakeTimers();
+
+    markDirty(pinia);
+    await nextTick();
+    window.dispatchEvent(new Event('pagehide'));
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+
+    // The edit lands while that request is still open; scheduling would race it
+    // for the same version token, so it waits for the next committed change.
+    markDirty(pinia);
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+
+    resolveSave({
+      data: { id: 1, version: 2, saved_at: '2026-10-23T16:00:00.000Z', created: false },
+    });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
   });
 
   it('swallows a rejected keepalive flush', async () => {
