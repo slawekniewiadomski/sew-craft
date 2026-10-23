@@ -1,6 +1,6 @@
 # Feature ribbon group and corner rounds inside pieces
 
-Status: draft — design review
+Status: implemented — shipped on PR #66
 Refs #63
 Builds on: `2026-10-20-corner-rounding-tool.md` (implemented), `2026-10-22-pieces-and-allowance.md`,
 `2026-10-20-seam-allowance-side.md`
@@ -314,33 +314,37 @@ Blocking product decision, asked on #63. The design follows the recommendation.
 
 ## ✅ Acceptance criteria
 
-- [ ] A **Features** group exists between Tools and Sketching and contains Round corner;
+- [x] A **Features** group exists between Tools and Sketching and contains Round corner;
       Tools no longer does.
-- [ ] Round corner accepts a single corner point and opens the radius field, in a piece and
+- [x] Round corner accepts a single corner point and opens the radius field, in a piece and
       outside one.
-- [ ] Round corner still accepts two lines; a point pick after a line pick restarts cleanly.
-- [ ] Eligible corners are ringed while the tool is active; ineligible picks explain why.
-- [ ] A round can be committed on a piece corner without removing the piece; the stitch and
+- [x] Round corner still accepts two lines; a point pick after a line pick restarts cleanly.
+- [x] Eligible corners are ringed while the tool is active; ineligible picks explain why.
+- [x] A round can be committed on a piece corner without removing the piece; the stitch and
       cut loops stay closed and the piece keeps its allowances and cut dimensions.
-- [ ] With equal 10 mm allowances on both edges, the cut loop offsets the arc and its size
+- [x] With equal 10 mm allowances on both edges, the cut loop offsets the arc and its size
       is correct within the existing tolerance.
-- [ ] Unequal allowances are rejected at add time and by `set_piece_allowance`, with a
+- [x] Unequal allowances are rejected at add time and by `set_piece_allowance`, with a
       message naming the remedy.
-- [ ] Removing the round restores the sharp corner, the original cut loop and every cut
+- [x] Removing the round restores the sharp corner, the original cut loop and every cut
       dimension.
-- [ ] A corner shared by two pieces rounds both loops from one feature.
-- [ ] No document-schema, command or command-spec change; older documents load unchanged.
-- [ ] Pest and Vitest suites pass at 100 % statements, branches, functions and lines.
-- [ ] `npm run lint`, `npm run format:check` and `npm run typecheck` pass.
-- [ ] `docs/architecture/geometry-core.md` and the glossary describe the bridge rule.
+- [x] A corner shared by two pieces rounds both loops from one feature.
+- [x] No document-schema, command or command-spec change; older documents load unchanged.
+- [x] Pest and Vitest suites pass at 100 % statements, branches, functions and lines.
+- [x] `npm run lint`, `npm run format:check` and `npm run typecheck` pass.
+- [x] `docs/architecture/geometry-core.md` and the glossary describe the bridge rule.
 
 ## Checks
 
-Design checks only — this is a design-only PR. No application code was written or run, so
-no behaviour is claimed:
+Implementation checks on this PR:
 
-- Traced the corner-round command, canvas pick flow, ribbon data and piece boundary walk.
-- Read `piece.ts` (`validatePiece`, `orientedPolylines`, `pieceLoop`, `pieceCutLoop`),
-  `commands.ts` (add/set/remove round, `set_piece_allowance`), the corner-round and pieces
-  specs, the glossary, the data model and the standards.
-- Checked the 100 % coverage, command-only mutation and doc-sync rules against the plan.
+- `packages/geometry/tests/piece.test.ts` covers the bridge walk, both walk directions,
+  the bridge allowance, cut vertices, fold lines, a broken arc and unresolvable loops.
+- `packages/geometry/tests/commands-piece.test.ts` covers rounding a piece corner,
+  keeping the piece and its allowances, the folding-radius rejection and the
+  `set_piece_allowance` guard.
+- `frontend/src/lib/corner-round.test.ts` covers point picks, every rejection and
+  `roundableCorners`; canvas and view tests cover the rings, the point target and the
+  commit on the same branch.
+- `npm run test:coverage`, `npm run lint`, `npm run format:check`, `npm run typecheck`
+  and `npm run build` pass; backend Pest and Pint run through the configured gate.
