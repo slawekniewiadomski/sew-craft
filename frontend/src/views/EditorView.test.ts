@@ -223,6 +223,13 @@ describe('EditorView', () => {
     await nextTick();
 
     expect(canvas.classes()).toContain('cursor-crosshair');
+    expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Point');
+
+    // Clicking the active tool again returns to Select.
+    await wrapper.find('[data-testid="tool-add_point"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Select');
+    expect(canvas.classes()).toContain('cursor-default');
   });
 
   it('adds a point through the canvas, then undoes and redoes it', async () => {
@@ -891,155 +898,24 @@ describe('EditorView', () => {
     expect(wrapper.text()).toContain('1 cut edge(s)');
   });
 
-  it('arms the seam allowance tool, toggles it off and leaves it with Escape', async () => {
+  it('no longer offers the Seam allowance tool in the ribbon', async () => {
     const { wrapper } = await mountLoaded(edgeDoc);
 
-    await wrapper.find('[data-testid="tool-add_allowance"]').trigger('click');
-    await nextTick();
-
-    expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Seam allowance');
-    expect(wrapper.find('[data-testid="tool-add_allowance"]').attributes('aria-pressed')).toBe(
-      'true',
-    );
-
-    await wrapper.find('[data-testid="tool-add_allowance"]').trigger('click');
-    await nextTick();
-    expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Select');
-
-    await wrapper.find('[data-testid="tool-add_allowance"]').trigger('click');
-    await nextTick();
-    keydown('Escape');
-    await nextTick();
-
-    expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Select');
+    expect(wrapper.find('[data-testid="tool-add_allowance"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="editor-ribbon"]').text()).not.toContain('Seam allowance');
   });
 
-  it('attaches a default allowance from the canvas and stays armed', async () => {
-    const { wrapper, store } = await mountLoaded(edgeDoc);
-
-    await wrapper.find('[data-testid="tool-add_allowance"]').trigger('click');
-    await nextTick();
-    entityDown(wrapper, 'line', 'l1');
-    await flushPromises();
-
-    expect(store.document.seams).toHaveLength(1);
-    expect(store.document.seams![0]).toMatchObject({ edge: 'l1', width: 10 });
-    expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Seam allowance');
-  });
-
-  it('rejects a construction edge with the error banner', async () => {
-    const guideDoc: PatternDocument = {
+  it('renders a legacy allowance as read-only text with no editor', async () => {
+    const { wrapper } = await mountLoaded({
       ...edgeDoc,
-      entities: edgeDoc.entities.map((entity) =>
-        entity.kind === 'line' ? { ...entity, construction: true } : entity,
-      ),
-    };
-    const { wrapper, store } = await mountLoaded(guideDoc);
+      seams: [{ id: 's1', edge: 'l1', width: 10 }],
+    });
 
-    await wrapper.find('[data-testid="tool-add_allowance"]').trigger('click');
-    await nextTick();
-    entityDown(wrapper, 'line', 'l1');
-    await flushPromises();
-
-    expect(wrapper.text()).toContain('Only cut edges can carry a seam allowance');
-    expect(store.document.seams).toHaveLength(0);
+    expect(wrapper.find('[data-testid="seam-label-l1"]').text()).toBe('Allowance 10 mm');
+    expect(wrapper.find('[data-testid="seam-width-l1"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="flip-seam-l1"]').exists()).toBe(false);
-  });
-
-  it('does nothing when clicking an edge that already has an allowance', async () => {
-    const { wrapper, store } = await mountLoaded({
-      ...edgeDoc,
-      seams: [{ id: 's1', edge: 'l1', width: 10 }],
-    });
-
-    await wrapper.find('[data-testid="tool-add_allowance"]').trigger('click');
-    await nextTick();
-    entityDown(wrapper, 'line', 'l1');
-    await flushPromises();
-
-    expect(store.document.seams).toHaveLength(1);
-    expect(store.journal).toHaveLength(0);
-  });
-
-  it('edits a seam width by double-clicking and restores it with undo', async () => {
-    const { wrapper, store } = await mountLoaded({
-      ...edgeDoc,
-      seams: [{ id: 's1', edge: 'l1', width: 10 }],
-    });
-
-    await wrapper.find('[data-seam-hit="l1"]').trigger('dblclick');
-    await flushPromises();
-
-    const input = wrapper.find('[data-testid="seam-width-input"]');
-    expect((input.element as HTMLInputElement).value).toBe('10');
-    await input.setValue('15');
-    await input.trigger('keydown', { key: 'Enter' });
-    await flushPromises();
-
-    expect(store.document.seams![0]).toMatchObject({ id: 's1', width: 15 });
-    expect((wrapper.find('[data-testid="seam-width-l1"]').element as HTMLInputElement).value).toBe(
-      '15',
-    );
-
-    await wrapper.find('[data-testid="undo"]').trigger('click');
-    await flushPromises();
-
-    expect(store.document.seams![0]).toMatchObject({ width: 10 });
-  });
-
-  it('edits the sidebar width and snaps back on invalid or unchanged input', async () => {
-    const { wrapper, store } = await mountLoaded({
-      ...edgeDoc,
-      seams: [{ id: 's1', edge: 'l1', width: 10 }],
-    });
-    const field = () => wrapper.find('[data-testid="seam-width-l1"]');
-
-    await field().setValue('18');
-    await field().trigger('change');
-    await flushPromises();
-    expect(store.document.seams![0]).toMatchObject({ width: 18 });
-    const journal = store.journal.length;
-
-    await field().setValue('0');
-    await field().trigger('change');
-    await nextTick();
-    expect(store.document.seams![0]).toMatchObject({ width: 18 });
-    expect((field().element as HTMLInputElement).value).toBe('18');
-
-    await field().setValue('18');
-    await field().trigger('change');
-    await flushPromises();
-    expect(store.journal).toHaveLength(journal);
-
-    await field().setValue('22');
-    await field().trigger('keydown', { key: 'Enter' });
-    await flushPromises();
-    expect(store.document.seams![0]).toMatchObject({ width: 22 });
-  });
-
-  it('flips a seam side from the outline twice and undoes one flip', async () => {
-    const { wrapper, store } = await mountLoaded({
-      ...edgeDoc,
-      seams: [{ id: 's1', edge: 'l1', width: 10 }],
-    });
-    const flip = () => wrapper.find('[data-testid="flip-seam-l1"]');
-
-    expect(flip().attributes('aria-label')).toBe('Flip side of the seam allowance for l1');
-
-    await flip().trigger('click');
-    await flushPromises();
-    expect(store.document.seams![0]).toMatchObject({ id: 's1', side: 'right' });
-
-    await flip().trigger('click');
-    await flushPromises();
-    expect(store.document.seams![0]).toMatchObject({ side: 'left' });
-    expect(store.journal).toHaveLength(2);
-
-    await wrapper.find('[data-testid="undo"]').trigger('click');
-    await flushPromises();
-    expect(store.document.seams![0]).toMatchObject({ side: 'right' });
-    expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="remove-seam-l1"]').exists()).toBe(false);
+    expect(wrapper.find('[data-seam-hit]').exists()).toBe(false);
   });
 
   it('shows No allowance for an unattached edge with no add control', async () => {
@@ -1051,21 +927,18 @@ describe('EditorView', () => {
     expect(wrapper.find('[data-testid="flip-seam-l1"]').exists()).toBe(false);
   });
 
-  it('removes an allowance and its dashed path', async () => {
+  it('keeps the legacy dashed path without offering removal', async () => {
     const { wrapper, store } = await mountLoaded({
       ...edgeDoc,
       seams: [{ id: 's1', edge: 'l1', width: 10 }],
     });
 
-    await wrapper.find('[data-testid="remove-seam-l1"]').trigger('click');
-    await flushPromises();
-
-    expect(store.document.seams).toHaveLength(0);
-    expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="seam-empty-l1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="remove-seam-l1"]').exists()).toBe(false);
+    expect(store.document.seams).toHaveLength(1);
   });
 
-  it('hides seam allowances without changing the document', async () => {
+  it('hides allowances without changing the document', async () => {
     const pinia = createPinia();
     setActivePinia(pinia);
     const store = useEditorStore();
@@ -1075,7 +948,7 @@ describe('EditorView', () => {
     expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(true);
 
     await openViewDrawer(wrapper);
-    await wrapper.find('[data-testid="show-seam-allowance"]').setValue(false);
+    await wrapper.find('[data-testid="show-allowances"]').setValue(false);
     await nextTick();
 
     expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(false);
@@ -1676,32 +1549,13 @@ describe('EditorView', () => {
     expect(wrapper.find('[data-testid="workspace-summary"]').text()).toContain('0 command(s)');
   });
 
-  it('adds, edits and removes an allowance from the inspector', async () => {
-    const { wrapper, store } = await mountLoaded(inspectorDoc);
+  it('has no Seam allowance section in the inspector', async () => {
+    const { wrapper } = await mountLoaded(inspectorDoc);
     entityDown(wrapper, 'line', 'l1');
     await nextTick();
 
-    await wrapper.find('[data-testid="entity-add-seam"]').trigger('click');
-    await flushPromises();
-    expect(store.document.seams).toEqual([
-      { id: expect.any(String), edge: 'l1', width: 10, side: 'left' },
-    ]);
-
-    const width = wrapper.find('[data-testid="entity-seam-width"]');
-    expect((width.element as HTMLInputElement).value).toBe('10');
-    await width.setValue('15');
-    await flushPromises();
-    expect(store.document.seams![0]).toMatchObject({ width: 15 });
-
-    await wrapper.find('[data-testid="entity-flip-seam"]').trigger('click');
-    await flushPromises();
-    expect(store.document.seams![0]).toMatchObject({ width: 15, side: 'right' });
-
-    await wrapper.find('[data-testid="entity-remove-seam"]').trigger('click');
-    await flushPromises();
-    expect(store.document.seams).toHaveLength(0);
-    expect(wrapper.find('[data-testid="entity-add-seam"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="entity-flip-seam"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="entity-seam"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="entity-add-seam"]').exists()).toBe(false);
   });
 
   it('converts the selection between construction and cut from the inspector', async () => {
@@ -1718,7 +1572,6 @@ describe('EditorView', () => {
     expect(store.document.entities.find((entity) => entity.id === 'l1')).toMatchObject({
       construction: true,
     });
-    expect(wrapper.find('[data-testid="entity-seam-construction"]').exists()).toBe(true);
   });
 
   it('edits and removes related dimensions and constraints from the inspector', async () => {
@@ -2418,5 +2271,234 @@ describe('EditorView', () => {
 
     expect(wrapper.find('[data-testid="edge-piece-ab"]').text()).toContain('In piece p1');
     expect(wrapper.find('[data-testid="edge-piece-ab"]').text()).toContain('seam 10 mm');
+  });
+});
+
+describe('EditorView pieces drawer', () => {
+  it('lists every piece with its label, quantity and finished/cut sizes', async () => {
+    const { wrapper } = await mountLoaded(pieceDoc);
+
+    const row = wrapper.find('[data-testid="piece-row-p1"]');
+    expect(row.exists()).toBe(true);
+    expect(row.text()).toContain('Front');
+    expect(row.text()).toContain('×2');
+    expect(row.text()).toContain('100 × 100 mm finished');
+    expect(row.text()).toContain('cut');
+    expect(row.find('[aria-hidden="true"]').text()).toBe('▸');
+  });
+
+  it('labels an unnamed piece by its position and shows em dashes when broken', async () => {
+    const { wrapper } = await mountLoaded({
+      ...lineDoc,
+      pieces: [
+        { id: 'p1', edges: ['ab', 'bc', 'cd', 'da'], allowances: [] },
+        { id: 'broken', edges: ['ab', 'missing', 'ghost'], allowances: [] },
+      ],
+    });
+
+    expect(wrapper.find('[data-testid="piece-row-p1"]').text()).toContain('Piece 1');
+    expect(wrapper.find('[data-testid="piece-row-broken"]').text()).toContain('Piece 2');
+    expect(wrapper.find('[data-testid="piece-row-broken"]').text()).toContain('— finished');
+  });
+
+  it('expands and collapses a piece card from its row', async () => {
+    const { wrapper } = await mountLoaded(pieceDoc);
+    const row = () => wrapper.find('[data-testid="piece-row-p1"]');
+
+    expect(row().attributes('aria-expanded')).toBe('false');
+    expect(wrapper.find('[data-testid="piece-drawer-piece"]').exists()).toBe(false);
+
+    await row().trigger('click');
+    await nextTick();
+    expect(row().attributes('aria-expanded')).toBe('true');
+    expect(wrapper.find('[data-testid="piece-drawer-piece"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="piece-drawer-piece-name"]').element).toHaveProperty(
+      'value',
+      'Front',
+    );
+    expect(wrapper.find('[data-piece-band="p1"]').classes()).toContain('fill-primary/25');
+
+    await row().trigger('click');
+    await nextTick();
+    expect(row().attributes('aria-expanded')).toBe('false');
+    expect(wrapper.find('[data-testid="piece-drawer-piece"]').exists()).toBe(false);
+    expect(wrapper.find('[data-piece-band="p1"]').classes()).not.toContain('fill-primary/25');
+  });
+
+  it('keeps piece edits working from the drawer card', async () => {
+    const { wrapper, store } = await mountLoaded(pieceDoc);
+
+    await wrapper.find('[data-testid="piece-row-p1"]').trigger('click');
+    await nextTick();
+    const width = wrapper.find('[data-testid="piece-drawer-piece-width-ab"]');
+    await width.setValue('15');
+    await width.trigger('change');
+    await flushPromises();
+
+    expect(store.document.pieces[0]!.allowances[0]).toMatchObject({ edge: 'ab', width: 15 });
+  });
+
+  it('removes a piece from the drawer card and clears the selection', async () => {
+    const { wrapper, store } = await mountLoaded(pieceDoc);
+
+    await wrapper.find('[data-testid="piece-row-p1"]').trigger('click');
+    await nextTick();
+    await wrapper.find('[data-testid="piece-drawer-remove-piece-p1"]').trigger('click');
+    await flushPromises();
+
+    expect(store.document.pieces).toEqual([]);
+    expect(wrapper.find('[data-testid="pieces-empty"]').exists()).toBe(true);
+  });
+
+  it('shows the empty state with a disabled Create piece button', async () => {
+    const { wrapper } = await mountLoaded(lineDoc);
+
+    expect(wrapper.find('[data-testid="pieces-empty"]').text()).toBe('No pieces yet.');
+    const create = wrapper.find('[data-testid="pieces-create"]');
+    expect(create.attributes('disabled')).toBeDefined();
+    expect(create.attributes('title')).toBe('Select at least three cut edges to create a piece.');
+  });
+
+  it('creates a piece from the drawer once a closed chain is selected', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+    const create = () => wrapper.find('[data-testid="pieces-create"]');
+
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+    entityDown(wrapper, 'line', 'bc', { ctrlKey: true });
+    await nextTick();
+    entityDown(wrapper, 'line', 'cd', { ctrlKey: true });
+    await nextTick();
+    entityDown(wrapper, 'line', 'da', { ctrlKey: true });
+    await nextTick();
+
+    expect(create().attributes('disabled')).toBeUndefined();
+    await create().trigger('click');
+    await flushPromises();
+
+    expect(store.document.pieces).toHaveLength(1);
+    expect(wrapper.findAll('[data-testid^="piece-row-"]')).toHaveLength(1);
+  });
+
+  it('clears the piece selection when an entity is selected, and the reverse', async () => {
+    const { wrapper } = await mountLoaded(pieceDoc);
+
+    await wrapper.find('[data-testid="piece-row-p1"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="piece-drawer-piece"]').exists()).toBe(true);
+
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+    expect(wrapper.find('[data-testid="piece-drawer-piece"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="piece-row-p1"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="piece-drawer-piece"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
+  });
+});
+
+describe('EditorView Outline selection', () => {
+  function row(wrapper: VueWrapper, id: EntityId) {
+    return wrapper.find(`[data-testid="outline-select-${id}"]`);
+  }
+
+  it('selects an entity from its Outline row and marks the row', async () => {
+    const { wrapper } = await mountLoaded(lineDoc);
+
+    expect(row(wrapper, 'ab').attributes('aria-label')).toBe('Select entity ab');
+    expect(row(wrapper, 'ab').attributes('aria-current')).toBeUndefined();
+
+    await row(wrapper, 'ab').trigger('click');
+    await nextTick();
+
+    expect(row(wrapper, 'ab').attributes('aria-current')).toBe('true');
+    expect(wrapper.find('[data-testid="outline-row-ab"]').classes()).toContain('bg-accent');
+    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="entity-kind"]').text()).toBe('Line');
+  });
+
+  it('replaces the selection on a plain click and collapses a multi-selection', async () => {
+    const { wrapper } = await mountLoaded(lineDoc);
+
+    await row(wrapper, 'ab').trigger('click', { ctrlKey: true });
+    await nextTick();
+    await row(wrapper, 'bc').trigger('click', { ctrlKey: true });
+    await nextTick();
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(true);
+
+    await row(wrapper, 'cd').trigger('click');
+    await nextTick();
+
+    expect(row(wrapper, 'ab').attributes('aria-current')).toBeUndefined();
+    expect(row(wrapper, 'cd').attributes('aria-current')).toBe('true');
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(true);
+  });
+
+  it('toggles with Ctrl/Cmd and subtracts with Ctrl/Cmd+Shift', async () => {
+    const { wrapper } = await mountLoaded(lineDoc);
+
+    await row(wrapper, 'ab').trigger('click');
+    await nextTick();
+    await row(wrapper, 'bc').trigger('click', { ctrlKey: true });
+    await nextTick();
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(true);
+
+    await row(wrapper, 'ab').trigger('click', { metaKey: true });
+    await nextTick();
+    expect(row(wrapper, 'ab').attributes('aria-current')).toBeUndefined();
+    expect(row(wrapper, 'bc').attributes('aria-current')).toBe('true');
+
+    await row(wrapper, 'ab').trigger('click', { ctrlKey: true });
+    await nextTick();
+    await row(wrapper, 'bc').trigger('click', { ctrlKey: true, shiftKey: true });
+    await nextTick();
+    expect(row(wrapper, 'ab').attributes('aria-current')).toBe('true');
+    expect(row(wrapper, 'bc').attributes('aria-current')).toBeUndefined();
+    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(true);
+  });
+
+  it('leaves the selection alone when a row control is used', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    await row(wrapper, 'ab').trigger('click');
+    await nextTick();
+    const makeConstruction = wrapper
+      .findAll('[data-testid="outline-row-ab"] button')
+      .find((button) => button.text() === 'Make construction')!;
+
+    await makeConstruction.trigger('click');
+    await flushPromises();
+
+    expect(row(wrapper, 'ab').attributes('aria-current')).toBe('true');
+    expect(store.document.entities.find((entity) => entity.id === 'ab')).toMatchObject({
+      construction: true,
+    });
+  });
+
+  it('subtracting the last selected row leaves nothing selected', async () => {
+    const { wrapper } = await mountLoaded(lineDoc);
+
+    await row(wrapper, 'ab').trigger('click');
+    await nextTick();
+    await row(wrapper, 'ab').trigger('click', { ctrlKey: true, altKey: true });
+    await nextTick();
+
+    expect(row(wrapper, 'ab').attributes('aria-current')).toBeUndefined();
+    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('0 entities selected');
+  });
+
+  it('shows the legacy and piece allowance summaries read-only inside the row button', async () => {
+    const { wrapper } = await mountLoaded({
+      ...pieceDoc,
+      seams: [{ id: 's1', edge: 'da', width: 10 }],
+    });
+
+    expect(wrapper.find('[data-testid="seam-label-da"]').text()).toBe('Allowance 10 mm');
+    expect(wrapper.find('[data-testid="edge-piece-ab"]').text()).toContain('In piece p1');
+    expect(wrapper.find(`[data-testid="seam-width-da"]`).exists()).toBe(false);
   });
 });

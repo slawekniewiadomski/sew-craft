@@ -77,7 +77,6 @@ describe('entityProperties', () => {
       length: null,
       arc: null,
       radius: null,
-      seam: null,
       rounds: [],
       dimensions: [],
       cutDimensions: [],
@@ -86,11 +85,8 @@ describe('entityProperties', () => {
     });
   });
 
-  it('describes a line with endpoints, measured length and seam allowance', () => {
-    const properties = entityProperties(
-      doc({ seams: [{ id: 's1', edge: 'l1', width: 12 }] }),
-      'l1',
-    );
+  it('describes a line with endpoints and measured length', () => {
+    const properties = entityProperties(doc(), 'l1');
 
     expect(properties).toMatchObject({
       id: 'l1',
@@ -99,17 +95,16 @@ describe('entityProperties', () => {
       fixed: null,
       geometry: { kind: 'line', start: 'a', end: 'b' },
       length: 100,
-      seam: { id: 's1', width: 12, side: 'left' },
     });
   });
 
-  it('reports a stored right side', () => {
+  it('keeps a legacy seam out of the inspector view model', () => {
     const properties = entityProperties(
       doc({ seams: [{ id: 's1', edge: 'l1', width: 12, side: 'right' }] }),
       'l1',
     );
 
-    expect(properties?.seam).toEqual({ id: 's1', width: 12, side: 'right' });
+    expect(properties).not.toHaveProperty('seam');
   });
 
   it('describes a curve with all four control points and no length', () => {
@@ -121,7 +116,6 @@ describe('entityProperties', () => {
       geometry: { kind: 'curve', p0: 'a', p1: 'b', p2: 'c', p3: 'd' },
       length: null,
       arc: null,
-      seam: null,
     });
   });
 
@@ -172,7 +166,6 @@ describe('entityProperties', () => {
       geometry: { kind: 'circle', center: 'a', rim: 'b' },
       radius: 100,
       length: null,
-      seam: null,
     });
   });
 
@@ -221,14 +214,10 @@ describe('entityProperties', () => {
     expect(entityProperties(document, 'k1')?.constraints).toEqual([]);
   });
 
-  it('reports construction geometry and a seam allowance on a guide edge', () => {
-    const properties = entityProperties(
-      doc({ seams: [{ id: 's1', edge: 'l2', width: 10 }] }),
-      'l2',
-    );
+  it('reports construction geometry on a guide edge', () => {
+    const properties = entityProperties(doc(), 'l2');
 
     expect(properties?.construction).toBe(true);
-    expect(properties?.seam).toEqual({ id: 's1', width: 10, side: 'left' });
   });
 
   it('degrades length and relations when a referenced point is missing', () => {

@@ -61,6 +61,16 @@ export function pieceSummary(document: PatternDocument, piece: Piece): PieceSumm
   };
 }
 
+/** Every piece's inspector view model, in document order. */
+export function pieceSummaries(document: PatternDocument): PieceSummary[] {
+  return document.pieces.map((piece) => pieceSummary(document, piece));
+}
+
+/** The display label for a piece: its name, or `Piece <n>` by 1-based position. */
+export function pieceLabel(summary: PieceSummary, index: number): string {
+  return summary.name ?? `Piece ${index + 1}`;
+}
+
 /** The piece that owns an edge, or `null`. */
 export function pieceOwningEdge(document: PatternDocument, edge: EntityId): Piece | null {
   return document.pieces.find((piece) => piece.edges.includes(edge)) ?? null;

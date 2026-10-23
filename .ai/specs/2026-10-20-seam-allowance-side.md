@@ -1,6 +1,6 @@
 # Seam allowance side
 
-Status: draft design (awaiting Q1)
+Status: superseded (UI) by 2026-10-23-pieces-sidebar-and-selection; `side` is not authorable in the editor
 Refs #39
 Builds on: 007 (seam allowance), 2026-10-19-seam-allowance-sketch-tool.md
 Future consumer: 008 (SVG export)

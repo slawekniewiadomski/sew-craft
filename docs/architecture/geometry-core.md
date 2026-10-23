@@ -216,7 +216,9 @@ an omitted side to `'left'`, which is how documents written before sides existed
 keep rendering. Line, curve and arc edges can carry one, and at most one seam per
 edge; a seam allowance on an arc follows the `start`→`end` direction. A circle
 has no direction for a closed offset, so `add_seam_allowance` rejects one with
-"seam allowances need a line, curve or arc edge".
+"seam allowances need a line, curve or arc edge". Since the pieces migration the
+legacy seam is a read-only rendering path: the app authors allowances per piece
+(`set_piece_allowance`) and offers no seam editing UI.
 
 The offset is produced by pure functions:
 

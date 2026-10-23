@@ -6,7 +6,6 @@ import { RIBBON_ICONS, ribbonIcon, type RibbonIconName } from './ribbon-icons';
 describe('RIBBON_ICONS', () => {
   it('registers one 12 × 12 descriptor for every ribbon glyph', () => {
     expect(Object.keys(RIBBON_ICONS).sort()).toEqual([
-      'allowance',
       'angle',
       'arc',
       'circle',
@@ -45,7 +44,6 @@ describe('RIBBON_ICONS', () => {
     expect(RIBBON_ICONS.point).toEqual({ paths: [], dots: [{ cx: 6, cy: 6, r: 1.9 }] });
     expect(RIBBON_ICONS.line.paths).toEqual(['M2.5 9.5 L9.5 2.5']);
     expect(RIBBON_ICONS.dimension.paths).toHaveLength(5);
-    expect(RIBBON_ICONS.allowance.paths).toHaveLength(4);
     expect(RIBBON_ICONS.download.paths).toHaveLength(3);
   });
 

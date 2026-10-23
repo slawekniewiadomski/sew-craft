@@ -130,17 +130,11 @@ function mountCanvas(
   overrides: Partial<{
     document: PatternDocument;
     tool:
-      | 'select'
-      | 'add_point'
-      | 'add_line'
-      | 'add_curve'
-      | 'add_arc'
-      | 'add_circle'
-      | 'dimension'
-      | 'add_allowance';
+      'select' | 'add_point' | 'add_line' | 'add_curve' | 'add_arc' | 'add_circle' | 'dimension';
     selectedEntityIds: EntityId[];
+    selectedPieceId: EntityId | null;
     fitToken: number;
-    showSeamAllowance: boolean;
+    showAllowances: boolean;
     showConstraints: boolean;
     showDimensions: boolean;
     constraintActive: boolean;
@@ -288,119 +282,27 @@ describe('PatternCanvas', () => {
       ...baseDoc,
       seams: [{ id: 's1', edge: 'ab', width: 10 }],
     };
-    const wrapper = mountCanvas({ document: seamDoc, showSeamAllowance: false });
+    const wrapper = mountCanvas({ document: seamDoc, showAllowances: false });
 
     expect(wrapper.findAll('[data-seam-edge]')).toHaveLength(0);
   });
 
-  it('renders a hit path for a seam only while the layer is visible', () => {
-    const seamDoc: PatternDocument = {
-      ...baseDoc,
-      seams: [{ id: 's1', edge: 'ab', width: 10 }],
-    };
-
-    const visible = mountCanvas({ document: seamDoc });
-    expect(visible.findAll('[data-seam-hit]')).toHaveLength(1);
-    expect(visible.find('[data-seam-hit="ab"]').attributes('data-seam-id')).toBe('s1');
-    expect(visible.find('[data-seam-hit="ab"]').classes()).toContain('cursor-pointer');
-
-    const hidden = mountCanvas({ document: seamDoc, showSeamAllowance: false });
-    expect(hidden.findAll('[data-seam-hit]')).toHaveLength(0);
-  });
-
-  it('emits add-allowance for a cut line or curve and ignores empty space and points', () => {
-    const wrapper = mountCanvas({ document: baseDoc, tool: 'add_allowance' });
-
-    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200);
-    down(wrapper.find('[data-kind="curve"][data-entity-id="curve"]').element, 300, 200);
-    down(pointCircle(wrapper, 'a').element, 300, 200);
-    down(wrapper.find('[data-testid="grid"]').element, 600, 500);
-
-    expect(wrapper.emitted('add-allowance')).toEqual([['ab'], ['curve']]);
-  });
-
-  it('treats a seam hit path as a click on its edge', () => {
+  it('keeps the legacy allowance read-only: no hit path and no editor', async () => {
     const seamDoc: PatternDocument = {
       ...baseDoc,
       seams: [{ id: 's1', edge: 'ab', width: 10 }],
     };
     const wrapper = mountCanvas({ document: seamDoc });
 
-    down(wrapper.find('[data-seam-hit="ab"]').element, 300, 200);
+    const path = wrapper.find('[data-seam-edge="ab"]');
+    expect(path.exists()).toBe(true);
+    expect(wrapper.find('[data-testid="seam-layer"]').classes()).toContain('pointer-events-none');
+    expect(wrapper.find('[data-seam-hit]').exists()).toBe(false);
 
-    expect(wrapper.emitted('update:selectedEntityIds')).toEqual([[['ab']]]);
-  });
-
-  it('opens the seam width editor on double-click and commits a valid width', async () => {
-    const seamDoc: PatternDocument = {
-      ...baseDoc,
-      seams: [{ id: 's1', edge: 'ab', width: 10 }],
-    };
-    const wrapper = mountCanvas({ document: seamDoc });
-    const hit = wrapper.find('[data-seam-hit="ab"]');
-
-    await hit.trigger('dblclick', { clientX: 120, clientY: 140 });
+    await path.trigger('dblclick', { clientX: 120, clientY: 140 });
     await flushPromises();
-
-    expect(wrapper.find('[data-testid="seam-width-editor"]').exists()).toBe(true);
-    const input = wrapper.find('[data-testid="seam-width-input"]');
-    expect((input.element as HTMLInputElement).value).toBe('10');
-
-    await input.setValue('15');
-    await input.trigger('keydown', { key: 'Enter' });
-
-    expect(wrapper.emitted('set-seam-width')).toEqual([['s1', 15]]);
-    expect(wrapper.find('[data-testid="seam-width-editor"]').exists()).toBe(false);
-  });
-
-  it('does not emit a width on Escape and ignores double-clicks during constraints', async () => {
-    const seamDoc: PatternDocument = {
-      ...baseDoc,
-      seams: [{ id: 's1', edge: 'ab', width: 10 }],
-    };
-
-    const constrained = mountCanvas({ document: seamDoc, constraintActive: true });
-    await constrained.find('[data-seam-hit="ab"]').trigger('dblclick');
-    await flushPromises();
-    expect(constrained.find('[data-testid="seam-width-editor"]').exists()).toBe(false);
-
-    const wrapper = mountCanvas({ document: seamDoc });
-    await wrapper.find('[data-seam-hit="ab"]').trigger('dblclick');
-    await flushPromises();
-    await wrapper.find('[data-testid="seam-width-input"]').trigger('keydown', { key: 'Escape' });
-    await nextTick();
-
     expect(wrapper.find('[data-testid="seam-width-editor"]').exists()).toBe(false);
     expect(wrapper.emitted('set-seam-width')).toBeUndefined();
-  });
-
-  it('closes the seam width editor when the tool, document or layer changes', async () => {
-    const seamDoc: PatternDocument = {
-      ...baseDoc,
-      seams: [{ id: 's1', edge: 'ab', width: 10 }],
-    };
-    const wrapper = mountCanvas({ document: seamDoc });
-    const open = async () => {
-      await wrapper.find('[data-seam-hit="ab"]').trigger('dblclick');
-      await flushPromises();
-      expect(wrapper.find('[data-testid="seam-width-editor"]').exists()).toBe(true);
-    };
-
-    await open();
-    await wrapper.setProps({ tool: 'add_line' });
-    await nextTick();
-    expect(wrapper.find('[data-testid="seam-width-editor"]').exists()).toBe(false);
-
-    await open();
-    await wrapper.setProps({ document: { ...seamDoc, seams: [] } });
-    await nextTick();
-    expect(wrapper.find('[data-testid="seam-width-editor"]').exists()).toBe(false);
-
-    await wrapper.setProps({ document: seamDoc });
-    await open();
-    await wrapper.setProps({ showSeamAllowance: false });
-    await nextTick();
-    expect(wrapper.find('[data-testid="seam-width-editor"]').exists()).toBe(false);
   });
 
   it('flags a self-intersecting allowance as invalid', () => {
@@ -2467,7 +2369,7 @@ describe('PatternCanvas', () => {
   });
 
   it('draws every piece loop and its allowance band', () => {
-    const wrapper = mountCanvas({ document: pieceDoc, showSeamAllowance: true });
+    const wrapper = mountCanvas({ document: pieceDoc, showAllowances: true });
 
     const band = wrapper.find('[data-piece-band="p1"]');
     expect(band.exists()).toBe(true);
@@ -2480,16 +2382,22 @@ describe('PatternCanvas', () => {
     const selected = mountCanvas({
       document: pieceDoc,
       selectedEntityIds: ['ab'],
-      showSeamAllowance: true,
+      showAllowances: true,
     });
     expect(selected.find('[data-piece-band="p1"]').classes()).toContain('fill-primary/25');
 
-    const hidden = mountCanvas({ document: pieceDoc, showSeamAllowance: false });
+    const pieceSelected = mountCanvas({ document: pieceDoc, selectedPieceId: 'p1' });
+    expect(pieceSelected.find('[data-piece-band="p1"]').classes()).toContain('fill-primary/25');
+
+    const otherSelected = mountCanvas({ document: pieceDoc, selectedPieceId: 'p2' });
+    expect(otherSelected.find('[data-piece-band="p1"]').classes()).toContain('fill-primary/10');
+
+    const hidden = mountCanvas({ document: pieceDoc, showAllowances: false });
     expect(hidden.find('[data-piece-band="p1"]').isVisible()).toBe(false);
   });
 
   it('flags a self-intersecting piece cut loop', () => {
-    const wrapper = mountCanvas({ document: selfIntersectingPieceDoc, showSeamAllowance: true });
+    const wrapper = mountCanvas({ document: selfIntersectingPieceDoc, showAllowances: true });
 
     expect(wrapper.find('[data-piece-cut="p1"]').classes()).toContain('stroke-destructive');
   });

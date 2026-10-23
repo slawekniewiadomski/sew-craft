@@ -178,7 +178,8 @@ one-way and idempotent. A 0.1 document's closed seam chains become one piece eac
 with those seams as `kind: 'seam'` allowances at the stored width and `side`
 discarded. Seams on edges that close no loop stay in the deprecated `seams` field,
 which is read-only after load and keeps its legacy dashed rendering until it is
-removed in 0.3. Documents without `pieces` gain an empty list, and an
+removed in 0.3. The editor has no legacy-allowance authoring surface: allowances
+are edited per piece, through the Pieces drawer or the entity inspector. Documents without `pieces` gain an empty list, and an
 already-current document is returned unchanged.
 
 A `distance` constraint without `value` or `reference` is a **driven** dimension:

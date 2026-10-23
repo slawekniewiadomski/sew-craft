@@ -75,8 +75,11 @@ or the geometry package depend on.
   allowances and the `derived_distance` cut dimension. A 0.1 document is migrated
   on load: closed seam chains become pieces (`kind: 'seam'`, `side` discarded) and
   seams on open chains stay in the deprecated `seams` field for the legacy dashed
-  rendering. That field is read-only after load and is removed in 0.3. A document
-  already at 0.2 is returned unchanged.
+  rendering. That field is read-only after load: it renders, but the editor offers
+  no way to add, edit, flip or remove a legacy allowance (`add_seam_allowance`,
+  `set_seam_allowance` and `remove_seam_allowance` stay valid commands with no UI
+  surface), and it is removed in 0.3. A document already at 0.2 is returned
+  unchanged.
 
 ## Not (yet) protected
 

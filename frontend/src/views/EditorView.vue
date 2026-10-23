@@ -14,7 +14,6 @@ import {
   isDrivenDimension,
   measureLinearDimension,
   seamForEdge,
-  seamSide,
   toSvg,
 } from '@sewcraft/geometry';
 import type {
@@ -29,7 +28,6 @@ import type {
   DistanceConstraint,
   EntityId,
   LineEntity,
-  SeamSide,
 } from '@sewcraft/geometry';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
@@ -40,6 +38,7 @@ import EditorRibbon from '@/components/EditorRibbon.vue';
 import EditorSidebar from '@/components/EditorSidebar.vue';
 import EntityPropertiesPanel from '@/components/EntityPropertiesPanel.vue';
 import PatternCanvas from '@/components/PatternCanvas.vue';
+import PiecePanel from '@/components/PiecePanel.vue';
 import SelectionSummary from '@/components/SelectionSummary.vue';
 import { Button } from '@/components/ui/button';
 import { useCommandBus } from '@/composables/use-command-bus';
@@ -88,9 +87,14 @@ import type { RibbonAction } from '@/lib/editor-ribbon';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 import { entityProperties } from '@/lib/entity-properties';
 import { buildLineCommands, type LineEndpoint } from '@/lib/line-tool';
-import { parseSeamWidth } from '@/lib/seam-width';
-import { cutDimensionForPoints, pieceCreationFromSelection } from '@/lib/pieces';
-import { orphanedEdges } from '@/lib/selection';
+import {
+  cutDimensionForPoints,
+  pieceCreationFromSelection,
+  pieceLabel,
+  pieceSummaries,
+  type PieceSummary,
+} from '@/lib/pieces';
+import { applySelection, orphanedEdges, selectionModeFrom, toggleSelection } from '@/lib/selection';
 
 const props = defineProps<{ id: string }>();
 
@@ -110,12 +114,18 @@ const error = ref<string | null>(null);
 const activeTool = ref<EditorTool>('select');
 /** Ordered, ephemeral selection: never written to the document or journal. */
 const selectedEntityIds = ref<EntityId[]>([]);
+/**
+ * The piece whose card is open in the Pieces drawer. Ephemeral like the entity
+ * selection, and deliberately separate from it: deleting a row never targets a
+ * loop by accident.
+ */
+const selectedPieceId = ref<EntityId | null>(null);
 /** True while a marquee owns the pointer, so Delete/Escape defer to the canvas. */
 const marqueeActive = ref(false);
 const fitToken = ref(0);
 const showConstruction = ref(true);
 const includeConstruction = ref(false);
-const showSeamAllowance = ref(true);
+const showAllowances = ref(true);
 const showConstraints = ref(true);
 const showDimensions = ref(true);
 const exportStitch = ref(true);
@@ -152,9 +162,7 @@ const edges = computed(() =>
       return {
         id: entity.id,
         construction: entity.construction,
-        seamId: seam?.id ?? null,
         seamWidth: seam?.width ?? null,
-        seamSide: seam === undefined ? null : seamSide(seam),
         pieceId: piece?.id ?? null,
         allowanceKind: allowance === undefined ? null : (allowance.kind ?? 'seam'),
         allowanceWidth: allowance?.width ?? null,
@@ -176,6 +184,33 @@ const pieceCreation = computed(() =>
   pieceCreationFromSelection(pattern.value, selectedEntityIds.value),
 );
 const canCreatePiece = computed(() => pieceCreation.value.ok);
+
+/** The entity selection as a set, for row highlighting and `aria-current`. */
+const selectedIds = computed(() => new Set(selectedEntityIds.value));
+
+/** Every piece, in document order, as the Pieces drawer lists them. */
+const pieces = computed(() => pieceSummaries(pattern.value));
+
+/** How a piece size reads in a drawer row: `220 × 210 mm`, or `—`. */
+function pieceSize(size: { width: number; height: number } | null | undefined): string {
+  return size === undefined || size === null
+    ? '—'
+    : `${formatDimensionValue(size.width)} × ${formatDimensionValue(size.height)} mm`;
+}
+
+/** A row's one-line summary: `Front · ×2 · 220 × 210 mm finished · 240 × 230 mm cut`. */
+function pieceRowText(piece: PieceSummary, index: number): string {
+  return `${pieceLabel(piece, index)} · ×${piece.quantity} · ${pieceSize(piece.metrics?.finished)} finished · ${pieceSize(piece.metrics?.cut)} cut`;
+}
+
+/**
+ * Open or collapse one piece's card. Selecting a piece clears the entity
+ * selection so Delete and the inspector never act on the wrong target.
+ */
+function selectPiece(id: EntityId): void {
+  selectedPieceId.value = selectedPieceId.value === id ? null : id;
+  if (selectedPieceId.value !== null) selectedEntityIds.value = [];
+}
 
 /** The selected entities in selection order, for the multi-selection summary. */
 const selectedEntities = computed(() =>
@@ -488,6 +523,26 @@ function createPiece(): void {
   }
 }
 
+watch(selectedEntityIds, (ids) => {
+  if (ids.length > 0) selectedPieceId.value = null;
+});
+
+/**
+ * Select one Outline row's entity with the canvas' modifier rules: plain click
+ * replaces, Ctrl/Cmd toggles, Ctrl/Cmd+Shift (or Alt) subtracts.
+ */
+function onOutlineSelect(id: EntityId, event: MouseEvent): void {
+  const mode = selectionModeFrom(event);
+  if (mode === 'replace') {
+    selectedEntityIds.value = [id];
+    return;
+  }
+  selectedEntityIds.value =
+    mode === 'add'
+      ? toggleSelection(selectedEntityIds.value, id)
+      : applySelection(selectedEntityIds.value, [id], 'subtract');
+}
+
 function deleteSelected(): void {
   const ids = selectedEntityIds.value;
   if (ids.length === 0 || marqueeActive.value) return;
@@ -689,51 +744,6 @@ function convert(id: string, construction: boolean): void {
       params: { id, construction },
     }),
   );
-}
-
-function onAddAllowance(edge: EntityId): void {
-  const entity = pattern.value.entities.find((candidate) => candidate.id === edge);
-  if (seamForEdge(pattern.value, edge) !== undefined) return;
-
-  if (entity === undefined || entity.kind === 'point' || entity.construction) {
-    error.value = 'Only cut edges can carry a seam allowance';
-    return;
-  }
-
-  run(() => dispatch({ id: nextCommandId('seam'), type: 'add_seam_allowance', params: { edge } }));
-}
-
-function setSeamWidth(id: EntityId, width: number): void {
-  run(() =>
-    dispatch({ id: nextCommandId('seam'), type: 'set_seam_allowance', params: { id, width } }),
-  );
-}
-
-/** Flip a seam to the opposite side of its edge as one undoable command. */
-function flipSeam(id: EntityId, side: SeamSide): void {
-  run(() =>
-    dispatch({
-      id: nextCommandId('seam'),
-      type: 'set_seam_allowance',
-      params: { id, side: side === 'left' ? 'right' : 'left' },
-    }),
-  );
-}
-
-/** Sidebar width edit: invalid or unchanged values snap back without a command. */
-function onSeamWidthEdit(id: EntityId, current: number, event: Event): void {
-  const input = event.target as HTMLInputElement;
-  const width = parseSeamWidth(input.value);
-  if (width === null || width === current) {
-    input.value = String(current);
-    return;
-  }
-
-  setSeamWidth(id, width);
-}
-
-function removeSeam(id: EntityId): void {
-  run(() => dispatch({ id: nextCommandId('seam'), type: 'remove_seam_allowance', params: { id } }));
 }
 
 /** Rename, re-quantify or clear fields on a piece. */
@@ -944,6 +954,13 @@ watch(pattern, (next) => {
     selectedEntityIds.value = surviving;
   }
 
+  if (
+    selectedPieceId.value !== null &&
+    !next.pieces.some((piece) => piece.id === selectedPieceId.value)
+  ) {
+    selectedPieceId.value = null;
+  }
+
   if (activeConstraint.value === null) return;
 
   const pruned = prunePicks(constraintPicks.value, next);
@@ -1057,7 +1074,8 @@ onBeforeUnmount(() => {
           :document="visibleDocument"
           :tool="activeTool"
           :fit-token="fitToken"
-          :show-seam-allowance="showSeamAllowance"
+          :show-allowances="showAllowances"
+          :selected-piece-id="selectedPieceId"
           :show-constraints="showConstraints"
           :show-dimensions="showDimensions"
           :constraint-active="activeConstraint !== null"
@@ -1076,8 +1094,6 @@ onBeforeUnmount(() => {
           @set-corner-round-radius="setCornerRoundRadius"
           @add-dimension="onAddDimension"
           @update-dimension="onUpdateDimension"
-          @add-allowance="onAddAllowance"
-          @set-seam-width="setSeamWidth"
           @marquee-change="marqueeActive = $event"
         />
       </div>
@@ -1102,10 +1118,6 @@ onBeforeUnmount(() => {
             :document="pattern"
             :entity="selectedEntity"
             @set-construction="convert"
-            @add-seam="onAddAllowance"
-            @set-seam-width="setSeamWidth"
-            @flip-seam="flipSeam"
-            @remove-seam="removeSeam"
             @update-dimension="onUpdateDimension"
             @remove-constraint="removeConstraint"
             @set-corner-round-radius="setCornerRoundRadius"
@@ -1146,87 +1158,97 @@ onBeforeUnmount(() => {
           </section>
         </template>
 
+        <template #pieces>
+          <div class="space-y-2">
+            <ul v-if="pieces.length > 0" class="space-y-2" aria-label="Pieces">
+              <li v-for="(piece, index) in pieces" :key="piece.id" class="text-sm">
+                <button
+                  type="button"
+                  class="flex w-full items-center justify-between gap-2 rounded-md px-1 py-1 text-left hover:bg-accent"
+                  :class="selectedPieceId === piece.id ? 'bg-accent text-accent-foreground' : ''"
+                  :aria-expanded="selectedPieceId === piece.id"
+                  :aria-label="`${pieceLabel(piece, index)}: toggle piece details`"
+                  :data-testid="`piece-row-${piece.id}`"
+                  @click="selectPiece(piece.id)"
+                >
+                  <span class="min-w-0 flex-1 truncate">{{ pieceRowText(piece, index) }}</span>
+                  <span aria-hidden="true">{{ selectedPieceId === piece.id ? '▾' : '▸' }}</span>
+                </button>
+
+                <div v-if="selectedPieceId === piece.id" class="mt-1 px-1">
+                  <PiecePanel
+                    :summary="piece"
+                    :label="pieceLabel(piece, index)"
+                    prefix="piece-drawer"
+                    @update-piece="onUpdatePiece"
+                    @set-piece-allowance="onSetPieceAllowance"
+                    @remove-piece="onRemovePiece"
+                  />
+                </div>
+              </li>
+            </ul>
+
+            <p v-else class="text-sm text-muted-foreground" data-testid="pieces-empty">
+              No pieces yet.
+            </p>
+
+            <Button
+              variant="outline"
+              size="sm"
+              :disabled="!canCreatePiece"
+              :title="pieceCreation.ok ? undefined : pieceCreation.message"
+              data-testid="pieces-create"
+              @click="createPiece"
+            >
+              Create piece
+            </Button>
+          </div>
+        </template>
+
         <template #outline>
           <ul v-if="edges.length > 0" class="space-y-2" aria-label="Edges">
             <li
               v-for="edge in edges"
               :key="edge.id"
               class="flex flex-wrap items-center justify-between gap-2 text-sm"
+              :class="selectedIds.has(edge.id) ? 'rounded-md bg-accent text-accent-foreground' : ''"
+              :data-testid="`outline-row-${edge.id}`"
             >
-              <span class="font-mono text-muted-foreground">{{ edge.id }}</span>
+              <button
+                type="button"
+                class="flex min-w-0 flex-1 flex-wrap items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                :aria-label="`Select entity ${edge.id}`"
+                :aria-current="selectedIds.has(edge.id) ? 'true' : undefined"
+                :data-testid="`outline-select-${edge.id}`"
+                @click="onOutlineSelect(edge.id, $event)"
+              >
+                <span class="font-mono text-muted-foreground">{{ edge.id }}</span>
 
-              <div class="flex items-center gap-2">
-                <template v-if="edge.seamId !== null">
-                  <label
-                    class="flex items-center gap-1 text-muted-foreground"
-                    :data-testid="`seam-label-${edge.id}`"
-                  >
-                    Allowance
-                    <input
-                      type="number"
-                      min="0.1"
-                      step="0.1"
-                      class="w-16 rounded-md border px-2 py-1 text-sm text-foreground"
-                      :value="edge.seamWidth!"
-                      :aria-label="`Allowance width in millimetres for ${edge.id}`"
-                      :data-testid="`seam-width-${edge.id}`"
-                      @change="onSeamWidthEdit(edge.seamId!, edge.seamWidth!, $event)"
-                      @keydown.enter.prevent="
-                        onSeamWidthEdit(edge.seamId!, edge.seamWidth!, $event)
-                      "
-                    />
-                    mm
-                  </label>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    :aria-label="`Flip side of the seam allowance for ${edge.id}`"
-                    :data-testid="`flip-seam-${edge.id}`"
-                    @click="flipSeam(edge.seamId!, edge.seamSide!)"
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="1.5"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M2.5 5.5h10M10 3l2.5 2.5L10 8" />
-                      <path d="M13.5 10.5h-10M6 8l-2.5 2.5L6 13" />
-                    </svg>
-                    Flip side
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    :data-testid="`remove-seam-${edge.id}`"
-                    @click="removeSeam(edge.seamId!)"
-                  >
-                    Remove allowance
-                  </Button>
-                </template>
-                <template v-else-if="edge.pieceId !== null">
-                  <span class="text-muted-foreground" :data-testid="`edge-piece-${edge.id}`">
-                    In piece {{ edge.pieceId }}
-                    <template v-if="edge.allowanceKind !== null">
-                      · {{ edge.allowanceKind }} {{ edge.allowanceWidth }} mm
-                    </template>
-                  </span>
-                </template>
-                <template v-else>
-                  <span class="text-muted-foreground" :data-testid="`seam-empty-${edge.id}`">
-                    No allowance
-                  </span>
-                </template>
+                <span
+                  v-if="edge.seamWidth !== null"
+                  class="text-muted-foreground"
+                  :data-testid="`seam-label-${edge.id}`"
+                >
+                  Allowance {{ edge.seamWidth }} mm
+                </span>
+                <span
+                  v-else-if="edge.pieceId !== null"
+                  class="text-muted-foreground"
+                  :data-testid="`edge-piece-${edge.id}`"
+                >
+                  In piece {{ edge.pieceId }}
+                  <template v-if="edge.allowanceKind !== null">
+                    · {{ edge.allowanceKind }} {{ edge.allowanceWidth }} mm
+                  </template>
+                </span>
+                <span v-else class="text-muted-foreground" :data-testid="`seam-empty-${edge.id}`">
+                  No allowance
+                </span>
+              </button>
 
-                <Button variant="outline" size="sm" @click="convert(edge.id, !edge.construction)">
-                  {{ edge.construction ? 'Make cut edge' : 'Make construction' }}
-                </Button>
-              </div>
+              <Button variant="outline" size="sm" @click="convert(edge.id, !edge.construction)">
+                {{ edge.construction ? 'Make cut edge' : 'Make construction' }}
+              </Button>
             </li>
           </ul>
           <p v-else class="text-sm text-muted-foreground">No edges yet.</p>
@@ -1412,12 +1434,8 @@ onBeforeUnmount(() => {
               Show construction
             </label>
             <label class="flex items-center gap-2 text-sm">
-              <input
-                v-model="showSeamAllowance"
-                type="checkbox"
-                data-testid="show-seam-allowance"
-              />
-              Show seam allowance
+              <input v-model="showAllowances" type="checkbox" data-testid="show-allowances" />
+              Show allowances
             </label>
             <label class="flex items-center gap-2 text-sm">
               <input
