@@ -454,7 +454,9 @@ export function normalizeCornerRounds(document: PatternDocument): PatternDocumen
   // Mint the centre for a round that predates feature points. Load never moves
   // geometry: the minted point is computed once, and an existing entity with the
   // deterministic id is reused rather than overwritten.
-  const entities = new Map<EntityId, Entity>(document.entities.map((entity) => [entity.id, entity]));
+  const entities = new Map<EntityId, Entity>(
+    document.entities.map((entity) => [entity.id, entity]),
+  );
   const withCentre = kept.map((round): CornerRound => {
     if (round.center !== undefined) return round;
 
