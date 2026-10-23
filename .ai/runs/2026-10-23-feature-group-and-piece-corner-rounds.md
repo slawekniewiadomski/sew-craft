@@ -95,29 +95,29 @@ recommended answer is taken as accepted:
 
 ### Phase 2: Geometry bridge
 
-- [ ] 2.1 `corner-round.ts`: `roundBetween`, `roundBridge`, `incidentLines`, with tests
-- [ ] 2.2 `piece.ts`: bridge-aware loop assembly shared by `validatePiece` and `orientedPolylines`, bridge distances and fold lines, with tests
-- [ ] 2.3 `pieceCutVertex` and `naturalStart` addressing with a bridge, with tests
+- [x] 2.1 `corner-round.ts`: `roundBetween`, `roundBridge`, `incidentLines`, with tests — f2127b4
+- [x] 2.2 `piece.ts`: bridge-aware loop assembly shared by `validatePiece` and `orientedPolylines`, bridge distances and fold lines, with tests — f2127b4
+- [x] 2.3 `pieceCutVertex` and `naturalStart` addressing with a bridge, with tests — f2127b4
 
 ### Phase 3: Commands
 
-- [ ] 3.1 `add_corner_round`: accept piece corners, equal-allowance validation, folding-cut-loop rejection, with tests
-- [ ] 3.2 `set_piece_allowance`: reject a mismatch at a rounded corner, with tests
-- [ ] 3.3 `remove_corner_round`: piece, allowances and cut dimensions survive, with tests
+- [x] 3.1 `add_corner_round`: accept piece corners, equal-allowance validation, folding-cut-loop rejection, with tests — f2127b4
+- [x] 3.2 `set_piece_allowance`: reject a mismatch at a rounded corner, with tests — f2127b4
+- [x] 3.3 `remove_corner_round`: piece, allowances and cut dimensions survive, with tests — f2127b4
 
 ### Phase 4: Ribbon
 
-- [ ] 4.1 `features` group between Tools and Sketching, Round corner moves, with tests
+- [x] 4.1 `features` group between Tools and Sketching, Round corner moves, with tests — d637243
 
 ### Phase 5: Corner pick
 
-- [ ] 5.1 Frontend corner-round point picks, `roundableCorners`, prompts and rejections, with tests
-- [ ] 5.2 `PatternCanvas.vue`: point pick target and roundable rings, with tests
-- [ ] 5.3 `EditorView.vue`: point-pick plumbing and mismatch message, with tests
+- [x] 5.1 Frontend corner-round point picks, `roundableCorners`, prompts and rejections, with tests — d5ee9aa
+- [x] 5.2 `PatternCanvas.vue`: point pick target and roundable rings, with tests — d5ee9aa
+- [x] 5.3 `EditorView.vue`: point-pick plumbing and mismatch message, with tests — d5ee9aa
 
 ### Phase 6: Docs and gate
 
-- [ ] 6.1 `docs/architecture/geometry-core.md` and `docs/domain/glossary.md` describe the bridge rule
-- [ ] 6.2 Full validation gate green (format, typecheck, lint, format:check, coverage, build, Pest 100 %, Pint)
+- [x] 6.1 `docs/architecture/geometry-core.md` and `docs/domain/glossary.md` describe the bridge rule — 8c3d5a5
+- [x] 6.2 Full validation gate green (format, typecheck, lint, format:check, coverage, build, Pest 100 %, Pint) — 8c3d5a5
 - [ ] 6.3 `om-auto-review-pr` pass with findings addressed
 - [ ] 6.4 Retitle the PR, flip to ready, normalize labels and report
