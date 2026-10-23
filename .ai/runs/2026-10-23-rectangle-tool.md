@@ -91,8 +91,8 @@ to start implementation, so the spec's recommended answers are taken as accepted
 
 ### Phase 2: Tool surface
 
-- [ ] 2.1 Add the three `EditorTool` members and labels, with the tool test updated
-- [ ] 2.2 Add the three ribbon items and the three glyphs, with the ribbon and icon tests updated
+- [x] 2.1 Add the three `EditorTool` members and labels, with the tool test updated — 5ea1102
+- [x] 2.2 Add the three ribbon items and the three glyphs, with the ribbon and icon tests updated — 5ea1102
 
 ### Phase 3: Canvas
 
