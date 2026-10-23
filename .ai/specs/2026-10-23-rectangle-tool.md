@@ -241,10 +241,11 @@ envelope stays `{ id, type, params, issuedAt? }`.
 - **Test ids.** `rectangle-preview`, `center-rectangle-preview`,
   `three-point-rectangle-preview`, and `rectangle-pending-corner-{index}` for the
   provisional corners.
-- **Mockup.** `.ai/specs/assets/rectangle-tool/mockup-01-gestures.html` draws the
-  three click sequences (and I2 as the rejected reading of the third mode); no
-  current-app screenshot is committed because the change adds three ribbon buttons
-  and canvas gestures, which a static screenshot does not show.
+- **Mockup.** `.ai/specs/assets/rectangle-tool/mockup-01-gestures.html` (with a
+  PNG render beside it) draws the three click sequences and names I2 as the
+  rejected reading of the third mode. No current-app screenshot is committed
+  because the change adds three ribbon buttons and canvas gestures, which a static
+  screenshot does not show.
 
 ## 📝 Edge Cases & Failure Scenarios
 
@@ -265,7 +266,7 @@ envelope stays `{ id, type, params, issuedAt? }`.
 | Corner round on a rectangle corner                      | Works through the existing shared-corner path; verification step covers a rotated corner                                    |
 | Seam allowance on a rotated rectangle                   | Existing per-edge offset and `side` semantics apply; verification step covers the four edges                                |
 | Create piece from the four edges                        | `basicPieceForLoops` already finds the closed chain; no rectangle-specific code                                              |
-| Q2 constraints conflict with existing constraints on a reused corner | `add_constraint` does not reject duplicates or conflicts today, so the solve can become unsatisfiable; the canvas must surface the existing solve error rather than shipping a silently frozen rectangle (see Risks) |
+| Q2 constraints conflict with existing constraints on a reused corner | `add_constraint` does not reject conflicts today, so the batch's solve can fail; `executeCommand` then throws and the group writes nothing, leaving the existing error bar to explain why no rectangle appeared (see Risks) |
 | An older build opens a document with a rectangle        | Loads unchanged; it is four points and four lines                                                                           |
 
 ## 📝 Risks & Impact Review
@@ -278,12 +279,13 @@ envelope stays `{ id, type, params, issuedAt? }`.
   corner. The spec cannot pick this without the maintainer, hence Q2.
 - **Over-constrained reuse (medium, only if Q2 enables constraints).**
   `add_constraint` accepts redundant or conflicting constraints without
-  validation (`packages/geometry/src/commands.ts:825-908`), and a failed solve
-  leaves the document unchanged (`commands.ts:396`). A rectangle drawn onto a
-  corner that already carries incompatible constraints would then never move.
-  Mitigation: skip auto-constraints when any corner is a reused point (a rule to
-  confirm with Q2), and a test that a conflicted rectangle produces the existing
-  solve error instead of a frozen shape.
+  validation (`packages/geometry/src/commands.ts:825-908`), and a non-converged
+  solve makes `executeCommand` throw, with `dispatchGroup` writing nothing
+  (`commands.ts:433-435`, `frontend/src/stores/editor.ts:48-70`). A rectangle
+  drawn onto a corner that already carries incompatible constraints would
+  therefore not appear at all, and the user would see the solver message instead.
+  The behaviour is safe but surprising; skipping auto-constraints when any corner
+  is a reused point (Q2 = A) avoids it. A test covers the conflicted case.
 - **Ribbon crowding (low).** Sketching grows to ten controls; the ribbon wraps, so
   nothing is hidden, but scanning cost rises. Q3 covers consolidating the three
   modes behind one control; the follow-up, if wanted, is its own change.
