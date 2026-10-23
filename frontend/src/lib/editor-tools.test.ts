@@ -13,7 +13,6 @@ describe('EDITOR_TOOLS', () => {
       'add_circle',
       'round_corner',
       'dimension',
-      'add_allowance',
     ]);
   });
 });

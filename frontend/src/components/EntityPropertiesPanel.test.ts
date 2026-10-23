@@ -225,43 +225,16 @@ describe('EntityPropertiesPanel', () => {
     ]);
   });
 
-  it('adds an allowance to a cut edge and explains the guide restriction', async () => {
-    const cut = panel(doc(), 'l1');
-    await cut.wrapper.find('[data-testid="entity-add-seam"]').trigger('click');
-    expect(cut.wrapper.emitted('add-seam')).toEqual([['l1']]);
+  it('offers no legacy seam controls for any edge', () => {
+    for (const id of ['l1', 'guide']) {
+      const { wrapper } = panel(doc({ seams: [{ id: 's1', edge: id, width: 10 }] }), id);
 
-    const guide = panel(doc(), 'guide');
-    expect(guide.wrapper.find('[data-testid="entity-add-seam"]').exists()).toBe(false);
-    expect(cut.wrapper.find('[data-testid="entity-flip-seam"]').exists()).toBe(false);
-    expect(guide.wrapper.find('[data-testid="entity-flip-seam"]').exists()).toBe(false);
-    expect(guide.wrapper.find('[data-testid="entity-seam-construction"]').text()).toBe(
-      'Allowances apply to cut edges only.',
-    );
-  });
-
-  it('edits and removes an attached allowance', async () => {
-    const { wrapper } = panel(doc({ seams: [{ id: 's1', edge: 'l1', width: 10 }] }), 'l1');
-    const input = wrapper.find('[data-testid="entity-seam-width"]');
-
-    expect((input.element as HTMLInputElement).value).toBe('10');
-
-    await input.setValue('15');
-    expect(wrapper.emitted('set-seam-width')).toEqual([['s1', 15]]);
-
-    await input.setValue('0');
-    expect((input.element as HTMLInputElement).value).toBe('10');
-    expect(wrapper.emitted('set-seam-width')).toEqual([['s1', 15]]);
-
-    await input.setValue('10');
-    expect(wrapper.emitted('set-seam-width')).toEqual([['s1', 15]]);
-
-    const flip = wrapper.find('[data-testid="entity-flip-seam"]');
-    expect(flip.attributes('aria-label')).toBe('Flip side of the seam allowance for l1');
-    await flip.trigger('click');
-    expect(wrapper.emitted('flip-seam')).toEqual([['s1', 'left']]);
-
-    await wrapper.find('[data-testid="entity-remove-seam"]').trigger('click');
-    expect(wrapper.emitted('remove-seam')).toEqual([['s1']]);
+      expect(wrapper.find('[data-testid="entity-seam"]').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="entity-add-seam"]').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="entity-seam-width"]').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="entity-flip-seam"]').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="entity-remove-seam"]').exists()).toBe(false);
+    }
   });
 
   it('commits a valid dimension value and ignores invalid or unchanged ones', async () => {

@@ -65,12 +65,12 @@ and PR**, and no second PR is opened.
 
 ### Phase 1: Retire allowance authoring
 
-- [ ] 1.1 Drop `add_allowance` from tool union, registry, ribbon map/group and the `allowance` glyph + tests
-- [ ] 1.2 Delete `SeamWidthEditor.vue`/test; remove the seam hit layer, double-click editor and emits from `PatternCanvas.vue`; keep the dashed layer
-- [ ] 1.3 Remove the seam handlers from `EditorView.vue` and the Outline width/flip/remove controls
-- [ ] 1.4 Remove the inspector seam section, seam emits and `seam` field from `entity-properties.ts`
-- [ ] 1.5 Replace `seam-width.ts` with `allowance-width.ts` for the piece editor
-- [ ] 1.6 Rename the toggle to `showAllowances` / `show-allowances` / "Show allowances"
+- [x] 1.1 Drop `add_allowance` from tool union, registry, ribbon map/group and the `allowance` glyph + tests
+- [x] 1.2 Delete `SeamWidthEditor.vue`/test; remove the seam hit layer, double-click editor and emits from `PatternCanvas.vue`; keep the dashed layer
+- [x] 1.3 Remove the seam handlers from `EditorView.vue` and the Outline width/flip/remove controls
+- [x] 1.4 Remove the inspector seam section, seam emits and `seam` field from `entity-properties.ts`
+- [x] 1.5 Replace `seam-width.ts` with `allowance-width.ts` for the piece editor
+- [x] 1.6 Rename the toggle to `showAllowances` / `show-allowances` / "Show allowances"
 
 ### Phase 2: Pieces drawer
 

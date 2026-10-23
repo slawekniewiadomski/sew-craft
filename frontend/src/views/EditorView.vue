@@ -14,7 +14,6 @@ import {
   isDrivenDimension,
   measureLinearDimension,
   seamForEdge,
-  seamSide,
   toSvg,
 } from '@sewcraft/geometry';
 import type {
@@ -29,7 +28,6 @@ import type {
   DistanceConstraint,
   EntityId,
   LineEntity,
-  SeamSide,
 } from '@sewcraft/geometry';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
@@ -88,7 +86,6 @@ import type { RibbonAction } from '@/lib/editor-ribbon';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 import { entityProperties } from '@/lib/entity-properties';
 import { buildLineCommands, type LineEndpoint } from '@/lib/line-tool';
-import { parseSeamWidth } from '@/lib/seam-width';
 import { cutDimensionForPoints, pieceCreationFromSelection } from '@/lib/pieces';
 import { orphanedEdges } from '@/lib/selection';
 
@@ -115,7 +112,7 @@ const marqueeActive = ref(false);
 const fitToken = ref(0);
 const showConstruction = ref(true);
 const includeConstruction = ref(false);
-const showSeamAllowance = ref(true);
+const showAllowances = ref(true);
 const showConstraints = ref(true);
 const showDimensions = ref(true);
 const exportStitch = ref(true);
@@ -152,9 +149,7 @@ const edges = computed(() =>
       return {
         id: entity.id,
         construction: entity.construction,
-        seamId: seam?.id ?? null,
         seamWidth: seam?.width ?? null,
-        seamSide: seam === undefined ? null : seamSide(seam),
         pieceId: piece?.id ?? null,
         allowanceKind: allowance === undefined ? null : (allowance.kind ?? 'seam'),
         allowanceWidth: allowance?.width ?? null,
@@ -691,51 +686,6 @@ function convert(id: string, construction: boolean): void {
   );
 }
 
-function onAddAllowance(edge: EntityId): void {
-  const entity = pattern.value.entities.find((candidate) => candidate.id === edge);
-  if (seamForEdge(pattern.value, edge) !== undefined) return;
-
-  if (entity === undefined || entity.kind === 'point' || entity.construction) {
-    error.value = 'Only cut edges can carry a seam allowance';
-    return;
-  }
-
-  run(() => dispatch({ id: nextCommandId('seam'), type: 'add_seam_allowance', params: { edge } }));
-}
-
-function setSeamWidth(id: EntityId, width: number): void {
-  run(() =>
-    dispatch({ id: nextCommandId('seam'), type: 'set_seam_allowance', params: { id, width } }),
-  );
-}
-
-/** Flip a seam to the opposite side of its edge as one undoable command. */
-function flipSeam(id: EntityId, side: SeamSide): void {
-  run(() =>
-    dispatch({
-      id: nextCommandId('seam'),
-      type: 'set_seam_allowance',
-      params: { id, side: side === 'left' ? 'right' : 'left' },
-    }),
-  );
-}
-
-/** Sidebar width edit: invalid or unchanged values snap back without a command. */
-function onSeamWidthEdit(id: EntityId, current: number, event: Event): void {
-  const input = event.target as HTMLInputElement;
-  const width = parseSeamWidth(input.value);
-  if (width === null || width === current) {
-    input.value = String(current);
-    return;
-  }
-
-  setSeamWidth(id, width);
-}
-
-function removeSeam(id: EntityId): void {
-  run(() => dispatch({ id: nextCommandId('seam'), type: 'remove_seam_allowance', params: { id } }));
-}
-
 /** Rename, re-quantify or clear fields on a piece. */
 function onUpdatePiece(
   id: EntityId,
@@ -1057,7 +1007,7 @@ onBeforeUnmount(() => {
           :document="visibleDocument"
           :tool="activeTool"
           :fit-token="fitToken"
-          :show-seam-allowance="showSeamAllowance"
+          :show-allowances="showAllowances"
           :show-constraints="showConstraints"
           :show-dimensions="showDimensions"
           :constraint-active="activeConstraint !== null"
@@ -1076,8 +1026,6 @@ onBeforeUnmount(() => {
           @set-corner-round-radius="setCornerRoundRadius"
           @add-dimension="onAddDimension"
           @update-dimension="onUpdateDimension"
-          @add-allowance="onAddAllowance"
-          @set-seam-width="setSeamWidth"
           @marquee-change="marqueeActive = $event"
         />
       </div>
@@ -1102,10 +1050,6 @@ onBeforeUnmount(() => {
             :document="pattern"
             :entity="selectedEntity"
             @set-construction="convert"
-            @add-seam="onAddAllowance"
-            @set-seam-width="setSeamWidth"
-            @flip-seam="flipSeam"
-            @remove-seam="removeSeam"
             @update-dimension="onUpdateDimension"
             @remove-constraint="removeConstraint"
             @set-corner-round-radius="setCornerRoundRadius"
@@ -1156,59 +1100,13 @@ onBeforeUnmount(() => {
               <span class="font-mono text-muted-foreground">{{ edge.id }}</span>
 
               <div class="flex items-center gap-2">
-                <template v-if="edge.seamId !== null">
-                  <label
-                    class="flex items-center gap-1 text-muted-foreground"
-                    :data-testid="`seam-label-${edge.id}`"
-                  >
-                    Allowance
-                    <input
-                      type="number"
-                      min="0.1"
-                      step="0.1"
-                      class="w-16 rounded-md border px-2 py-1 text-sm text-foreground"
-                      :value="edge.seamWidth!"
-                      :aria-label="`Allowance width in millimetres for ${edge.id}`"
-                      :data-testid="`seam-width-${edge.id}`"
-                      @change="onSeamWidthEdit(edge.seamId!, edge.seamWidth!, $event)"
-                      @keydown.enter.prevent="
-                        onSeamWidthEdit(edge.seamId!, edge.seamWidth!, $event)
-                      "
-                    />
-                    mm
-                  </label>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    :aria-label="`Flip side of the seam allowance for ${edge.id}`"
-                    :data-testid="`flip-seam-${edge.id}`"
-                    @click="flipSeam(edge.seamId!, edge.seamSide!)"
-                  >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="1.5"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M2.5 5.5h10M10 3l2.5 2.5L10 8" />
-                      <path d="M13.5 10.5h-10M6 8l-2.5 2.5L6 13" />
-                    </svg>
-                    Flip side
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    :data-testid="`remove-seam-${edge.id}`"
-                    @click="removeSeam(edge.seamId!)"
-                  >
-                    Remove allowance
-                  </Button>
-                </template>
+                <span
+                  v-if="edge.seamWidth !== null"
+                  class="text-muted-foreground"
+                  :data-testid="`seam-label-${edge.id}`"
+                >
+                  Allowance {{ edge.seamWidth }} mm
+                </span>
                 <template v-else-if="edge.pieceId !== null">
                   <span class="text-muted-foreground" :data-testid="`edge-piece-${edge.id}`">
                     In piece {{ edge.pieceId }}
@@ -1412,12 +1310,8 @@ onBeforeUnmount(() => {
               Show construction
             </label>
             <label class="flex items-center gap-2 text-sm">
-              <input
-                v-model="showSeamAllowance"
-                type="checkbox"
-                data-testid="show-seam-allowance"
-              />
-              Show seam allowance
+              <input v-model="showAllowances" type="checkbox" data-testid="show-allowances" />
+              Show allowances
             </label>
             <label class="flex items-center gap-2 text-sm">
               <input

@@ -6,7 +6,6 @@ import type {
   Entity,
   EntityId,
   PatternDocument,
-  SeamSide,
 } from '@sewcraft/geometry';
 import { computed, ref } from 'vue';
 
@@ -32,7 +31,7 @@ import {
   type DimensionPatch,
   type DimensionReferenceOption,
 } from '@/lib/dimensions';
-import { parseSeamWidth } from '@/lib/seam-width';
+import { parseAllowanceWidth } from '@/lib/allowance-width';
 import type { PieceAllowanceRow } from '@/lib/pieces';
 import DimensionReferencePicker from './DimensionReferencePicker.vue';
 
@@ -44,10 +43,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'set-construction': [id: EntityId, construction: boolean];
-  'add-seam': [id: EntityId];
-  'set-seam-width': [id: EntityId, width: number];
-  'flip-seam': [id: EntityId, side: SeamSide];
-  'remove-seam': [id: EntityId];
   'update-dimension': [id: EntityId, patch: DimensionPatch];
   'remove-constraint': [id: EntityId];
   'set-corner-round-radius': [id: EntityId, radius: number];
@@ -210,18 +205,6 @@ function onConstructionChange(event: Event): void {
   emit('set-construction', props.entity.id, (event.target as HTMLInputElement).checked);
 }
 
-/** An invalid or unchanged width snaps back without emitting a command. */
-function onSeamWidthEdit(id: EntityId, current: number, event: Event): void {
-  const input = event.target as HTMLInputElement;
-  const width = parseSeamWidth(input.value);
-  if (width === null || width === current) {
-    input.value = String(current);
-    return;
-  }
-
-  emit('set-seam-width', id, width);
-}
-
 /** The value field's text: `#source` for a live link, its number otherwise. */
 function dimensionFieldText(dimension: DimensionSummary): string {
   const constraint = distanceConstraint(dimension.id);
@@ -330,7 +313,7 @@ function allowanceKind(row: PieceAllowanceRow, event: Event): void {
 /** An invalid or unchanged allowance width snaps back without a command. */
 function allowanceWidth(row: PieceAllowanceRow, event: Event): void {
   const input = event.target as HTMLInputElement;
-  const width = parseSeamWidth(input.value);
+  const width = parseAllowanceWidth(input.value);
   if (width === null || width === row.width || row.kind === 'none') {
     input.value = row.width > 0 ? String(row.width) : '';
     return;
@@ -912,92 +895,6 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
       <p v-else class="mt-1 text-xs text-muted-foreground">
         No constraints on this {{ kindNoun }}.
       </p>
-    </section>
-
-    <section
-      v-if="
-        props.entity.piece === null &&
-        props.entity.geometry.kind !== 'point' &&
-        props.entity.geometry.kind !== 'circle'
-      "
-      aria-labelledby="entity-seam-heading"
-      data-testid="entity-seam"
-    >
-      <h3 id="entity-seam-heading" class="text-xs font-semibold uppercase text-muted-foreground">
-        Seam allowance
-      </h3>
-
-      <div v-if="props.entity.seam" class="mt-1 flex flex-wrap items-center gap-2">
-        <label class="flex items-center gap-1 text-muted-foreground">
-          Allowance
-          <input
-            type="number"
-            min="0.1"
-            step="0.1"
-            class="w-16 rounded-md border px-2 py-1 text-sm text-foreground"
-            :value="props.entity.seam.width"
-            :aria-label="`Allowance width in millimetres for ${props.entity.id}`"
-            data-testid="entity-seam-width"
-            @change="onSeamWidthEdit(props.entity.seam!.id, props.entity.seam!.width, $event)"
-            @keydown.enter.prevent="
-              onSeamWidthEdit(props.entity.seam!.id, props.entity.seam!.width, $event)
-            "
-          />
-          mm
-        </label>
-        <Button
-          variant="outline"
-          size="sm"
-          :aria-label="`Flip side of the seam allowance for ${props.entity.id}`"
-          data-testid="entity-flip-seam"
-          @click="emit('flip-seam', props.entity.seam!.id, props.entity.seam!.side)"
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M2.5 5.5h10M10 3l2.5 2.5L10 8" />
-            <path d="M13.5 10.5h-10M6 8l-2.5 2.5L6 13" />
-          </svg>
-          Flip side
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          :aria-label="`Remove allowance from ${props.entity.id}`"
-          data-testid="entity-remove-seam"
-          @click="emit('remove-seam', props.entity.seam!.id)"
-        >
-          Remove
-        </Button>
-      </div>
-
-      <p
-        v-else-if="props.entity.construction"
-        class="mt-1 text-xs text-muted-foreground"
-        data-testid="entity-seam-construction"
-      >
-        Allowances apply to cut edges only.
-      </p>
-
-      <Button
-        v-else
-        variant="outline"
-        size="sm"
-        class="mt-1"
-        :aria-label="`Add allowance to ${props.entity.id}`"
-        data-testid="entity-add-seam"
-        @click="emit('add-seam', props.entity.id)"
-      >
-        Add allowance
-      </Button>
     </section>
   </section>
 </template>

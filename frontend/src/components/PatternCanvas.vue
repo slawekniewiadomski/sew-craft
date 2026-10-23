@@ -42,7 +42,6 @@ import {
   type Rect,
   resolveCutSpan,
   seamAllowancePaths,
-  seamForEdge,
   svgArcCommand,
   type Vec2,
 } from '@sewcraft/geometry';
@@ -111,7 +110,6 @@ import {
 } from '@/lib/viewport';
 
 import DimensionReferencePicker from './DimensionReferencePicker.vue';
-import SeamWidthEditor from './SeamWidthEditor.vue';
 
 interface LineView {
   line: LineEntity;
@@ -153,10 +151,7 @@ interface MarqueeState {
 const MARQUEE_THRESHOLD = 4;
 
 interface SeamView {
-  id: EntityId;
   edge: EntityId;
-  kind: 'line' | 'curve' | 'arc';
-  width: number;
   d: string;
   selfIntersects: boolean;
 }
@@ -260,7 +255,7 @@ const props = withDefaults(
     tool: EditorTool;
     selectedEntityIds?: EntityId[];
     fitToken?: number;
-    showSeamAllowance?: boolean;
+    showAllowances?: boolean;
     showConstraints?: boolean;
     showDimensions?: boolean;
     constraintActive?: boolean;
@@ -272,7 +267,7 @@ const props = withDefaults(
   {
     selectedEntityIds: () => [],
     fitToken: 0,
-    showSeamAllowance: true,
+    showAllowances: true,
     showConstraints: false,
     showDimensions: true,
     constraintActive: false,
@@ -295,8 +290,6 @@ const emit = defineEmits<{
   'constraint-pick': [pick: ConstraintPick];
   'add-dimension': [placement: DimensionPlacement];
   'update-dimension': [id: EntityId, patch: DimensionPatch];
-  'add-allowance': [edge: EntityId];
-  'set-seam-width': [id: EntityId, width: number];
   'round-corner-pick': [id: EntityId];
   'set-corner-round-radius': [id: EntityId, radius: number];
 }>();
@@ -350,8 +343,6 @@ const derivedDrag = ref<{
 /** The inline value editor, keyed to the dimension being edited. */
 const editingDimension = ref<{ id: EntityId; value: string } | null>(null);
 const dimensionInput = ref<HTMLInputElement | null>(null);
-/** The inline seam-width editor, keyed to the seam and anchored in screen space. */
-const editingSeam = ref<{ id: EntityId; width: number; x: number; y: number } | null>(null);
 /** The round whose tangent handles and label are shown because it is hovered. */
 const hoveredRoundId = ref<EntityId | null>(null);
 /** Live tangent-handle drag; the radius changes on release. */
@@ -615,20 +606,12 @@ const circles = computed(() =>
  * presentation toggle is off, and never part of the document the UI mutates.
  */
 const seams = computed<SeamView[]>(() => {
-  if (!props.showSeamAllowance) return [];
-  return seamAllowancePaths(props.document).map((allowance) => {
-    const seam = seamForEdge(props.document, allowance.edge)!;
-    const entity = props.document.entities.find((candidate) => candidate.id === allowance.edge) as
-      LineEntity | CurveEntity | ArcEntity;
-    return {
-      id: seam.id,
-      edge: allowance.edge,
-      kind: entity.kind,
-      width: seam.width,
-      d: polylinePath(allowance.path),
-      selfIntersects: allowance.selfIntersections.length > 0,
-    };
-  });
+  if (!props.showAllowances) return [];
+  return seamAllowancePaths(props.document).map((allowance) => ({
+    edge: allowance.edge,
+    d: polylinePath(allowance.path),
+    selfIntersects: allowance.selfIntersections.length > 0,
+  }));
 });
 
 /** A closed SVG path for a derived loop; every caller passes a resolved loop. */
@@ -656,7 +639,7 @@ const pieceViews = computed<PieceView[]>(() =>
         stitch: stitchPath,
         folds: pieceFoldLines(props.document, piece).map((fold) => closedLoopPath(fold)),
         band:
-          props.showSeamAllowance && cutPath !== '' && stitchPath !== ''
+          props.showAllowances && cutPath !== '' && stitchPath !== ''
             ? `${cutPath} ${stitchPath}`
             : null,
         selfIntersects: cut.selfIntersections.length > 0,
@@ -1107,14 +1090,6 @@ function screenPoint(event: { clientX: number; clientY: number }): Vec2 {
 }
 
 function hitEntity(event: Event): Hit | null {
-  const seamElement = (event.target as Element).closest('[data-seam-id]');
-  if (seamElement) {
-    const seam = seams.value.find(
-      (candidate) => candidate.id === seamElement.getAttribute('data-seam-id'),
-    )!;
-    return { id: seam.edge, kind: seam.kind };
-  }
-
   const element = (event.target as Element).closest('[data-entity-id]');
   if (!element) return null;
   return {
@@ -1345,21 +1320,6 @@ function cancelDimensionEdit(): void {
   dimensionPicker.value = null;
 }
 
-/** Double-click on the dashed allowance opens its inline width editor. */
-function onSeamDoubleClick(seam: SeamView, event: MouseEvent): void {
-  if (props.constraintActive) return;
-
-  const point = screenPoint(event);
-  editingSeam.value = { id: seam.id, width: seam.width, x: point.x, y: point.y };
-}
-
-function commitSeamWidth(width: number): void {
-  const editing = editingSeam.value!;
-
-  editingSeam.value = null;
-  emit('set-seam-width', editing.id, width);
-}
-
 /** Show a round's handles while its line or arc is hovered. */
 function onEntityHover(id: EntityId): void {
   hoveredRoundId.value = cornerRoundsForEntity(props.document, id)[0]?.id ?? null;
@@ -1519,11 +1479,6 @@ function onPointerDown(event: PointerEvent): void {
       break;
     case 'dimension':
       onDimensionPointer(hit);
-      break;
-    case 'add_allowance':
-      if (hit !== null && hit.kind !== 'point') {
-        emit('add-allowance', hit.id);
-      }
       break;
   }
 }
@@ -1942,7 +1897,6 @@ watch(
     dimensionPlacement.value = null;
     editingDimension.value = null;
     cancelPointerInteraction();
-    editingSeam.value = null;
     dimensionDrag.value = null;
     hoveredRoundId.value = null;
     editingCornerRound.value = null;
@@ -1956,7 +1910,6 @@ watch(
   () => props.document,
   () => {
     editingDimension.value = null;
-    editingSeam.value = null;
     editingCornerRound.value = null;
     if (pendingLineStartId.value !== null && !pointById.value.has(pendingLineStartId.value)) {
       lineStart.value = null;
@@ -1979,13 +1932,6 @@ watch(
   (visible) => {
     if (!visible) editingDimension.value = null;
     if (!visible && dimensionDrag.value) cancelPointerInteraction();
-  },
-);
-
-watch(
-  () => props.showSeamAllowance,
-  (visible) => {
-    if (!visible) editingSeam.value = null;
   },
 );
 </script>
@@ -2056,22 +2002,6 @@ watch(
             vector-effect="non-scaling-stroke"
             :class="seam.selfIntersects ? 'text-destructive' : 'text-muted-foreground'"
             :data-seam-edge="seam.edge"
-          />
-        </g>
-
-        <g data-testid="seam-hit-layer">
-          <path
-            v-for="seam in seams"
-            :key="`hit-${seam.id}`"
-            :d="seam.d"
-            fill="none"
-            stroke="transparent"
-            stroke-width="12"
-            vector-effect="non-scaling-stroke"
-            class="pointer-events-auto cursor-pointer"
-            :data-seam-hit="seam.edge"
-            :data-seam-id="seam.id"
-            @dblclick.stop.prevent="onSeamDoubleClick(seam, $event)"
           />
         </g>
 
@@ -2757,15 +2687,6 @@ watch(
       :options="dimensionPickerOptions"
       :active-index="pickerActiveIndex"
       @select="selectReference"
-    />
-
-    <SeamWidthEditor
-      v-if="editingSeam !== null"
-      :width="editingSeam.width"
-      :x="editingSeam.x"
-      :y="editingSeam.y"
-      @commit="commitSeamWidth"
-      @cancel="editingSeam = null"
     />
   </div>
 </template>

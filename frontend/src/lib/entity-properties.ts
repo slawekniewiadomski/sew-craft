@@ -9,8 +9,6 @@ import {
   dimensionValue,
   getEntity,
   measureLinearDimension,
-  seamForEdge,
-  seamSide,
   type CircleEntity,
   type Constraint,
   type ConstraintType,
@@ -19,7 +17,6 @@ import {
   type Entity,
   type EntityId,
   type PatternDocument,
-  type SeamSide,
 } from '@sewcraft/geometry';
 
 import { constraintLabel } from './constraint-view';
@@ -128,7 +125,6 @@ export type EntityProperties = {
   arc: ArcMeasurement | null;
   /** Derived radius in millimetres for circles only. */
   radius: number | null;
-  seam: { id: EntityId; width: number; side: SeamSide } | null;
   /** The piece that owns the selected edge, with its derived metrics. */
   piece: PieceSummary | null;
   /** Read-only cut dimensions anchored to the selected edge. */
@@ -285,7 +281,6 @@ export function entityProperties(
     });
   }
 
-  const seam = entity.kind === 'point' ? undefined : seamForEdge(document, entity.id);
   const owningPiece = entity.kind === 'point' ? null : pieceOwningEdge(document, entity.id);
   const cutDimensions: CutDimensionSummary[] =
     entity.kind === 'point'
@@ -342,7 +337,6 @@ export function entityProperties(
         : null,
     arc: arcMeasurementOf(document, entity),
     radius: entity.kind === 'circle' ? circleRadius(document, entity) : null,
-    seam: seam === undefined ? null : { id: seam.id, width: seam.width, side: seamSide(seam) },
     piece: owningPiece === null ? null : pieceSummary(document, owningPiece),
     cutDimensions,
     rounds,
