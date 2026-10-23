@@ -350,7 +350,7 @@ describe('editor store persistence', () => {
     setActivePinia(createPinia());
   });
 
-  it('starts a new project as dirty with no stored copy', () => {
+  it('starts a new project as clean but without a stored copy', () => {
     const store = useEditorStore();
     store.setReadOnly(true);
 
@@ -435,6 +435,27 @@ describe('editor store persistence', () => {
     expect(store.journal).toBe(journal);
     expect(store.future).toHaveLength(1);
     expect(store.canRedo).toBe(true);
+  });
+
+  it('adopts an unknown document as a clean read-only baseline', () => {
+    const store = useEditorStore();
+    const unknown = {
+      schema: 'sewcraft.pattern/0.3',
+      units: 'mm',
+      entities: [],
+      constraints: [],
+      pieces: [],
+    } as unknown as PatternDocument;
+
+    store.markReadOnlyLoaded(unknown, 4, '2026-10-23T16:00:00Z');
+
+    expect(store.document).toBe(unknown);
+    expect(store.isNew).toBe(false);
+    expect(store.isDirty).toBe(false);
+    expect(store.readOnly).toBe(true);
+    expect(store.savedVersion).toBe(4);
+    expect(store.lastSavedAt).toBe('2026-10-23T16:00:00Z');
+    expect(store.saveState).toBe('idle');
   });
 
   it('loads a document without normalising it', () => {

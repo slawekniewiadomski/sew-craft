@@ -972,10 +972,13 @@ function isEditing(target: EventTarget | null): boolean {
 function onKeyDown(event: KeyboardEvent): void {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
     event.preventDefault();
-    if (pendingUpgrade.value !== null || conflict.value !== null) return;
+    if (dialogOpen.value) return;
     save();
     return;
   }
+
+  // A modal owns the keyboard: no Delete, Escape or tool shortcut behind it.
+  if (dialogOpen.value) return;
 
   // The canvas owns Escape/Delete while a marquee gesture is in flight.
   if (
@@ -1062,6 +1065,8 @@ const patternName = ref('');
 const pendingUpgrade = ref<PendingUpgrade | null>(null);
 /** Set when a save lost the version race; `savedAt` is the winner's checkpoint. */
 const conflict = ref<{ savedAt: string | null } | null>(null);
+/** Either modal owns the keyboard and blocks the editor shortcuts. */
+const dialogOpen = computed(() => pendingUpgrade.value !== null || conflict.value !== null);
 
 /** The one status the save bar shows, in priority order. */
 const saveBarState = computed<SaveBarState>(() => {
@@ -1070,10 +1075,26 @@ const saveBarState = computed<SaveBarState>(() => {
   return editor.isNew ? 'new' : 'saved';
 });
 
+/** Whether a stored document has the arrays every render path dereferences. */
+function isRenderableDocument(stored: PatternDocument): boolean {
+  return (
+    Array.isArray(stored.entities) &&
+    Array.isArray(stored.constraints) &&
+    Array.isArray(stored.pieces)
+  );
+}
+
+function unreadableMessage(name: string): string {
+  return `The stored pattern for "${name}" is unreadable.`;
+}
+
 /** Load the stored pattern; a new project opens empty, a missing one errors. */
 async function loadPattern(): Promise<void> {
   loadState.value = 'loading';
   loadError.value = null;
+  // Drop any previous project's document so a shortcut or save can never send
+  // it to this project before the load resolves.
+  editor.markNew();
 
   try {
     const response = await projectsApi.getPattern(Number(props.id));
@@ -1099,11 +1120,15 @@ function applySnapshot(snapshot: Pattern): void {
   }
 
   if (stored.schema === PATTERN_SCHEMA) {
+    if (!isRenderableDocument(stored)) throw new Error(unreadableMessage(snapshot.name));
     editor.markLoaded(stored, snapshot.version, snapshot.saved_at);
     return;
   }
 
   if (isKnownPatternSchema(stored.schema)) {
+    if (!Array.isArray(stored.entities) || !Array.isArray(stored.constraints)) {
+      throw new Error(unreadableMessage(snapshot.name));
+    }
     const migrated = normalizeDocument(stored);
     editor.markLoaded(migrated, snapshot.version, snapshot.saved_at);
     editor.setReadOnly(true);
@@ -1118,8 +1143,8 @@ function applySnapshot(snapshot: Pattern): void {
     return;
   }
 
-  editor.loadRaw(stored);
-  editor.setReadOnly(true);
+  if (!isRenderableDocument(stored)) throw new Error(unreadableMessage(snapshot.name));
+  editor.markReadOnlyLoaded(stored, snapshot.version, snapshot.saved_at);
   pendingUpgrade.value = {
     stored,
     document: stored,
@@ -1156,6 +1181,7 @@ async function persist(expectedVersion: number | null, expectedSchema?: string):
     }
 
     if (cause instanceof ApiError && cause.status === 404) {
+      editor.markSaveFailed();
       loadError.value = 'This project no longer exists.';
       loadState.value = 'error';
       return false;
@@ -1169,7 +1195,9 @@ async function persist(expectedVersion: number | null, expectedSchema?: string):
 
 /** Save through the button and Cmd/Ctrl+S; clean, saving or read-only is a no-op. */
 function save(): void {
-  if (editor.readOnly || editor.saveState === 'saving' || !editor.isDirty) return;
+  if (loadState.value !== 'ready') return;
+  if (editor.readOnly || editor.saveState === 'saving') return;
+  if (!editor.isDirty && !editor.isNew) return;
   void persist(editor.savedVersion);
 }
 
@@ -1189,6 +1217,16 @@ async function updateDocument(): Promise<void> {
   if (pending === null || editor.saveState === 'saving') return;
 
   if (!(await persist(pending.version, pending.schema))) {
+    // A stale version during an upgrade must reload, not run the generic
+    // overwrite path: that path would write the migrated document without
+    // archiving the stored one.
+    if (conflict.value !== null) {
+      conflict.value = null;
+      editor.markSaveFailed();
+      error.value = 'The project changed elsewhere. Reload the project to upgrade it.';
+      return;
+    }
+
     editor.loadRaw(pending.stored);
     editor.setReadOnly(true);
   } else {
@@ -1203,7 +1241,7 @@ function openReadOnlyDocument(): void {
   if (pending === null) return;
 
   if (pending.unknown) {
-    editor.loadRaw(pending.stored);
+    editor.markReadOnlyLoaded(pending.stored, pending.version, pending.savedAt);
   } else {
     editor.markLoaded(pending.document, pending.version, pending.savedAt);
   }
@@ -1347,6 +1385,7 @@ onBeforeUnmount(() => {
           :width="width"
           :collapsed="collapsed"
           :counts="drawerCounts"
+          :read-only="editor.readOnly"
           @update:width="setWidth"
           @update:collapsed="collapsed = $event"
         >

@@ -1440,6 +1440,7 @@ function updateDimensionPlacement(screen: Vec2): void {
 }
 
 function beginDimensionDrag(constraint: DistanceConstraint, event: PointerEvent): void {
+  if (props.readOnly) return;
   event.stopPropagation();
   event.preventDefault();
   const offset = constraintOffset(constraint);
@@ -1459,6 +1460,7 @@ function beginDerivedDimensionDrag(
   constraint: DerivedDistanceConstraint,
   event: PointerEvent,
 ): void {
+  if (props.readOnly) return;
   event.stopPropagation();
   event.preventDefault();
   // The drag strip only renders for a drawing whose span already resolved.
@@ -1488,7 +1490,7 @@ function labelClass(label: DimensionLabelView): string {
 }
 
 function onDimensionDoubleClick(label: DimensionLabelView): void {
-  if (!label.editable) return;
+  if (props.readOnly || !label.editable) return;
   void beginDimensionEdit(label.constraint);
 }
 

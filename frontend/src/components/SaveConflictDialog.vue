@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button';
-import { computed, onMounted, ref } from 'vue';
+import { useDialogFocus } from '@/composables/use-dialog-focus';
+import { computed, ref } from 'vue';
 
 const props = withDefaults(
   defineProps<{
@@ -12,7 +13,10 @@ const props = withDefaults(
 
 const emit = defineEmits<{ reload: []; overwrite: [] }>();
 
+const overwriteButton = ref<{ $el: HTMLButtonElement } | null>(null);
 const reloadButton = ref<{ $el: HTMLButtonElement } | null>(null);
+
+const { trapTab } = useDialogFocus(reloadButton, overwriteButton, reloadButton);
 
 const savedTime = computed(() => {
   if (props.savedAt === null) return null;
@@ -20,14 +24,13 @@ const savedTime = computed(() => {
     new Date(props.savedAt),
   );
 });
-
-onMounted(() => reloadButton.value?.$el.focus());
 </script>
 
 <template>
   <div
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
     data-testid="conflict-dialog"
+    @keydown="trapTab"
   >
     <div
       role="dialog"
@@ -45,6 +48,7 @@ onMounted(() => reloadButton.value?.$el.focus());
 
       <div class="flex justify-end gap-2">
         <Button
+          ref="overwriteButton"
           variant="outline"
           size="sm"
           data-testid="conflict-overwrite"

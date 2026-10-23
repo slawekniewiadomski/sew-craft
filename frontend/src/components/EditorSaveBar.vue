@@ -37,7 +37,9 @@ const statusText = computed(() => {
 });
 
 const canSave = computed(
-  () => !props.readOnly && (props.state === 'dirty' || props.state === 'failed'),
+  () =>
+    !props.readOnly &&
+    (props.state === 'dirty' || props.state === 'failed' || props.state === 'new'),
 );
 
 const liveMode = computed(() => (props.state === 'failed' ? 'assertive' : 'polite'));

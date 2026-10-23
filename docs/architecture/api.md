@@ -18,7 +18,7 @@ Base URL: `http://localhost:8000/api` (`/api` is proxied by the Vite dev server)
 | DELETE    | `/projects/{id}`          | Delete a project                     |
 | GET       | `/projects/{id}/pattern`  | Fetch the canonical pattern document |
 | PUT       | `/projects/{id}/pattern`  | Replace the pattern document         |
-| POST      | `/projects/{id}/commands` | Apply a batch of commands            |
+| POST      | `/projects/{id}/commands` | Apply a batch of commands ⏳         |
 | POST      | `/patterns/{id}/exports`  | Queue an export (svg/pdf/dxf)        |
 
 Rows marked ⏳ are specified but not yet implemented.
@@ -119,7 +119,15 @@ Conflict `409` (the expected version no longer matches):
 
 A `404` on save means the project was deleted while the editor was open.
 
-## Applying commands
+## Applying commands (deferred)
+
+`POST /projects/{id}/commands` is specified but **not implemented**. The write
+path in v0.1 is the document snapshot above (`PUT /projects/{id}/pattern`),
+because the only command interpreter is the TypeScript geometry package and a
+PHP port would be a second implementation of the solver. Clients apply commands
+locally and save the resulting document; the server does not replay them.
+
+The future contract, if the endpoint is revisited, is:
 
 ```jsonc
 POST /api/projects/1/commands
@@ -129,10 +137,6 @@ POST /api/projects/1/commands
   ]
 }
 ```
-
-The server validates each command against the command spec, applies them to the
-stored document, persists a new `pattern_version`, and returns the updated
-document. See `specs/009-command-spec-api.md` for the full contract.
 
 ## Versioning
 

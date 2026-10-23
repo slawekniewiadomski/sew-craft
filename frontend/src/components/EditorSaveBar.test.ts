@@ -25,7 +25,8 @@ describe('EditorSaveBar', () => {
 
     expect(wrapper.find('[data-testid="pattern-name"]').text()).toBe('Bodice');
     expect(wrapper.find('[data-testid="save-status"]').text()).toBe('New pattern — not saved yet');
-    expect(wrapper.find('[data-testid="save-project"]').attributes('disabled')).toBeDefined();
+    // An empty first save is legitimate, so a new project can be saved at once.
+    expect(wrapper.find('[data-testid="save-project"]').attributes('disabled')).toBeUndefined();
     expect(wrapper.find('[data-testid="save-dirty-dot"]').exists()).toBe(false);
   });
 

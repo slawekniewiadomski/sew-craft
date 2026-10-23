@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button';
-import { onMounted, ref } from 'vue';
+import { useDialogFocus } from '@/composables/use-dialog-focus';
+import { computed, ref } from 'vue';
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     /** The schema the stored document was written with. */
     savedSchema: string;
@@ -17,14 +18,19 @@ withDefaults(
 const emit = defineEmits<{ update: []; readonly: []; cancel: [] }>();
 
 const cancelButton = ref<{ $el: HTMLButtonElement } | null>(null);
+const readOnlyButton = ref<{ $el: HTMLButtonElement } | null>(null);
+const updateButton = ref<{ $el: HTMLButtonElement } | null>(null);
 
-onMounted(() => cancelButton.value?.$el.focus());
+const lastButton = computed(() => (props.unknown ? readOnlyButton.value : updateButton.value));
+
+const { trapTab } = useDialogFocus(cancelButton, cancelButton, lastButton);
 </script>
 
 <template>
   <div
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
     data-testid="upgrade-dialog"
+    @keydown="trapTab"
   >
     <div
       role="dialog"
@@ -73,6 +79,7 @@ onMounted(() => cancelButton.value?.$el.focus());
           Cancel
         </Button>
         <Button
+          ref="readOnlyButton"
           variant="outline"
           size="sm"
           data-testid="upgrade-readonly"
@@ -80,7 +87,13 @@ onMounted(() => cancelButton.value?.$el.focus());
         >
           {{ unknown ? 'Open read-only' : 'Read-only' }}
         </Button>
-        <Button v-if="!unknown" size="sm" data-testid="upgrade-update" @click="emit('update')">
+        <Button
+          v-if="!unknown"
+          ref="updateButton"
+          size="sm"
+          data-testid="upgrade-update"
+          @click="emit('update')"
+        >
           Update and open
         </Button>
       </div>

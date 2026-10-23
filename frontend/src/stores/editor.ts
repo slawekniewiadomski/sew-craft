@@ -161,6 +161,21 @@ export const useEditorStore = defineStore('editor', () => {
     readOnly.value = false;
   }
 
+  /** Adopt an unknown document as a clean, read-only baseline. */
+  function markReadOnlyLoaded(
+    next: PatternDocument,
+    version: number,
+    savedAt: string | null,
+  ): void {
+    loadRaw(next);
+    savedDocument.value = next;
+    newProject.value = false;
+    savedVersion.value = version;
+    lastSavedAt.value = savedAt;
+    saveState.value = 'idle';
+    readOnly.value = true;
+  }
+
   function markSaving(): void {
     saveState.value = 'saving';
   }
@@ -206,6 +221,7 @@ export const useEditorStore = defineStore('editor', () => {
     loadRaw,
     markNew,
     markLoaded,
+    markReadOnlyLoaded,
     markSaving,
     markSaved,
     markSaveFailed,

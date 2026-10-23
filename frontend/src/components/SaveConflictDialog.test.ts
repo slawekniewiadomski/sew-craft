@@ -31,6 +31,46 @@ describe('SaveConflictDialog', () => {
     expect(wrapper.text()).not.toContain('saved this project at');
   });
 
+  it('traps Tab inside the dialog and handles other keys', async () => {
+    const wrapper = mount(SaveConflictDialog, { attachTo: document.body });
+    const overlay = wrapper.find('[data-testid="conflict-dialog"]');
+    const overwrite = wrapper.find('[data-testid="conflict-overwrite"]').element;
+    const reload = wrapper.find('[data-testid="conflict-reload"]').element;
+
+    expect(document.activeElement).toBe(reload);
+
+    await overlay.trigger('keydown', { key: 'Tab' });
+    expect(document.activeElement).toBe(overwrite);
+
+    await overlay.trigger('keydown', { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(reload);
+
+    const shiftFromLast = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      shiftKey: true,
+      cancelable: true,
+    });
+    overlay.element.dispatchEvent(shiftFromLast);
+    expect(shiftFromLast.defaultPrevented).toBe(false);
+
+    const other = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+    overlay.element.dispatchEvent(other);
+    expect(other.defaultPrevented).toBe(false);
+  });
+
+  it('restores the focus that was active before it opened', () => {
+    const trigger = document.createElement('button');
+    document.body.append(trigger);
+    trigger.focus();
+
+    const wrapper = mount(SaveConflictDialog, { attachTo: document.body });
+    expect(document.activeElement).not.toBe(trigger);
+
+    wrapper.unmount();
+    expect(document.activeElement).toBe(trigger);
+    trigger.remove();
+  });
+
   it('emits reload and overwrite', async () => {
     const wrapper = mount(SaveConflictDialog);
 

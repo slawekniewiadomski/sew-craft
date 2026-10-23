@@ -146,6 +146,28 @@ final class PatternPersistence
      */
     private function serialise(array $document): string
     {
-        return (string) json_encode($document);
+        return (string) json_encode($this->canonicalise($document));
+    }
+
+    /**
+     * Sort object keys recursively so a semantically unchanged document is not
+     * mistaken for a change when a client serialises its keys in a new order.
+     * List order is preserved: entity order is part of the document.
+     */
+    private function canonicalise(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        $canonical = array_map(fn (mixed $item): mixed => $this->canonicalise($item), $value);
+
+        if (array_is_list($canonical)) {
+            return $canonical;
+        }
+
+        ksort($canonical);
+
+        return $canonical;
     }
 }

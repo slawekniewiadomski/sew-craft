@@ -173,6 +173,45 @@ it('forces an overwrite when the expected version is null', function () {
         ->assertJsonPath('data.version', 2);
 });
 
+it('treats a reordered but identical document as unchanged', function () {
+    $project = Project::factory()->create();
+
+    $this->putJson("/api/projects/{$project->id}/pattern", [
+        'document' => patternDocument(),
+        'expected_version' => null,
+    ])->assertOk();
+
+    $this->putJson("/api/projects/{$project->id}/pattern", [
+        'document' => [
+            'pieces' => [],
+            'constraints' => [],
+            'units' => 'mm',
+            'entities' => [],
+            'schema' => 'sewcraft.pattern/0.2',
+        ],
+        'expected_version' => 1,
+    ])
+        ->assertOk()
+        ->assertJsonPath('data.version', 1);
+
+    expect(PatternVersion::query()->count())->toBe(1);
+});
+
+it('returns the current time when a stored document has no checkpoint', function () {
+    $project = Project::factory()->create();
+    Pattern::factory()->for($project)->create(['geometry' => patternDocument()]);
+
+    $this->putJson("/api/projects/{$project->id}/pattern", [
+        'document' => patternDocument(),
+        'expected_version' => null,
+    ])
+        ->assertOk()
+        ->assertJsonPath('data.version', 0)
+        ->assertJsonPath('data.saved_at', fn ($value) => is_string($value));
+
+    expect(PatternVersion::query()->count())->toBe(0);
+});
+
 it('archives the old working copy before an upgrade save', function () {
     $project = Project::factory()->create();
     $pattern = Pattern::factory()->for($project)->create([

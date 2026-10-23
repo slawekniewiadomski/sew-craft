@@ -332,6 +332,9 @@ Conflict dialog:
 These are blocking product decisions. They are asked on #62 and stay open until the issue
 author answers; the design above follows the recommendation in each row.
 
+Resolved for implementation: `spec-ready` was applied on PR #65 without a
+different answer, so each recommendation below is what shipped.
+
 | # | Question | Why it blocks | Recommendation |
 | - | -------- | ------------- | -------------- |
 | Q1 | **When does a save happen?** Explicit Save only, autosave only, or both? | It decides the bar, the guard, the conflict window and the write frequency. Autosave needs debounce/retry/offline semantics that explicit Save does not. | **Explicit Save in v1**, with autosave + checkpoint distinction as a follow-up (option B). |
@@ -408,10 +411,10 @@ author answers; the design above follows the recommendation in each row.
 
 ## Checks
 
-Design checks only — this is a design-only PR. No application code was written or run, so
-no behaviour is claimed:
+Implementation checks (PR #65):
 
-- Read the persistence schema, models, factory, controller, routes and SPA API/store/view.
-- Read `docs/architecture/api.md`, `data-model.md`, `overview.md` and `standards.md`.
-- Compared the write-path options against the TypeScript-only command interpreter.
-- Validated the plan against the repository's 100 % coverage and doc-sync rules.
+- `npm run format` / `format:check`, `typecheck`, `lint`, `test:coverage`,
+  `build` — pass; statements, branches, functions and lines at 100%.
+- Pest `--coverage --min=100` — pass, 100% across `app/`.
+- `vendor/bin/pint --test` — pass.
+- `om-auto-review-pr` review pass on the combined spec + implementation PR.

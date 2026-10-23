@@ -22,7 +22,7 @@ class SavePatternRequest extends FormRequest
                 function (string $attribute, mixed $value, \Closure $fail): void {
                     $encoded = json_encode($value);
 
-                    if ($encoded !== false && strlen($encoded) > 2 * 1024 * 1024) {
+                    if ($encoded === false || strlen($encoded) > 2 * 1024 * 1024) {
                         $fail('The document may not be greater than 2 MB.');
                     }
                 },
