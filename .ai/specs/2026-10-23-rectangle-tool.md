@@ -313,10 +313,10 @@ Asked on issue #60. The PR is a draft until these are answered.
 | Q2  | **Should the tool add constraints?** A: yes — two `horizontal` + two `vertical` for the axis-aligned modes, three 90° `angle` constraints for the rotated mode (a closed quadrilateral's fourth angle follows), skipped when any corner is a reused point. B: always auto-constrain, even onto reused points. C: never auto-constrain; the user adds them with the constraint ribbon | Without constraints a "rectangle" skews and cannot be driven by width/height dimensions, which is most of the point of a rectangle in a parametric editor. With them, four extra constraint icons and possible conflicts on reused corners appear; `add_constraint` does not detect conflict today | **A.** Keeps rectangle behaviour predictable for fresh drafting, and does not silently over-constrain geometry the user already constrained                        |
 | Q3  | **Where do the modes live?** A: three ribbon buttons. B: one Rectangle button plus a segmented mode control in a contextual bar (the corner-round prompt bar is the precedent). C: one button, mode cycling with a shortcut | Three buttons are the smallest surface and need no new UI machinery, but Sketching reaches ten items. One button plus a picker keeps the ribbon compact and makes the current mode explicit, at the cost of a new component and one more click before drawing | **A for v1.** Ship the capability first; consolidating the three controls behind a picker is a visible UI change that deserves its own review |
 
-## ✅ Resolved assumptions (non-blocking defaults)
+## ✅ Resolved assumptions (autonomous defaults)
 
-These are reversible implementation calls this spec makes; the answers to Q1–Q3
-are not among them.
+Only reversible implementation calls are defaulted here; Q1–Q3 are product
+decisions and stay open above.
 
 | #   | Assumption                                                                                                      | Why                                                                                                           | Status     |
 | --- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ---------- |
