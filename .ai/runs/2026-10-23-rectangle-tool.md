@@ -96,9 +96,9 @@ to start implementation, so the spec's recommended answers are taken as accepted
 
 ### Phase 3: Canvas
 
-- [ ] 3.1 Add per-mode pending state, the dashed preview and the provisional corner markers, driven by `rectangleCorners`
-- [ ] 3.2 Wire clicks, Escape, tool change and document load to the pending state, tested for cancellation without a command
-- [ ] 3.3 Add the three `EditorView` handlers through `dispatchGroup`, tested for one journal entry, one-step undo and a rolled-back failing group
+- [x] 3.1 Add per-mode pending state, the dashed preview and the provisional corner markers, driven by `rectangleCorners` — ec197c5
+- [x] 3.2 Wire clicks, Escape, tool change and document load to the pending state, tested for cancellation without a command — ec197c5
+- [x] 3.3 Add the three `EditorView` handlers through `dispatchGroup`, tested for one journal entry, one-step undo and a rolled-back failing group — ec197c5
 
 ### Phase 4: Constraints
 
