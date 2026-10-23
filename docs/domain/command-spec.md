@@ -15,7 +15,7 @@ runtime source of truth is `config/geometry.php`, exposed at `GET /api/commands`
 }
 ```
 
-## Commands (v0.10)
+## Commands (v0.11)
 
 ### `add_point`
 
@@ -276,7 +276,12 @@ fabric. The edge order is the loop order and is the single source of truth for
 "outward", which is why no side is ever requested.
 
 - params: `edges: entity_id[]` (ordered, closed), `name?: string`,
-  `quantity?: int` (≥ 1)
+  `quantity?: int` (≥ 1), `allowance?: 'default' | 'none' | { width, kind? }`
+- `allowance: 'default'` copies the document's effective default onto every loop
+  edge, one entry per edge; `'none'` or an omitted param keeps today's empty list;
+  an object copies that preset. A preset `width` is a finite number greater than
+  `0`, and an unknown `kind` is a validation error. An omitted preset `kind`
+  copies as `seam`.
 - Validation: at least three edges; every edge is an existing non-construction
   `line`, `curve` or `arc`; no duplicate edge; each edge's end is the next edge's
   start and the last connects back to the first; no edge already belongs to
@@ -326,6 +331,23 @@ Set, change or remove the allowance of one loop edge of a piece.
 - inverse: `set_piece_allowance` with the previous width and kind, or with
   `remove: true` when the edge previously had no allowance.
 
+### `set_default_allowance`
+
+Set, change or clear the allowance that `create_piece` copies onto a new piece.
+
+- params: `width?: number` (mm, finished width), `kind?: seam|single|double`,
+  `remove?: bool`
+- `width` is the **finished** width, like `set_piece_allowance`: a `seam` or
+  `single` offset cuts at `width`, a `double` offset cuts at `2 × width`.
+- `kind` defaults to `seam`; an unknown kind is a validation error.
+- `remove: true` clears the default and takes neither `width` nor `kind`;
+  clearing an already-off default is a no-op.
+- A document without a stored default resolves to the built-in **10 mm seam**, so
+  setting that preset is a no-op. Changing the default never rewrites an existing
+  piece; only pieces created afterwards copy it.
+- inverse: `set_default_allowance` restoring the previous effective preset, or
+  `remove: true` when the default is created from the off state.
+
 ### `add_derived_dimension`
 
 Add a read-only **cut dimension** between two loop vertices of one piece.
@@ -345,6 +367,15 @@ Add a read-only **cut dimension** between two loop vertices of one piece.
   anchors resolve again, exactly like a dangling reference.
 - Re-applying a command whose dimension id already exists is a no-op.
 - inverse: `remove_constraint`
+
+### Migration from spec 0.10.0
+
+`set_default_allowance` is new and the optional `defaults` document field it
+maintains is additive, so every 0.10.0 payload still applies unchanged. A
+document written without `defaults` resolves the built-in 10 mm seam on load; the
+pattern schema string stays `sewcraft.pattern/0.2`. `create_piece` gains an
+optional `allowance` param whose absence keeps the previous empty-list behaviour.
+`spec_version` is bumped to `0.11.0`.
 
 ### Migration from spec 0.9.0
 

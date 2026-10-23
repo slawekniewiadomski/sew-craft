@@ -754,3 +754,16 @@ function roundedDoc(): PatternDocument {
     params: { first: 'l1', second: 'bc', radius: 10 },
   }).document;
 }
+
+describe('EntityPropertiesPanel piece card all edges', () => {
+  it('forwards an All edges apply from the card', async () => {
+    const { wrapper } = panel(pieceDoc(), 'ab');
+
+    await wrapper.find('[data-testid="entity-piece-all-apply"]').trigger('click');
+
+    expect(wrapper.emitted('set-all-allowances')?.at(-1)).toEqual([
+      'p1',
+      { kind: 'seam', width: 10 },
+    ]);
+  });
+});

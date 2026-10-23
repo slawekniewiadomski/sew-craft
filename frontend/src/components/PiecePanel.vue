@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import type { AllowanceKind, EntityId } from '@sewcraft/geometry';
+import { computed, ref, watch } from 'vue';
 
+import Pill from '@/components/sidebar/Pill.vue';
 import SidebarAction from '@/components/sidebar/SidebarAction.vue';
 import SidebarField from '@/components/sidebar/SidebarField.vue';
 import SidebarHeading from '@/components/sidebar/SidebarHeading.vue';
+import type { AllowanceChoice } from '@/lib/allowance-defaults';
 import { parseAllowanceWidth } from '@/lib/allowance-width';
 import { formatDimensionValue } from '@/lib/dimensions';
 import { pieceSizeText, type PieceAllowanceRow, type PieceSummary } from '@/lib/pieces';
@@ -19,8 +22,13 @@ const props = withDefaults(
     label: string;
     /** Prefix for the card's data-testids, so two mounted cards never collide. */
     prefix?: string;
+    /** The project default the All edges row starts from when the edges differ. */
+    defaultAllowance?: AllowanceChoice;
   }>(),
-  { prefix: 'entity' },
+  {
+    prefix: 'entity',
+    defaultAllowance: () => ({ kind: 'seam' as const, width: 10 }),
+  },
 );
 
 const emit = defineEmits<{
@@ -30,6 +38,7 @@ const emit = defineEmits<{
     edge: EntityId,
     value: { kind: AllowanceKind; width: number } | null,
   ];
+  'set-all-allowances': [piece: EntityId, value: { kind: AllowanceKind; width: number } | null];
   'remove-piece': [id: EntityId];
 }>();
 
@@ -42,6 +51,27 @@ const ALLOWANCE_KIND_OPTIONS: { value: AllowanceKind | 'none'; label: string }[]
 ];
 
 const DEFAULT_ALLOWANCE_WIDTH = 10;
+
+/** The All edges row starts from the shared value, or the project default. */
+const allInitial = computed<AllowanceChoice>(() => props.summary.uniform ?? props.defaultAllowance);
+const allKind = ref<AllowanceChoice['kind']>(allInitial.value.kind);
+const allWidth = ref<number>(allInitial.value.width);
+const allMixed = computed(() => props.summary.uniform === null);
+
+watch(
+  allInitial,
+  (value) => {
+    allKind.value = value.kind;
+    allWidth.value = value.width;
+  },
+  { immediate: true },
+);
+
+const canApplyAll = computed(
+  () =>
+    props.summary.edges.length > 0 &&
+    (allKind.value === 'none' || (Number.isFinite(allWidth.value) && allWidth.value > 0)),
+);
 
 function testId(suffix: string): string {
   return `${props.prefix}-${suffix}`;
@@ -79,6 +109,30 @@ function allowanceWidth(row: PieceAllowanceRow, event: Event): void {
     kind: row.kind,
     width,
   });
+}
+
+function allKindChanged(event: Event): void {
+  allKind.value = (event.target as HTMLSelectElement).value as AllowanceChoice['kind'];
+}
+
+/** An invalid width snaps back rather than disabling the row silently. */
+function allWidthChanged(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const width = parseAllowanceWidth(input.value);
+  if (width === null) {
+    input.value = String(allWidth.value);
+    return;
+  }
+  allWidth.value = width;
+}
+
+/** Apply writes one value to every edge in a single grouped dispatch. */
+function applyAll(): void {
+  emit(
+    'set-all-allowances',
+    props.summary.id,
+    allKind.value === 'none' ? null : { kind: allKind.value, width: allWidth.value },
+  );
 }
 
 /** Empty text clears the name, mirroring `update_piece`'s `name: null`. */
@@ -160,6 +214,51 @@ function pieceQuantity(event: Event): void {
         {{ areaText(props.summary.metrics?.allowanceArea) }}
       </SidebarField>
     </dl>
+
+    <div class="space-y-1.5 border-t pt-2" data-testid="piece-all">
+      <div class="flex flex-wrap items-center gap-1.5">
+        <span class="min-w-0 flex-1 text-2xs text-muted-foreground">All edges</span>
+        <select
+          class="h-7 rounded-sm border px-1.5 text-2xs"
+          :value="allKind"
+          :aria-label="`Allowance kind for all edges of piece ${props.summary.id}`"
+          :data-testid="testId('piece-all-kind')"
+          @change="allKindChanged"
+        >
+          <option
+            v-for="option in ALLOWANCE_KIND_OPTIONS"
+            :key="option.value"
+            :value="option.value"
+          >
+            {{ option.label }}
+          </option>
+        </select>
+        <input
+          type="number"
+          min="0.1"
+          step="0.1"
+          class="h-7 w-16 rounded-sm border px-1.5 text-2xs tabular-nums"
+          :value="allKind === 'none' ? '' : allWidth"
+          :disabled="allKind === 'none'"
+          :aria-label="`Finished width for all edges of piece ${props.summary.id}`"
+          :data-testid="testId('piece-all-width')"
+          @change="allWidthChanged"
+        />
+        <span class="text-2xs text-muted-foreground">mm</span>
+        <button
+          type="button"
+          class="h-7 rounded-sm border px-2 text-2xs font-medium disabled:opacity-50"
+          :disabled="!canApplyAll"
+          :data-testid="testId('piece-all-apply')"
+          @click="applyAll"
+        >
+          Apply
+        </button>
+      </div>
+      <span v-if="allMixed" :data-testid="testId('piece-all-mixed')">
+        <Pill tone="neutral">Mixed</Pill>
+      </span>
+    </div>
 
     <ul class="space-y-1.5 border-t pt-2" :aria-label="`Allowances for piece ${props.summary.id}`">
       <li
