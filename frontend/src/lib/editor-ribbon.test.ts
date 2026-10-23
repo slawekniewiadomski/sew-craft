@@ -28,6 +28,13 @@ describe('RIBBON_GROUPS', () => {
         icon: 'round-corner',
         tool: 'round_corner',
       },
+      {
+        kind: 'action',
+        id: 'create-piece',
+        label: 'Create piece',
+        icon: 'piece',
+        action: 'create_piece',
+      },
       { kind: 'action', id: 'undo', label: 'Undo', icon: 'undo', action: 'undo' },
       { kind: 'action', id: 'redo', label: 'Redo', icon: 'redo', action: 'redo' },
       { kind: 'action', id: 'delete', label: 'Delete', icon: 'delete', action: 'delete' },

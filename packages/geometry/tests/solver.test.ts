@@ -350,4 +350,23 @@ describe('solve with referenced dimensions', () => {
     expect(result.converged).toBe(true);
     expect(result.residualNorm).toBe(0);
   });
+
+  it('adds no equation for a derived cut dimension', () => {
+    const points = [point('a', 0, 0, true), point('b', 3, 0, true)];
+    const constraints: Constraint[] = [
+      {
+        id: 'cut',
+        type: 'derived_distance',
+        piece: 'p',
+        a: { edge: 'e', at: 'start' },
+        b: { edge: 'e', at: 'end' },
+      },
+    ];
+
+    const result = solve(points, constraints);
+
+    expect(result.converged).toBe(true);
+    expect(result.residualNorm).toBe(0);
+    expect(result.coordinates.get('b')).toEqual({ x: 3, y: 0 });
+  });
 });

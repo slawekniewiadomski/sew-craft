@@ -15,7 +15,7 @@ runtime source of truth is `config/geometry.php`, exposed at `GET /api/commands`
 }
 ```
 
-## Commands (v0.8)
+## Commands (v0.10)
 
 ### `add_point`
 
@@ -99,7 +99,9 @@ no-op when the entity already has the requested value, so it is idempotent.
 
 ### `delete_entity`
 
-Remove an entity and cascade-remove constraints that reference it.
+Remove an entity and cascade-remove constraints that reference it, legacy seams on
+it and any piece that uses it (a piece edge must exist). Removing a piece also
+removes its cut dimensions.
 
 - params: `id: entity_id`
 
@@ -155,6 +157,9 @@ the solver.
 - `value` and `reference` are mutually exclusive in one update; `reference: null`
   still counts as a reference field and cannot be combined with `value`.
 - `orientation`/`offset` are rejected for non-distance constraints.
+- A **cut dimension** (`derived_distance`) accepts `orientation` and `offset` only;
+  `value` and `reference` are rejected because the number follows the cut loop and
+  drives nothing.
 - A no-op update (same value, same link, same presentation) returns
   `inverse: null`.
 - inverse: `update_constraint` (restores the previous state and effective
@@ -168,15 +173,22 @@ the solver.
 - Removing a referenced source leaves its dependents' `reference` recorded and
   writes the last resolved number into `lastKnownValue`, so they render as
   broken rather than disappearing.
-- inverse: `add_constraint` (params rebuilt from the removed constraint, keeping its id)
+- Removing a cut dimension is a normal removal; its inverse recreates it with
+  `add_derived_dimension`.
+- inverse: `add_constraint` (params rebuilt from the removed constraint, keeping
+  its id), or `add_derived_dimension` for a cut dimension.
 
 ### `add_seam_allowance`
+
+> **Deprecated (v0.10):** kept for edges outside any piece. New work uses
+> `set_piece_allowance`; the seam commands are removed in 0.3.
 
 Attach a seam allowance to a cut line or curve edge. The allowance is stored per edge
 and generated as a true offset of that edge (see `@sewcraft/geometry`'s
 `seamAllowancePath` / `offsetPolyline`). At most one allowance may be attached to
 an edge. Construction guides (`add_construction_line`) are not cut edges and are
-rejected.
+rejected. An edge that belongs to a piece is rejected: set the allowance on the
+piece instead.
 
 - params: `edge: entity_id`, `width?: number` (mm; defaults to `10`),
   `side?: left|right` (defaults to `left`)
@@ -187,6 +199,8 @@ rejected.
 
 ### `remove_seam_allowance`
 
+> **Deprecated (v0.10):** see `add_seam_allowance`.
+
 Detach the seam allowance from an edge.
 
 - params: `id: entity_id` (the seam id, i.e. the `add_seam_allowance` command id)
@@ -194,6 +208,9 @@ Detach the seam allowance from an edge.
   id, width and stored side)
 
 ### `set_seam_allowance`
+
+> **Deprecated (v0.10):** see `add_seam_allowance`; `set_piece_allowance` replaces
+> it for loop edges.
 
 Change the width or side of an attached seam allowance without detaching it.
 
@@ -251,6 +268,98 @@ Restore a rounded corner.
   previous construction flag, deletes the tangent points, control points and arc,
   and removes the feature. A line with a round at its other end keeps that round.
 - inverse: `add_corner_round` with the original lines and radius.
+
+### `create_piece`
+
+Create a **piece**: one closed loop of existing cut edges that is cut from
+fabric. The edge order is the loop order and is the single source of truth for
+"outward", which is why no side is ever requested.
+
+- params: `edges: entity_id[]` (ordered, closed), `name?: string`,
+  `quantity?: int` (≥ 1)
+- Validation: at least three edges; every edge is an existing non-construction
+  `line`, `curve` or `arc`; no duplicate edge; each edge's end is the next edge's
+  start and the last connects back to the first; no edge already belongs to
+  another piece. A `circle` cannot be a loop edge in v1.
+- A rejected loop names the first edge that fails to connect.
+- `name` is trimmed and must be non-empty; `quantity` must be an integer of at
+  least 1. Both are optional; an omitted quantity means 1.
+- Re-applying a command whose piece id already exists is a no-op.
+- inverse: `delete_piece` for the new piece.
+
+### `update_piece`
+
+Rename a piece or change its cut quantity.
+
+- params: `id: entity_id`, `name?: string | null`, `quantity?: int | null`
+- At least one of `name` and `quantity` is required.
+- A string sets the trimmed name; `null` clears it. A quantity is an integer of at
+  least 1; `null` clears it, which means 1.
+- Re-applying the current values is a no-op with `inverse: null`.
+- inverse: `update_piece` with the previous values (`null` for a value that was
+  absent).
+
+### `delete_piece`
+
+Remove a piece and cascade-remove its cut dimensions.
+
+- params: `id: entity_id`
+- Deleting an already-missing piece is a no-op.
+- inverse: `null`; restoring a piece together with its cut dimensions is not a
+  single command, so undo uses the journal's document snapshot (as
+  `delete_entity` does).
+
+### `set_piece_allowance`
+
+Set, change or remove the allowance of one loop edge of a piece.
+
+- params: `piece: entity_id`, `edge: entity_id`, `width?: number` (mm, finished
+  width), `kind?: seam|single|double`, `remove?: bool`
+- `edge` must be in that piece's loop.
+- `remove: true` removes the edge's allowance and takes neither `width` nor
+  `kind`; removing an allowance that is not there is a no-op.
+- Otherwise `width` is required, finite and greater than `0`. It is the
+  **finished** width: a `seam` or `single` offset cuts at `width`, a `double`
+  offset cuts at `2 × width` and adds a fold line at `width`.
+- `kind` defaults to `seam`; an unknown kind is a validation error.
+- Re-applying the same width and effective kind is a no-op with `inverse: null`.
+- inverse: `set_piece_allowance` with the previous width and kind, or with
+  `remove: true` when the edge previously had no allowance.
+
+### `add_derived_dimension`
+
+Add a read-only **cut dimension** between two loop vertices of one piece.
+
+- params: `piece: entity_id`, `a: cut_anchor`, `b: cut_anchor`,
+  `orientation?: aligned|horizontal|vertical`, `offset?: number`
+- A `cut_anchor` is `{ edge: entity_id, at: 'start' | 'end' }`: it addresses a
+  loop vertex by an edge of the piece rather than by point id, because the cut
+  loop has no entities of its own.
+- Both anchors must name edges in that piece and must differ. The two vertices
+  must not resolve to the same point.
+- The dimension stores no value: it is measured from the resolved cut loop on
+  every read, adds no solver equation, and is read-only in v1. `update_constraint`
+  accepts only `orientation` and `offset` for it.
+- When the piece or an anchored edge disappears the dimension is **broken**: it
+  stores no reading, so it shows no number and adds no equation until its
+  anchors resolve again, exactly like a dangling reference.
+- Re-applying a command whose dimension id already exists is a no-op.
+- inverse: `remove_constraint`
+
+### Migration from spec 0.9.0
+
+Pieces are new. `create_piece`, `update_piece`, `delete_piece`,
+`set_piece_allowance` and `add_derived_dimension` are additive commands, and the
+`pieces` document collection and the `derived_distance` constraint type are
+additive, so every 0.9.0 payload still applies unchanged. The `seam` commands stay
+available, marked deprecated, for edges outside any piece.
+
+The pattern schema moves from `sewcraft.pattern/0.1` to `sewcraft.pattern/0.2`.
+A 0.1 document is migrated on load: every closed chain of seam-carrying edges
+becomes one piece with those allowances as `kind: 'seam'`, the stored width kept
+and `side` discarded; seams on edges that close no loop stay in the deprecated
+`seams` field for the legacy dashed rendering. The migration is one-way and
+idempotent. `spec_version` is bumped to `0.10.0`.
 
 ### Migration from spec 0.8.0
 
@@ -310,8 +419,9 @@ is new; `spec_version` is bumped to `0.3.0`.
 no `piece` entity, so the command always rejected; the allowance is now stored per
 edge. The new params are `edge` + optional `width`; a legacy `piece` param is
 ignored, so existing payloads still apply. The response shape is unchanged.
-`spec_version` is bumped to `0.2.0`; a `piece` param can be reintroduced
-additively once pieces are modelled (spec 006).
+`spec_version` is bumped to `0.2.0`. A `piece` param can be reintroduced
+additively once pieces are modelled (spec 006) — since 0.10 they are, through
+`create_piece` and `set_piece_allowance`.
 
 ### `solve`
 
@@ -331,6 +441,12 @@ Request a solver rebuild. Typically emitted after a batch of geometry commands.
 - Referenced entity ids must exist when the command is applied.
 - `distance`/`angle` `value` must be finite; `distance` must be `> 0`.
 - `add_curve` points must be distinct.
+- A piece loop has at least three edges, each used once, each non-construction,
+  and closes with no gaps; an edge belongs to at most one piece.
+- A cut anchor names an edge of its own piece and a pair of anchors resolves to
+  two distinct points.
+- A piece allowance is `> 0` and the edge is in the piece; an allowance width is
+  the finished width.
 
 ## Adding a command
 

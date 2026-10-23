@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://sewcraft.local/schemas/command-spec-0.8.json",
+  "$id": "https://sewcraft.local/schemas/command-spec-0.10.json",
   "title": "SewCraft Command Spec",
-  "schema": "sewcraft.command-spec/0.8",
-  "spec_version": "0.9.0",
+  "schema": "sewcraft.command-spec/0.10",
+  "spec_version": "0.10.0",
   "units": "mm",
   "envelope": {
     "id": "ULID string, client-generated, unique",
@@ -72,7 +72,7 @@
       "inverse": "set_construction"
     },
     "delete_entity": {
-      "description": "Remove an entity and any constraints referencing it.",
+      "description": "Remove an entity, the constraints referencing it and any piece that uses it.",
       "params": { "id": "entity_id" }
     },
     "add_constraint": {
@@ -88,7 +88,7 @@
       "inverse": "remove_constraint"
     },
     "update_constraint": {
-      "description": "Change a dimensional constraint value, reference or dimension presentation. Null clears a distance to driven; reference null unlinks and keeps the current value.",
+      "description": "Change a dimensional constraint value, reference or dimension presentation. Null clears a distance to driven; reference null unlinks and keeps the current value. A cut dimension accepts orientation and offset only.",
       "params": {
         "id": "entity_id",
         "value": "number|null?",
@@ -99,22 +99,22 @@
       "inverse": "update_constraint"
     },
     "remove_constraint": {
-      "description": "Detach a constraint from the sketch.",
+      "description": "Detach a constraint or cut dimension from the sketch.",
       "params": { "id": "entity_id" },
       "inverse": "add_constraint"
     },
     "add_seam_allowance": {
-      "description": "Attach a seam allowance (mm) to a cut line or curve edge.",
+      "description": "Deprecated: attach a legacy seam allowance (mm) to a cut edge outside any piece. Removed in 0.3.",
       "params": { "edge": "entity_id", "width": "number?", "side": "left|right?" },
       "inverse": "remove_seam_allowance"
     },
     "remove_seam_allowance": {
-      "description": "Detach the seam allowance from an edge.",
+      "description": "Deprecated: detach a legacy seam allowance from an edge. Removed in 0.3.",
       "params": { "id": "entity_id" },
       "inverse": "add_seam_allowance"
     },
     "set_seam_allowance": {
-      "description": "Change the width or side of an attached seam allowance (mm).",
+      "description": "Deprecated: change the width or side of a legacy seam allowance (mm). Removed in 0.3.",
       "params": { "id": "entity_id", "width": "number?", "side": "left|right?" },
       "inverse": "set_seam_allowance"
     },
@@ -132,6 +132,50 @@
       "description": "Restore a rounded corner: delete the arc and derived points and return both lines to the sharp corner.",
       "params": { "id": "entity_id" },
       "inverse": "add_corner_round"
+    },
+    "create_piece": {
+      "description": "Create a piece from one closed loop of cut edges. The edge order is the loop order and sets the outward direction.",
+      "params": {
+        "edges": "entity_id[]",
+        "name": "string?",
+        "quantity": "int?"
+      },
+      "inverse": "delete_piece"
+    },
+    "update_piece": {
+      "description": "Rename a piece or change its cut quantity. Null clears either.",
+      "params": {
+        "id": "entity_id",
+        "name": "string|null?",
+        "quantity": "int|null?"
+      },
+      "inverse": "update_piece"
+    },
+    "delete_piece": {
+      "description": "Remove a piece together with its cut dimensions.",
+      "params": { "id": "entity_id" }
+    },
+    "set_piece_allowance": {
+      "description": "Set, change or remove the allowance of one piece loop edge. Width is the finished width in mm; double folds cut twice it.",
+      "params": {
+        "piece": "entity_id",
+        "edge": "entity_id",
+        "width": "number?",
+        "kind": "seam|single|double?",
+        "remove": "bool?"
+      },
+      "inverse": "set_piece_allowance"
+    },
+    "add_derived_dimension": {
+      "description": "Add a read-only cut dimension between two loop vertices of one piece. Its value follows the cut loop and adds no solver equation.",
+      "params": {
+        "piece": "entity_id",
+        "a": "cut_anchor",
+        "b": "cut_anchor",
+        "orientation": "aligned|horizontal|vertical?",
+        "offset": "number?"
+      },
+      "inverse": "remove_constraint"
     },
     "solve": {
       "description": "Rebuild the sketch by running the constraint solver.",

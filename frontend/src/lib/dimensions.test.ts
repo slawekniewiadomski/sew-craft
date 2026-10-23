@@ -117,6 +117,7 @@ describe('formatDimensionLabel', () => {
     expect(formatDimensionLabel(100.1234, 'driven')).toBe('(100.123)');
     expect(formatDimensionLabel(100.1234, 'referenced')).toBe('[100.123]');
     expect(formatDimensionLabel(100.1234, 'broken')).toBe('[100.123]');
+    expect(formatDimensionLabel(100.1234, 'derived')).toBe('100.123 cut');
   });
 });
 
@@ -126,6 +127,7 @@ describe('dimension state presentation', () => {
     expect(dimensionStateLabel('driven')).toBe('Driven');
     expect(dimensionStateLabel('referenced')).toBe('Referenced');
     expect(dimensionStateLabel('broken')).toBe('Broken');
+    expect(dimensionStateLabel('derived')).toBe('Cut');
   });
 
   it('builds an accessible name that does not rely on color', () => {
@@ -139,6 +141,7 @@ describe('dimension state presentation', () => {
     expect(dimensionAccessibleName(120, 'broken', 'A')).toBe(
       'Broken reference, last known 120 millimetres; source dimension A is missing',
     );
+    expect(dimensionAccessibleName(120, 'derived')).toBe('Cut dimension, 120 millimetres');
   });
 
   it('shows a link as #source and everything else as its number', () => {
@@ -177,7 +180,7 @@ describe('dimension state presentation', () => {
 
 describe('reference options', () => {
   const document: PatternDocument = {
-    schema: 'sewcraft.pattern/0.1',
+    schema: 'sewcraft.pattern/0.2',
     units: 'mm',
     entities: [
       { id: 'p1', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
@@ -190,6 +193,7 @@ describe('reference options', () => {
       { id: 'B', type: 'distance', a: 'p3', b: 'p4', value: 80 },
       { id: 'measure', type: 'distance', a: 'p2', b: 'p3' },
     ],
+    pieces: [],
     seams: [],
   };
   const edited = document.constraints[1] as DistanceConstraint;

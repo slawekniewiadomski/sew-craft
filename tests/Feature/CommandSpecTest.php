@@ -3,7 +3,7 @@
 it('exposes the command spec', function () {
     $this->getJson('/api/commands')
         ->assertOk()
-        ->assertJsonPath('version', '0.9.0')
+        ->assertJsonPath('version', '0.10.0')
         ->assertJsonStructure([
             'version',
             'commands' => [
@@ -74,4 +74,34 @@ it('exposes the circle command', function () {
         ->assertJsonPath('commands.add_circle.params.rim', 'entity_id')
         ->assertJsonPath('commands.add_circle.params.construction', 'bool?')
         ->assertJsonPath('commands.add_circle.inverse', 'delete_entity');
+});
+
+it('exposes the piece commands', function () {
+    $this->getJson('/api/commands')
+        ->assertOk()
+        ->assertJsonPath('commands.create_piece.params.edges', 'entity_id[]')
+        ->assertJsonPath('commands.create_piece.params.name', 'string?')
+        ->assertJsonPath('commands.create_piece.params.quantity', 'int?')
+        ->assertJsonPath('commands.create_piece.inverse', 'delete_piece')
+        ->assertJsonPath('commands.update_piece.params.name', 'string|null?')
+        ->assertJsonPath('commands.update_piece.params.quantity', 'int|null?')
+        ->assertJsonPath('commands.update_piece.inverse', 'update_piece')
+        ->assertJsonPath('commands.delete_piece.params.id', 'entity_id')
+        ->assertJsonPath('commands.set_piece_allowance.params.piece', 'entity_id')
+        ->assertJsonPath('commands.set_piece_allowance.params.edge', 'entity_id')
+        ->assertJsonPath('commands.set_piece_allowance.params.width', 'number?')
+        ->assertJsonPath('commands.set_piece_allowance.params.kind', 'seam|single|double?')
+        ->assertJsonPath('commands.set_piece_allowance.params.remove', 'bool?')
+        ->assertJsonPath('commands.set_piece_allowance.inverse', 'set_piece_allowance');
+});
+
+it('exposes the derived cut dimension command', function () {
+    $this->getJson('/api/commands')
+        ->assertOk()
+        ->assertJsonPath('commands.add_derived_dimension.params.piece', 'entity_id')
+        ->assertJsonPath('commands.add_derived_dimension.params.a', 'cut_anchor')
+        ->assertJsonPath('commands.add_derived_dimension.params.b', 'cut_anchor')
+        ->assertJsonPath('commands.add_derived_dimension.params.orientation', 'aligned|horizontal|vertical?')
+        ->assertJsonPath('commands.add_derived_dimension.params.offset', 'number?')
+        ->assertJsonPath('commands.add_derived_dimension.inverse', 'remove_constraint');
 });

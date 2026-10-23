@@ -4,6 +4,7 @@ import {
   createEmptyDocument,
   type CircleEntity,
   type CurveEntity,
+  type DerivedDistanceConstraint,
   type Entity,
   type EntityId,
   entitiesInRect,
@@ -447,6 +448,75 @@ describe('PatternCanvas', () => {
       },
       { id: 'ghost', type: 'distance', a: 'a', b: 'missing', value: 10 },
     ],
+  };
+
+  const pieceDoc: PatternDocument = {
+    ...doc([
+      pt('a', 0, 0),
+      pt('b', 100, 0),
+      pt('c', 100, 100),
+      pt('d', 0, 100),
+      ln('ab', 'a', 'b'),
+      ln('bc', 'b', 'c'),
+      ln('cd', 'c', 'd'),
+      ln('da', 'd', 'a'),
+    ]),
+    pieces: [
+      {
+        id: 'p1',
+        edges: ['ab', 'bc', 'cd', 'da'],
+        allowances: [
+          { edge: 'ab', width: 10 },
+          { edge: 'bc', width: 5, kind: 'double' },
+        ],
+      },
+    ],
+  };
+
+  const selfIntersectingPieceDoc: PatternDocument = {
+    ...doc([
+      pt('a', 0, 0),
+      pt('b', 100, 0),
+      pt('c', 100, 100),
+      pt('d', 60, 100),
+      pt('e', 60, 20),
+      pt('f', 40, 20),
+      pt('g', 40, 100),
+      pt('h', 0, 100),
+      ln('ab', 'a', 'b'),
+      ln('bc', 'b', 'c'),
+      ln('cd', 'c', 'd'),
+      ln('de', 'd', 'e'),
+      ln('ef', 'e', 'f'),
+      ln('fg', 'f', 'g'),
+      ln('gh', 'g', 'h'),
+      ln('ha', 'h', 'a'),
+    ]),
+    pieces: [
+      {
+        id: 'p1',
+        edges: ['ab', 'bc', 'cd', 'de', 'ef', 'fg', 'gh', 'ha'],
+        allowances: ['ab', 'bc', 'cd', 'de', 'ef', 'fg', 'gh', 'ha'].map((edge) => ({
+          edge,
+          width: 15,
+        })),
+      },
+    ],
+  };
+
+  const derivedConstraint: DerivedDistanceConstraint = {
+    id: 'cut',
+    type: 'derived_distance',
+    piece: 'p1',
+    a: { edge: 'ab', at: 'start' },
+    b: { edge: 'bc', at: 'end' },
+    orientation: 'horizontal',
+    offset: 20,
+  };
+
+  const derivedPieceDoc: PatternDocument = {
+    ...pieceDoc,
+    constraints: [derivedConstraint],
   };
 
   it('renders an icon per resolvable constraint when the toggle is on', () => {
@@ -2394,5 +2464,131 @@ describe('PatternCanvas', () => {
     await nextTick();
     expect(wrapper.find('[data-testid="corner-round-drag-preview"]').exists()).toBe(false);
     window.dispatchEvent(new MouseEvent('pointercancel'));
+  });
+
+  it('draws every piece loop and its allowance band', () => {
+    const wrapper = mountCanvas({ document: pieceDoc, showSeamAllowance: true });
+
+    const band = wrapper.find('[data-piece-band="p1"]');
+    expect(band.exists()).toBe(true);
+    expect(band.classes()).toContain('fill-primary/10');
+    expect(band.attributes('d')).toMatch(/^M .* Z$/);
+    expect(wrapper.find('[data-piece-cut="p1"]').attributes('d')).toMatch(/^M .* Z$/);
+    expect(wrapper.find('[data-piece-stitch="p1"]').attributes('d')).toMatch(/^M .* Z$/);
+    expect(wrapper.findAll('[data-piece-fold="p1"]')).toHaveLength(1);
+
+    const selected = mountCanvas({
+      document: pieceDoc,
+      selectedEntityIds: ['ab'],
+      showSeamAllowance: true,
+    });
+    expect(selected.find('[data-piece-band="p1"]').classes()).toContain('fill-primary/25');
+
+    const hidden = mountCanvas({ document: pieceDoc, showSeamAllowance: false });
+    expect(hidden.find('[data-piece-band="p1"]').isVisible()).toBe(false);
+  });
+
+  it('flags a self-intersecting piece cut loop', () => {
+    const wrapper = mountCanvas({ document: selfIntersectingPieceDoc, showSeamAllowance: true });
+
+    expect(wrapper.find('[data-piece-cut="p1"]').classes()).toContain('stroke-destructive');
+  });
+
+  it('skips a piece whose loop no longer resolves', () => {
+    const wrapper = mountCanvas({
+      document: {
+        ...doc([pt('a', 0, 0), pt('b', 100, 0), ln('ab', 'a', 'b')]),
+        pieces: [{ id: 'broken', edges: ['ab', 'missing', 'ghost'], allowances: [] }],
+      },
+    });
+
+    expect(wrapper.find('[data-piece-cut="broken"]').exists()).toBe(false);
+    expect(wrapper.find('[data-piece-stitch="broken"]').exists()).toBe(false);
+
+    const dangling = mountCanvas({
+      document: {
+        ...pieceDoc,
+        entities: pieceDoc.entities.filter((entity) => entity.id !== 'c'),
+      },
+    });
+
+    expect(dangling.find('[data-piece-cut="p1"]').exists()).toBe(false);
+    expect(dangling.find('[data-piece-stitch="p1"]').exists()).toBe(false);
+  });
+
+  it('renders a cut dimension with its derived label and read-only tooltip', () => {
+    const wrapper = mountCanvas({ document: derivedPieceDoc });
+    const label = wrapper.find('[data-testid="dimension-label-cut"]');
+
+    expect(wrapper.find('[data-dimension-derived="cut"]').exists()).toBe(true);
+    expect(label.attributes('data-dimension-derived')).toBe('cut');
+    expect(label.find('text').attributes('data-dimension-state')).toBe('derived');
+    expect(label.find('text').text()).toMatch(/ cut$/);
+    expect(label.attributes('aria-label')).toContain('Cut dimension');
+    expect(label.find('title').text()).toBe(
+      'Cut dimension: drag to reposition; the value follows the cut loop',
+    );
+    expect(label.classes()).toContain('cursor-move');
+
+    const hidden = mountCanvas({ document: derivedPieceDoc, showDimensions: false });
+    expect(hidden.find('[data-testid="dimension-label-cut"]').exists()).toBe(false);
+    expect(hidden.find('[data-testid="dimension-lines-cut"]').exists()).toBe(false);
+  });
+
+  it('hides a cut dimension whose anchors no longer resolve', () => {
+    const wrapper = mountCanvas({
+      document: {
+        ...derivedPieceDoc,
+        constraints: [
+          {
+            ...derivedConstraint,
+            b: { edge: 'missing', at: 'end' },
+          },
+        ],
+      },
+    });
+
+    expect(wrapper.find('[data-testid="dimension-lines-cut"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-label-cut"]').exists()).toBe(false);
+  });
+
+  it('drags a cut dimension from its strip and label', async () => {
+    const wrapper = mountCanvas({ document: derivedPieceDoc });
+    const viewport = fittedViewport(derivedPieceDoc);
+    const target = worldToScreen(viewport, { x: 40, y: 70 });
+
+    down(wrapper.find('[data-testid="dimension-drag-cut"]').element, 300, 200);
+    move(target.x, target.y);
+    await nextTick();
+    up();
+
+    const patches = wrapper.emitted('update-dimension') as
+      [string, { offset: number }][] | undefined;
+    expect(patches).toHaveLength(1);
+    expect(patches![0]![0]).toBe('cut');
+    expect(patches![0]![1].offset).toBeTypeOf('number');
+
+    const fromLabel = mountCanvas({ document: derivedPieceDoc });
+    down(fromLabel.find('[data-testid="dimension-label-cut"]').element, 300, 200);
+    move(target.x, target.y);
+    await nextTick();
+    up();
+    expect(fromLabel.emitted('update-dimension')).toHaveLength(1);
+  });
+
+  it('makes cut dimensions read-only while placing constraints or drawing', () => {
+    const constrained = mountCanvas({ document: derivedPieceDoc, constraintActive: true });
+    expect(constrained.find('[data-testid="dimension-drag-cut"]').exists()).toBe(false);
+    expect(constrained.find('[data-testid="dimension-label-cut"]').classes()).toContain(
+      'pointer-events-none',
+    );
+    expect(constrained.find('[data-testid="dimension-label-cut"] title').text()).toBe(
+      'Cut dimension (read-only)',
+    );
+
+    const drawing = mountCanvas({ document: derivedPieceDoc, tool: 'add_line' });
+    expect(drawing.find('[data-testid="dimension-label-cut"]').classes()).toContain(
+      'pointer-events-none',
+    );
   });
 });

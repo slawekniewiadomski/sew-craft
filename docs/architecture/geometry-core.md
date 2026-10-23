@@ -44,11 +44,62 @@ interface PointEntity {
 `fixed` points act as anchors. At least one fixed point is needed for a
 non-translating solution.
 
+## Pieces
+
+A `piece` is a closed profile owning an ordered list of cut line, curve and arc
+edges plus one allowance per loop edge. It is not an entity: it stores no
+geometry of its own and no loop points, only references.
+
+```ts
+interface Allowance {
+  edge: EntityId;
+  width: number; // millimetres, the finished allowance
+  kind: 'seam' | 'single' | 'double';
+}
+
+interface Piece {
+  id: EntityId;
+  name?: string;
+  edges: EntityId[]; // closed chain, in loop order
+  allowances: Allowance[];
+  quantity?: number; // defaults to 1
+}
+```
+
+`kind` sets how much extra the cut line gains: `seam` and `single` add `width`,
+`double` adds `2 * width` and also yields a fold line at the finished width.
+There is no stored side: the outward direction follows from the walk's winding,
+so a piece keeps offsetting outward when its edges are reversed.
+
+`validatePiece` accepts only cut line/curve/arc edges, at least three of them,
+each unused by another piece, forming one closed chain: every edge continues at
+the vertex where the previous edge ended and the last closes back to the first.
+A star selection that only shares one common vertex is rejected. Circles are not
+supported as piece edges in v0.2.
+
+Derived functions in `piece.ts` return `null` or `[]` rather than throwing when
+a reference goes stale, so a deleted point degrades every consumer to an absent
+piece instead of breaking the canvas or export:
+
+- `pieceEdges(document, piece)` — the resolved edge entities in stored order;
+  missing, construction, point and circle references are skipped.
+- `pieceLoop(document, piece)` — the stitch boundary as one closed polyline,
+  reversing edges whose stored direction runs against the walk, plus one signed
+  outward distance per segment.
+- `pieceCutLoop(document, piece)` — the cut loop: the stitch boundary offset per
+  edge with a join generated at every vertex, plus reported self-intersections.
+- `pieceFoldLines(document, piece)` — the double-fold fold loop, empty when no
+  edge is a double fold; for a uniformly doubled piece it is exactly the
+  single-fold cut outline.
+- `pieceCutVertex(document, piece, anchor)` — the resolved cut-loop point at one
+  end of a loop edge, used by cut dimensions.
+- `pieceCutBounds` / `pieceMetrics` — cut bounding box, finished and cut sizes,
+  cut area, allowance area and quantity.
+- `basicPieceForLoops(document)` — every simple closed chain of cut edges, used
+  by the 0.1 migration to adopt closed seam chains.
+
 ## Later entities (specced, not built)
 
-- `piece` — a closed profile referencing an ordered list of edges. Seam
-  allowance is already modelled per edge (see above); `piece` will group those
-  edges. Not built yet.
 - `dart` — first-class construction element.
 - `grainline`, `notch`, `label` — annotations attached to pieces.
 
@@ -56,8 +107,11 @@ non-translating solution.
 
 A `PatternDocument` is the versioned JSON container persisted in
 `patterns.geometry` (see `data-model.md`). It carries the schema tag
-(`PATTERN_SCHEMA`), `units: 'mm'`, and the `entities`, `constraints` and `seams`
-arrays. Document helpers in `document.ts`:
+(`PATTERN_SCHEMA`), `units: 'mm'`, and the `entities`, `constraints` and `pieces`
+arrays. The legacy `seams` array is deprecated: the 0.1 migration moves every
+seam that closes a loop onto its piece as a `kind: 'seam'` allowance, and only
+seams outside any piece remain there for the dashed legacy rendering. Document
+helpers in `document.ts`:
 
 - `createEmptyDocument()` — a valid empty document.
 - `getEntity(document, id)` — entity by id, or `undefined`.
@@ -74,8 +128,10 @@ arrays. Document helpers in `document.ts`:
 - `bounds(document)` — axis-aligned `{ min, max }` over all points (construction
   included), widened by each circle's radius and each arc's cardinal extents, or
   `null` for a point-less document.
-- `getSeam(document, id)` / `seamForEdge(document, edge)` — look up a seam
+- `getSeam(document, id)` / `seamForEdge(document, edge)` — look up a legacy seam
   allowance by its own id or by the edge it is attached to.
+- `pieceById(document, id)` / `pieceForEdge(document, edge, ignorePiece?)` — look
+  up a piece by id or by one of its loop edges.
 - `cornerRounds(document)` — the optional corner-round features, defaulting to
   `[]` for documents written before the feature existed.
 - `allPoints`, `cutEdges` and `bounds` include derived tangent and control points
@@ -184,9 +240,11 @@ layer (self-intersecting offsets use the destructive style) and exposes a per-ed
 width input (default 10 mm) plus a show/hide presentation toggle; neither changes
 the document.
 
-Seam allowance offsetting depends on the entity model only (edges), not on
-`piece`. When pieces are modelled (see below), `piece` becomes a grouping for the
-edges and their allowances.
+The per-edge path is the **legacy** route, kept for seams on edges outside any
+piece. Edges that belong to a piece are offset by `pieceCutLoop`, which uses
+`offsetVariablePolyline` so each loop segment can carry its own distance and every
+loop vertex gets a join. Both routes share `edgePolyline`,
+`findSelfIntersections` and the same left/right sign convention.
 
 ## Corner rounds (`corner-round.ts`)
 

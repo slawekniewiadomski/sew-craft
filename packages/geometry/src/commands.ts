@@ -3,11 +3,19 @@ import {
   allPoints,
   constraintEntityIds,
   cornerRounds,
+  documentSeams,
   getConstraint,
   getEntity,
   getSeam,
   seamForEdge,
 } from './document.js';
+import {
+  allowanceForEdge,
+  pieceById,
+  pieceCutVertex,
+  pieceForEdge,
+  validatePiece,
+} from './piece.js';
 import {
   cornerRoundGeometry,
   cornerRoundsForEntity,
@@ -26,22 +34,28 @@ import { CommandValidationError } from './errors.js';
 import { solve } from './solver.js';
 import type { SolveOptions, SolveResult } from './solver.js';
 import {
+  ALLOWANCE_KINDS,
   CONSTRAINT_TYPES,
   DIMENSION_ORIENTATIONS,
   SEAM_SIDES,
   seamSide,
+  type Allowance,
+  type AllowanceKind,
   type ArcEntity,
   type Constraint,
   type ConstraintType,
   type CornerRound,
   type CircleEntity,
   type CurveEntity,
+  type CutAnchor,
+  type DerivedDistanceConstraint,
   type DimensionOrientation,
   type DistanceConstraint,
   type Entity,
   type EntityId,
   type LineEntity,
   type PatternDocument,
+  type Piece,
   type PointEntity,
   type Seam,
   type SeamSide,
@@ -160,6 +174,43 @@ export interface RemoveCornerRoundParams {
   id: EntityId;
 }
 
+export interface CreatePieceParams {
+  /** Ordered closed loop of cut line/curve/arc ids. */
+  edges: EntityId[];
+  name?: string;
+  quantity?: number;
+}
+
+export interface UpdatePieceParams {
+  id: EntityId;
+  /** A string renames; `null` clears the name. */
+  name?: string | null;
+  /** A positive integer sets the cut quantity; `null` clears it (defaults to 1). */
+  quantity?: number | null;
+}
+
+export interface DeletePieceParams {
+  id: EntityId;
+}
+
+export interface SetPieceAllowanceParams {
+  piece: EntityId;
+  edge: EntityId;
+  /** Finished width in millimetres; required unless `remove` is true. */
+  width?: number;
+  kind?: AllowanceKind;
+  /** Remove the edge's allowance entirely. */
+  remove?: boolean;
+}
+
+export interface AddDerivedDimensionParams {
+  piece: EntityId;
+  a: CutAnchor;
+  b: CutAnchor;
+  orientation?: DimensionOrientation;
+  offset?: number;
+}
+
 export type SolveParams = Record<string, never>;
 
 /**
@@ -214,6 +265,21 @@ export type Command =
       id: EntityId;
       type: 'remove_corner_round';
       params: RemoveCornerRoundParams;
+      issuedAt?: string;
+    }
+  | { id: EntityId; type: 'create_piece'; params: CreatePieceParams; issuedAt?: string }
+  | { id: EntityId; type: 'update_piece'; params: UpdatePieceParams; issuedAt?: string }
+  | { id: EntityId; type: 'delete_piece'; params: DeletePieceParams; issuedAt?: string }
+  | {
+      id: EntityId;
+      type: 'set_piece_allowance';
+      params: SetPieceAllowanceParams;
+      issuedAt?: string;
+    }
+  | {
+      id: EntityId;
+      type: 'add_derived_dimension';
+      params: AddDerivedDimensionParams;
       issuedAt?: string;
     }
   | { id: EntityId; type: 'solve'; params: SolveParams; issuedAt?: string };
@@ -310,6 +376,16 @@ export function applyCommand(document: PatternDocument, command: Command): Comma
       return applySetCornerRoundRadius(document, command);
     case 'remove_corner_round':
       return applyRemoveCornerRound(document, command);
+    case 'create_piece':
+      return applyCreatePiece(document, command);
+    case 'update_piece':
+      return applyUpdatePiece(document, command);
+    case 'delete_piece':
+      return applyDeletePiece(document, command);
+    case 'set_piece_allowance':
+      return applySetPieceAllowance(document, command);
+    case 'add_derived_dimension':
+      return applyAddDerivedDimension(document, command);
     case 'solve':
       return noOp(document);
   }
@@ -323,7 +399,11 @@ export function solveDocument(
   document: PatternDocument,
   options: SolveOptions = {},
 ): SolvedDocument {
-  const result = solve(allPoints(document), document.constraints, options);
+  // Derived cut dimensions measure generated geometry and never reach the solver.
+  const constraints = document.constraints.filter(
+    (constraint) => constraint.type !== 'derived_distance',
+  );
+  const result = solve(allPoints(document), constraints, options);
   if (!result.converged) {
     return { document, result };
   }
@@ -500,6 +580,12 @@ function applySetConstruction(
   if (entity === undefined) {
     throw new CommandValidationError('set_construction', `unknown entity: ${id}`);
   }
+  if (pieceForEdge(document, id) !== undefined) {
+    throw new CommandValidationError(
+      'set_construction',
+      'This edge belongs to a piece; remove the piece first.',
+    );
+  }
   if (
     isCornerRoundDerived(document, id) ||
     cornerRoundsForEntity(document, id).some(
@@ -658,15 +744,23 @@ function applyDeleteEntity(
   }
 
   const entities = working.entities.filter((entity) => entity.id !== id);
+  const removedPieceIds = new Set(
+    working.pieces.filter((piece) => piece.edges.includes(id)).map((piece) => piece.id),
+  );
+  const pieces = working.pieces.filter((piece) => !removedPieceIds.has(piece.id));
   const constraints = captureBrokenDependents(
     working.constraints,
-    working.constraints.filter((constraint) => !constraintEntityIds(constraint).includes(id)),
+    working.constraints.filter(
+      (constraint) =>
+        !constraintEntityIds(constraint).includes(id) &&
+        !(constraint.type === 'derived_distance' && removedPieceIds.has(constraint.piece)),
+    ),
   );
-  const seams = working.seams.filter((seam) => seam.edge !== id);
+  const seams = documentSeams(working).filter((seam) => seam.edge !== id);
 
   // Restoring the entity plus its cascade-removed constraints and seams is not a
   // single command, so undo relies on the journal's snapshot.
-  return { document: { ...working, entities, constraints, seams }, inverse: null };
+  return { document: { ...working, entities, constraints, pieces, seams }, inverse: null };
 }
 
 /**
@@ -832,6 +926,9 @@ function applyUpdateConstraint(
   const constraint = getConstraint(document, id);
   if (constraint === undefined) {
     throw new CommandValidationError('update_constraint', `unknown constraint: ${id}`);
+  }
+  if (constraint.type === 'derived_distance') {
+    return applyUpdateDerivedDimension(document, command, constraint);
   }
   if (constraint.type !== 'distance' && constraint.type !== 'angle') {
     throw new CommandValidationError(
@@ -1049,6 +1146,17 @@ function applyRemoveConstraint(
     document.constraints.filter((candidate) => candidate.id !== id),
   );
 
+  if (constraint.type === 'derived_distance') {
+    return {
+      document: { ...document, constraints },
+      inverse: {
+        id: constraint.id,
+        type: 'add_derived_dimension',
+        params: derivedConstraintToParams(constraint),
+      },
+    };
+  }
+
   return {
     document: { ...document, constraints },
     // A broken dimension's dangling reference cannot be re-linked by the inverse.
@@ -1101,6 +1209,12 @@ function applyAddSeamAllowance(
       'seam allowances need a line, curve or arc edge',
     );
   }
+  if (pieceForEdge(document, edge) !== undefined) {
+    throw new CommandValidationError(
+      'add_seam_allowance',
+      'This edge belongs to a piece; set the allowance on the piece.',
+    );
+  }
 
   if (isCornerRoundDerived(document, edge) || cornerRoundsForEntity(document, edge).length > 0) {
     throw new CommandValidationError(
@@ -1122,7 +1236,7 @@ function applyAddSeamAllowance(
   const seam: Seam = { id: command.id, edge, width, side };
 
   return {
-    document: { ...document, seams: [...document.seams, seam] },
+    document: { ...document, seams: [...documentSeams(document), seam] },
     inverse: { id: command.id, type: 'remove_seam_allowance', params: { id: command.id } },
   };
 }
@@ -1137,7 +1251,7 @@ function applyRemoveSeamAllowance(
     return noOp(document);
   }
 
-  const seams = document.seams.filter((candidate) => candidate.id !== id);
+  const seams = documentSeams(document).filter((candidate) => candidate.id !== id);
 
   return {
     document: { ...document, seams },
@@ -1181,7 +1295,7 @@ function applySetSeamAllowance(
     return noOp(document);
   }
 
-  const seams = document.seams.map((candidate) =>
+  const seams = documentSeams(document).map((candidate) =>
     candidate.id === id
       ? { ...candidate, width: nextWidth, ...(side === undefined ? {} : { side }) }
       : candidate,
@@ -1260,6 +1374,9 @@ function applyAddCornerRound(
   }
   if (seamForEdge(document, first) !== undefined || seamForEdge(document, second) !== undefined) {
     throw new CommandValidationError('add_corner_round', 'Remove the seam allowance first.');
+  }
+  if (pieceForEdge(document, first) !== undefined || pieceForEdge(document, second) !== undefined) {
+    throw new CommandValidationError('add_corner_round', 'Remove the piece first.');
   }
 
   const meeting = document.entities.filter(
@@ -1489,14 +1606,23 @@ function applyRemoveCornerRound(
   const constraints = document.constraints.filter(
     (constraint) => !constraintEntityIds(constraint).some((entityId) => removed.has(entityId)),
   );
-  const seams = document.seams.filter((seam) => !removed.has(seam.edge));
+  const seams = documentSeams(document).filter((seam) => !removed.has(seam.edge));
+  const removedPieceIds = new Set(
+    document.pieces
+      .filter((piece) => piece.edges.some((edge) => removed.has(edge)))
+      .map((piece) => piece.id),
+  );
 
   return {
     document: {
       ...document,
       entities,
-      constraints,
+      constraints: constraints.filter(
+        (constraint) =>
+          !(constraint.type === 'derived_distance' && removedPieceIds.has(constraint.piece)),
+      ),
       seams,
+      pieces: document.pieces.filter((piece) => !removedPieceIds.has(piece.id)),
       cornerRounds: cornerRounds(document).filter((candidate) => candidate.id !== id),
     },
     inverse: {
@@ -1508,6 +1634,373 @@ function applyRemoveCornerRound(
         radius: round.radius,
       },
     },
+  };
+}
+
+/** Reject a quantity that is not a positive integer. */
+function requireQuantity(commandType: CommandType, quantity: number | null | undefined): void {
+  if (quantity === undefined || quantity === null) return;
+  if (!Number.isInteger(quantity) || quantity < 1) {
+    throw new CommandValidationError(commandType, 'quantity must be an integer of at least 1');
+  }
+}
+
+/** Reject an empty or blank piece name; `null` means "clear" and is handled by the caller. */
+function requirePieceName(commandType: CommandType, name: string | null | undefined): void {
+  if (name === undefined || name === null) return;
+  if (typeof name !== 'string' || name.trim().length === 0) {
+    throw new CommandValidationError(commandType, 'name must be a non-empty string');
+  }
+}
+
+/** Reject an anchor that does not address a vertex of this piece. */
+function requireCutAnchor(commandType: CommandType, piece: Piece, anchor: CutAnchor): void {
+  if (!piece.edges.includes(anchor.edge)) {
+    throw new CommandValidationError(
+      commandType,
+      `edge ${anchor.edge} is not in piece ${piece.id}`,
+    );
+  }
+  if (anchor.at !== 'start' && anchor.at !== 'end') {
+    throw new CommandValidationError(
+      commandType,
+      `anchor ${String(anchor.at)} must be 'start' or 'end'`,
+    );
+  }
+}
+
+/** Replace one piece in the document, preserving piece order. */
+function replacePiece(document: PatternDocument, piece: Piece): PatternDocument {
+  return {
+    ...document,
+    pieces: document.pieces.map((candidate) => (candidate.id === piece.id ? piece : candidate)),
+  };
+}
+
+/** The kind an allowance effectively has; an omitted kind means `seam`. */
+function effectiveKind(allowance: Allowance): AllowanceKind {
+  return allowance.kind ?? 'seam';
+}
+
+/** A command that restores an allowance to its previous width and kind. */
+function restoreAllowance(id: EntityId, piece: EntityId, allowance: Allowance): Command {
+  return {
+    id: `${id}:restore`,
+    type: 'set_piece_allowance',
+    params: {
+      piece,
+      edge: allowance.edge,
+      width: allowance.width,
+      ...(allowance.kind === undefined ? {} : { kind: allowance.kind }),
+    },
+  };
+}
+
+/** Create a piece from one closed loop of existing cut edges. */
+function applyCreatePiece(
+  document: PatternDocument,
+  command: CommandOf<'create_piece'>,
+): CommandApplication {
+  const { edges, name, quantity } = command.params;
+  if (pieceById(document, command.id) !== undefined) {
+    return noOp(document);
+  }
+
+  requireQuantity('create_piece', quantity);
+  requirePieceName('create_piece', name);
+
+  const validation = validatePiece(document, edges);
+  if (!validation.ok) {
+    throw new CommandValidationError('create_piece', validation.message);
+  }
+
+  const piece: Piece = {
+    id: command.id,
+    edges: [...edges],
+    allowances: [],
+  };
+  if (name !== undefined) piece.name = name.trim();
+  if (quantity !== undefined) piece.quantity = quantity;
+
+  return {
+    document: { ...document, pieces: [...document.pieces, piece] },
+    inverse: { id: command.id, type: 'delete_piece', params: { id: command.id } },
+  };
+}
+
+/** Rename a piece or change its cut quantity; `null` clears either. */
+function applyUpdatePiece(
+  document: PatternDocument,
+  command: CommandOf<'update_piece'>,
+): CommandApplication {
+  const { id, name, quantity } = command.params;
+  const piece = pieceById(document, id);
+  if (piece === undefined) {
+    throw new CommandValidationError('update_piece', `unknown piece: ${id}`);
+  }
+  if (name === undefined && quantity === undefined) {
+    throw new CommandValidationError('update_piece', 'provide name or quantity');
+  }
+
+  requirePieceName('update_piece', name);
+  requireQuantity('update_piece', quantity);
+
+  const nextName = name === undefined ? piece.name : name === null ? undefined : name.trim();
+  const nextQuantity =
+    quantity === undefined ? piece.quantity : quantity === null ? undefined : quantity;
+  if (nextName === piece.name && nextQuantity === piece.quantity) {
+    return noOp(document);
+  }
+
+  const next: Piece = { ...piece };
+  if (nextName === undefined) delete next.name;
+  else next.name = nextName;
+  if (nextQuantity === undefined) delete next.quantity;
+  else next.quantity = nextQuantity;
+
+  return {
+    document: replacePiece(document, next),
+    inverse: {
+      id: command.id,
+      type: 'update_piece',
+      params: {
+        id,
+        name: piece.name ?? null,
+        quantity: piece.quantity ?? null,
+      },
+    },
+  };
+}
+
+/** Delete a piece and the cut dimensions anchored to it. */
+function applyDeletePiece(
+  document: PatternDocument,
+  command: CommandOf<'delete_piece'>,
+): CommandApplication {
+  const { id } = command.params;
+  if (pieceById(document, id) === undefined) {
+    return noOp(document);
+  }
+
+  return {
+    document: {
+      ...document,
+      pieces: document.pieces.filter((piece) => piece.id !== id),
+      constraints: document.constraints.filter(
+        (constraint) => !(constraint.type === 'derived_distance' && constraint.piece === id),
+      ),
+    },
+    // Restoring a piece together with its cut dimensions is not a single command.
+    inverse: null,
+  };
+}
+
+/** Set, change or remove the allowance of one loop edge. */
+function applySetPieceAllowance(
+  document: PatternDocument,
+  command: CommandOf<'set_piece_allowance'>,
+): CommandApplication {
+  const { piece: pieceId, edge, width, kind, remove } = command.params;
+  const piece = pieceById(document, pieceId);
+  if (piece === undefined) {
+    throw new CommandValidationError('set_piece_allowance', `unknown piece: ${pieceId}`);
+  }
+  if (!piece.edges.includes(edge)) {
+    throw new CommandValidationError(
+      'set_piece_allowance',
+      `edge ${edge} is not in piece ${pieceId}`,
+    );
+  }
+
+  const existing = allowanceForEdge(piece, edge);
+
+  if (remove === true) {
+    if (width !== undefined || kind !== undefined) {
+      throw new CommandValidationError('set_piece_allowance', 'remove takes no width or kind');
+    }
+    if (existing === undefined) {
+      return noOp(document);
+    }
+    return {
+      document: replacePiece(document, {
+        ...piece,
+        allowances: piece.allowances.filter((allowance) => allowance.edge !== edge),
+      }),
+      inverse: restoreAllowance(command.id, pieceId, existing),
+    };
+  }
+
+  if (width === undefined || !Number.isFinite(width) || width <= 0) {
+    throw new CommandValidationError(
+      'set_piece_allowance',
+      'width must be a finite number greater than 0',
+    );
+  }
+  if (kind !== undefined && !ALLOWANCE_KINDS.includes(kind)) {
+    throw new CommandValidationError(
+      'set_piece_allowance',
+      `unknown allowance kind: ${String(kind)}`,
+    );
+  }
+
+  const next: Allowance = { edge, width, ...(kind === undefined ? {} : { kind }) };
+  if (
+    existing !== undefined &&
+    existing.width === width &&
+    effectiveKind(existing) === effectiveKind(next)
+  ) {
+    return noOp(document);
+  }
+
+  const allowances =
+    existing === undefined
+      ? [...piece.allowances, next]
+      : piece.allowances.map((allowance) => (allowance.edge === edge ? next : allowance));
+
+  return {
+    document: replacePiece(document, { ...piece, allowances }),
+    inverse:
+      existing === undefined
+        ? {
+            id: `${command.id}:restore`,
+            type: 'set_piece_allowance',
+            params: { piece: pieceId, edge, remove: true },
+          }
+        : restoreAllowance(command.id, pieceId, existing),
+  };
+}
+
+/** Add a read-only dimension measuring the cut loop between two loop vertices. */
+function applyAddDerivedDimension(
+  document: PatternDocument,
+  command: CommandOf<'add_derived_dimension'>,
+): CommandApplication {
+  const { piece: pieceId, a, b, orientation, offset } = command.params;
+  if (getConstraint(document, command.id) !== undefined) {
+    return noOp(document);
+  }
+
+  const piece = pieceById(document, pieceId);
+  if (piece === undefined) {
+    throw new CommandValidationError('add_derived_dimension', `unknown piece: ${pieceId}`);
+  }
+  requireCutAnchor('add_derived_dimension', piece, a);
+  requireCutAnchor('add_derived_dimension', piece, b);
+  if (a.edge === b.edge && a.at === b.at) {
+    throw new CommandValidationError(
+      'add_derived_dimension',
+      'the two anchors must be different loop vertices',
+    );
+  }
+  if (orientation !== undefined && !DIMENSION_ORIENTATIONS.includes(orientation)) {
+    throw new CommandValidationError(
+      'add_derived_dimension',
+      `unknown dimension orientation: ${String(orientation)}`,
+    );
+  }
+  if (offset !== undefined && !Number.isFinite(offset)) {
+    throw new CommandValidationError('add_derived_dimension', 'offset must be a finite number');
+  }
+
+  const start = pieceCutVertex(document, piece, a);
+  const end = pieceCutVertex(document, piece, b);
+  if (start === null || end === null) {
+    throw new CommandValidationError(
+      'add_derived_dimension',
+      'the piece cut loop cannot resolve these anchors',
+    );
+  }
+  if (Math.hypot(end.x - start.x, end.y - start.y) <= 1e-9) {
+    throw new CommandValidationError(
+      'add_derived_dimension',
+      'the two anchors resolve to the same point',
+    );
+  }
+
+  const constraint: DerivedDistanceConstraint = {
+    id: command.id,
+    type: 'derived_distance',
+    piece: pieceId,
+    a,
+    b,
+    ...(orientation === undefined ? {} : { orientation }),
+    ...(offset === undefined ? {} : { offset }),
+  };
+
+  return {
+    document: {
+      ...document,
+      constraints: [...document.constraints, constraint],
+    },
+    inverse: { id: command.id, type: 'remove_constraint', params: { id: command.id } },
+  };
+}
+
+/**
+ * A cut dimension is read-only: it accepts a new placement only. A `value` or
+ * `reference` is rejected because the number follows the stitch geometry and the
+ * allowances, and nothing it could drive would be unambiguous.
+ */
+function applyUpdateDerivedDimension(
+  document: PatternDocument,
+  command: CommandOf<'update_constraint'>,
+  constraint: DerivedDistanceConstraint,
+): CommandApplication {
+  const { id, value, reference, orientation, offset } = command.params;
+  if (value !== undefined || reference !== undefined) {
+    throw new CommandValidationError(
+      'update_constraint',
+      'a cut dimension is read-only; give orientation or offset only',
+    );
+  }
+  if (orientation === undefined && offset === undefined) {
+    throw new CommandValidationError('update_constraint', 'provide orientation or offset');
+  }
+  if (orientation !== undefined && !DIMENSION_ORIENTATIONS.includes(orientation)) {
+    throw new CommandValidationError(
+      'update_constraint',
+      `unknown dimension orientation: ${String(orientation)}`,
+    );
+  }
+  if (offset !== undefined && !Number.isFinite(offset)) {
+    throw new CommandValidationError('update_constraint', 'offset must be a finite number');
+  }
+
+  const previousOrientation = constraintOrientation(constraint);
+  const previousOffset = constraintOffset(constraint);
+  const nextOrientation = orientation ?? previousOrientation;
+  const nextOffset = offset ?? previousOffset;
+  if (nextOrientation === previousOrientation && nextOffset === previousOffset) {
+    return noOp(document);
+  }
+
+  return {
+    document: {
+      ...document,
+      constraints: document.constraints.map((candidate) =>
+        candidate.id === id
+          ? { ...constraint, orientation: nextOrientation, offset: nextOffset }
+          : candidate,
+      ),
+    },
+    inverse: {
+      id: command.id,
+      type: 'update_constraint',
+      params: { id, orientation: previousOrientation, offset: previousOffset },
+    },
+  };
+}
+
+/** The params that recreate a derived cut dimension, used by `remove_constraint`'s inverse. */
+function derivedConstraintToParams(
+  constraint: DerivedDistanceConstraint,
+): AddDerivedDimensionParams {
+  return {
+    piece: constraint.piece,
+    a: constraint.a,
+    b: constraint.b,
+    ...(constraint.orientation === undefined ? {} : { orientation: constraint.orientation }),
+    ...(constraint.offset === undefined ? {} : { offset: constraint.offset }),
   };
 }
 
@@ -1551,7 +2044,9 @@ function buildConstraint(
   }
 }
 
-function constraintToParams(constraint: Constraint): AddConstraintParams {
+function constraintToParams(
+  constraint: Exclude<Constraint, { type: 'derived_distance' }>,
+): AddConstraintParams {
   switch (constraint.type) {
     case 'coincident':
     case 'horizontal':

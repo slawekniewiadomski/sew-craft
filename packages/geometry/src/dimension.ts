@@ -1,6 +1,8 @@
 import { getEntity } from './document.js';
+import { pieceById, pieceCutVertex } from './piece.js';
 import type {
   Constraint,
+  DerivedDistanceConstraint,
   DimensionOrientation,
   DistanceConstraint,
   EntityId,
@@ -74,22 +76,25 @@ function resolveSpan(
   return { a: { x: start.x, y: start.y }, b: { x: end.x, y: end.y } };
 }
 
-/** The measurement axis of a distance constraint; omitted means `aligned`. */
-export function constraintOrientation(constraint: DistanceConstraint): DimensionOrientation {
+/** The measurement axis of a dimension; omitted means `aligned`. */
+export function constraintOrientation(constraint: {
+  orientation?: DimensionOrientation;
+}): DimensionOrientation {
   return constraint.orientation ?? 'aligned';
 }
 
 /** The effective placement offset, falling back to the default. */
-export function constraintOffset(constraint: DistanceConstraint): number {
+export function constraintOffset(constraint: { offset?: number }): number {
   return constraint.offset ?? DEFAULT_DIMENSION_OFFSET;
 }
 
 /**
- * The four states a dimension can be in. `set` and `referenced` drive the
- * sketch; `driven` measures it; `broken` is a reference whose source no longer
- * resolves and therefore drives nothing.
+ * The five states a dimension can be in. `set` and `referenced` drive the
+ * sketch; `driven` measures it; `derived` measures a piece's cut loop and never
+ * reaches the solver; `broken` is a reference whose source no longer resolves
+ * and therefore drives nothing.
  */
-export type DimensionState = 'set' | 'driven' | 'referenced' | 'broken';
+export type DimensionState = 'set' | 'driven' | 'referenced' | 'broken' | 'derived';
 
 /** The `distance` constraint with this id, or `null` when absent or another type. */
 function distanceById(constraints: readonly Constraint[], id: EntityId): DistanceConstraint | null {
@@ -330,7 +335,18 @@ export function dimensionOffsetForPointer(
 ): number {
   const span = resolveSpan(document, a, b);
   if (span === null) return DEFAULT_DIMENSION_OFFSET;
+  return dimensionOffsetFromSpan(span, orientation, pointer);
+}
 
+/**
+ * The signed offset of a dimension line placed at `pointer`, for callers that
+ * already resolved the span (a piece's cut loop, which has no point entities).
+ */
+export function dimensionOffsetFromSpan(
+  span: { a: Vec2; b: Vec2 },
+  orientation: DimensionOrientation,
+  pointer: Vec2,
+): number {
   const mid = { x: (span.a.x + span.b.x) / 2, y: (span.a.y + span.b.y) / 2 };
   switch (orientation) {
     case 'horizontal':
@@ -448,6 +464,99 @@ function labelFor(start: Vec2, end: Vec2, normal: Vec2): DimensionLabel {
 }
 
 /**
+ * The resolved cut-loop span of a derived dimension, or `null` when its piece or
+ * an anchor edge no longer resolves.
+ */
+export function resolveCutSpan(
+  document: PatternDocument,
+  constraint: DerivedDistanceConstraint,
+): { a: Vec2; b: Vec2 } | null {
+  const piece = pieceById(document, constraint.piece);
+  if (piece === undefined) return null;
+  const a = pieceCutVertex(document, piece, constraint.a);
+  const b = pieceCutVertex(document, piece, constraint.b);
+  return a === null || b === null ? null : { a, b };
+}
+
+/** The measurement a derived cut dimension reports for its orientation. */
+export function measureCutDimension(
+  document: PatternDocument,
+  constraint: DerivedDistanceConstraint,
+): number | null {
+  const span = resolveCutSpan(document, constraint);
+  if (span === null) return null;
+
+  switch (constraintOrientation(constraint)) {
+    case 'horizontal':
+      return Math.abs(span.b.x - span.a.x);
+    case 'vertical':
+      return Math.abs(span.b.y - span.a.y);
+    case 'aligned':
+      return Math.hypot(span.b.x - span.a.x, span.b.y - span.a.y);
+  }
+}
+
+/** A derived dimension is `derived` while it resolves and `broken` when it cannot. */
+export function derivedDimensionState(
+  document: PatternDocument,
+  constraint: DerivedDistanceConstraint,
+): Extract<DimensionState, 'derived' | 'broken'> {
+  return resolveCutSpan(document, constraint) === null ? 'broken' : 'derived';
+}
+
+/**
+ * The value a cut dimension reports. A broken anchor can display a stored
+ * reading, but v1 never writes one, so it usually shows no number and never
+ * becomes an equation.
+ */
+export function derivedDimensionValue(
+  document: PatternDocument,
+  constraint: DerivedDistanceConstraint,
+): number | null {
+  return measureCutDimension(document, constraint) ?? constraint.lastKnownValue ?? null;
+}
+
+/** The full SVG layout of a derived cut dimension, reusing the linear layout. */
+export function derivedDimensionGeometry(
+  document: PatternDocument,
+  constraint: DerivedDistanceConstraint,
+): DimensionLayout | null {
+  const span = resolveCutSpan(document, constraint);
+  if (span === null) return null;
+  return layoutForSpan(
+    span.a,
+    span.b,
+    constraintOrientation(constraint),
+    constraintOffset(constraint),
+  );
+}
+
+function layoutForSpan(
+  a: Vec2,
+  b: Vec2,
+  orientation: DimensionOrientation,
+  offset: number,
+): DimensionLayout | null {
+  const base =
+    orientation === 'horizontal'
+      ? horizontalLayout(a, b, offset)
+      : orientation === 'vertical'
+        ? verticalLayout(a, b, offset)
+        : alignedLayout(a, b, offset);
+  if (base === null) return null;
+
+  return {
+    a,
+    b,
+    dimensionStart: base.dimensionStart,
+    dimensionEnd: base.dimensionEnd,
+    extensions: base.extensions,
+    chevrons: chevronsFor(base.dimensionStart, base.dimensionEnd),
+    label: labelFor(base.dimensionStart, base.dimensionEnd, base.labelNormal),
+  };
+}
+
+/**
  * The full SVG layout of a linear dimension: the dimension line, its extension
  * lines, the chevrons at both ends and the value label anchor. `null` when a
  * referenced point is missing or the measured span is degenerate, so a partially
@@ -459,24 +568,10 @@ export function dimensionGeometry(
 ): DimensionLayout | null {
   const span = resolveSpan(document, constraint.a, constraint.b);
   if (span === null) return null;
-
-  const orientation = constraintOrientation(constraint);
-  const offset = constraintOffset(constraint);
-  const base =
-    orientation === 'horizontal'
-      ? horizontalLayout(span.a, span.b, offset)
-      : orientation === 'vertical'
-        ? verticalLayout(span.a, span.b, offset)
-        : alignedLayout(span.a, span.b, offset);
-  if (base === null) return null;
-
-  return {
-    a: span.a,
-    b: span.b,
-    dimensionStart: base.dimensionStart,
-    dimensionEnd: base.dimensionEnd,
-    extensions: base.extensions,
-    chevrons: chevronsFor(base.dimensionStart, base.dimensionEnd),
-    label: labelFor(base.dimensionStart, base.dimensionEnd, base.labelNormal),
-  };
+  return layoutForSpan(
+    span.a,
+    span.b,
+    constraintOrientation(constraint),
+    constraintOffset(constraint),
+  );
 }

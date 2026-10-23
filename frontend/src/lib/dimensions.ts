@@ -154,6 +154,8 @@ export function formatDimensionLabel(value: number, state: DimensionState): stri
     case 'referenced':
     case 'broken':
       return `[${formatted}]`;
+    case 'derived':
+      return `${formatted} cut`;
     case 'set':
       return formatted;
   }
@@ -170,6 +172,8 @@ export function dimensionStateLabel(state: DimensionState): string {
       return 'Referenced';
     case 'broken':
       return 'Broken';
+    case 'derived':
+      return 'Cut';
   }
 }
 
@@ -189,6 +193,8 @@ export function dimensionAccessibleName(
       return `Referenced dimension, ${formatted} millimetres, from dimension ${sourceId}`;
     case 'broken':
       return `Broken reference, last known ${formatted} millimetres; source dimension ${sourceId} is missing`;
+    case 'derived':
+      return `Cut dimension, ${formatted} millimetres`;
   }
 }
 

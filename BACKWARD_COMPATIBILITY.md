@@ -59,6 +59,25 @@ or the geometry package depend on.
   rollback plan in the PR body), an up/down migration test, and an update to the
   data-model doc. These are `risk-high` changes.
 
+### 5. Stored pattern document schema
+
+- **Surface:** `PatternDocument` as stored in `patterns.geometry` and
+  `pattern_versions.geometry`, including its `schema` string and documented in
+  `docs/architecture/data-model.md`.
+- **Breaking:** changing the meaning of an existing field, or a migration that a
+  stored document cannot survive. Schema bumps are expected (the model evolves);
+  what matters is that stored documents keep loading.
+- **Required path:** a load-time migration in `normalizeDocument`
+  (`packages/geometry/src/migration.ts`) that is one-way and idempotent, a tested
+  fixture of the previous schema, an update to the data-model doc, and a note here
+  for anything more than an additive field.
+- **Current state:** `sewcraft.pattern/0.2` adds `pieces` with per-edge
+  allowances and the `derived_distance` cut dimension. A 0.1 document is migrated
+  on load: closed seam chains become pieces (`kind: 'seam'`, `side` discarded) and
+  seams on open chains stay in the deprecated `seams` field for the legacy dashed
+  rendering. That field is read-only after load and is removed in 0.3. A document
+  already at 0.2 is returned unchanged.
+
 ## Not (yet) protected
 
 - **No auth contract** — the app is single-user and the API is stateless by design

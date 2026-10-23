@@ -5,6 +5,8 @@ import {
   constraintOffset,
   constraintOrientation,
   cutEdges,
+  derivedDimensionState,
+  derivedDimensionValue,
   dimensionState,
   dimensionValue,
   findDistanceConstraint,
@@ -17,10 +19,13 @@ import {
 } from '@sewcraft/geometry';
 import type {
   AddConstraintParams,
+  AllowanceKind,
   Command,
   ConstraintType,
   CurveEntity,
+  DerivedDistanceConstraint,
   DimensionOrientation,
+  DimensionState,
   DistanceConstraint,
   EntityId,
   LineEntity,
@@ -84,6 +89,7 @@ import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 import { entityProperties } from '@/lib/entity-properties';
 import { buildLineCommands, type LineEndpoint } from '@/lib/line-tool';
 import { parseSeamWidth } from '@/lib/seam-width';
+import { cutDimensionForPoints, pieceCreationFromSelection } from '@/lib/pieces';
 import { orphanedEdges } from '@/lib/selection';
 
 const props = defineProps<{ id: string }>();
@@ -112,6 +118,8 @@ const includeConstruction = ref(false);
 const showSeamAllowance = ref(true);
 const showConstraints = ref(true);
 const showDimensions = ref(true);
+const exportStitch = ref(true);
+const exportFold = ref(true);
 const activeConstraint = ref<ConstraintType | null>(null);
 const constraintPicks = ref<ConstraintPick[]>([]);
 const pendingConstraint = ref<AddConstraintParams | null>(null);
@@ -139,12 +147,17 @@ const edges = computed(() =>
     .filter((entity): entity is LineEntity | CurveEntity => entity.kind !== 'point')
     .map((entity) => {
       const seam = seamForEdge(pattern.value, entity.id);
+      const piece = pattern.value.pieces.find((candidate) => candidate.edges.includes(entity.id));
+      const allowance = piece?.allowances.find((candidate) => candidate.edge === entity.id);
       return {
         id: entity.id,
         construction: entity.construction,
         seamId: seam?.id ?? null,
         seamWidth: seam?.width ?? null,
         seamSide: seam === undefined ? null : seamSide(seam),
+        pieceId: piece?.id ?? null,
+        allowanceKind: allowance === undefined ? null : (allowance.kind ?? 'seam'),
+        allowanceWidth: allowance?.width ?? null,
       };
     }),
 );
@@ -157,6 +170,12 @@ const selectedEntity = computed(() =>
     ? entityProperties(pattern.value, selectedEntityIds.value[0]!)
     : null,
 );
+
+/** The ordered loop the selection would become, or the reason it cannot. */
+const pieceCreation = computed(() =>
+  pieceCreationFromSelection(pattern.value, selectedEntityIds.value),
+);
+const canCreatePiece = computed(() => pieceCreation.value.ok);
 
 /** The selected entities in selection order, for the multi-selection summary. */
 const selectedEntities = computed(() =>
@@ -187,11 +206,51 @@ const selectionStatus = computed(() =>
 
 /**
  * Distance constraints are the driving dimensions; the sidebar edits their
- * value and measurement axis, while the canvas renders them. Every other
+ * value and measurement axis, while the canvas renders them. Derived cut
+ * dimensions share the list but keep their value read-only. Every other
  * constraint stays in the generic constraints list.
  */
-const dimensions = computed(() =>
-  pattern.value.constraints.flatMap((constraint) => {
+interface DimensionRow {
+  id: EntityId;
+  constraint: DistanceConstraint | DerivedDistanceConstraint;
+  kind: 'distance' | 'derived';
+  readOnly: boolean;
+  entities: string[];
+  value: string;
+  field: string;
+  state: DimensionState;
+  stateLabel: string;
+  sourceId: EntityId | null;
+  orientation: DimensionOrientation;
+  offset: string;
+}
+
+const dimensions = computed<DimensionRow[]>(() =>
+  pattern.value.constraints.flatMap<DimensionRow>((constraint): DimensionRow[] => {
+    if (constraint.type === 'derived_distance') {
+      const measured = derivedDimensionValue(pattern.value, constraint);
+      const state = derivedDimensionState(pattern.value, constraint);
+      return [
+        {
+          id: constraint.id,
+          constraint,
+          kind: 'derived',
+          readOnly: true,
+          entities: [
+            `${constraint.a.edge}:${constraint.a.at}`,
+            `${constraint.b.edge}:${constraint.b.at}`,
+          ],
+          value: measured === null ? '—' : formatDimensionValue(measured),
+          field: measured === null ? '' : formatDimensionValue(measured),
+          state,
+          stateLabel: dimensionStateLabel(state),
+          sourceId: null,
+          orientation: constraintOrientation(constraint),
+          offset: formatDimensionValue(constraintOffset(constraint)),
+        },
+      ];
+    }
+
     if (constraint.type !== 'distance') return [];
     // Point deletion cascades to constraints, so a surviving dimension resolves.
     const measured = dimensionValue(pattern.value, constraint);
@@ -200,6 +259,8 @@ const dimensions = computed(() =>
       {
         id: constraint.id,
         constraint,
+        kind: 'distance',
+        readOnly: false,
         entities: [constraint.a, constraint.b],
         value: formatDimensionValue(measured ?? 0),
         field: formatDimensionField(constraint, measured, state),
@@ -309,7 +370,9 @@ function onDimensionKeydown(id: EntityId, event: KeyboardEvent): void {
 }
 
 const otherConstraints = computed(() =>
-  pattern.value.constraints.filter((constraint) => constraint.type !== 'distance'),
+  pattern.value.constraints.filter(
+    (constraint) => constraint.type !== 'distance' && constraint.type !== 'derived_distance',
+  ),
 );
 
 const activeToolLabel = computed(
@@ -396,8 +459,33 @@ function fit(): void {
 function downloadSvg(): void {
   downloadSvgFile(
     `pattern-${props.id}.svg`,
-    toSvg(pattern.value, { construction: includeConstruction.value }),
+    toSvg(pattern.value, {
+      construction: includeConstruction.value,
+      stitch: exportStitch.value,
+      fold: exportFold.value,
+    }),
   );
+}
+
+/** Create one piece from the selected closed chain, or explain the first break. */
+function createPiece(): void {
+  const result = pieceCreation.value;
+  if (!result.ok) {
+    error.value = result.message;
+    return;
+  }
+
+  if (
+    run(() =>
+      dispatch({
+        id: nextCommandId('piece'),
+        type: 'create_piece',
+        params: { edges: result.edges },
+      }),
+    )
+  ) {
+    selectedEntityIds.value = [];
+  }
 }
 
 function deleteSelected(): void {
@@ -433,6 +521,9 @@ function onRibbonAction(action: RibbonAction): void {
       break;
     case 'fit':
       fit();
+      break;
+    case 'create_piece':
+      createPiece();
       break;
     case 'download_svg':
       downloadSvg();
@@ -480,6 +571,26 @@ function onAddCurve(points: [EntityId, EntityId, EntityId, EntityId]): void {
  * then only updates its presentation.
  */
 function onAddDimension(placement: DimensionPlacement): void {
+  // Two loop vertices of one piece measure the cut line: a read-only derived
+  // dimension. Two free points keep the driving distance dimension path.
+  const cut = cutDimensionForPoints(pattern.value, placement.a, placement.b);
+  if (cut !== null) {
+    run(() =>
+      dispatch({
+        id: nextCommandId('cut-dimension'),
+        type: 'add_derived_dimension',
+        params: {
+          piece: cut.piece.id,
+          a: cut.a,
+          b: cut.b,
+          orientation: placement.orientation,
+          offset: placement.offset,
+        },
+      }),
+    );
+    return;
+  }
+
   const existing = findDistanceConstraint(pattern.value, placement.a, placement.b);
   if (existing !== undefined) {
     run(() =>
@@ -527,6 +638,10 @@ function onUpdateDimension(id: EntityId, patch: DimensionPatch): void {
 function onDimensionValueEdit(id: EntityId, event: Event): void {
   const input = event.target as HTMLInputElement;
   const dimension = dimensions.value.find((entry) => entry.id === id)!;
+  if (dimension.readOnly) {
+    input.value = dimension.field;
+    return;
+  }
 
   const edit = parseDimensionEdit(input.value);
   if (edit.kind === 'invalid') {
@@ -535,7 +650,10 @@ function onDimensionValueEdit(id: EntityId, event: Event): void {
   }
 
   const unchangedSet =
-    edit.kind === 'set' && dimension.state === 'set' && dimension.constraint.value === edit.value;
+    edit.kind === 'set' &&
+    dimension.constraint.type === 'distance' &&
+    dimension.state === 'set' &&
+    dimension.constraint.value === edit.value;
   const unchangedDriven = edit.kind === 'driven' && dimension.state === 'driven';
   if (unchangedSet || unchangedDriven) {
     input.value = dimension.field;
@@ -616,6 +734,44 @@ function onSeamWidthEdit(id: EntityId, current: number, event: Event): void {
 
 function removeSeam(id: EntityId): void {
   run(() => dispatch({ id: nextCommandId('seam'), type: 'remove_seam_allowance', params: { id } }));
+}
+
+/** Rename, re-quantify or clear fields on a piece. */
+function onUpdatePiece(
+  id: EntityId,
+  patch: { name?: string | null; quantity?: number | null },
+): void {
+  run(() =>
+    dispatch({
+      id: nextCommandId('piece'),
+      type: 'update_piece',
+      params: { id, ...patch },
+    }),
+  );
+}
+
+/** Set or remove one edge's allowance; `null` removes the strip. */
+function onSetPieceAllowance(
+  piece: EntityId,
+  edge: EntityId,
+  value: { kind: AllowanceKind; width: number } | null,
+): void {
+  run(() =>
+    dispatch({
+      id: nextCommandId('allowance'),
+      type: 'set_piece_allowance',
+      params:
+        value === null
+          ? { piece, edge, remove: true }
+          : { piece, edge, width: value.width, kind: value.kind },
+    }),
+  );
+}
+
+function onRemovePiece(id: EntityId): void {
+  if (run(() => dispatch({ id: nextCommandId('piece'), type: 'delete_piece', params: { id } }))) {
+    selectedEntityIds.value = [];
+  }
 }
 
 function dispatchConstraint(params: AddConstraintParams): boolean {
@@ -859,6 +1015,7 @@ onBeforeUnmount(() => {
       :can-undo="canUndo"
       :can-redo="canRedo"
       :can-delete="selectedEntityIds.length > 0"
+      :can-create-piece="canCreatePiece"
       @select-tool="selectTool"
       @select-constraint="selectConstraint"
       @action="onRibbonAction"
@@ -954,6 +1111,9 @@ onBeforeUnmount(() => {
             @set-corner-round-radius="setCornerRoundRadius"
             @remove-corner-round="removeCornerRound"
             @set-circle-radius="onSetCircleRadius"
+            @update-piece="onUpdatePiece"
+            @set-piece-allowance="onSetPieceAllowance"
+            @remove-piece="onRemovePiece"
           />
 
           <section
@@ -1049,6 +1209,14 @@ onBeforeUnmount(() => {
                     Remove allowance
                   </Button>
                 </template>
+                <template v-else-if="edge.pieceId !== null">
+                  <span class="text-muted-foreground" :data-testid="`edge-piece-${edge.id}`">
+                    In piece {{ edge.pieceId }}
+                    <template v-if="edge.allowanceKind !== null">
+                      · {{ edge.allowanceKind }} {{ edge.allowanceWidth }} mm
+                    </template>
+                  </span>
+                </template>
                 <template v-else>
                   <span class="text-muted-foreground" :data-testid="`seam-empty-${edge.id}`">
                     No allowance
@@ -1094,7 +1262,9 @@ onBeforeUnmount(() => {
                   type="text"
                   inputmode="decimal"
                   class="w-20 rounded-md border px-2 py-1 text-sm"
+                  :class="dimension.readOnly ? 'bg-muted' : ''"
                   :value="dimension.field"
+                  :readonly="dimension.readOnly"
                   :aria-label="`Value for ${dimension.id} (${dimension.stateLabel.toLowerCase()})`"
                   :data-testid="`dimension-value-${dimension.id}`"
                   role="combobox"
@@ -1116,6 +1286,7 @@ onBeforeUnmount(() => {
                 />
                 <span class="text-xs text-muted-foreground">mm</span>
                 <Button
+                  v-if="!dimension.readOnly"
                   variant="outline"
                   size="sm"
                   :data-testid="`dimension-reference-${dimension.id}`"
@@ -1171,7 +1342,14 @@ onBeforeUnmount(() => {
               </div>
 
               <p
-                v-if="dimension.state === 'referenced'"
+                v-if="dimension.readOnly"
+                class="text-xs text-muted-foreground"
+                :data-testid="`dimension-readonly-${dimension.id}`"
+              >
+                Cut dimension — read-only; it follows the stitch dimension and the allowance widths.
+              </p>
+              <p
+                v-else-if="dimension.state === 'referenced'"
                 class="text-xs text-muted-foreground"
                 :data-testid="`dimension-source-${dimension.id}`"
               >
@@ -1248,6 +1426,14 @@ onBeforeUnmount(() => {
                 data-testid="toggle-construction"
               />
               Include construction
+            </label>
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="exportStitch" type="checkbox" data-testid="toggle-stitch" />
+              Include stitch layer
+            </label>
+            <label class="flex items-center gap-2 text-sm">
+              <input v-model="exportFold" type="checkbox" data-testid="toggle-fold" />
+              Include fold lines
             </label>
             <label class="flex items-center gap-2 text-sm">
               <input v-model="showConstraints" type="checkbox" data-testid="show-constraints" />

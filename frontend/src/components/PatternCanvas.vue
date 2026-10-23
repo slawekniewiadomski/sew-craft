@@ -13,9 +13,14 @@ import {
   type CornerRound,
   type CurveEntity,
   DEFAULT_DIMENSION_OFFSET,
+  type DerivedDistanceConstraint,
   type DimensionOrientation,
+  derivedDimensionGeometry,
+  derivedDimensionState,
+  derivedDimensionValue,
   dimensionGeometry,
   dimensionOffsetForPointer,
+  dimensionOffsetFromSpan,
   type DimensionLayout,
   dimensionState,
   dimensionValue,
@@ -29,8 +34,13 @@ import {
   measureLinearDimension,
   MIN_RADIUS,
   type PatternDocument,
+  type Piece,
+  pieceCutLoop,
+  pieceFoldLines,
+  pieceLoop,
   type PointEntity,
   type Rect,
+  resolveCutSpan,
   seamAllowancePaths,
   seamForEdge,
   svgArcCommand,
@@ -151,6 +161,19 @@ interface SeamView {
   selfIntersects: boolean;
 }
 
+/** A piece's derived loops, ready to draw. */
+interface PieceView {
+  id: EntityId;
+  edges: EntityId[];
+  cut: string;
+  stitch: string;
+  folds: string[];
+  /** Cut and stitch loops as one even-odd path, for the allowance band fill. */
+  band: string | null;
+  selfIntersects: boolean;
+  selected: boolean;
+}
+
 /** A fully resolved dimension, ready to render in world and screen space. */
 interface DimensionDrawing {
   id: EntityId;
@@ -161,7 +184,7 @@ interface DimensionDrawing {
   value: string;
   /** The effective number without decoration, for accessible names. */
   measured: string;
-  state: DimensionState;
+  state: Exclude<DimensionState, 'derived'>;
   /** The linked source, when the dimension records one. */
   sourceId?: EntityId;
   /** The label's full accessible name, including the state and source. */
@@ -178,7 +201,7 @@ interface DimensionLabelView {
   constraint: DistanceConstraint;
   value: string;
   measured: string;
-  state: DimensionState;
+  state: Exclude<DimensionState, 'derived'>;
   sourceId?: EntityId;
   accessibleName: string;
   width: number;
@@ -188,6 +211,32 @@ interface DimensionLabelView {
   preview: boolean;
   draggable: boolean;
   editable: boolean;
+}
+
+/** A read-only cut dimension, resolved from a piece's cut loop. */
+interface DerivedDimensionDrawing {
+  id: EntityId;
+  constraint: DerivedDistanceConstraint;
+  layout: DimensionLayout;
+  segments: DimensionSegment[];
+  value: string;
+  state: Extract<DimensionState, 'derived' | 'broken'>;
+  accessibleName: string;
+  draggable: boolean;
+  dragging: boolean;
+}
+
+/** A cut dimension label positioned and oriented in screen space. */
+interface DerivedDimensionLabelView {
+  id: EntityId;
+  value: string;
+  state: Extract<DimensionState, 'derived' | 'broken'>;
+  accessibleName: string;
+  width: number;
+  x: number;
+  y: number;
+  angle: number;
+  draggable: boolean;
 }
 
 /** A tangent handle of a selected round, positioned in screen space. */
@@ -289,6 +338,14 @@ const dimensionDrag = ref<{
   orientation: DimensionOrientation;
   startOffset: number;
   offset: number;
+} | null>(null);
+/** Live drag of a cut dimension; its span comes from the piece's cut loop. */
+const derivedDrag = ref<{
+  id: EntityId;
+  orientation: DimensionOrientation;
+  startOffset: number;
+  offset: number;
+  span: { a: Vec2; b: Vec2 };
 } | null>(null);
 /** The inline value editor, keyed to the dimension being edited. */
 const editingDimension = ref<{ id: EntityId; value: string } | null>(null);
@@ -574,6 +631,41 @@ const seams = computed<SeamView[]>(() => {
   });
 });
 
+/** A closed SVG path for a derived loop; every caller passes a resolved loop. */
+function closedLoopPath(points: readonly Vec2[]): string {
+  return `${polylinePath([...points])} Z`;
+}
+
+/**
+ * Every piece's derived geometry. Loops are recomputed from the document on
+ * each read; nothing here is stored or fed back into the document.
+ */
+const pieceViews = computed<PieceView[]>(() =>
+  props.document.pieces.flatMap((piece: Piece): PieceView[] => {
+    const cut = pieceCutLoop(props.document, piece);
+    if (cut === null) return [];
+    const stitch = pieceLoop(props.document, piece)!;
+
+    const cutPath = closedLoopPath(cut.points);
+    const stitchPath = closedLoopPath(stitch.points);
+    return [
+      {
+        id: piece.id,
+        edges: piece.edges,
+        cut: cutPath,
+        stitch: stitchPath,
+        folds: pieceFoldLines(props.document, piece).map((fold) => closedLoopPath(fold)),
+        band:
+          props.showSeamAllowance && cutPath !== '' && stitchPath !== ''
+            ? `${cutPath} ${stitchPath}`
+            : null,
+        selfIntersects: cut.selfIntersections.length > 0,
+        selected: piece.edges.some((edge) => props.selectedEntityIds.includes(edge)),
+      },
+    ];
+  }),
+);
+
 /** Screen-space diameter of a constraint icon, in pixels. */
 const CONSTRAINT_ICON_SIZE = 18;
 /** Distance between stacked icons when several constraints share an anchor. */
@@ -739,7 +831,7 @@ function drawingFor(constraint: DistanceConstraint, preview: boolean): Dimension
 
   // `layout` resolves the same points, so the effective value is always present.
   const value = dimensionValue(props.document, placed)!;
-  const state = dimensionState(props.document, placed);
+  const state = dimensionState(props.document, placed) as Exclude<DimensionState, 'derived'>;
 
   return {
     id: constraint.id,
@@ -821,6 +913,67 @@ const dimensionLabels = computed<DimensionLabelView[]>(() =>
     };
   }),
 );
+
+/** Cut dimensions are read-only derived measurements of a piece's cut loop. */
+const derivedConstraints = computed(() =>
+  props.document.constraints.filter(
+    (constraint): constraint is DerivedDistanceConstraint => constraint.type === 'derived_distance',
+  ),
+);
+
+const derivedDimensionDrawings = computed<DerivedDimensionDrawing[]>(() => {
+  if (!props.showDimensions) return [];
+
+  return derivedConstraints.value.flatMap((constraint): DerivedDimensionDrawing[] => {
+    const drag = derivedDrag.value;
+    const placed =
+      drag !== null && drag.id === constraint.id
+        ? { ...constraint, offset: drag.offset }
+        : constraint;
+    const layout = derivedDimensionGeometry(props.document, placed);
+    if (layout === null) return [];
+
+    // A resolved layout always has a resolved span, so the measurement exists.
+    const value = derivedDimensionValue(props.document, constraint)!;
+    const state = derivedDimensionState(props.document, constraint);
+
+    return [
+      {
+        id: constraint.id,
+        constraint,
+        layout,
+        segments: dimensionSegments(layout),
+        value: formatDimensionLabel(value, state),
+        state,
+        accessibleName: dimensionAccessibleName(value, state),
+        draggable: dimensionDragEnabled.value,
+        dragging: drag !== null && drag.id === constraint.id,
+      },
+    ];
+  });
+});
+
+const derivedDimensionLabels = computed<DerivedDimensionLabelView[]>(() =>
+  derivedDimensionDrawings.value.map((drawing) => {
+    const screen = worldToScreen(viewport.value, drawing.layout.label.position);
+    return {
+      id: drawing.id,
+      value: drawing.value,
+      state: drawing.state,
+      accessibleName: drawing.accessibleName,
+      width: dimensionLabelWidth(drawing.value),
+      x: screen.x,
+      y: screen.y,
+      angle: drawing.layout.label.angleDegrees,
+      draggable: drawing.draggable,
+    };
+  }),
+);
+
+/** The cut dimension behind a label, which only renders when it resolves. */
+function derivedConstraint(id: EntityId): DerivedDistanceConstraint {
+  return derivedConstraints.value.find((constraint) => constraint.id === id)!;
+}
 
 /** Where the inline editor sits, in canvas pixels. */
 const dimensionEditor = computed(() => {
@@ -1050,6 +1203,26 @@ function beginDimensionDrag(constraint: DistanceConstraint, event: PointerEvent)
     orientation: constraintOrientation(constraint),
     startOffset: offset,
     offset,
+  };
+  addPointerListeners();
+}
+
+/** Start dragging a cut dimension line; its span comes from the cut loop. */
+function beginDerivedDimensionDrag(
+  constraint: DerivedDistanceConstraint,
+  event: PointerEvent,
+): void {
+  event.stopPropagation();
+  event.preventDefault();
+  // The drag strip only renders for a drawing whose span already resolved.
+  const span = resolveCutSpan(props.document, constraint)!;
+  const offset = constraintOffset(constraint);
+  derivedDrag.value = {
+    id: constraint.id,
+    orientation: constraintOrientation(constraint),
+    startOffset: offset,
+    offset,
+    span,
   };
   addPointerListeners();
 }
@@ -1384,6 +1557,16 @@ function onPointerMove(event: PointerEvent): void {
         screenToWorld(viewport.value, screen),
       ),
     };
+  } else if (derivedDrag.value) {
+    const drag = derivedDrag.value;
+    derivedDrag.value = {
+      ...drag,
+      offset: dimensionOffsetFromSpan(
+        drag.span,
+        drag.orientation,
+        screenToWorld(viewport.value, screen),
+      ),
+    };
   } else if (panState.value) {
     const dx = screen.x - panState.value.start.x;
     const dy = screen.y - panState.value.start.y;
@@ -1430,6 +1613,7 @@ function onCanvasPointerMove(event: PointerEvent): void {
 function cancelPointerInteraction(): void {
   cancelMarquee();
   dimensionDrag.value = null;
+  derivedDrag.value = null;
   dragState.value = null;
   panState.value = null;
   tangentDrag.value = null;
@@ -1454,6 +1638,14 @@ function onPointerUp(): void {
   if (dimensionDrag.value) {
     const { id, offset, startOffset } = dimensionDrag.value;
     dimensionDrag.value = null;
+    if (offset !== startOffset) {
+      emit('update-dimension', id, { offset });
+    }
+  }
+
+  if (derivedDrag.value) {
+    const { id, offset, startOffset } = derivedDrag.value;
+    derivedDrag.value = null;
     if (offset !== startOffset) {
       emit('update-dimension', id, { offset });
     }
@@ -1839,6 +2031,19 @@ watch(
           data-testid="grid"
         />
 
+        <g class="pointer-events-none" data-testid="piece-band-layer">
+          <path
+            v-for="piece in pieceViews"
+            v-show="piece.band !== null"
+            :key="`band-${piece.id}`"
+            :d="piece.band ?? ''"
+            fill-rule="evenodd"
+            stroke="none"
+            :class="piece.selected ? 'fill-primary/25' : 'fill-primary/10'"
+            :data-piece-band="piece.id"
+          />
+        </g>
+
         <g class="pointer-events-none" data-testid="seam-layer">
           <path
             v-for="seam in seams"
@@ -1960,6 +2165,48 @@ watch(
               vector-effect="non-scaling-stroke"
               :data-entity-id="entry.circle.id"
               data-kind="circle"
+            />
+          </template>
+        </g>
+
+        <g class="pointer-events-none" data-testid="piece-cut-layer">
+          <path
+            v-for="piece in pieceViews"
+            :key="`cut-${piece.id}`"
+            :d="piece.cut"
+            fill="none"
+            :stroke-width="1.5"
+            :class="piece.selfIntersects ? 'stroke-destructive' : 'stroke-foreground'"
+            vector-effect="non-scaling-stroke"
+            :data-piece-cut="piece.id"
+          />
+        </g>
+
+        <g class="pointer-events-none" data-testid="piece-stitch-layer">
+          <path
+            v-for="piece in pieceViews"
+            :key="`stitch-${piece.id}`"
+            :d="piece.stitch"
+            fill="none"
+            stroke-width="0.75"
+            class="stroke-muted-foreground"
+            vector-effect="non-scaling-stroke"
+            :data-piece-stitch="piece.id"
+          />
+        </g>
+
+        <g class="pointer-events-none" data-testid="piece-fold-layer">
+          <template v-for="piece in pieceViews" :key="`fold-${piece.id}`">
+            <path
+              v-for="(fold, index) in piece.folds"
+              :key="`fold-${piece.id}-${index}`"
+              :d="fold"
+              fill="none"
+              stroke-width="1"
+              stroke-dasharray="6 3"
+              class="stroke-muted-foreground"
+              vector-effect="non-scaling-stroke"
+              :data-piece-fold="piece.id"
             />
           </template>
         </g>
@@ -2180,6 +2427,40 @@ watch(
             @pointerdown.stop="beginDimensionDrag(drawing.constraint, $event)"
           />
         </g>
+
+        <g
+          v-for="drawing in derivedDimensionDrawings"
+          :key="`derived-${drawing.id}`"
+          class="pointer-events-none"
+          :data-testid="`dimension-lines-${drawing.id}`"
+          :data-dimension-id="drawing.id"
+          :data-dimension-derived="drawing.id"
+        >
+          <line
+            v-for="segment in drawing.segments"
+            :key="segment.key"
+            :x1="segment.x1"
+            :y1="segment.y1"
+            :x2="segment.x2"
+            :y2="segment.y2"
+            :class="segment.main ? 'stroke-dimension-derived' : 'stroke-muted-foreground'"
+            stroke-width="1"
+            vector-effect="non-scaling-stroke"
+          />
+          <line
+            v-if="drawing.draggable"
+            :x1="drawing.layout.dimensionStart.x"
+            :y1="drawing.layout.dimensionStart.y"
+            :x2="drawing.layout.dimensionEnd.x"
+            :y2="drawing.layout.dimensionEnd.y"
+            stroke="transparent"
+            stroke-width="24"
+            vector-effect="non-scaling-stroke"
+            class="pointer-events-auto cursor-move"
+            :data-testid="`dimension-drag-${drawing.id}`"
+            @pointerdown.stop="beginDerivedDimensionDrag(drawing.constraint, $event)"
+          />
+        </g>
       </g>
 
       <g class="pointer-events-none" data-testid="dimension-labels-layer">
@@ -2236,6 +2517,47 @@ watch(
             text-anchor="middle"
             dominant-baseline="middle"
             :class="[labelClass(label), 'text-[11px]']"
+            :data-dimension-state="label.state"
+          >
+            {{ label.value }}
+          </text>
+        </g>
+
+        <g
+          v-for="label in derivedDimensionLabels"
+          :key="`derived-${label.id}`"
+          :class="label.draggable ? 'pointer-events-auto cursor-move' : 'pointer-events-none'"
+          :data-dimension-id="label.id"
+          :data-dimension-derived="label.id"
+          :data-testid="`dimension-label-${label.id}`"
+          :transform="`translate(${label.x} ${label.y}) rotate(${label.angle})`"
+          role="img"
+          :aria-label="label.accessibleName"
+          @pointerdown.stop="
+            label.draggable
+              ? beginDerivedDimensionDrag(derivedConstraint(label.id), $event)
+              : undefined
+          "
+        >
+          <title>
+            {{
+              label.draggable
+                ? 'Cut dimension: drag to reposition; the value follows the cut loop'
+                : 'Cut dimension (read-only)'
+            }}
+          </title>
+          <rect
+            :x="-label.width / 2"
+            y="-8"
+            :width="label.width"
+            height="16"
+            rx="2"
+            class="fill-background"
+          />
+          <text
+            text-anchor="middle"
+            dominant-baseline="middle"
+            class="fill-dimension-derived text-[11px]"
             :data-dimension-state="label.state"
           >
             {{ label.value }}

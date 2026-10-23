@@ -5,6 +5,7 @@ import {
   bounds,
   createEmptyDocument,
   cutEdges,
+  documentSeams,
   entityPoints,
   getEntity,
   getSeam,
@@ -73,10 +74,11 @@ describe('createEmptyDocument', () => {
     const document = createEmptyDocument();
 
     expect(document.schema).toBe(PATTERN_SCHEMA);
-    expect(document.schema).toBe('sewcraft.pattern/0.1');
+    expect(document.schema).toBe('sewcraft.pattern/0.2');
     expect(document.units).toBe('mm');
     expect(document.entities).toEqual([]);
     expect(document.constraints).toEqual([]);
+    expect(document.pieces).toEqual([]);
     expect(document.seams).toEqual([]);
   });
 });
@@ -111,6 +113,13 @@ describe('seam helpers', () => {
   it('resolves a missing side to the original left default', () => {
     expect(seamSide(seam)).toBe('left');
     expect(seamSide({ ...seam, side: 'right' })).toBe('right');
+  });
+
+  it('returns an empty list for a document without a seams field', () => {
+    const withoutSeams: PatternDocument = { ...createEmptyDocument() };
+    delete withoutSeams.seams;
+
+    expect(documentSeams(withoutSeams)).toEqual([]);
   });
 });
 

@@ -17,6 +17,8 @@
   --destructive-foreground: oklch(0.985 0 0);
   /* Blue-700 #1d4ed8: 6.7:1 on the white label background. */
   --dimension-reference: oklch(0.488 0.243 264.376);
+  /* Amber-700: cut dimensions keep their own colour, distinct from set/driven. */
+  --dimension-derived: oklch(0.555 0.163 48.998);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.627 0.194 149.214);
@@ -39,6 +41,7 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-dimension-reference: var(--dimension-reference);
+  --color-dimension-derived: var(--dimension-derived);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

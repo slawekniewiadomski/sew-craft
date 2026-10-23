@@ -1,6 +1,6 @@
 export type EntityId = string;
 
-export const PATTERN_SCHEMA = 'sewcraft.pattern/0.1';
+export const PATTERN_SCHEMA = 'sewcraft.pattern/0.2';
 
 export type PatternSchema = typeof PATTERN_SCHEMA;
 
@@ -128,7 +128,58 @@ export type Constraint =
   | { id: EntityId; type: 'point_on_line'; point: EntityId; a: EntityId; b: EntityId }
   | DistanceConstraint
   | { id: EntityId; type: 'angle'; a: EntityId; b: EntityId; c: EntityId; value: number }
-  | { id: EntityId; type: 'equal'; a1: EntityId; a2: EntityId; b1: EntityId; b2: EntityId };
+  | { id: EntityId; type: 'equal'; a1: EntityId; a2: EntityId; b1: EntityId; b2: EntityId }
+  | DerivedDistanceConstraint;
+
+export const ALLOWANCE_KINDS = ['seam', 'single', 'double'] as const;
+
+export type AllowanceKind = (typeof ALLOWANCE_KINDS)[number];
+
+/** The allowance of one piece loop edge; `width` is the finished width. */
+export interface Allowance {
+  edge: EntityId;
+  /** Finished (visible) width in millimetres; must be > 0. */
+  width: number;
+  /** Omitted means `seam`. */
+  kind?: AllowanceKind;
+}
+
+/** A closed loop of existing cut edges cut from fabric. */
+export interface Piece {
+  id: EntityId;
+  /** Optional; the UI falls back to "Piece 1". */
+  name?: string;
+  /** Ordered, closed loop of line/curve/arc ids. */
+  edges: EntityId[];
+  /** Allowances for loop edges; an edge with no entry has none. */
+  allowances: Allowance[];
+  /** How many to cut; omitted means 1. */
+  quantity?: number;
+}
+
+/** One end of a cut dimension, addressed by loop vertex rather than by point id. */
+export interface CutAnchor {
+  edge: EntityId;
+  /** The loop vertex at this edge's natural start or end. */
+  at: 'start' | 'end';
+}
+
+/**
+ * A read-only dimension measuring a piece's cut loop. It adds no solver
+ * equation; its value is recomputed from the cut geometry on every read.
+ */
+export interface DerivedDistanceConstraint {
+  id: EntityId;
+  type: 'derived_distance';
+  /** Both anchors must belong to this piece. */
+  piece: EntityId;
+  a: CutAnchor;
+  b: CutAnchor;
+  orientation?: DimensionOrientation;
+  offset?: number;
+  /** Optional stored reading for a broken anchor. v1 never writes it. */
+  lastKnownValue?: number;
+}
 
 export const SEAM_SIDES = ['left', 'right'] as const;
 
@@ -193,7 +244,13 @@ export interface PatternDocument {
   units: 'mm';
   entities: Entity[];
   constraints: Constraint[];
-  seams: Seam[];
+  /** Every authored piece. Documents written before 0.2 gain an empty list on load. */
+  pieces: Piece[];
+  /**
+   * Deprecated legacy allowances for edges that close no loop. Read-only,
+   * rendered as before, removed in 0.3.
+   */
+  seams?: Seam[];
   /** Optional so documents written before corner rounds load unchanged. */
   cornerRounds?: CornerRound[];
 }

@@ -3,6 +3,8 @@ import {
   constraintEntityIds,
   constraintOrientation,
   cornerRoundsForEntity,
+  derivedDimensionState,
+  derivedDimensionValue,
   dimensionState,
   dimensionValue,
   getEntity,
@@ -21,6 +23,7 @@ import {
 } from '@sewcraft/geometry';
 
 import { constraintLabel } from './constraint-view';
+import { pieceOwningEdge, pieceSummary, type PieceSummary } from './pieces';
 
 const RADIANS_TO_DEGREES = 180 / Math.PI;
 
@@ -97,6 +100,17 @@ export type CornerRoundSummary = {
   arc: EntityId;
 };
 
+/** A read-only cut dimension anchored to the selected edge. */
+export type CutDimensionSummary = {
+  id: EntityId;
+  piece: EntityId;
+  /** Resolved cut measurement, or the last reading when broken. */
+  value: number | null;
+  state: 'derived' | 'broken';
+  orientation: DimensionOrientation;
+  anchors: [string, string];
+};
+
 /** Everything the Properties inspector shows for one selected entity. */
 export type EntityProperties = {
   id: EntityId;
@@ -115,6 +129,10 @@ export type EntityProperties = {
   /** Derived radius in millimetres for circles only. */
   radius: number | null;
   seam: { id: EntityId; width: number; side: SeamSide } | null;
+  /** The piece that owns the selected edge, with its derived metrics. */
+  piece: PieceSummary | null;
+  /** Read-only cut dimensions anchored to the selected edge. */
+  cutDimensions: CutDimensionSummary[];
   /** Rounds that reference the selected line or arc. */
   rounds: CornerRoundSummary[];
   dimensions: DimensionSummary[];
@@ -181,7 +199,10 @@ function samePair(a: EntityId, b: EntityId, s: EntityId, e: EntityId): boolean {
  * ids without resolving them, so a dangling reference still lists on the line
  * that stores it and never throws.
  */
-function constraintActsOnEntity(constraint: Constraint, entity: Entity): boolean {
+function constraintActsOnEntity(
+  constraint: Exclude<Constraint, { type: 'derived_distance' }>,
+  entity: Entity,
+): boolean {
   if (entity.kind === 'point') {
     return constraintEntityIds(constraint).includes(entity.id);
   }
@@ -240,6 +261,7 @@ export function entityProperties(
   const constraints: ConstraintSummary[] = [];
 
   for (const constraint of document.constraints) {
+    if (constraint.type === 'derived_distance') continue;
     if (!constraintActsOnEntity(constraint, entity)) continue;
     const entities = constraintEntityIds(constraint);
 
@@ -264,6 +286,31 @@ export function entityProperties(
   }
 
   const seam = entity.kind === 'point' ? undefined : seamForEdge(document, entity.id);
+  const owningPiece = entity.kind === 'point' ? null : pieceOwningEdge(document, entity.id);
+  const cutDimensions: CutDimensionSummary[] =
+    entity.kind === 'point'
+      ? []
+      : document.constraints.flatMap((constraint) => {
+          if (
+            constraint.type !== 'derived_distance' ||
+            (constraint.a.edge !== entity.id && constraint.b.edge !== entity.id)
+          ) {
+            return [];
+          }
+          return [
+            {
+              id: constraint.id,
+              piece: constraint.piece,
+              value: derivedDimensionValue(document, constraint),
+              state: derivedDimensionState(document, constraint),
+              orientation: constraintOrientation(constraint),
+              anchors: [
+                `${constraint.a.edge}:${constraint.a.at}`,
+                `${constraint.b.edge}:${constraint.b.at}`,
+              ] as [string, string],
+            },
+          ];
+        });
 
   // A round shows on its two lines and on its arc, not on points or the sharp
   // corner; the sharp corner stays a construction point of the sketch.
@@ -296,6 +343,8 @@ export function entityProperties(
     arc: arcMeasurementOf(document, entity),
     radius: entity.kind === 'circle' ? circleRadius(document, entity) : null,
     seam: seam === undefined ? null : { id: seam.id, width: seam.width, side: seamSide(seam) },
+    piece: owningPiece === null ? null : pieceSummary(document, owningPiece),
+    cutDimensions,
     rounds,
     dimensions,
     constraints,

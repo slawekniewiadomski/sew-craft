@@ -9,6 +9,8 @@ export * from './corner-round.js';
 export * from './circle.js';
 export * from './dimension.js';
 export * from './offset.js';
+export * from './piece.js';
+export * from './migration.js';
 export * from './selection.js';
 export * from './solver.js';
 export * from './commands.js';

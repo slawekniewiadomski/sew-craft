@@ -550,6 +550,222 @@ describe('EntityPropertiesPanel', () => {
   });
 });
 
+/** A 100 × 60 rectangle whose four lines form piece `p1`. */
+function pieceDoc(overrides: Partial<PatternDocument> = {}): PatternDocument {
+  return doc({
+    entities: [
+      ...doc().entities.filter((entity) => entity.kind === 'point'),
+      { id: 'ab', kind: 'line', start: 'a', end: 'b', construction: false },
+      { id: 'bc', kind: 'line', start: 'b', end: 'c', construction: false },
+      { id: 'cd', kind: 'line', start: 'c', end: 'd', construction: false },
+      { id: 'da', kind: 'line', start: 'd', end: 'a', construction: false },
+    ],
+    pieces: [
+      {
+        id: 'p1',
+        name: 'Front',
+        quantity: 2,
+        edges: ['ab', 'bc', 'cd', 'da'],
+        allowances: [{ edge: 'ab', width: 10, kind: 'double' }],
+      },
+    ],
+    ...overrides,
+  });
+}
+
+describe('EntityPropertiesPanel piece card', () => {
+  it('renders the piece metrics and one allowance row per loop edge', () => {
+    const { wrapper } = panel(pieceDoc(), 'ab');
+
+    expect(wrapper.find('[data-testid="entity-piece"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="entity-piece-id"]').text()).toBe('p1');
+    expect(
+      (wrapper.find('[data-testid="entity-piece-name"]').element as HTMLInputElement).value,
+    ).toBe('Front');
+    expect(
+      (wrapper.find('[data-testid="entity-piece-quantity"]').element as HTMLInputElement).value,
+    ).toBe('2');
+    expect(wrapper.find('[data-testid="entity-piece-finished"]').text()).toBe('100 × 60 mm');
+    expect(wrapper.find('[data-testid="entity-piece-cut"]').text()).not.toBe('—');
+    expect(wrapper.find('[data-testid="entity-piece-cut-area"]').text()).toContain('mm²');
+    expect(wrapper.find('[data-testid="entity-piece-allowance-area"]').text()).toContain('cm²');
+
+    expect(wrapper.find('[data-testid="entity-piece-allowance-ab"]').exists()).toBe(true);
+    expect(
+      (wrapper.find('[data-testid="entity-piece-kind-ab"]').element as HTMLSelectElement).value,
+    ).toBe('double');
+    expect(
+      (wrapper.find('[data-testid="entity-piece-width-ab"]').element as HTMLInputElement).value,
+    ).toBe('10');
+
+    const missing = wrapper.find('[data-testid="entity-piece-allowance-cd"]');
+    expect((missing.find('select').element as HTMLSelectElement).value).toBe('none');
+    expect((missing.find('input').element as HTMLInputElement).disabled).toBe(true);
+    expect((missing.find('input').element as HTMLInputElement).value).toBe('');
+  });
+
+  it('shows em dashes when the piece loop cannot be measured', () => {
+    const document = doc({
+      pieces: [{ id: 'p1', edges: ['l1', 'missing', 'other'], allowances: [] }],
+    });
+    const { wrapper } = panel(document, 'l1');
+
+    for (const field of ['finished', 'cut', 'cut-area', 'allowance-area']) {
+      expect(wrapper.find(`[data-testid="entity-piece-${field}"]`).text()).toBe('—');
+    }
+  });
+
+  it('renames a piece, clears the name and ignores an unchanged one', async () => {
+    const { wrapper } = panel(pieceDoc(), 'ab');
+    const name = wrapper.find('[data-testid="entity-piece-name"]');
+    const emitted = () => wrapper.emitted('update-piece') ?? [];
+
+    await name.setValue('Back');
+    await name.trigger('change');
+    expect(emitted().at(-1)).toEqual(['p1', { name: 'Back' }]);
+
+    const count = emitted().length;
+    await name.setValue('Front');
+    await name.trigger('change');
+    expect(emitted()).toHaveLength(count);
+
+    await name.setValue('   ');
+    await name.trigger('change');
+    expect(emitted().at(-1)).toEqual(['p1', { name: null }]);
+  });
+
+  it('names an unnamed piece', async () => {
+    const { wrapper } = panel(
+      pieceDoc({
+        pieces: [{ id: 'p1', edges: ['ab', 'bc', 'cd', 'da'], allowances: [] }],
+      }),
+      'ab',
+    );
+
+    const name = wrapper.find('[data-testid="entity-piece-name"]');
+    expect((name.element as HTMLInputElement).value).toBe('');
+
+    await name.setValue('Front');
+    await name.trigger('change');
+    expect(wrapper.emitted('update-piece')?.at(-1)).toEqual(['p1', { name: 'Front' }]);
+  });
+
+  it('updates the quantity and snaps invalid or unchanged values back', async () => {
+    const { wrapper } = panel(pieceDoc(), 'ab');
+    const quantity = wrapper.find('[data-testid="entity-piece-quantity"]');
+    const emitted = () => wrapper.emitted('update-piece') ?? [];
+
+    await quantity.setValue('4');
+    await quantity.trigger('change');
+    expect(emitted().at(-1)).toEqual(['p1', { quantity: 4 }]);
+
+    const count = emitted().length;
+    await quantity.setValue('2');
+    await quantity.trigger('change');
+    expect(emitted()).toHaveLength(count);
+
+    await quantity.setValue('0');
+    await quantity.trigger('change');
+    expect((quantity.element as HTMLInputElement).value).toBe('2');
+    expect(emitted()).toHaveLength(count);
+
+    await quantity.setValue('1.5');
+    await quantity.trigger('change');
+    expect((quantity.element as HTMLInputElement).value).toBe('2');
+    expect(emitted()).toHaveLength(count);
+  });
+
+  it('sets, changes and removes an allowance from the piece card', async () => {
+    const { wrapper } = panel(pieceDoc(), 'ab');
+    const emitted = () => wrapper.emitted('set-piece-allowance') ?? [];
+
+    const kind = wrapper.find('[data-testid="entity-piece-kind-ab"]');
+    await kind.setValue('single');
+    await kind.trigger('change');
+    expect(emitted().at(-1)).toEqual(['p1', 'ab', { kind: 'single', width: 10 }]);
+
+    const emptyKind = wrapper.find('[data-testid="entity-piece-kind-cd"]');
+    await emptyKind.setValue('seam');
+    await emptyKind.trigger('change');
+    expect(emitted().at(-1)).toEqual(['p1', 'cd', { kind: 'seam', width: 10 }]);
+
+    await emptyKind.setValue('none');
+    await emptyKind.trigger('change');
+    expect(emitted().at(-1)).toEqual(['p1', 'cd', null]);
+  });
+
+  it('edits an allowance width and snaps invalid, unchanged or absent widths back', async () => {
+    const { wrapper } = panel(pieceDoc(), 'ab');
+    const emitted = () => wrapper.emitted('set-piece-allowance') ?? [];
+
+    const width = wrapper.find('[data-testid="entity-piece-width-ab"]');
+    await width.setValue('14');
+    await width.trigger('change');
+    expect(emitted().at(-1)).toEqual(['p1', 'ab', { kind: 'double', width: 14 }]);
+
+    const count = emitted().length;
+    await width.setValue('10');
+    await width.trigger('change');
+    expect(emitted()).toHaveLength(count);
+
+    await width.setValue('nope');
+    await width.trigger('change');
+    expect((width.element as HTMLInputElement).value).toBe('10');
+    expect(emitted()).toHaveLength(count);
+
+    const absent = wrapper.find('[data-testid="entity-piece-width-cd"]');
+    (absent.element as HTMLInputElement).disabled = false;
+    (absent.element as HTMLInputElement).value = '5';
+    await absent.trigger('change');
+    expect((absent.element as HTMLInputElement).value).toBe('');
+    expect(emitted()).toHaveLength(count);
+  });
+
+  it('emits remove-piece from the piece card', async () => {
+    const { wrapper } = panel(pieceDoc(), 'ab');
+
+    await wrapper.find('[data-testid="entity-remove-piece-p1"]').trigger('click');
+
+    expect(wrapper.emitted('remove-piece')).toEqual([['p1']]);
+  });
+
+  it('lists cut dimensions with their value or a dash and removes them', async () => {
+    const { wrapper } = panel(
+      pieceDoc({
+        constraints: [
+          {
+            id: 'cut',
+            type: 'derived_distance',
+            piece: 'p1',
+            a: { edge: 'ab', at: 'start' },
+            b: { edge: 'bc', at: 'end' },
+            orientation: 'horizontal',
+          },
+          {
+            id: 'stale',
+            type: 'derived_distance',
+            piece: 'p1',
+            a: { edge: 'ab', at: 'start' },
+            b: { edge: 'missing', at: 'end' },
+          },
+        ],
+      }),
+      'ab',
+    );
+
+    expect(wrapper.find('[data-testid="entity-cut-dimension-cut"]').exists()).toBe(true);
+    const value = wrapper.find('[data-testid="entity-cut-dimension-value-cut"]');
+    expect((value.element as HTMLInputElement).value).toContain(' mm');
+    expect(
+      (wrapper.find('[data-testid="entity-cut-dimension-value-stale"]').element as HTMLInputElement)
+        .value,
+    ).toBe('—');
+
+    await wrapper.find('[data-testid="entity-remove-cut-dimension-cut"]').trigger('click');
+    expect(wrapper.emitted('remove-constraint')).toEqual([['cut']]);
+  });
+});
+
 /** The base document plus line `bc` and a 10 mm round at corner `b`. */
 function roundedDoc(): PatternDocument {
   const source = doc({

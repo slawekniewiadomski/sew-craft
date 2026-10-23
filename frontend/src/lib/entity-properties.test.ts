@@ -80,6 +80,8 @@ describe('entityProperties', () => {
       seam: null,
       rounds: [],
       dimensions: [],
+      cutDimensions: [],
+      piece: null,
       constraints: [],
     });
   });
@@ -248,6 +250,40 @@ describe('entityProperties', () => {
     expect(properties?.constraints).toEqual([
       { id: 'h', type: 'horizontal', label: 'Horizontal', entities: ['a', 'gone'] },
     ]);
+  });
+
+  it('lists a piece edge with its cut dimensions and no derived constraint row', () => {
+    const document = rectangle([
+      ...rectangleConstraints,
+      {
+        id: 'cut',
+        type: 'derived_distance',
+        piece: 'p1',
+        a: { edge: 'ab', at: 'start' },
+        b: { edge: 'bc', at: 'end' },
+        orientation: 'horizontal',
+        offset: 20,
+      },
+    ]);
+    document.pieces = [
+      { id: 'p1', name: 'Front', edges: ['ab', 'bc', 'cd', 'da'], allowances: [] },
+    ];
+
+    const properties = entityProperties(document, 'ab')!;
+
+    expect(properties.piece).toMatchObject({ id: 'p1', name: 'Front' });
+    expect(properties.cutDimensions).toEqual([
+      {
+        id: 'cut',
+        piece: 'p1',
+        value: expect.any(Number),
+        state: 'derived',
+        orientation: 'horizontal',
+        anchors: ['ab:start', 'bc:end'],
+      },
+    ]);
+    expect(properties.constraints.map((constraint) => constraint.id)).not.toContain('cut');
+    expect(entityProperties(document, 'cd')!.cutDimensions).toEqual([]);
   });
 
   it('lists only the rows that act on the selected line in the seeded rectangle', () => {

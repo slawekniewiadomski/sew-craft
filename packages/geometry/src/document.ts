@@ -26,8 +26,14 @@ export function createEmptyDocument(): PatternDocument {
     units: 'mm',
     entities: [],
     constraints: [],
+    pieces: [],
     seams: [],
   };
+}
+
+/** Every legacy seam in the document; `[]` for documents written without the field. */
+export function documentSeams(document: PatternDocument): Seam[] {
+  return document.seams ?? [];
 }
 
 export function getEntity(document: PatternDocument, id: EntityId): Entity | undefined {
@@ -44,12 +50,12 @@ export function getConstraint(document: PatternDocument, id: EntityId): Constrai
 }
 
 export function getSeam(document: PatternDocument, id: EntityId): Seam | undefined {
-  return document.seams.find((seam) => seam.id === id);
+  return documentSeams(document).find((seam) => seam.id === id);
 }
 
 /** The seam allowance attached to an edge, or `undefined` when it has none. */
 export function seamForEdge(document: PatternDocument, edge: EntityId): Seam | undefined {
-  return document.seams.find((seam) => seam.edge === edge);
+  return documentSeams(document).find((seam) => seam.edge === edge);
 }
 
 export function allPoints(document: PatternDocument): PointEntity[] {
@@ -87,6 +93,9 @@ export function constraintEntityIds(constraint: Constraint): EntityId[] {
       return [constraint.a, constraint.b, constraint.c];
     case 'equal':
       return [constraint.a1, constraint.a2, constraint.b1, constraint.b2];
+    case 'derived_distance':
+      // Anchored to piece loop edges, never to solver points.
+      return [];
   }
 }
 

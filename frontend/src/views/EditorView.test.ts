@@ -12,6 +12,7 @@ import { nextTick } from 'vue';
 
 import PatternCanvas from '@/components/PatternCanvas.vue';
 import CornerRoundPromptBar from '@/components/CornerRoundPromptBar.vue';
+import EditorRibbon from '@/components/EditorRibbon.vue';
 import EntityPropertiesPanel from '@/components/EntityPropertiesPanel.vue';
 import { downloadSvgFile } from '@/lib/download';
 import { useEditorStore } from '@/stores/editor';
@@ -159,6 +160,36 @@ const curveDoc: PatternDocument = {
   entities: [
     ...lineDoc.entities,
     { id: 'curve', kind: 'curve', p0: 'a', p1: 'b', p2: 'c', p3: 'd', construction: false },
+  ],
+};
+
+/** The four lines of `lineDoc` as one closed piece. */
+const pieceDoc: PatternDocument = {
+  ...lineDoc,
+  pieces: [
+    {
+      id: 'p1',
+      name: 'Front',
+      quantity: 2,
+      edges: ['ab', 'bc', 'cd', 'da'],
+      allowances: [{ edge: 'ab', width: 10 }],
+    },
+  ],
+};
+
+/** `pieceDoc` plus a read-only cut dimension from `a` to `c`. */
+const cutDimensionDoc: PatternDocument = {
+  ...pieceDoc,
+  constraints: [
+    {
+      id: 'cut',
+      type: 'derived_distance',
+      piece: 'p1',
+      a: { edge: 'ab', at: 'start' },
+      b: { edge: 'bc', at: 'end' },
+      orientation: 'horizontal',
+      offset: 20,
+    },
   ],
 };
 
@@ -739,6 +770,48 @@ describe('EditorView', () => {
     expect(svg).toContain('data-entity-id="guide"');
   });
 
+  it('omits the stitch and fold layers when their export toggles are off', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useEditorStore().load({
+      ...createEmptyDocument(),
+      entities: [
+        { id: 'a', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+        { id: 'b', kind: 'point', x: 200, y: 0, construction: false, fixed: false },
+        { id: 'c', kind: 'point', x: 200, y: 200, construction: false, fixed: false },
+        { id: 'd', kind: 'point', x: 0, y: 200, construction: false, fixed: false },
+        { id: 'bottom', kind: 'line', start: 'a', end: 'b', construction: false },
+        { id: 'right', kind: 'line', start: 'b', end: 'c', construction: false },
+        { id: 'top', kind: 'line', start: 'c', end: 'd', construction: false },
+        { id: 'left', kind: 'line', start: 'd', end: 'a', construction: false },
+      ],
+      pieces: [
+        {
+          id: 'piece-1',
+          edges: ['bottom', 'right', 'top', 'left'],
+          allowances: [{ edge: 'right', width: 10, kind: 'double' }],
+        },
+      ],
+    });
+
+    const wrapper = await mountEditor(pinia);
+
+    await wrapper.find('[data-testid="download-svg"]').trigger('click');
+    const [, initial] = vi.mocked(downloadSvgFile).mock.calls[0]!;
+    expect(initial).toContain('data-layer="stitch"');
+    expect(initial).toContain('data-layer="fold"');
+
+    await openViewDrawer(wrapper);
+    await wrapper.find('[data-testid="toggle-stitch"]').setValue(false);
+    await wrapper.find('[data-testid="toggle-fold"]').setValue(false);
+    await wrapper.find('[data-testid="download-svg"]').trigger('click');
+
+    const [, svg] = vi.mocked(downloadSvgFile).mock.calls[1]!;
+    expect(svg).toContain('data-layer="cut"');
+    expect(svg).not.toContain('data-layer="stitch"');
+    expect(svg).not.toContain('data-layer="fold"');
+  });
+
   it('hides construction geometry without changing the document', async () => {
     const pinia = createPinia();
     setActivePinia(pinia);
@@ -850,7 +923,7 @@ describe('EditorView', () => {
     await flushPromises();
 
     expect(store.document.seams).toHaveLength(1);
-    expect(store.document.seams[0]).toMatchObject({ edge: 'l1', width: 10 });
+    expect(store.document.seams![0]).toMatchObject({ edge: 'l1', width: 10 });
     expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Seam allowance');
   });
@@ -904,7 +977,7 @@ describe('EditorView', () => {
     await input.trigger('keydown', { key: 'Enter' });
     await flushPromises();
 
-    expect(store.document.seams[0]).toMatchObject({ id: 's1', width: 15 });
+    expect(store.document.seams![0]).toMatchObject({ id: 's1', width: 15 });
     expect((wrapper.find('[data-testid="seam-width-l1"]').element as HTMLInputElement).value).toBe(
       '15',
     );
@@ -912,7 +985,7 @@ describe('EditorView', () => {
     await wrapper.find('[data-testid="undo"]').trigger('click');
     await flushPromises();
 
-    expect(store.document.seams[0]).toMatchObject({ width: 10 });
+    expect(store.document.seams![0]).toMatchObject({ width: 10 });
   });
 
   it('edits the sidebar width and snaps back on invalid or unchanged input', async () => {
@@ -925,13 +998,13 @@ describe('EditorView', () => {
     await field().setValue('18');
     await field().trigger('change');
     await flushPromises();
-    expect(store.document.seams[0]).toMatchObject({ width: 18 });
+    expect(store.document.seams![0]).toMatchObject({ width: 18 });
     const journal = store.journal.length;
 
     await field().setValue('0');
     await field().trigger('change');
     await nextTick();
-    expect(store.document.seams[0]).toMatchObject({ width: 18 });
+    expect(store.document.seams![0]).toMatchObject({ width: 18 });
     expect((field().element as HTMLInputElement).value).toBe('18');
 
     await field().setValue('18');
@@ -942,7 +1015,7 @@ describe('EditorView', () => {
     await field().setValue('22');
     await field().trigger('keydown', { key: 'Enter' });
     await flushPromises();
-    expect(store.document.seams[0]).toMatchObject({ width: 22 });
+    expect(store.document.seams![0]).toMatchObject({ width: 22 });
   });
 
   it('flips a seam side from the outline twice and undoes one flip', async () => {
@@ -956,16 +1029,16 @@ describe('EditorView', () => {
 
     await flip().trigger('click');
     await flushPromises();
-    expect(store.document.seams[0]).toMatchObject({ id: 's1', side: 'right' });
+    expect(store.document.seams![0]).toMatchObject({ id: 's1', side: 'right' });
 
     await flip().trigger('click');
     await flushPromises();
-    expect(store.document.seams[0]).toMatchObject({ side: 'left' });
+    expect(store.document.seams![0]).toMatchObject({ side: 'left' });
     expect(store.journal).toHaveLength(2);
 
     await wrapper.find('[data-testid="undo"]').trigger('click');
     await flushPromises();
-    expect(store.document.seams[0]).toMatchObject({ side: 'right' });
+    expect(store.document.seams![0]).toMatchObject({ side: 'right' });
     expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(true);
   });
 
@@ -1618,11 +1691,11 @@ describe('EditorView', () => {
     expect((width.element as HTMLInputElement).value).toBe('10');
     await width.setValue('15');
     await flushPromises();
-    expect(store.document.seams[0]).toMatchObject({ width: 15 });
+    expect(store.document.seams![0]).toMatchObject({ width: 15 });
 
     await wrapper.find('[data-testid="entity-flip-seam"]').trigger('click');
     await flushPromises();
-    expect(store.document.seams[0]).toMatchObject({ width: 15, side: 'right' });
+    expect(store.document.seams![0]).toMatchObject({ width: 15, side: 'right' });
 
     await wrapper.find('[data-testid="entity-remove-seam"]').trigger('click');
     await flushPromises();
@@ -2180,5 +2253,170 @@ describe('EditorView', () => {
     await wrapper.find('[data-testid="entity-remove-corner-round-r1"]').trigger('click');
     await flushPromises();
     expect(store.document.cornerRounds).toEqual([]);
+  });
+
+  it('creates a piece from a selected closed loop and clears the selection', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+    const create = () => wrapper.find('[data-testid="create-piece"]');
+
+    expect(create().attributes('disabled')).toBeDefined();
+
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+    entityDown(wrapper, 'line', 'bc', { ctrlKey: true });
+    await nextTick();
+    entityDown(wrapper, 'line', 'cd', { ctrlKey: true });
+    await nextTick();
+    entityDown(wrapper, 'line', 'da', { ctrlKey: true });
+    await nextTick();
+
+    expect(create().attributes('disabled')).toBeUndefined();
+    await create().trigger('click');
+    await flushPromises();
+
+    expect(store.document.pieces).toHaveLength(1);
+    expect(store.document.pieces[0]).toMatchObject({
+      edges: ['ab', 'bc', 'cd', 'da'],
+      allowances: [],
+    });
+    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
+  });
+
+  it('explains why a selection cannot become a piece', async () => {
+    const { wrapper } = await mountLoaded(lineDoc);
+
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+    wrapper.findComponent(EditorRibbon).vm.$emit('action', 'create_piece');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Select at least three cut edges to create a piece.');
+    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(true);
+  });
+
+  it('creates a read-only cut dimension between two loop vertices', async () => {
+    const { wrapper, store } = await mountLoaded(pieceDoc);
+
+    await wrapper.find('[data-testid="tool-dimension"]').trigger('click');
+    pointDown(wrapper, 'a');
+    pointDown(wrapper, 'c');
+    canvasDown(wrapper, 400, 300);
+    await flushPromises();
+
+    expect(store.document.constraints).toEqual([
+      expect.objectContaining({
+        type: 'derived_distance',
+        piece: 'p1',
+        a: { edge: 'ab', at: 'start' },
+        b: { edge: 'bc', at: 'end' },
+      }),
+    ]);
+  });
+
+  it('shows a cut dimension as read-only and refuses edits in the drawer', async () => {
+    const { wrapper, store } = await mountLoaded(cutDimensionDoc);
+
+    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    const input = wrapper.find('[data-testid="dimension-value-cut"]');
+
+    expect(input.attributes('readonly')).toBeDefined();
+    expect(wrapper.find('[data-testid="dimension-readonly-cut"]').exists()).toBe(true);
+    const before = (input.element as HTMLInputElement).value;
+
+    await input.setValue('999');
+    await input.trigger('change');
+    await flushPromises();
+
+    expect((input.element as HTMLInputElement).value).toBe(before);
+    expect(store.document.constraints).toEqual(cutDimensionDoc.constraints);
+    expect(store.journal).toHaveLength(0);
+  });
+
+  it('shows a broken cut dimension as an empty read-only field', async () => {
+    const { wrapper } = await mountLoaded({
+      ...cutDimensionDoc,
+      constraints: [
+        {
+          id: 'cut',
+          type: 'derived_distance',
+          piece: 'p1',
+          a: { edge: 'ab', at: 'start' },
+          b: { edge: 'missing', at: 'end' },
+          orientation: 'horizontal',
+          offset: 20,
+        },
+      ],
+    });
+
+    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    const input = wrapper.find('[data-testid="dimension-value-cut"]');
+
+    expect((input.element as HTMLInputElement).value).toBe('');
+    expect(input.attributes('readonly')).toBeDefined();
+    expect(wrapper.find('[data-testid="dimension-state-cut"]').text()).toBe('Broken');
+    expect(wrapper.find('[data-testid="dimension-readonly-cut"]').exists()).toBe(true);
+  });
+
+  it('edits the piece card and removes the piece', async () => {
+    const { wrapper, store } = await mountLoaded(pieceDoc);
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+
+    const name = wrapper.find('[data-testid="entity-piece-name"]');
+    await name.setValue('Back');
+    await name.trigger('change');
+    await flushPromises();
+    expect(store.document.pieces[0]?.name).toBe('Back');
+
+    const quantity = wrapper.find('[data-testid="entity-piece-quantity"]');
+    await quantity.setValue('4');
+    await quantity.trigger('change');
+    await flushPromises();
+    expect(store.document.pieces[0]?.quantity).toBe(4);
+
+    const kind = wrapper.find('[data-testid="entity-piece-kind-ab"]');
+    await kind.setValue('single');
+    await kind.trigger('change');
+    await flushPromises();
+    expect(store.document.pieces[0]?.allowances[0]).toMatchObject({ kind: 'single', width: 10 });
+
+    const width = wrapper.find('[data-testid="entity-piece-width-ab"]');
+    await width.setValue('12');
+    await width.trigger('change');
+    await flushPromises();
+    expect(store.document.pieces[0]?.allowances[0]).toMatchObject({ width: 12 });
+
+    await kind.setValue('none');
+    await kind.trigger('change');
+    await flushPromises();
+    expect(store.document.pieces[0]?.allowances).toEqual([]);
+
+    await wrapper.find('[data-testid="entity-remove-piece-p1"]').trigger('click');
+    await flushPromises();
+    expect(store.document.pieces).toEqual([]);
+  });
+
+  it('shows a piece whose point was deleted without a size instead of crashing', async () => {
+    const { wrapper } = await mountLoaded({
+      ...pieceDoc,
+      entities: pieceDoc.entities.filter((entity) => entity.id !== 'c'),
+    });
+
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="entity-piece"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="entity-piece-finished"]').text()).toBe('—');
+    expect(wrapper.find('[data-testid="entity-piece-cut"]').text()).toBe('—');
+  });
+
+  it('describes an edge that belongs to a piece in the outline', async () => {
+    const { wrapper } = await mountLoaded(pieceDoc);
+
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="edge-piece-ab"]').text()).toContain('In piece p1');
+    expect(wrapper.find('[data-testid="edge-piece-ab"]').text()).toContain('seam 10 mm');
   });
 });
