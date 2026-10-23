@@ -80,6 +80,26 @@ to start implementation, so the spec's recommended answers are taken as accepted
 - Over-constrained reuse would make the whole batch fail loudly through the
   existing error bar rather than create a distorted shape; a test pins that.
 
+## Verification
+
+Run in the real app through the integration harness (Laravel API + built SPA),
+captured under `.ai/runs/assets/2026-10-23-rectangle-tool/`:
+
+| Check | Result |
+|---|---|
+| Diagonal preview mid-gesture | dashed `rectangle-preview` plus four provisional corner markers |
+| Diagonal commit | four points, four lines, two horizontal and two vertical constraints |
+| Centre commit | the same, mirrored around the centre click |
+| Rotated commit | four points, four lines, three signed right angles |
+| Escape mid-gesture | pending clicks and preview clear, no command written |
+| One undo | removes the four lines and the points the gesture created, nothing else |
+| Rotated edge | inspector reports 208.806 mm; a dimension places across the diagonal |
+| Rotated corner round | `R 5` applied through the existing prompt bar, edges trimmed |
+| Piece from the rotated loop | `Piece 1` created, finished 225.321 × 144.404 mm |
+| Rotated seam allowance | 10 mm on one edge, cut 228.195 × 153.982 mm, allowance area 208.061 mm² |
+| SVG export | cut layer with the piece path and piece metadata |
+| Console | no errors across the run |
+
 ## Progress
 
 > Convention: `- [ ]` pending, `- [x]` done. Append ` — <commit sha>` when a step lands. Do not rename step titles.
