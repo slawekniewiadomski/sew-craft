@@ -297,7 +297,9 @@ describe('EditorView', () => {
     expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('2 entities selected');
     expect(wrapper.find('[data-testid="selection-breakdown"]').text()).toBe('2 points');
     expect(wrapper.find('[data-testid="selection-status"]').text()).toBe('2 entities selected');
-    expect(wrapper.text()).not.toContain('Select a point, line or curve to inspect it.');
+    expect(wrapper.text()).not.toContain(
+      'Select a point, line, curve, arc or circle on the canvas.',
+    );
 
     const journal = store.journal.length;
     await wrapper.find('[data-testid="selection-delete"]').trigger('click');
@@ -392,7 +394,7 @@ describe('EditorView', () => {
 
     expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('Select a point, line or curve to inspect it.');
+    expect(wrapper.text()).toContain('Select a point, line, curve, arc or circle on the canvas.');
   });
 
   it('skips an id that no longer resolves when summarising a selection', async () => {
@@ -860,10 +862,7 @@ describe('EditorView', () => {
     const wrapper = await mountEditor(pinia);
     expect(wrapper.text()).toContain('1 cut edge(s)');
 
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === 'Make construction')!
-      .trigger('click');
+    await wrapper.find('[data-testid="outline-construction-l1"]').trigger('click');
 
     expect(wrapper.find('line').attributes('stroke-dasharray')).toBe('4 4');
     expect(wrapper.text()).toContain('0 cut edge(s)');
@@ -889,10 +888,7 @@ describe('EditorView', () => {
 
     const wrapper = await mountEditor(pinia);
 
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === 'Make cut edge')!
-      .trigger('click');
+    await wrapper.find('[data-testid="outline-construction-l1"]').trigger('click');
 
     expect(wrapper.find('line').attributes('stroke-dasharray')).toBeUndefined();
     expect(wrapper.text()).toContain('1 cut edge(s)');
@@ -1518,7 +1514,7 @@ describe('EditorView', () => {
 
     expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Select');
     expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('Select a point, line or curve to inspect it.');
+    expect(wrapper.text()).toContain('Select a point, line, curve, arc or circle on the canvas.');
 
     pointDown(wrapper, 'a');
     await nextTick();
@@ -2489,7 +2485,9 @@ describe('EditorView Outline selection', () => {
     await nextTick();
 
     expect(row(wrapper, 'ab').attributes('aria-current')).toBe('true');
-    expect(wrapper.find('[data-testid="outline-row-ab"]').classes()).toContain('bg-accent');
+    const outlineRow = wrapper.find('[data-testid="outline-row-ab"]');
+    expect(outlineRow.classes()).toContain('border-primary');
+    expect(outlineRow.classes()).toContain('bg-primary/10');
     expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="entity-kind"]').text()).toBe('Line');
   });
@@ -2540,10 +2538,9 @@ describe('EditorView Outline selection', () => {
 
     await row(wrapper, 'ab').trigger('click');
     await nextTick();
-    const makeConstruction = wrapper
-      .findAll('[data-testid="outline-row-ab"] button')
-      .find((button) => button.text() === 'Make construction')!;
+    const makeConstruction = wrapper.find('[data-testid="outline-construction-ab"]');
 
+    expect(makeConstruction.attributes('aria-label')).toBe('Make construction');
     await makeConstruction.trigger('click');
     await flushPromises();
 

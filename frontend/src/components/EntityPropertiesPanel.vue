@@ -9,6 +9,12 @@ import type {
 } from '@sewcraft/geometry';
 import { computed, ref } from 'vue';
 
+import RibbonIcon from '@/components/RibbonIcon.vue';
+import Pill from '@/components/sidebar/Pill.vue';
+import SidebarAction from '@/components/sidebar/SidebarAction.vue';
+import SidebarEmpty from '@/components/sidebar/SidebarEmpty.vue';
+import SidebarField from '@/components/sidebar/SidebarField.vue';
+import SidebarHeading from '@/components/sidebar/SidebarHeading.vue';
 import { Button } from '@/components/ui/button';
 import { formatCornerRadius, parseCornerRadius } from '@/lib/corner-round';
 import type {
@@ -21,6 +27,7 @@ import {
   DIMENSION_ORIENTATION_OPTIONS,
   dimensionPatchForEdit,
   dimensionStateLabel,
+  dimensionTone,
   filterReferenceOptions,
   formatDimensionField,
   formatDimensionValue,
@@ -31,6 +38,7 @@ import {
   type DimensionPatch,
   type DimensionReferenceOption,
 } from '@/lib/dimensions';
+import { ribbonIcon, type RibbonIconName } from '@/lib/ribbon-icons';
 import DimensionReferencePicker from './DimensionReferencePicker.vue';
 import PiecePanel from './PiecePanel.vue';
 
@@ -166,7 +174,16 @@ const KIND_NOUNS: Record<Entity['kind'], string> = {
   circle: 'circle',
 };
 
+const KIND_ICONS: Record<Entity['kind'], RibbonIconName> = {
+  point: 'point',
+  line: 'line',
+  curve: 'curve',
+  arc: 'arc',
+  circle: 'circle',
+};
+
 const kindNoun = computed(() => KIND_NOUNS[props.entity.kind]);
+const kindIcon = computed(() => ribbonIcon(KIND_ICONS[props.entity.kind]));
 
 /**
  * The read-only derived arc values. Empty for every other kind and for an arc
@@ -284,99 +301,86 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
 
 <template>
   <section
-    class="space-y-3 text-sm"
+    class="space-y-3"
     aria-labelledby="entity-properties-heading"
     data-testid="entity-properties"
   >
-    <header class="flex flex-wrap items-center gap-2">
-      <h2 id="entity-properties-heading" class="font-semibold">
-        {{ kindLabel(props.entity.kind) }}
-        <span class="font-mono text-muted-foreground">{{ props.entity.id }}</span>
-      </h2>
-      <span
-        v-if="props.entity.construction"
-        class="rounded-sm border px-1 text-xs text-muted-foreground"
+    <header class="flex flex-wrap items-center gap-1.5">
+      <h2
+        id="entity-properties-heading"
+        class="flex min-w-0 items-center gap-1.5 text-[13px] font-semibold"
       >
-        Construction
-      </span>
+        <RibbonIcon :icon="kindIcon" :size="14" class="shrink-0 text-muted-foreground" />
+        <span class="truncate">{{ kindLabel(props.entity.kind) }}</span>
+        <span class="font-mono text-2xs font-normal text-muted-foreground">
+          {{ props.entity.id }}
+        </span>
+      </h2>
+      <Pill v-if="props.entity.construction" tone="neutral">Construction</Pill>
     </header>
 
     <p
       v-if="props.entity.geometry.kind !== 'point'"
-      class="text-xs text-muted-foreground"
+      class="text-2xs leading-snug text-muted-foreground"
       data-testid="entity-scope-hint"
     >
       Showing what acts on this {{ kindNoun }}. Select a point to see its constraints.
     </p>
 
     <section aria-labelledby="entity-geometry-heading">
-      <h3
-        id="entity-geometry-heading"
-        class="text-xs font-semibold uppercase text-muted-foreground"
-      >
-        Geometry
-      </h3>
-      <dl class="mt-1 space-y-1">
-        <div class="flex items-center justify-between gap-2">
-          <dt class="text-muted-foreground">Kind</dt>
-          <dd data-testid="entity-kind">{{ kindLabel(props.entity.kind) }}</dd>
-        </div>
+      <SidebarHeading id="entity-geometry-heading" label="Geometry" />
+      <dl class="space-y-1">
+        <SidebarField label="Kind" data-testid="entity-kind">
+          {{ kindLabel(props.entity.kind) }}
+        </SidebarField>
 
         <template v-if="props.entity.geometry.kind === 'point'">
-          <div class="flex items-center justify-between gap-2">
-            <dt class="text-muted-foreground">X</dt>
-            <dd>{{ formatDimensionValue(props.entity.geometry.x) }} mm</dd>
-          </div>
-          <div class="flex items-center justify-between gap-2">
-            <dt class="text-muted-foreground">Y</dt>
-            <dd>{{ formatDimensionValue(props.entity.geometry.y) }} mm</dd>
-          </div>
-          <div class="flex items-center justify-between gap-2">
-            <dt class="text-muted-foreground">Fixed</dt>
-            <dd data-testid="entity-fixed">{{ props.entity.fixed ? 'Yes' : 'No' }}</dd>
-          </div>
+          <SidebarField label="X" data-testid="entity-x">
+            {{ formatDimensionValue(props.entity.geometry.x)
+            }}<span class="text-2xs text-muted-foreground"> mm</span>
+          </SidebarField>
+          <SidebarField label="Y" data-testid="entity-y">
+            {{ formatDimensionValue(props.entity.geometry.y)
+            }}<span class="text-2xs text-muted-foreground"> mm</span>
+          </SidebarField>
+          <SidebarField label="Fixed" data-testid="entity-fixed">
+            {{ props.entity.fixed ? 'Yes' : 'No' }}
+          </SidebarField>
         </template>
 
         <template v-else-if="props.entity.geometry.kind === 'line'">
-          <div class="flex items-center justify-between gap-2">
-            <dt class="text-muted-foreground">Start</dt>
-            <dd class="font-mono">{{ props.entity.geometry.start }}</dd>
-          </div>
-          <div class="flex items-center justify-between gap-2">
-            <dt class="text-muted-foreground">End</dt>
-            <dd class="font-mono">{{ props.entity.geometry.end }}</dd>
-          </div>
-          <div class="flex items-center justify-between gap-2">
-            <dt class="text-muted-foreground">Length</dt>
-            <dd data-testid="entity-length">{{ lengthText(props.entity.length) }}</dd>
-          </div>
+          <SidebarField label="Start" mono data-testid="entity-start">
+            {{ props.entity.geometry.start }}
+          </SidebarField>
+          <SidebarField label="End" mono data-testid="entity-end">
+            {{ props.entity.geometry.end }}
+          </SidebarField>
+          <SidebarField label="Length" data-testid="entity-length">
+            {{ lengthText(props.entity.length) }}
+          </SidebarField>
         </template>
 
         <template v-else-if="props.entity.geometry.kind === 'arc'">
-          <div class="flex items-center justify-between gap-2">
-            <dt class="text-muted-foreground">Start</dt>
-            <dd class="font-mono">{{ props.entity.geometry.start }}</dd>
-          </div>
-          <div class="flex items-center justify-between gap-2">
-            <dt class="text-muted-foreground">End</dt>
-            <dd class="font-mono">{{ props.entity.geometry.end }}</dd>
-          </div>
-          <div class="flex items-center justify-between gap-2">
-            <dt class="text-muted-foreground">Through</dt>
-            <dd class="font-mono">{{ props.entity.geometry.through }}</dd>
-          </div>
-          <div
+          <SidebarField label="Start" mono data-testid="entity-start">
+            {{ props.entity.geometry.start }}
+          </SidebarField>
+          <SidebarField label="End" mono data-testid="entity-end">
+            {{ props.entity.geometry.end }}
+          </SidebarField>
+          <SidebarField label="Through" mono data-testid="entity-through">
+            {{ props.entity.geometry.through }}
+          </SidebarField>
+          <SidebarField
             v-for="row in arcRows"
             :key="row.key"
-            class="flex items-center justify-between gap-2"
+            :label="row.label"
             :data-testid="`entity-arc-${row.key}`"
           >
-            <dt class="text-muted-foreground">{{ row.label }}</dt>
-            <dd>{{ row.value }}</dd>
-          </div>
+            {{ row.value }}
+          </SidebarField>
           <p
             v-if="arcRows.length === 0"
-            class="text-xs text-destructive"
+            class="text-2xs text-destructive"
             data-testid="entity-arc-invalid"
           >
             Invalid: the three points are collinear.
@@ -384,49 +388,45 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
         </template>
 
         <template v-else-if="props.entity.geometry.kind === 'curve'">
-          <div
+          <SidebarField
             v-for="point in ['p0', 'p1', 'p2', 'p3'] as const"
             :key="point"
-            class="flex items-center justify-between gap-2"
+            :label="point"
+            mono
           >
-            <dt class="uppercase text-muted-foreground">{{ point }}</dt>
-            <dd class="font-mono">{{ props.entity.geometry[point] }}</dd>
-          </div>
+            {{ props.entity.geometry[point] }}
+          </SidebarField>
         </template>
 
         <template v-else>
-          <div class="flex items-center justify-between gap-2">
-            <dt class="text-muted-foreground">Centre</dt>
-            <dd class="font-mono" data-testid="entity-circle-center">
-              {{ props.entity.geometry.center }}
-            </dd>
-          </div>
-          <div class="flex items-center justify-between gap-2">
-            <dt class="text-muted-foreground">Rim</dt>
-            <dd class="font-mono" data-testid="entity-circle-rim">
-              {{ props.entity.geometry.rim }}
-            </dd>
-          </div>
-          <div class="flex items-center justify-between gap-2">
-            <dt class="text-muted-foreground">Radius</dt>
-            <dd class="flex items-center gap-1">
+          <SidebarField label="Centre" mono data-testid="entity-circle-center">
+            {{ props.entity.geometry.center }}
+          </SidebarField>
+          <SidebarField label="Rim" mono data-testid="entity-circle-rim">
+            {{ props.entity.geometry.rim }}
+          </SidebarField>
+          <SidebarField label="Radius">
+            <span class="inline-flex items-center gap-1">
               <input
                 type="number"
                 min="0.001"
                 step="0.001"
-                class="w-24 rounded-md border px-2 py-1 text-sm text-foreground"
+                class="h-7 w-24 rounded-sm border px-2 text-[13px] tabular-nums"
                 :value="props.entity.radius === null ? '' : formatCornerRadius(props.entity.radius)"
                 :aria-label="`Radius for circle ${props.entity.id} (mm)`"
                 data-testid="entity-circle-radius"
                 @change="onCircleRadiusEdit"
               />
-              <span class="text-xs text-muted-foreground">mm</span>
-            </dd>
-          </div>
+              <span class="text-2xs text-muted-foreground">mm</span>
+            </span>
+          </SidebarField>
         </template>
 
         <div class="flex items-center justify-between gap-2">
-          <label :for="`entity-construction-${props.entity.id}`" class="text-muted-foreground">
+          <label
+            :for="`entity-construction-${props.entity.id}`"
+            class="text-2xs text-muted-foreground"
+          >
             Construction
           </label>
           <input
@@ -455,97 +455,82 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
       aria-labelledby="entity-corner-rounds-heading"
       data-testid="entity-corner-rounds"
     >
-      <h3
-        id="entity-corner-rounds-heading"
-        class="text-xs font-semibold uppercase text-muted-foreground"
-      >
-        Corner round
-      </h3>
-      <ul class="mt-1 space-y-2" :aria-label="`Corner rounds for ${props.entity.id}`">
+      <SidebarHeading id="entity-corner-rounds-heading" label="Corner round" />
+      <ul class="space-y-2" :aria-label="`Corner rounds for ${props.entity.id}`">
         <li
           v-for="round in props.entity.rounds"
           :key="round.id"
-          class="space-y-1"
+          class="space-y-1 border-t pt-2"
           :data-testid="`entity-corner-round-${round.id}`"
         >
-          <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center justify-between gap-2">
             <div class="min-w-0">
-              <span class="font-mono text-muted-foreground">{{ round.id }}</span>
-              <span class="ml-2 text-xs text-muted-foreground">
+              <span class="font-mono text-2xs text-muted-foreground">{{ round.id }}</span>
+              <span class="ml-1.5 text-2xs text-muted-foreground">
                 corner {{ round.corner }} · anchors {{ round.anchors.join(', ') }}
               </span>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              :aria-label="`Remove corner round ${round.id}`"
+            <SidebarAction
+              icon="delete"
+              :label="`Remove corner round ${round.id}`"
               :data-testid="`entity-remove-corner-round-${round.id}`"
               @click="emit('remove-corner-round', round.id)"
-            >
-              Remove
-            </Button>
+            />
           </div>
 
-          <label class="flex flex-wrap items-center gap-2">
-            <span class="text-xs text-muted-foreground">Radius</span>
+          <label class="flex flex-wrap items-center gap-1.5">
+            <span class="text-2xs text-muted-foreground">Radius</span>
             <input
               type="number"
               min="0.001"
               step="0.001"
-              class="w-24 rounded-md border px-2 py-1"
+              class="h-7 w-24 rounded-sm border px-2 text-[13px] tabular-nums"
               :value="formatCornerRadius(round.radius)"
               :aria-label="`Radius for corner round ${round.id} (mm)`"
               :data-testid="`entity-corner-radius-${round.id}`"
               @change="onCornerRadiusEdit(round, $event)"
             />
-            <span class="text-xs text-muted-foreground">mm</span>
+            <span class="text-2xs text-muted-foreground">mm</span>
           </label>
         </li>
       </ul>
     </section>
 
     <section aria-labelledby="entity-dimensions-heading">
-      <h3
-        id="entity-dimensions-heading"
-        class="text-xs font-semibold uppercase text-muted-foreground"
-      >
-        Dimensions
-      </h3>
+      <SidebarHeading id="entity-dimensions-heading" label="Dimensions" />
       <ul
         v-if="props.entity.dimensions.length > 0"
-        class="mt-1 space-y-2"
+        class="space-y-2"
         :aria-label="`Dimensions for ${props.entity.id}`"
       >
         <li
           v-for="dimension in props.entity.dimensions"
           :key="dimension.id"
-          class="space-y-1"
+          class="space-y-1.5 border-t pt-2"
           :data-testid="`entity-dimension-${dimension.id}`"
         >
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <div class="min-w-0">
-              <span class="font-mono text-muted-foreground">{{ dimension.id }}</span>
-              <span class="ml-2 text-xs text-muted-foreground">
-                {{ orientationLabel(dimension.orientation) }} · {{ dimension.entities.join(', ') }}
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0 flex flex-wrap items-baseline gap-1">
+              <span class="font-mono text-2xs text-muted-foreground">{{ dimension.id }}</span>
+              <span class="text-2xs text-muted-foreground">
+                {{ orientationLabel(dimension.orientation) }} ·
+                {{ dimension.entities.join(', ') }}
               </span>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              :aria-label="`Remove dimension ${dimension.id}`"
+            <SidebarAction
+              icon="delete"
+              :label="`Remove dimension ${dimension.id}`"
               :data-testid="`entity-remove-dimension-${dimension.id}`"
               @click="emit('remove-constraint', dimension.id)"
-            >
-              Remove
-            </Button>
+            />
           </div>
 
-          <label class="relative flex flex-wrap items-center gap-2">
-            <span class="text-xs text-muted-foreground">Value</span>
+          <label class="relative flex flex-wrap items-center gap-1.5">
+            <span class="text-2xs text-muted-foreground">Value</span>
             <input
               type="text"
               inputmode="decimal"
-              class="w-20 rounded-md border px-2 py-1"
+              class="h-7 w-24 rounded-sm border px-2 text-[13px] font-medium tabular-nums"
               :value="dimensionFieldText(dimension)"
               :aria-label="`Value for dimension ${dimension.id} on ${props.entity.id} (${dimensionStateLabel(dimension.state).toLowerCase()})`"
               :data-testid="`entity-dimension-value-${dimension.id}`"
@@ -566,14 +551,14 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
               @keydown="onPickerKeydown(dimension.id, $event)"
               @change="onDimensionValueEdit(dimension, $event)"
             />
-            <span class="text-xs text-muted-foreground">mm</span>
-            <span
-              class="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
+            <span class="text-2xs text-muted-foreground">mm</span>
+            <Pill
+              :tone="dimensionTone(dimension.state)"
               :data-dimension-state="dimension.state"
               :data-testid="`entity-dimension-state-${dimension.id}`"
             >
               {{ dimensionStateLabel(dimension.state) }}
-            </span>
+            </Pill>
             <Button
               variant="outline"
               size="sm"
@@ -595,7 +580,7 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
             <DimensionReferencePicker
               v-if="picker?.id === dimension.id"
               :list-id="`entity-dimension-reference-list-${dimension.id}`"
-              class="left-0 top-full mt-1"
+              class="top-full left-0 mt-1"
               :options="pickerOptions"
               :active-index="activePickerIndex"
               @select="linkDimension(dimension.id, $event)"
@@ -604,14 +589,14 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
 
           <p
             v-if="dimension.state === 'referenced'"
-            class="text-xs text-muted-foreground"
+            class="text-2xs text-muted-foreground"
             :data-testid="`entity-dimension-source-${dimension.id}`"
           >
             Source: <span class="font-mono">{{ dimension.sourceId }}</span>
           </p>
           <p
             v-else-if="dimension.state === 'broken'"
-            class="text-xs text-destructive"
+            class="text-2xs text-destructive"
             :data-testid="`entity-dimension-broken-${dimension.id}`"
           >
             Source {{ dimension.sourceId }} is missing. Type a value or press # to re-link.
@@ -620,100 +605,84 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
       </ul>
       <ul
         v-if="props.entity.cutDimensions.length > 0"
-        class="mt-2 space-y-2"
+        class="space-y-2"
         :aria-label="`Cut dimensions for ${props.entity.id}`"
       >
         <li
           v-for="dimension in props.entity.cutDimensions"
           :key="dimension.id"
-          class="space-y-1"
+          class="space-y-1.5 border-t pt-2"
           :data-testid="`entity-cut-dimension-${dimension.id}`"
         >
-          <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center justify-between gap-2">
             <div class="min-w-0">
-              <span class="font-mono text-muted-foreground">{{ dimension.id }}</span>
-              <span class="ml-2 text-xs text-muted-foreground">
+              <span class="font-mono text-2xs text-muted-foreground">{{ dimension.id }}</span>
+              <span class="ml-1.5 text-2xs text-muted-foreground">
                 piece {{ dimension.piece }} · {{ dimension.anchors.join(' → ') }}
               </span>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              :aria-label="`Remove cut dimension ${dimension.id}`"
+            <SidebarAction
+              icon="delete"
+              :label="`Remove cut dimension ${dimension.id}`"
               :data-testid="`entity-remove-cut-dimension-${dimension.id}`"
               @click="removeCutDimension(dimension)"
-            >
-              Remove
-            </Button>
+            />
           </div>
-          <div class="flex flex-wrap items-center gap-2">
+          <div class="flex flex-wrap items-center gap-1.5">
             <input
               type="text"
-              class="w-24 rounded-md border bg-muted px-2 py-1 text-sm"
+              class="h-7 w-24 rounded-sm border bg-muted px-2 text-[13px] font-medium tabular-nums"
               :value="cutDimensionValue(dimension)"
               readonly
               :aria-label="`Cut dimension ${dimension.id} (read-only)`"
               :data-testid="`entity-cut-dimension-value-${dimension.id}`"
             />
-            <span
-              class="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
-              :data-dimension-state="dimension.state"
-            >
+            <Pill :tone="dimensionTone(dimension.state)" :data-dimension-state="dimension.state">
               {{ dimension.state === 'broken' ? 'Broken' : 'Cut' }}
-            </span>
+            </Pill>
           </div>
-          <p class="text-xs text-muted-foreground">
+          <p class="text-2xs text-muted-foreground">
             Read-only: it follows the stitch dimension and the allowance widths.
           </p>
         </li>
       </ul>
-      <p
+      <SidebarEmpty
         v-if="props.entity.dimensions.length === 0 && props.entity.cutDimensions.length === 0"
-        class="mt-1 text-xs text-muted-foreground"
-      >
-        No dimensions on this {{ kindNoun }}.
-      </p>
+        :message="`No dimensions on this ${kindNoun}.`"
+      />
     </section>
 
     <section aria-labelledby="entity-constraints-heading">
-      <h3
-        id="entity-constraints-heading"
-        class="text-xs font-semibold uppercase text-muted-foreground"
-      >
-        Constraints
-      </h3>
+      <SidebarHeading id="entity-constraints-heading" label="Constraints" />
       <ul
         v-if="props.entity.constraints.length > 0"
-        class="mt-1 space-y-2"
+        class="space-y-2"
         :aria-label="`Constraints for ${props.entity.id}`"
       >
         <li
           v-for="constraint in props.entity.constraints"
           :key="constraint.id"
-          class="flex flex-wrap items-center justify-between gap-2"
+          class="flex items-center justify-between gap-2 border-t pt-2"
           :data-testid="`entity-constraint-${constraint.id}`"
         >
           <div class="min-w-0">
-            <span class="font-mono text-muted-foreground">{{ constraint.id }}</span>
-            <span class="ml-2">{{ constraint.label }}</span>
-            <span class="ml-2 text-xs text-muted-foreground">
+            <span class="text-[13px] font-medium">{{ constraint.label }}</span>
+            <span class="ml-1.5 font-mono text-2xs text-muted-foreground">
+              {{ constraint.id }}
+            </span>
+            <span class="ml-1.5 text-2xs text-muted-foreground">
               ({{ constraint.entities.join(', ') }})
             </span>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            :aria-label="`Remove constraint ${constraint.id}`"
+          <SidebarAction
+            icon="delete"
+            :label="`Remove constraint ${constraint.id}`"
             :data-testid="`entity-remove-constraint-${constraint.id}`"
             @click="emit('remove-constraint', constraint.id)"
-          >
-            Remove
-          </Button>
+          />
         </li>
       </ul>
-      <p v-else class="mt-1 text-xs text-muted-foreground">
-        No constraints on this {{ kindNoun }}.
-      </p>
+      <SidebarEmpty v-else :message="`No constraints on this ${kindNoun}.`" />
     </section>
   </section>
 </template>

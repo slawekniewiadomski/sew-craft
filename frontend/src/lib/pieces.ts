@@ -14,6 +14,8 @@ import {
   type PieceMetrics,
 } from '@sewcraft/geometry';
 
+import { formatDimensionValue } from './dimensions';
+
 /** One row of the piece allowance editor. */
 export interface PieceAllowanceRow {
   edge: EntityId;
@@ -70,6 +72,23 @@ export function pieceSummaries(document: PatternDocument): PieceSummary[] {
 /** The display label for a piece: its name, or `Piece <n>` by 1-based position. */
 export function pieceLabel(summary: PieceSummary, index: number): string {
   return summary.name ?? `Piece ${index + 1}`;
+}
+
+/** The title line of a drawer row; the quantity stays a separate pill. */
+export function pieceTitleLine(summary: PieceSummary, index: number): string {
+  return pieceLabel(summary, index);
+}
+
+/** One measured size: `220 × 210 mm`, or `—` when the piece cannot be measured. */
+export function pieceSizeText(size: { width: number; height: number } | null | undefined): string {
+  return size === undefined || size === null
+    ? '—'
+    : `${formatDimensionValue(size.width)} × ${formatDimensionValue(size.height)} mm`;
+}
+
+/** The secondary drawer line: `220 × 210 mm finished · 240 × 230 mm cut`. */
+export function pieceSizeLine(metrics: PieceMetrics | null | undefined): string {
+  return `${pieceSizeText(metrics?.finished)} finished · ${pieceSizeText(metrics?.cut)} cut`;
 }
 
 /** The piece that owns an edge, or `null`. */
@@ -219,6 +238,12 @@ export function edgeEndpoints(
 ): [EntityId, EntityId] | null {
   const entity = getEntity(document, edgeId);
   return entity === undefined ? null : endpointIds(entity);
+}
+
+/** How an edge reads in a row: `a → b`, falling back to its id when it has no ends. */
+export function edgeLabel(document: PatternDocument, edgeId: EntityId): string {
+  const ends = edgeEndpoints(document, edgeId);
+  return ends === null ? edgeId : `${ends[0]} → ${ends[1]}`;
 }
 
 function sameAnchor(a: CutAnchor, b: CutAnchor): boolean {

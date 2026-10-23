@@ -2,18 +2,35 @@ import { enableAutoUnmount, mount, type VueWrapper } from '@vue/test-utils';
 import { afterEach, describe, expect, it } from 'vitest';
 import { nextTick } from 'vue';
 
+import type { DrawerId } from '@/lib/editor-drawers';
+
 import EditorSidebar from './EditorSidebar.vue';
 
 enableAutoUnmount(afterEach);
 
-function mountSidebar(width = 320, collapsed = false): VueWrapper {
+interface Extras {
+  counts?: Partial<Record<DrawerId, number>>;
+  stats?: boolean;
+}
+
+function mountSidebar(width = 320, collapsed = false, extras: Extras = {}): VueWrapper {
   return mount(EditorSidebar, {
-    props: { width, collapsed },
+    props: {
+      width,
+      collapsed,
+      ...(extras.counts === undefined ? {} : { counts: extras.counts }),
+    },
     slots: {
       properties: '<p data-testid="slot-properties">Props</p>',
       pieces: '<p data-testid="slot-pieces">Pieces</p>',
       outline: '<p data-testid="slot-outline">Outline</p>',
       view: '<p data-testid="slot-view">View</p>',
+      ...(extras.stats === true
+        ? {
+            stats:
+              '<div data-testid="workspace-summary"><span data-testid="active-tool">Select</span></div>',
+          }
+        : {}),
     },
   });
 }
@@ -53,6 +70,28 @@ describe('EditorSidebar', () => {
     expect(wrapper.find('[data-testid="slot-view"]').exists()).toBe(true);
   });
 
+  it('forwards per-drawer counts as header badges and hides a zero', () => {
+    const wrapper = mountSidebar(320, false, { counts: { properties: 2, pieces: 0 } });
+
+    expect(wrapper.find('[data-testid="drawer-toggle-properties"]').text()).toContain('2');
+    expect(
+      wrapper
+        .find('[data-testid="drawer-toggle-pieces"]')
+        .find('[data-testid="drawer-count"]')
+        .exists(),
+    ).toBe(false);
+  });
+
+  it('renders the stats slot below the drawer list only when provided', () => {
+    expect(mountSidebar().find('[data-testid="workspace-summary"]').exists()).toBe(false);
+
+    const wrapper = mountSidebar(320, false, { stats: true });
+    const aside = wrapper.find('[data-testid="sidebar"]');
+
+    expect(wrapper.find('[data-testid="workspace-summary"]').exists()).toBe(true);
+    expect(aside.text()).toContain('Select');
+  });
+
   it('applies the width while expanded and skips it when collapsed', () => {
     expect(mountSidebar(420, false).find('[data-testid="sidebar"]').attributes('style')).toContain(
       'width: 420px',
@@ -72,6 +111,44 @@ describe('EditorSidebar', () => {
     expect(collapsed.find('[data-testid="drawer-toggle-view"]').exists()).toBe(false);
     await collapsed.find('[data-testid="sidebar-expand"]').trigger('click');
     expect(collapsed.emitted('update:collapsed')).toEqual([[false]]);
+  });
+
+  it('turns the collapsed strip into one named icon button per drawer', () => {
+    const wrapper = mountSidebar(320, true);
+
+    for (const [id, label] of [
+      ['properties', 'Properties'],
+      ['pieces', 'Pieces'],
+      ['outline', 'Outline'],
+      ['dimensions', 'Dimensions'],
+      ['constraints', 'Constraints'],
+      ['view', 'View'],
+    ] as const) {
+      const button = wrapper.find(`[data-testid="sidebar-rail-${id}"]`);
+      expect(button.exists()).toBe(true);
+      expect(button.attributes('aria-label')).toBe(`Open ${label} drawer`);
+    }
+  });
+
+  it('expands and opens the chosen drawer from the rail', async () => {
+    const wrapper = mountSidebar(320, true);
+
+    await wrapper.find('[data-testid="sidebar-rail-view"]').trigger('click');
+    expect(wrapper.emitted('update:collapsed')).toEqual([[false]]);
+
+    await wrapper.setProps({ collapsed: false });
+    await nextTick();
+    expect(wrapper.find('[data-testid="drawer-content-view"]').exists()).toBe(true);
+  });
+
+  it('leaves an already-open drawer open when its rail button is used', async () => {
+    const wrapper = mountSidebar(320, true);
+
+    await wrapper.find('[data-testid="sidebar-rail-properties"]').trigger('click');
+    await wrapper.setProps({ collapsed: false });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="drawer-content-properties"]').exists()).toBe(true);
   });
 
   it('emits a clamped-agnostic width delta while dragging the handle', async () => {

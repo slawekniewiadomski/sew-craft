@@ -8,6 +8,7 @@ import {
   dimensionPatchForEdit,
   dimensionSegments,
   dimensionStateLabel,
+  dimensionTone,
   filterReferenceOptions,
   formatDimensionField,
   formatDimensionLabel,
@@ -128,6 +129,14 @@ describe('dimension state presentation', () => {
     expect(dimensionStateLabel('referenced')).toBe('Referenced');
     expect(dimensionStateLabel('broken')).toBe('Broken');
     expect(dimensionStateLabel('derived')).toBe('Cut');
+  });
+
+  it('maps every state to a pill tone', () => {
+    expect(dimensionTone('set')).toBe('neutral');
+    expect(dimensionTone('driven')).toBe('neutral');
+    expect(dimensionTone('referenced')).toBe('accent');
+    expect(dimensionTone('derived')).toBe('accent');
+    expect(dimensionTone('broken')).toBe('danger');
   });
 
   it('builds an accessible name that does not rely on color', () => {
