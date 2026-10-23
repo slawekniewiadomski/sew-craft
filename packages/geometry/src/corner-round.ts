@@ -24,6 +24,8 @@ export interface CornerRoundGeometry {
   tangentB: Vec2;
   control1: Vec2;
   control2: Vec2;
+  /** Centre of the radius arc, equidistant from both lines. */
+  center: Vec2;
   /** Distance from the sharp corner to either tangent point. */
   tangentDistance: number;
   /** Interior angle at the sharp corner, in radians. */
@@ -94,12 +96,19 @@ export function cornerRoundGeometry(
   const tangentDistance = radius / Math.tan(angle / 2);
   const controlDistance = (4 / 3) * Math.tan((Math.PI - angle) / 4) * radius;
 
+  // The centre lies on the interior angle bisector, `r / sin(θ/2)` from the
+  // sharp corner. Equivalently it is one radius along the inward normal of
+  // either line at its tangent point.
+  const bisector = normalize(add(uA, uB));
+  const centerDistance = radius / Math.sin(angle / 2);
+
   return {
     geometry: {
       tangentA: add(fromCorner, scale(uA, tangentDistance)),
       tangentB: add(fromCorner, scale(uB, tangentDistance)),
       control1: add(fromCorner, scale(uA, tangentDistance - controlDistance)),
       control2: add(fromCorner, scale(uB, tangentDistance - controlDistance)),
+      center: add(fromCorner, scale(bisector, centerDistance)),
       tangentDistance,
       angle,
     },
@@ -114,6 +123,7 @@ export function cornerRoundsForEntity(document: PatternDocument, id: EntityId): 
       round.id === id ||
       round.corner === id ||
       round.arc === id ||
+      round.center === id ||
       round.controls.includes(id) ||
       round.ends.some((end) => end.line === id || end.anchor === id || end.tangent === id),
   );
@@ -166,6 +176,7 @@ export function isCornerRoundDerived(document: PatternDocument, id: EntityId): b
   return cornerRounds(document).some(
     (round) =>
       round.arc === id ||
+      round.center === id ||
       round.controls.includes(id) ||
       round.ends.some((end) => end.tangent === id),
   );
@@ -348,6 +359,10 @@ export function regenerateCornerRounds(document: PatternDocument): PatternDocume
       construction: lineEntity(document, round.ends[0].line)!.construction,
     });
 
+    if (round.center !== undefined) {
+      replacePoint(round.center, geometry.center, true);
+    }
+
     const corner = entities.get(round.corner) as PointEntity;
     entities.set(round.corner, { ...corner, construction: true });
   }
@@ -406,6 +421,11 @@ function isPersistedRoundValid(
     if (length - used - geometry.geometry.tangentDistance < MIN_CORNER_ROUND) return false;
   }
 
+  if (round.center !== undefined) {
+    const centre = pointEntity(document, round.center);
+    if (centre === undefined || !centre.fixed || !centre.construction) return false;
+  }
+
   const arc = curveEntity(document, round.arc);
   if (arc === undefined) return false;
   if (arc.p0 !== round.ends[0].tangent || arc.p3 !== round.ends[1].tangent) return false;
@@ -427,7 +447,39 @@ export function normalizeCornerRounds(document: PatternDocument): PatternDocumen
 
   const seenCorners = new Set<EntityId>();
   const kept = rounds.filter((round) => isPersistedRoundValid(document, round, seenCorners));
-  if (kept.length === rounds.length) return document;
+  const missingCentre = kept.filter((round) => round.center === undefined);
+  if (kept.length === rounds.length && missingCentre.length === 0) return document;
+  if (missingCentre.length === 0) return { ...document, cornerRounds: kept };
 
-  return { ...document, cornerRounds: kept };
+  // Mint the centre for a round that predates feature points. Load never moves
+  // geometry: the minted point is computed once, and an existing entity with the
+  // deterministic id is reused rather than overwritten.
+  const entities = new Map<EntityId, Entity>(document.entities.map((entity) => [entity.id, entity]));
+  const withCentre = kept.map((round): CornerRound => {
+    if (round.center !== undefined) return round;
+
+    const geometry = cornerRoundGeometry(
+      document,
+      round.corner,
+      round.ends[0].anchor,
+      round.ends[1].anchor,
+      round.radius,
+    ).geometry!;
+    const id = `${round.id}:center`;
+
+    if (!entities.has(id)) {
+      entities.set(id, {
+        id,
+        kind: 'point',
+        x: geometry.center.x,
+        y: geometry.center.y,
+        construction: true,
+        fixed: true,
+      });
+    }
+
+    return { ...round, center: id };
+  });
+
+  return { ...document, entities: [...entities.values()], cornerRounds: withCentre };
 }

@@ -93,6 +93,7 @@ describe('add_corner_round', () => {
       radius: 10,
       arc: 'r1:arc',
       controls: ['r1:c1', 'r1:c2'],
+      center: 'r1:center',
       cornerConstruction: false,
     });
     expect(round.ends).toEqual([
@@ -115,6 +116,13 @@ describe('add_corner_round', () => {
     });
     expect((entity(result.document, 'r1:b') as PointEntity).x).toBeCloseTo(0);
     expect((entity(result.document, 'r1:b') as PointEntity).y).toBeCloseTo(10);
+    expect(entity(result.document, 'r1:center')).toMatchObject({
+      kind: 'point',
+      x: 10,
+      y: 10,
+      construction: true,
+      fixed: true,
+    });
     expect(entity(result.document, 'r1:c1')).toMatchObject({ construction: true, fixed: true });
     expect(entity(result.document, 'r1:arc')).toMatchObject({
       kind: 'curve',
@@ -287,6 +295,16 @@ describe('add_corner_round', () => {
     expect(() => applyCommand(collisionDocument, addRound())).toThrow(
       'Derived entity id "r1:a" is in use.',
     );
+
+    const centreCollision: PatternDocument = {
+      ...collision,
+      entities: collision.entities.map((candidate) =>
+        candidate.id === 'seed' ? { ...candidate, id: 'r1:center' } : candidate,
+      ),
+    };
+    expect(() => applyCommand(centreCollision, addRound())).toThrow(
+      'Derived entity id "r1:center" is in use.',
+    );
   });
 
   it('rejects when an opposite round makes the fit unknowable', () => {
@@ -445,13 +463,29 @@ describe('remove_corner_round', () => {
     expect(entity(result.document, 'l1')).toMatchObject({ start: 'c', end: 'a' });
     expect(entity(result.document, 'l2')).toMatchObject({ start: 'c', end: 'b' });
     expect(entity(result.document, 'c')).toMatchObject({ construction: false });
-    for (const id of ['r1:a', 'r1:b', 'r1:c1', 'r1:c2', 'r1:arc']) {
+    for (const id of ['r1:a', 'r1:b', 'r1:c1', 'r1:c2', 'r1:arc', 'r1:center']) {
       expect(getEntity(result.document, id)).toBeUndefined();
     }
 
     const restored = applyCommand(result.document, result.inverse!).document;
     expect(cornerRounds(restored).map((round) => [round.id, round.radius])).toEqual([['r1', 10]]);
     expect(getEntity(restored, 'r1:arc')).toBeDefined();
+  });
+
+  it('removes a round written before feature points without a centre', () => {
+    const legacy: PatternDocument = {
+      ...rounded(),
+      cornerRounds: [{ ...cornerRounds(rounded())[0]!, center: undefined }],
+    };
+
+    const result = applyCommand(legacy, {
+      id: 'remove',
+      type: 'remove_corner_round',
+      params: { id: 'r1' },
+    });
+
+    expect(result.document.cornerRounds).toEqual([]);
+    expect(getEntity(result.document, 'r1:arc')).toBeUndefined();
   });
 
   it('is idempotent for an unknown round', () => {
@@ -514,8 +548,8 @@ describe('corner-round cascade and guards', () => {
     expect(getEntity(result, 'r1:arc')).toBeUndefined();
   });
 
-  it('deletes the arc, a tangent or a control point with its round', () => {
-    for (const id of ['r1:arc', 'r1:a', 'r1:c1']) {
+  it('deletes the arc, a tangent, a control point or the centre with its round', () => {
+    for (const id of ['r1:arc', 'r1:a', 'r1:c1', 'r1:center']) {
       const result = applyCommand(rounded(), {
         id: `del-${id}`,
         type: 'delete_entity',
@@ -554,13 +588,15 @@ describe('corner-round cascade and guards', () => {
   });
 
   it('rejects moving derived points but allows the sharp corner', () => {
-    expect(() =>
-      applyCommand(rounded(), {
-        id: 'move',
-        type: 'move_point',
-        params: { id: 'r1:a', x: 5, y: 5 },
-      }),
-    ).toThrow('This point is derived by a corner round; edit the radius.');
+    for (const id of ['r1:a', 'r1:center']) {
+      expect(() =>
+        applyCommand(rounded(), {
+          id: 'move',
+          type: 'move_point',
+          params: { id, x: 5, y: 5 },
+        }),
+      ).toThrow('This point is derived by a corner round; edit the radius.');
+    }
 
     const moved = executeCommand(rounded(), {
       id: 'move',
