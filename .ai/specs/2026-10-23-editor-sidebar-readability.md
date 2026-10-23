@@ -1,6 +1,6 @@
 # Editor sidebar readability
 
-Status: proposed
+Status: implemented
 Builds on: 013-editor-workspace-shell (the sidebar shell, drawers and rail),
 2026-10-23-pieces-sidebar-and-selection (Pieces drawer, Outline selection),
 2026-10-20-selected-entity-properties (the per-entity inspector)

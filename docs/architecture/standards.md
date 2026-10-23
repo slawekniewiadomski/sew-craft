@@ -128,6 +128,37 @@ Laravel-idiomatic, matching `docs/architecture/data-model.md`:
 - Keep geometry math, solving and business rules out of components — they belong
   in `@sewcraft/geometry` or stores/composables.
 
+### Sidebar UI contract (Reviewed)
+
+Every editor sidebar surface uses one scale and one set of primitives, so a new
+drawer has a pattern to follow instead of inventing classes. The scale lives in
+`frontend/src/assets/main.css` as the `--text-2xs` token; the primitives live in
+`frontend/src/components/sidebar/`.
+
+| Role               | Classes                                                                                           | Where                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Drawer header      | `text-2xs font-semibold tracking-[0.06em] text-muted-foreground uppercase`, hover `text-foreground` | `SidebarDrawer` trigger                                     |
+| Sub-section heading | the same, plus `mb-1.5`                                                                           | `SidebarHeading` in Geometry, Dimensions, Constraints, View |
+| Field label        | `text-2xs text-muted-foreground`                                                                  | `SidebarField` `dt` and standalone `<label>`                |
+| Field value        | `text-[13px] font-medium tabular-nums text-foreground`                                            | `SidebarField` `dd` and read-only values                    |
+| Object title       | `text-[13px] font-semibold`                                                                       | Inspector header, piece name                                |
+| Metadata           | `font-mono text-2xs text-muted-foreground`                                                        | ids, endpoints, source refs                                 |
+| Secondary sentence | `text-2xs leading-snug text-muted-foreground`                                                     | hints, empty-state text                                     |
+
+Rules:
+
+- `text-muted-foreground` is only ever a **label or metadata**, never the value
+  being read.
+- Numbers use `tabular-nums`; the unit is a separate `text-2xs` muted span, never
+  part of the number.
+- Nothing in the sidebar goes below 11 px (`text-2xs`).
+- Ids trail the human label; they are never a row's only distinct token.
+- Row actions are always-visible `SidebarAction` icon buttons (28 px) with a
+  tooltip and an `aria-label` that match. No action is hover-only.
+- `Pill` has one shape and three tones: neutral, accent, danger.
+- Empty drawers use `SidebarEmpty`, not a bare muted sentence.
+- Workspace stats live in the `SidebarStat` status footer, not in a drawer.
+
 ---
 
 ## Testing conventions (Reviewed)
