@@ -433,11 +433,11 @@ describe('buildRectangleCommands', () => {
     );
 
     // The drag moved the corner, and the four sides stayed on their axes.
-    expect(a.x).not.toBeCloseTo(0, 3);
-    expect(a.y).toBeCloseTo(b!.y);
+    expect(a!.x).not.toBeCloseTo(0, 3);
+    expect(a!.y).toBeCloseTo(b!.y);
     expect(b!.x).toBeCloseTo(c!.x);
     expect(c!.y).toBeCloseTo(d!.y);
-    expect(d!.x).toBeCloseTo(a.x);
+    expect(d!.x).toBeCloseTo(a!.x);
   });
 
   it('keeps a rotated rectangle rectangular when one corner is dragged', () => {
