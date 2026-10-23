@@ -277,6 +277,8 @@ const props = withDefaults(
     roundCornerActive?: boolean;
     roundCornerPicks?: CornerRoundPicks;
     cornerRoundPreviewRadius?: number | null;
+    /** A read-only document refuses every pointer gesture. */
+    readOnly?: boolean;
   }>(),
   {
     selectedEntityIds: () => [],
@@ -290,6 +292,7 @@ const props = withDefaults(
     roundCornerActive: false,
     roundCornerPicks: () => ({ first: null, second: null }),
     cornerRoundPreviewRadius: null,
+    readOnly: false,
   },
 );
 
@@ -1437,6 +1440,7 @@ function updateDimensionPlacement(screen: Vec2): void {
 }
 
 function beginDimensionDrag(constraint: DistanceConstraint, event: PointerEvent): void {
+  if (props.readOnly) return;
   event.stopPropagation();
   event.preventDefault();
   const offset = constraintOffset(constraint);
@@ -1456,6 +1460,7 @@ function beginDerivedDimensionDrag(
   constraint: DerivedDistanceConstraint,
   event: PointerEvent,
 ): void {
+  if (props.readOnly) return;
   event.stopPropagation();
   event.preventDefault();
   // The drag strip only renders for a drawing whose span already resolved.
@@ -1485,7 +1490,7 @@ function labelClass(label: DimensionLabelView): string {
 }
 
 function onDimensionDoubleClick(label: DimensionLabelView): void {
-  if (!label.editable) return;
+  if (props.readOnly || !label.editable) return;
   void beginDimensionEdit(label.constraint);
 }
 
@@ -1686,6 +1691,8 @@ function cancelCornerRoundEdit(): void {
 }
 
 function onPointerDown(event: PointerEvent): void {
+  if (props.readOnly) return;
+
   updateSize();
   const screen = screenPoint(event);
 
@@ -2291,6 +2298,7 @@ watch(
   <div
     class="relative h-full min-h-0 w-full overflow-hidden rounded-md border bg-muted/30"
     :class="cursorClass"
+    :aria-readonly="readOnly ? 'true' : undefined"
   >
     <svg
       ref="svg"

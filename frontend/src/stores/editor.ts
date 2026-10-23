@@ -7,7 +7,10 @@ import {
   type PatternDocument,
 } from '@sewcraft/geometry';
 import { defineStore } from 'pinia';
-import { computed, shallowRef } from 'vue';
+import { computed, ref, shallowRef } from 'vue';
+
+/** The status of the last save attempt; `idle` before the first one. */
+export type SaveState = 'idle' | 'saving' | 'saved' | 'failed';
 
 /**
  * One committed command. `before` is the exact document the command was applied
@@ -35,14 +38,29 @@ export const useEditorStore = defineStore('editor', () => {
   const past = shallowRef<JournalEntry[]>([]);
   const future = shallowRef<JournalEntry[]>([]);
 
+  /** The exact document last loaded or saved; identity is the dirty check. */
+  const savedDocument = shallowRef<PatternDocument | null>(null);
+  /** True until the first save, even while the empty document is still clean. */
+  const newProject = ref(true);
+  /** The checkpoint the next save expects; 0 when nothing is stored yet. */
+  const savedVersion = ref(0);
+  const lastSavedAt = ref<string | null>(null);
+  const saveState = ref<SaveState>('idle');
+  /** Read-only documents reject every mutation, including undo and redo. */
+  const readOnly = ref(false);
+
   const canUndo = computed(() => past.value.length > 0);
   const canRedo = computed(() => future.value.length > 0);
+  const isDirty = computed(() => document.value !== savedDocument.value);
+  const isNew = computed(() => newProject.value);
 
   /**
    * The only mutation path. Applies and solves the command before touching
    * state, so a rejected or non-converged command leaves the store untouched.
    */
   function dispatch(command: Command): void {
+    if (readOnly.value) return;
+
     const before = document.value;
     const result = executeCommand(before, command);
 
@@ -57,7 +75,7 @@ export const useEditorStore = defineStore('editor', () => {
    * the document and the history untouched. An empty batch is a no-op.
    */
   function dispatchGroup(commands: Command[]): void {
-    if (commands.length === 0) return;
+    if (readOnly.value || commands.length === 0) return;
 
     const before = document.value;
     let next = before;
@@ -84,6 +102,8 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function undo(): void {
+    if (readOnly.value) return;
+
     const entry = past.value[past.value.length - 1];
     if (entry === undefined) return;
 
@@ -93,6 +113,8 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function redo(): void {
+    if (readOnly.value) return;
+
     const entry = future.value[future.value.length - 1];
     if (entry === undefined) return;
 
@@ -110,16 +132,99 @@ export const useEditorStore = defineStore('editor', () => {
     future.value = [];
   }
 
+  /** Replace the document without normalising it; only unknown schemas use this. */
+  function loadRaw(next: PatternDocument): void {
+    document.value = next;
+    past.value = [];
+    future.value = [];
+  }
+
+  /** Start an unsaved project: an empty document with no stored copy. */
+  function markNew(): void {
+    load(createEmptyDocument());
+    savedDocument.value = document.value;
+    newProject.value = true;
+    savedVersion.value = 0;
+    lastSavedAt.value = null;
+    saveState.value = 'idle';
+    readOnly.value = false;
+  }
+
+  /** Adopt a stored document as the clean baseline. */
+  function markLoaded(next: PatternDocument, version: number, savedAt: string | null): void {
+    load(next);
+    savedDocument.value = document.value;
+    newProject.value = false;
+    savedVersion.value = version;
+    lastSavedAt.value = savedAt;
+    saveState.value = 'idle';
+    readOnly.value = false;
+  }
+
+  /** Adopt an unknown document as a clean, read-only baseline. */
+  function markReadOnlyLoaded(
+    next: PatternDocument,
+    version: number,
+    savedAt: string | null,
+  ): void {
+    loadRaw(next);
+    savedDocument.value = next;
+    newProject.value = false;
+    savedVersion.value = version;
+    lastSavedAt.value = savedAt;
+    saveState.value = 'idle';
+    readOnly.value = true;
+  }
+
+  function markSaving(): void {
+    saveState.value = 'saving';
+  }
+
+  /**
+   * Record a successful save. `next` is the exact snapshot that was sent, so
+   * edits made while the request was in flight keep the document dirty.
+   */
+  function markSaved(next: PatternDocument, version: number, savedAt: string | null): void {
+    savedDocument.value = next;
+    newProject.value = false;
+    savedVersion.value = version;
+    lastSavedAt.value = savedAt;
+    saveState.value = 'saved';
+  }
+
+  function markSaveFailed(): void {
+    saveState.value = 'failed';
+  }
+
+  function setReadOnly(value: boolean): void {
+    readOnly.value = value;
+  }
+
   return {
     document,
     journal: past,
     future,
     canUndo,
     canRedo,
+    savedDocument,
+    savedVersion,
+    lastSavedAt,
+    saveState,
+    readOnly,
+    isDirty,
+    isNew,
     dispatch,
     dispatchGroup,
     undo,
     redo,
     load,
+    loadRaw,
+    markNew,
+    markLoaded,
+    markReadOnlyLoaded,
+    markSaving,
+    markSaved,
+    markSaveFailed,
+    setReadOnly,
   };
 });
