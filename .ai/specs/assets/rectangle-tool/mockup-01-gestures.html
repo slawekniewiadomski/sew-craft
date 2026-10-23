@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rectangle tool — gesture mockup</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #1c1c1c;
+        --muted: #6b6b6b;
+        --line: #d8d5cf;
+        --grid: #ece9e3;
+        --accent: #2f6f4f;
+        --draft: #8a8a8a;
+        --paper: #fbfaf7;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--paper);
+        color: var(--ink);
+        font:
+          14px/1.45 ui-sans-serif,
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 17px;
+        font-weight: 600;
+      }
+      p.lede {
+        margin: 0 0 20px;
+        max-width: 76ch;
+        color: var(--muted);
+      }
+      .modes {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+      figure {
+        margin: 0;
+        padding: 12px 12px 10px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+      }
+      figcaption {
+        margin-bottom: 8px;
+        font-weight: 600;
+      }
+      figcaption span {
+        display: block;
+        font-weight: 400;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+      .foot {
+        margin-top: 16px;
+        padding: 10px 12px;
+        border-left: 3px solid var(--line);
+        color: var(--muted);
+        font-size: 12.5px;
+        max-width: 86ch;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.92em;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Rectangle tool — three gestures, one result</h1>
+    <p class="lede">
+      Every mode resolves to four corner points and four lines. Numbers mark the click order; the dashed
+      lines trace the pointer path, and the solid outline is the committed rectangle.
+    </p>
+
+    <div class="modes">
+      <figure>
+        <figcaption>Rectangle<span>2 clicks — diagonal corners</span></figcaption>
+        <svg viewBox="0 0 220 180" role="img" aria-label="Two-click diagonal rectangle">
+          <defs>
+            <pattern id="g1" width="20" height="20" patternUnits="userSpaceOnUse">
+              <path d="M20 0H0V20" fill="none" stroke="var(--grid)" />
+            </pattern>
+          </defs>
+          <rect width="220" height="180" fill="url(#g1)" rx="6" />
+          <rect
+            x="40"
+            y="30"
+            width="140"
+            height="100"
+            fill="none"
+            stroke="var(--accent)"
+            stroke-width="2"
+          />
+          <line x1="40" y1="30" x2="180" y2="130" stroke="var(--draft)" stroke-dasharray="4 4" />
+          <circle cx="40" cy="30" r="4" fill="var(--accent)" />
+          <circle cx="180" cy="130" r="4" fill="var(--accent)" />
+          <text x="28" y="24" font-size="11" fill="var(--muted)">1</text>
+          <text x="184" y="134" font-size="11" fill="var(--muted)">2</text>
+          <circle cx="40" cy="30" r="9" fill="none" stroke="var(--accent)" stroke-width="1" />
+        </svg>
+      </figure>
+
+      <figure>
+        <figcaption>Centre rectangle<span>2 clicks — centre, then a corner</span></figcaption>
+        <svg viewBox="0 0 220 180" role="img" aria-label="Two-click centre rectangle">
+          <defs>
+            <pattern id="g2" width="20" height="20" patternUnits="userSpaceOnUse">
+              <path d="M20 0H0V20" fill="none" stroke="var(--grid)" />
+            </pattern>
+          </defs>
+          <rect width="220" height="180" fill="url(#g2)" rx="6" />
+          <rect
+            x="40"
+            y="40"
+            width="140"
+            height="80"
+            fill="none"
+            stroke="var(--accent)"
+            stroke-width="2"
+          />
+          <line
+            x1="110"
+            y1="80"
+            x2="180"
+            y2="40"
+            stroke="var(--draft)"
+            stroke-dasharray="4 4"
+          />
+          <circle cx="110" cy="80" r="4" fill="var(--accent)" />
+          <circle cx="180" cy="40" r="4" fill="var(--accent)" />
+          <text x="98" y="74" font-size="11" fill="var(--muted)">1</text>
+          <text x="184" y="44" font-size="11" fill="var(--muted)">2</text>
+          <circle cx="110" cy="80" r="10" fill="none" stroke="var(--accent)" stroke-width="1" />
+        </svg>
+      </figure>
+
+      <figure>
+        <figcaption>3-point rectangle<span>3 clicks — corner, side end, width</span></figcaption>
+        <svg viewBox="0 0 220 180" role="img" aria-label="Three-click rotated rectangle">
+          <defs>
+            <pattern id="g3" width="20" height="20" patternUnits="userSpaceOnUse">
+              <path d="M20 0H0V20" fill="none" stroke="var(--grid)" />
+            </pattern>
+          </defs>
+          <rect width="220" height="180" fill="url(#g3)" rx="6" />
+          <polygon
+            points="40,120 170,60 183,87 53,147"
+            fill="none"
+            stroke="var(--accent)"
+            stroke-width="2"
+          />
+          <line x1="40" y1="120" x2="170" y2="60" stroke="var(--draft)" stroke-dasharray="4 4" />
+          <line x1="170" y1="60" x2="183" y2="87" stroke="var(--draft)" stroke-dasharray="4 4" />
+          <circle cx="40" cy="120" r="4" fill="var(--accent)" />
+          <circle cx="170" cy="60" r="4" fill="var(--accent)" />
+          <circle cx="183" cy="87" r="4" fill="var(--accent)" />
+          <text x="26" y="132" font-size="11" fill="var(--muted)">1</text>
+          <text x="174" y="56" font-size="11" fill="var(--muted)">2</text>
+          <text x="188" y="92" font-size="11" fill="var(--muted)">3</text>
+          <circle cx="40" cy="120" r="9" fill="none" stroke="var(--accent)" stroke-width="1" />
+        </svg>
+      </figure>
+    </div>
+
+    <p class="foot">
+      Rejected reading of the third mode (Q1, I2): three corners of an axis-aligned rectangle. It
+      adds one click to the diagonal gesture and cannot express a rotated panel, so the spec
+      recommends the aligned reading shown above.
+    </p>
+  </body>
+</html>

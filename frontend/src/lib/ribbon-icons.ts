@@ -13,6 +13,9 @@ export type RibbonIconName =
   | 'curve'
   | 'arc'
   | 'circle'
+  | 'rectangle'
+  | 'rectangle-center'
+  | 'rectangle-aligned'
   | 'dimension'
   | 'cut-dimension'
   | 'piece'
@@ -36,6 +39,12 @@ const ACTION_ICONS: Record<ActionIconName, RibbonIcon> = {
   curve: { paths: ['M1.8 9.4 C4 3, 8 9, 10.2 2.6'] },
   arc: { paths: ['M2.2 9.6 A 7.3 7.3 0 0 1 9.8 2.4'] },
   circle: { paths: ['M1.5 6 A4.5 4.5 0 0 1 10.5 6 A4.5 4.5 0 0 1 1.5 6'] },
+  rectangle: { paths: ['M2 3.5 H10 V8.5 H2 Z'] },
+  'rectangle-center': {
+    paths: ['M2 3.5 H10 V8.5 H2 Z'],
+    dots: [{ cx: 6, cy: 6, r: 1.2 }],
+  },
+  'rectangle-aligned': { paths: ['M1.8 7.4 L6.6 2.2 L10.2 5.4 L5.4 10.6 Z'] },
   dimension: {
     paths: [
       'M2.5 2 V10',

@@ -479,6 +479,133 @@ describe('EditorView', () => {
     expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Circle');
   });
 
+  it('draws a rectangle over existing corners and undoes the four sides in one step', async () => {
+    const { wrapper, store } = await mountLoaded(simpleDoc);
+    const before = store.document.entities.length;
+
+    await wrapper.find('[data-testid="tool-add_rectangle"]').trigger('click');
+    pointDown(wrapper, 'p');
+    pointDown(wrapper, 'r');
+    await flushPromises();
+
+    expect(store.journal).toHaveLength(1);
+    expect(store.document.entities).toHaveLength(before + 4);
+    expect(store.document.entities.filter((entity) => entity.kind === 'line')).toHaveLength(4);
+    expect(store.document.entities.filter((entity) => entity.kind === 'point')).toHaveLength(4);
+
+    store.undo();
+    await nextTick();
+
+    expect(store.document.entities).toHaveLength(before);
+    expect(store.journal).toHaveLength(0);
+  });
+
+  it('draws a rectangle in empty space as one undoable gesture', async () => {
+    const { wrapper, store } = await mountLoaded(simpleDoc);
+    const before = store.document.entities.length;
+
+    await wrapper.find('[data-testid="tool-add_center_rectangle"]').trigger('click');
+    canvasDown(wrapper, 700, 200);
+    await nextTick();
+    expect(wrapper.findAll('[data-testid^="rectangle-pending-corner-"]')).toHaveLength(1);
+
+    canvasDown(wrapper, 300, 500);
+    await flushPromises();
+
+    expect(store.document.entities).toHaveLength(before + 8);
+    expect(store.journal).toHaveLength(1);
+    expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Centre rectangle');
+
+    store.undo();
+    await nextTick();
+
+    expect(store.document.entities).toHaveLength(before);
+    expect(store.journal).toHaveLength(0);
+  });
+
+  it('constrains a fresh rectangle and leaves a reused-corner one alone', async () => {
+    const { wrapper, store } = await mountLoaded(simpleDoc);
+
+    await wrapper.find('[data-testid="tool-add_rectangle"]').trigger('click');
+    canvasDown(wrapper, 700, 500);
+    canvasDown(wrapper, 300, 200);
+    await flushPromises();
+
+    const fresh = store.document.constraints.map((constraint) => constraint.type);
+    expect(fresh).toHaveLength(4);
+    expect(fresh.filter((type) => type === 'horizontal')).toHaveLength(2);
+    expect(fresh.filter((type) => type === 'vertical')).toHaveLength(2);
+
+    store.undo();
+    await nextTick();
+    expect(store.document.constraints).toHaveLength(0);
+
+    const lateral = await mountLoaded(simpleDoc);
+    await lateral.wrapper.find('[data-testid="tool-add_rectangle"]').trigger('click');
+    pointDown(lateral.wrapper, 'p');
+    pointDown(lateral.wrapper, 'r');
+    await flushPromises();
+
+    expect(lateral.store.document.constraints).toHaveLength(0);
+    expect(lateral.store.document.entities.filter((entity) => entity.kind === 'line')).toHaveLength(
+      4,
+    );
+  });
+
+  it('constrains a rotated rectangle with three right angles', async () => {
+    const { wrapper, store } = await mountLoaded(simpleDoc);
+
+    await wrapper.find('[data-testid="tool-add_3point_rectangle"]').trigger('click');
+    canvasDown(wrapper, 300, 500);
+    canvasDown(wrapper, 300, 300);
+    canvasDown(wrapper, 500, 400);
+    await flushPromises();
+
+    const angles = store.document.constraints.filter((constraint) => constraint.type === 'angle');
+    expect(angles).toHaveLength(3);
+    for (const angle of angles) {
+      expect(angle.type === 'angle' ? Math.abs(angle.value) : 0).toBeCloseTo(Math.PI / 2);
+    }
+  });
+
+  it('adds no constraints to a rectangle drawn onto constrained geometry', async () => {
+    const constrained: PatternDocument = {
+      ...simpleDoc,
+      constraints: [{ id: 'h', type: 'horizontal', a: 'p', b: 'q' }],
+    };
+    const { wrapper, store } = await mountLoaded(constrained);
+
+    await wrapper.find('[data-testid="tool-add_rectangle"]').trigger('click');
+    pointDown(wrapper, 'p');
+    pointDown(wrapper, 'r');
+    await flushPromises();
+
+    expect(store.document.constraints).toEqual([{ id: 'h', type: 'horizontal', a: 'p', b: 'q' }]);
+    expect(store.document.entities.filter((entity) => entity.kind === 'line')).toHaveLength(4);
+    expect(store.journal).toHaveLength(1);
+  });
+
+  it('rolls a failing rectangle batch back and reports why', async () => {
+    const rounded = executeCommand(lineDoc, {
+      id: 'r1',
+      type: 'add_corner_round',
+      params: { first: 'ab', second: 'bc', radius: 10 },
+    }).document;
+    const tangent = rounded.cornerRounds![0]!.ends[0]!.tangent;
+    const { wrapper, store } = await mountLoaded(rounded);
+    const before = store.document.entities.length;
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('add-rectangle', 'diagonal', [
+      { kind: 'point', id: tangent },
+      { kind: 'point', id: 'e' },
+    ]);
+    await flushPromises();
+
+    expect(store.document.entities).toHaveLength(before);
+    expect(store.journal).toHaveLength(0);
+    expect(wrapper.text()).toContain('derived by a corner round');
+  });
+
   it('edits a circle radius from the inspector by moving the rim', async () => {
     const { wrapper, store } = await mountLoaded(circleDoc);
 
