@@ -127,5 +127,5 @@ captured under `.ai/runs/assets/2026-10-23-rectangle-tool/`:
 
 ### Phase 5: Verification
 
-- [ ] 5.1 Run the full validation gate (format, typecheck, lint, format:check, coverage, build, Pest, Pint)
-- [ ] 5.2 Verify the three gestures in the running app, including dimensions, a rounded corner, a seam allowance and a piece on a rotated rectangle, one-step undo, Escape and SVG export; record the result on the PR
+- [x] 5.1 Run the full validation gate (format, typecheck, lint, format:check, coverage, build, Pest, Pint) — 1dea7d5
+- [x] 5.2 Verify the three gestures in the running app, including dimensions, a rounded corner, a seam allowance and a piece on a rotated rectangle, one-step undo, Escape and SVG export; record the result on the PR — 1dea7d5
