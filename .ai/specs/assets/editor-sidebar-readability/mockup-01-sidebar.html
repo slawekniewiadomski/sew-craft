@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Editor sidebar — now vs proposed</title>
+<style>
+  :root{
+    --p-bg:#fff;
+    --p-fg:oklch(0.145 0 0);
+    --p-muted:oklch(0.556 0 0);
+    --p-muted-bg:oklch(0.97 0 0);
+    --p-border:oklch(0.922 0 0);
+    --p-primary:oklch(0.627 0.194 149.214);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;padding:20px 24px 28px;background:#fff;color:var(--p-fg);
+    font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  }
+  .lede{font-size:12px;color:var(--p-muted);margin:0 0 16px;max-width:700px;line-height:1.5}
+  .cols{display:flex;flex-wrap:wrap;gap:18px}
+  .cap{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--p-muted);margin-bottom:6px}
+  .cap .sw{width:8px;height:8px;border-radius:2px;background:var(--p-muted);opacity:.45}
+  .cap.new .sw{background:var(--p-primary);opacity:1}
+  .side{
+    width:320px;height:566px;overflow-y:auto;overscroll-behavior:contain;
+    background:var(--p-bg);color:var(--p-fg);
+    border:1px solid var(--p-border);border-radius:8px;
+    font-size:14px;line-height:1.4;
+  }
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .muted{color:var(--p-muted)}
+
+  .now-top{display:flex;justify-content:flex-end;padding:2px 4px;border-bottom:1px solid var(--p-border)}
+  .now-ico{width:28px;height:28px;display:grid;place-items:center;border:0;background:none;color:inherit;font-size:14px}
+  .now-head{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;font-size:14px;font-weight:500}
+  .now-head:hover{background:var(--p-muted-bg)}
+  .now-body{padding:0 12px 12px}
+  .now-h2{font-size:14px;font-weight:600;margin:0 0 6px;display:flex;align-items:center;gap:6px}
+  .now-hint{font-size:12px;color:var(--p-muted);margin:0 0 10px;line-height:1.35}
+  .now-h3{font-size:12px;font-weight:600;text-transform:uppercase;color:var(--p-muted);margin:12px 0 4px}
+  .kv{display:flex;justify-content:space-between;gap:8px;font-size:14px;line-height:1.55}
+  .kv dt{color:var(--p-muted)}
+  .tiny{font-size:12px;margin:2px 0 0;color:var(--p-muted)}
+  .now-div{border-top:1px solid var(--p-border);margin-top:12px}
+  .smallbtn{border:1px solid var(--p-border);border-radius:6px;padding:2px 8px;font-size:12px;background:#fff;color:inherit;font-family:inherit}
+  .orow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;font-size:14px;padding:3px 0}
+  .prow{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px;padding:3px 0}
+  .prow span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  .n-top{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-bottom:1px solid var(--p-border)}
+  .n-crumb{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--p-muted);font-weight:600}
+  .n-head{display:flex;align-items:center;gap:7px;padding:8px 12px;border-top:1px solid var(--p-border);font-size:11px;letter-spacing:.07em;text-transform:uppercase;font-weight:600;color:var(--p-muted)}
+  .n-head.first{border-top:0}
+  .n-count{margin-left:auto;font-size:10px;font-weight:600;letter-spacing:0;color:var(--p-muted);background:var(--p-muted-bg);border-radius:999px;padding:1px 6px}
+  .n-body{padding:2px 12px 14px}
+  .obj{display:flex;align-items:center;gap:8px;margin:2px 0 10px}
+  .glyph{width:24px;height:24px;border-radius:5px;background:var(--p-muted-bg);display:grid;place-items:center;flex:none;color:var(--p-fg)}
+  .obj-name{font-size:13px;font-weight:600;letter-spacing:-.01em}
+  .obj-id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--p-muted)}
+  .chip{font-size:10px;letter-spacing:.02em;border-radius:4px;padding:1px 5px;background:var(--p-muted-bg);color:var(--p-muted);border:1px solid var(--p-border);white-space:nowrap}
+  .chip.edge{border-color:color-mix(in srgb,var(--p-primary) 40%,transparent);color:var(--p-primary);background:color-mix(in srgb,var(--p-primary) 8%,transparent)}
+  .grid2{display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-size:13px;margin:0}
+  .grid2 dt{font-size:11px;color:var(--p-muted);letter-spacing:.01em;align-self:center}
+  .grid2 dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;font-weight:500}
+  .u{color:var(--p-muted);font-size:11px;font-weight:400;margin-left:2px}
+  .nrow{display:flex;align-items:center;gap:8px;padding:4px 6px 4px 7px;margin:0 -6px;border-left:2px solid transparent;font-size:13px}
+  .nrow.sel{border-left-color:var(--p-primary);background:color-mix(in srgb,var(--p-primary) 8%,transparent)}
+  .nrow.hov{background:var(--p-muted-bg)}
+  .rid{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--p-muted)}
+  .rlabel{font-weight:500;letter-spacing:-.01em}
+  .iact{margin-left:auto;width:22px;height:22px;border-radius:4px;display:grid;place-items:center;color:var(--p-muted);flex:none}
+  .card{border:1px solid var(--p-border);border-radius:6px;padding:7px 9px;display:flex;flex-direction:column;gap:2px}
+  .card-top{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600}
+  .card-sub{font-size:11px;color:var(--p-muted);font-variant-numeric:tabular-nums}
+  .mark{display:inline-grid;place-items:center;width:15px;height:15px;border-radius:50%;background:var(--p-primary);color:#fff;font-size:9px;font-weight:700;flex:none;line-height:1}
+  .legend{display:grid;gap:6px 22px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));font-size:12px;color:var(--p-muted);line-height:1.45;max-width:760px;margin-top:18px}
+  .legend b{color:var(--p-fg);font-weight:600}
+  .legend .mark{vertical-align:-3px;margin-right:6px}
+</style>
+</head>
+<body>
+<p class="lede">Illustrative mockup — same 320 px sidebar, same content, before and after.
+Not a screenshot of the app; it communicates hierarchy and density, not pixel-perfect design.</p>
+<div class="cols">
+  <div>
+    <div class="cap"><span class="sw"></span>Now</div>
+    <div class="side">
+      <div class="now-top"><button class="now-ico">&raquo;</button></div>
+
+      <div class="now-head"><span>Properties</span><span>&#9662;</span></div>
+      <div class="now-body">
+        <div class="now-h2">Line <span class="mono muted" style="font-weight:400">ab</span> <span class="chip">Construction</span></div>
+        <p class="now-hint">Showing what acts on this line. Select a point to see its constraints.</p>
+        <div class="now-h3">Geometry</div>
+        <dl style="margin:0">
+          <div class="kv"><dt>Kind</dt><dd>Line</dd></div>
+          <div class="kv"><dt>Start</dt><dd class="mono">a</dd></div>
+          <div class="kv"><dt>End</dt><dd class="mono">b</dd></div>
+          <div class="kv"><dt>Length</dt><dd>160 mm</dd></div>
+          <div class="kv"><dt>Construction</dt><dd><input type="checkbox" checked></dd></div>
+        </dl>
+        <div class="now-div"></div>
+        <div class="now-h3">Workspace</div>
+        <dl style="margin:0">
+          <div class="kv"><dt>Tool</dt><dd>Select</dd></div>
+          <div class="kv"><dt>Project</dt><dd>#3</dd></div>
+        </dl>
+        <p class="tiny">14 command(s)</p>
+        <p class="tiny">6 cut edge(s)</p>
+      </div>
+
+      <div class="now-head"><span>Pieces</span><span>&#9662;</span></div>
+      <div class="now-body">
+        <div class="prow"><span>Front &middot; &times;2 &middot; 220 &times; 210 mm finished &middot; 240 &times; 230 mm cut</span><span>&#9656;</span></div>
+      </div>
+
+      <div class="now-head"><span>Outline</span><span>&#9662;</span></div>
+      <div class="now-body">
+        <div class="orow">
+          <span><span class="mono muted">ab</span> <span class="muted">Allowance 10 mm</span></span>
+          <button class="smallbtn">Make construction</button>
+        </div>
+        <div class="orow">
+          <span><span class="mono muted">bc</span> <span class="muted">In piece p1 &middot; seam 10 mm</span></span>
+          <button class="smallbtn">Make construction</button>
+        </div>
+        <div class="orow">
+          <span><span class="mono muted">cd</span> <span class="muted">No allowance</span></span>
+          <button class="smallbtn">Make cut edge</button>
+        </div>
+      </div>
+
+      <div class="now-head"><span>Dimensions</span><span>&#9656;</span></div>
+      <div class="now-head"><span>Constraints</span><span>&#9656;</span></div>
+      <div class="now-head"><span>View</span><span>&#9656;</span></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="cap new"><span class="sw"></span>Proposed</div>
+    <div class="side">
+      <div class="n-top">
+        <span class="n-crumb">Project #3</span>
+        <button class="now-ico" style="width:24px;height:24px">&laquo;</button>
+      </div>
+
+      <div class="n-head first">
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 4.5 6 7.5 9 4.5"/></svg>
+        Properties <span class="mark">1</span>
+        <span class="n-count">1</span>
+      </div>
+      <div class="n-body">
+        <div class="obj">
+          <span class="glyph">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M2.5 9.5 9.5 2.5"/></svg>
+          </span>
+          <span class="obj-name">Line</span>
+          <span class="obj-id">ab</span>
+          <span class="chip">Construction</span>
+        </div>
+        <dl class="grid2">
+          <dt>Start</dt><dd class="obj-id" style="font-weight:400">a</dd>
+          <dt>End</dt><dd class="obj-id" style="font-weight:400">b</dd>
+          <dt>Length</dt><dd>160.00<span class="u">mm</span></dd>
+          <dt>Direction</dt><dd>horizontal</dd>
+        </dl>
+      </div>
+
+      <div class="n-head">
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 4.5 6 7.5 9 4.5"/></svg>
+        Pieces
+        <span class="n-count">1</span>
+      </div>
+      <div class="n-body">
+        <div class="card">
+          <div class="card-top">Front <span class="chip">&times;2</span></div>
+          <div class="card-sub">220 &times; 210 mm finished &middot; 240 &times; 230 mm cut</div>
+        </div>
+      </div>
+
+      <div class="n-head">
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 4.5 6 7.5 9 4.5"/></svg>
+        Outline
+        <span class="mark">6</span>
+        <span class="n-count">6</span>
+      </div>
+      <div class="n-body">
+        <div class="nrow sel">
+          <span class="glyph" style="width:18px;height:18px;border-radius:4px">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M3 4.5 9 7.5"/></svg>
+          </span>
+          <span class="rlabel">Line</span>
+          <span class="rid">a &rarr; b</span>
+          <span class="chip edge">10 mm</span>
+          <span class="iact"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M2.6 10 9.4 3.2"/><path d="M2.6 10h2.2M2.6 10V7.8"/></svg></span>
+        </div>
+        <div class="nrow hov">
+          <span class="glyph" style="width:18px;height:18px;border-radius:4px">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M3 4.5 9 7.5"/></svg>
+          </span>
+          <span class="rlabel">Line</span>
+          <span class="rid">b &rarr; c</span>
+          <span class="chip">seam 10</span>
+          <span class="iact"><span class="mark">5</span></span>
+        </div>
+        <div class="nrow">
+          <span class="glyph" style="width:18px;height:18px;border-radius:4px">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M2.2 9.6A7.3 7.3 0 0 1 9.8 2.4"/></svg>
+          </span>
+          <span class="rlabel">Arc</span>
+          <span class="rid">c &rarr; d</span>
+          <span class="chip" style="border-style:dashed;background:none">no allowance</span>
+        </div>
+      </div>
+
+      <div class="n-head">
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M4.5 3 7.5 6 4.5 9"/></svg>
+        Dimensions
+        <span class="n-count">2</span>
+      </div>
+      <div class="n-head">
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M4.5 3 7.5 6 4.5 9"/></svg>
+        Constraints
+        <span class="n-count">4</span>
+      </div>
+      <div class="n-head">
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M4.5 3 7.5 6 4.5 9"/></svg>
+        View
+      </div>
+      <div class="n-head">
+        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M4.5 3 7.5 6 4.5 9"/></svg>
+        Workspace <span class="mark">4</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="legend">
+  <div><span class="mark">1</span><b>Real hierarchy in the header.</b> 11 px caps, muted, count on the right, hairline between drawers. Today the header is the same size and weight as the content.</div>
+  <div><span class="mark">2</span><b>Two-step type scale.</b> 11 px muted labels, 13 px foreground values, tabular numerals. Muted is only ever a label, never a value.</div>
+  <div><span class="mark">3</span><b>Ids demoted.</b> <span class="mono">ab</span> becomes trailing metadata, not the row's name.</div>
+  <div><span class="mark">4</span><b>Workspace stats moved out</b> of Properties into their own place — the default-open panel stops opening with project id and command count.</div>
+  <div><span class="mark">5</span><b>Secondary actions become icon buttons</b> instead of a full "Make construction" button in every row.</div>
+  <div><span class="mark">6</span><b>Selection reads as an edge,</b> 2 px left accent plus an 8 % tint, so hover and selected stop looking identical.</div>
+</div>
+</body>
+</html>
