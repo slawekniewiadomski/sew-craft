@@ -134,6 +134,9 @@ can be written when it changes.
       "quantity": 2,
     },
   ],
+  "defaults": {
+    "allowance": { "width": 10, "kind": "seam" }, // copied onto each new piece
+  },
   "seams": [{ "id": "s1", "edge": "l1", "width": 10 }], // deprecated: edges outside any piece
   "cornerRounds": [
     {
@@ -151,6 +154,14 @@ can be written when it changes.
   ],
 }
 ```
+
+`defaults` is optional and additive: a document written without it resolves the
+built-in **10 mm seam** preset, and `normalizeDocument` fills the field on load
+(one-way and idempotent). `defaults.allowance` is the preset `create_piece`
+copies onto every loop edge; `null` means new pieces start with no allowance.
+Changing or clearing it never rewrites an existing piece's allowances. An invalid
+stored width or kind falls back to the built-in preset; the pattern schema string
+stays `sewcraft.pattern/0.2`.
 
 `cornerRounds` is optional, so documents written before the feature load
 unchanged. A round is a live feature: it stores the sharp corner, both line
