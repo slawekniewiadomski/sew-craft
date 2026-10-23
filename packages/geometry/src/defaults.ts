@@ -15,7 +15,10 @@ export const DEFAULT_ALLOWANCE_PRESET: AllowancePreset = { width: 10, kind: 'sea
 export function effectiveDefaultAllowance(document: {
   defaults?: PatternDefaults;
 }): AllowancePreset | null {
-  return document.defaults === undefined ? DEFAULT_ALLOWANCE_PRESET : document.defaults.allowance;
+  // Copy the built-in so a caller cannot mutate the module constant.
+  return document.defaults === undefined
+    ? { ...DEFAULT_ALLOWANCE_PRESET }
+    : document.defaults.allowance;
 }
 
 /** Whether a stored value is a preset this build can copy onto a piece. */
