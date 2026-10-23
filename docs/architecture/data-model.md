@@ -34,14 +34,14 @@ first save creates it lazily with the project's name.
 
 ### `pattern_versions`
 
-| Column       | Type                    | Notes                          |
-| ------------ | ----------------------- | ------------------------------ |
-| `id`         | bigint PK               |                                |
-| `pattern_id` | FK → patterns (cascade) |                                |
-| `version`    | unsigned int            | monotonic per pattern          |
-| `origin`     | string(16)              | `manual` \| `autosave`         |
-| `geometry`   | json                    | frozen `PatternDocument`       |
-| `created_at` | timestamp               |                                |
+| Column       | Type                    | Notes                    |
+| ------------ | ----------------------- | ------------------------ |
+| `id`         | bigint PK               |                          |
+| `pattern_id` | FK → patterns (cascade) |                          |
+| `version`    | unsigned int            | monotonic per pattern    |
+| `origin`     | string(16)              | `manual` \| `autosave`   |
+| `geometry`   | json                    | frozen `PatternDocument` |
+| `created_at` | timestamp               |                          |
 
 Unique on `(pattern_id, version)`. Appended once per changed save, and once for
 the pre-upgrade working copy immediately before an upgrade save. An unchanged
