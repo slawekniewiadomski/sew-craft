@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   allowanceForEdge,
   allowanceDistance,
+  applyCommand,
   basicPieceForLoops,
   createEmptyDocument,
+  edgeEndpointIds,
   loopBounds,
   pieceById,
   pieceCutBounds,
@@ -732,5 +734,266 @@ describe('basicPieceForLoops', () => {
       line('dangling', 'a', 'missing'),
     ];
     expect(basicPieceForLoops(documentOf(entities))).toEqual([]);
+  });
+});
+
+describe('rounded piece corners', () => {
+  /** The reference square with the right/top corner rounded at 20 mm. */
+  function roundedReference(): { document: PatternDocument; piece: Piece } {
+    const { document } = referenceDocument();
+    const rounded = applyCommand(document, {
+      id: 'r1',
+      type: 'add_corner_round',
+      params: { first: 'right', second: 'top', radius: 20 },
+    }).document;
+    return { document: rounded, piece: pieceById(rounded, 'piece-1')! };
+  }
+
+  it('validates the loop across the derived bridge', () => {
+    const { document, piece } = roundedReference();
+
+    expect(validatePiece(document, piece.edges, { ignorePiece: piece.id })).toEqual({ ok: true });
+    expect(piece.edges).toEqual(['bottom', 'right', 'top', 'left']);
+  });
+
+  it('inserts the arc as extra boundary segments and keeps the edge spans', () => {
+    const { document, piece } = roundedReference();
+    const loop = pieceLoop(document, piece)!;
+
+    expect(loop).not.toBeNull();
+    // Four stored edges plus the arc's 16 flattening intervals.
+    expect(loop.spans).toEqual([1, 1, 1, 1]);
+    expect(loop.points).toHaveLength(4 + 16);
+    expect(loop.distances).toHaveLength(4 + 16);
+    // The bridge carries the 10 mm both adjacent edges share; the
+    // allowance-free bottom edge still contributes zero.
+    expect(Math.abs(loop.distances[0]!)).toBe(0);
+    for (const distance of loop.distances.slice(2, 18)) {
+      expect(Math.abs(distance)).toBeCloseTo(10);
+    }
+  });
+
+  it('offsets the arc outward and keeps the cut loop closed', () => {
+    const { document, piece } = roundedReference();
+    const cut = pieceCutLoop(document, piece)!;
+
+    expect(cut).not.toBeNull();
+    expect(cut.selfIntersections).toEqual([]);
+    const bounds = loopBounds(cut.points)!;
+    expect(bounds.min.x).toBeCloseTo(-10);
+    expect(bounds.max.x).toBeCloseTo(210);
+    expect(bounds.min.y).toBeCloseTo(0);
+    expect(bounds.max.y).toBeCloseTo(210);
+  });
+
+  it('anchors cut vertices at the tangent points of a rounded edge', () => {
+    const { document, piece } = roundedReference();
+
+    // The flattened arc's first chord is not exactly tangent, so the miter
+    // join lands within a fraction of a millimetre of the tangent's offset.
+    const rightEnd = pieceCutVertex(document, piece, { edge: 'right', at: 'end' })!;
+    expect(rightEnd.x).toBeCloseTo(210);
+    expect(rightEnd.y).toBeCloseTo(180, 0);
+
+    const topStart = pieceCutVertex(document, piece, { edge: 'top', at: 'start' })!;
+    expect(topStart.x).toBeCloseTo(180, 0);
+    expect(topStart.y).toBeCloseTo(210);
+  });
+
+  it('draws the fold line around the arc for a double fold', () => {
+    const entities: Entity[] = [
+      point('a', 0, 0),
+      point('b', 200, 0),
+      point('c', 200, 200),
+      point('d', 0, 200),
+      line('bottom', 'a', 'b'),
+      line('right', 'b', 'c'),
+      line('top', 'c', 'd'),
+      line('left', 'd', 'a'),
+    ];
+    const base: Piece = { id: 'p', edges: ['bottom', 'right', 'top', 'left'], allowances: [] };
+    let document = documentOf(entities, [base]);
+    for (const edge of ['right', 'top']) {
+      document = applyCommand(document, {
+        id: `allow-${edge}`,
+        type: 'set_piece_allowance',
+        params: { piece: 'p', edge, width: 10, kind: 'double' },
+      }).document;
+    }
+    document = applyCommand(document, {
+      id: 'r1',
+      type: 'add_corner_round',
+      params: { first: 'right', second: 'top', radius: 20 },
+    }).document;
+
+    const piece = pieceById(document, 'p')!;
+    const folds = pieceFoldLines(document, piece);
+    expect(folds).toHaveLength(1);
+    expect(folds[0]!.length).toBeGreaterThan(4);
+  });
+
+  it('walks a loop whose stored edge runs against the bridge', () => {
+    const entities: Entity[] = [
+      point('a', 0, 0),
+      point('b', 200, 0),
+      point('c', 200, 200),
+      point('d', 0, 200),
+      line('bottom', 'a', 'b'),
+      line('right', 'b', 'c'),
+      line('top', 'd', 'c'),
+      line('left', 'd', 'a'),
+    ];
+    const piece: Piece = {
+      id: 'p',
+      edges: ['bottom', 'right', 'top', 'left'],
+      allowances: [
+        { edge: 'right', width: 10 },
+        { edge: 'top', width: 10 },
+      ],
+    };
+    let document = documentOf(entities, [piece]);
+    document = applyCommand(document, {
+      id: 'r1',
+      type: 'add_corner_round',
+      params: { first: 'right', second: 'top', radius: 20 },
+    }).document;
+
+    const rounded = pieceById(document, 'p')!;
+    expect(pieceLoop(document, rounded)).not.toBeNull();
+    expect(pieceCutLoop(document, rounded)).not.toBeNull();
+  });
+
+  it('carries no allowance across the closing bridge when both edges have none', () => {
+    const entities: Entity[] = [
+      point('a', 0, 0),
+      point('b', 200, 0),
+      point('c', 200, 200),
+      point('d', 0, 200),
+      line('bottom', 'a', 'b'),
+      line('right', 'b', 'c'),
+      line('top', 'c', 'd'),
+      line('left', 'd', 'a'),
+    ];
+    const piece: Piece = { id: 'p', edges: ['bottom', 'right', 'top', 'left'], allowances: [] };
+    let document = documentOf(entities, [piece]);
+    document = applyCommand(document, {
+      id: 'r1',
+      type: 'add_corner_round',
+      params: { first: 'left', second: 'bottom', radius: 20 },
+    }).document;
+
+    const loop = pieceLoop(document, pieceById(document, 'p')!)!;
+    expect(loop).not.toBeNull();
+    expect(loop.distances.every((distance) => distance === 0)).toBe(true);
+  });
+
+  it('falls back to the other walk when the first direction cannot close', () => {
+    const entities: Entity[] = [
+      point('a', 0, 0),
+      point('b', 200, 0),
+      point('c', 200, 200),
+      point('d', 0, 200),
+      line('bottom', 'a', 'b'),
+      line('right', 'b', 'c'),
+      line('top', 'c', 'd'),
+      line('left', 'd', 'a'),
+    ];
+    const piece: Piece = { id: 'p', edges: ['bottom', 'right', 'top', 'left'], allowances: [] };
+    let document = documentOf(entities, [piece]);
+    document = applyCommand(document, {
+      id: 'r1',
+      type: 'add_corner_round',
+      params: { first: 'bottom', second: 'right', radius: 20 },
+    }).document;
+
+    const loop = pieceLoop(document, pieceById(document, 'p')!);
+    expect(loop).not.toBeNull();
+    expect(loop!.points).toHaveLength(4 + 16);
+  });
+
+  it('cannot resolve a hand-edited loop whose bridge allowances disagree', () => {
+    const { document, piece } = roundedReference();
+
+    for (const allowances of [
+      [
+        { edge: 'top', width: 5 },
+        { edge: 'right', width: 10 },
+      ],
+      [{ edge: 'right', width: 10 }],
+      [
+        { edge: 'right', width: 10, kind: 'single' },
+        { edge: 'top', width: 10, kind: 'double' },
+      ],
+    ]) {
+      const mismatched: Piece = { ...piece, allowances };
+      const edited: PatternDocument = { ...document, pieces: [mismatched] };
+
+      expect(pieceLoop(edited, mismatched)).toBeNull();
+      expect(pieceCutLoop(edited, mismatched)).toBeNull();
+      expect(pieceFoldLines(edited, mismatched)).toEqual([]);
+    }
+  });
+});
+
+describe('loop walking edge cases', () => {
+  it('reads the endpoints of a line, curve and arc', () => {
+    expect(edgeEndpointIds(line('l', 'a', 'b'))).toEqual(['a', 'b']);
+    expect(edgeEndpointIds(curve('c', ['a', 'b', 'c', 'd']))).toEqual(['a', 'd']);
+    expect(edgeEndpointIds(arc('a', 'start', 'end', 'through'))).toEqual(['start', 'end']);
+  });
+
+  function pieceDocument(): PatternDocument {
+    const entities: Entity[] = [
+      point('a', 0, 0),
+      point('b', 200, 0),
+      point('c', 200, 200),
+      point('d', 0, 200),
+      line('bottom', 'a', 'b'),
+      line('right', 'b', 'c'),
+      line('top', 'c', 'd'),
+      line('left', 'd', 'a'),
+    ];
+    return { ...createEmptyDocument(), entities, pieces: [] };
+  }
+
+  it('rejects a round whose arc no longer meets the next edge', () => {
+    let document = applyCommand(pieceDocument(), {
+      id: 'r1',
+      type: 'add_corner_round',
+      params: { first: 'right', second: 'top', radius: 20 },
+    }).document;
+    document = {
+      ...document,
+      entities: document.entities.map((entity) =>
+        entity.id === 'r1:arc' && entity.kind === 'curve' ? { ...entity, p3: 'a' } : entity,
+      ),
+    };
+
+    expect(validatePiece(document, ['bottom', 'right', 'top', 'left'])).toMatchObject({
+      ok: false,
+      message: 'Edge right does not connect to edge top.',
+    });
+    expect(
+      pieceLoop(document, { id: 'p', edges: ['bottom', 'right', 'top', 'left'], allowances: [] }),
+    ).toBeNull();
+  });
+
+  it('rejects a closing round whose arc no longer reaches the first edge', () => {
+    let document = applyCommand(pieceDocument(), {
+      id: 'r1',
+      type: 'add_corner_round',
+      params: { first: 'left', second: 'bottom', radius: 20 },
+    }).document;
+    document = {
+      ...document,
+      entities: document.entities.map((entity) =>
+        entity.id === 'r1:arc' && entity.kind === 'curve' ? { ...entity, p3: 'c' } : entity,
+      ),
+    };
+
+    expect(validatePiece(document, ['bottom', 'right', 'top', 'left'])).toMatchObject({
+      ok: false,
+      message: 'Edge left does not connect to edge bottom.',
+    });
   });
 });

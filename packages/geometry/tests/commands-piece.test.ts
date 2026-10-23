@@ -9,11 +9,14 @@ import {
   getConstraint,
   measureCutDimension,
   pieceById,
+  pieceCutLoop,
+  pieceLoop,
   solveDocument,
   type Command,
   type Entity,
   type LineEntity,
   type PatternDocument,
+  type Piece,
   type PointEntity,
 } from '../src/index.js';
 
@@ -926,14 +929,14 @@ describe('piece guards on the legacy tools', () => {
     ).toThrowError(/set the allowance on the piece/);
   });
 
-  it('refuses a corner round on lines that belong to a piece', () => {
+  it('refuses a corner round when the piece allowances differ at the corner', () => {
     expect(() =>
       applyCommand(withPiece(), {
         id: 'round',
         type: 'add_corner_round',
         params: { first: 'bottom', second: 'right', radius: 5 },
       }),
-    ).toThrowError(/Remove the piece first/);
+    ).toThrowError(/Both edges need the same allowance/);
   });
   it('recreates a dimension that had no explicit placement', () => {
     const document = applyCommand(withPiece(), {
@@ -1067,5 +1070,178 @@ describe('cut dimensions stay out of the solver', () => {
     expect(derivedDimensionValue(solved.document, derivedOf(solved.document, 'cut-width'))).toBe(
       220,
     );
+  });
+});
+
+describe('corner rounds on piece corners', () => {
+  const roundCorner = (id = 'round-1', radius = 20, first = 'right', second = 'top'): Command => ({
+    id,
+    type: 'add_corner_round',
+    params: { first, second, radius },
+  });
+
+  function roundedPiece(): PatternDocument {
+    return applyCommand(withPiece(), roundCorner()).document;
+  }
+
+  it('keeps the piece, its edges and its allowances', () => {
+    const before = withPiece();
+    const after = applyCommand(before, roundCorner()).document;
+    const piece = pieceById(after, 'piece-1')!;
+
+    expect(piece.edges).toEqual(['bottom', 'right', 'top', 'left']);
+    expect(piece.allowances).toEqual(pieceById(before, 'piece-1')!.allowances);
+    expect(pieceLoop(after, piece)).not.toBeNull();
+    expect(pieceCutLoop(after, piece)?.selfIntersections).toEqual([]);
+  });
+
+  it('rejects two edges whose piece allowances differ', () => {
+    // `bottom` has no allowance, `right` has 10 mm single.
+    expect(() =>
+      applyCommand(withPiece(), roundCorner('round-1', 20, 'bottom', 'right')),
+    ).toThrowError(/Both edges need the same allowance to round this corner/);
+  });
+
+  it('rejects an allowance edit that would unbalance a rounded corner', () => {
+    const document = roundedPiece();
+    const target = pieceById(document, 'piece-1')!;
+
+    expect(() =>
+      applyCommand(document, {
+        id: 'widen',
+        type: 'set_piece_allowance',
+        params: { piece: 'piece-1', edge: 'right', width: 12, kind: 'single' },
+      }),
+    ).toThrowError(/Remove the corner round before changing one side/);
+
+    expect(() =>
+      applyCommand(document, {
+        id: 'remove-right',
+        type: 'set_piece_allowance',
+        params: { piece: 'piece-1', edge: 'right', remove: true },
+      }),
+    ).toThrowError(/Remove the corner round before changing one side/);
+
+    // An edge without a round on it is still editable.
+    const widened = applyCommand(document, {
+      id: 'widen-left',
+      type: 'set_piece_allowance',
+      params: { piece: 'piece-1', edge: 'left', width: 12, kind: 'single' },
+    }).document;
+    expect(pieceById(widened, 'piece-1')!.allowances).toContainEqual({
+      edge: 'left',
+      width: 12,
+      kind: 'single',
+    });
+    expect(target.allowances).toHaveLength(3);
+  });
+
+  it('removing the round restores the sharp loop and keeps the piece', () => {
+    const before = withPiece();
+    const sharp = pieceCutLoop(before, pieceById(before, 'piece-1')!);
+    const rounded = roundedPiece();
+
+    const removed = applyCommand(rounded, {
+      id: 'remove-round',
+      type: 'remove_corner_round',
+      params: { id: 'round-1' },
+    }).document;
+
+    expect(pieceById(removed, 'piece-1')!.allowances).toEqual(
+      pieceById(before, 'piece-1')!.allowances,
+    );
+    expect(pieceCutLoop(removed, pieceById(removed, 'piece-1')!)).toEqual(sharp);
+  });
+
+  it('keeps a cut dimension anchored to a rounded piece', () => {
+    const document = roundedPiece();
+    const withDimension = applyCommand(document, {
+      id: 'cut-width',
+      type: 'add_derived_dimension',
+      params: {
+        piece: 'piece-1',
+        a: { edge: 'bottom', at: 'start' },
+        b: { edge: 'bottom', at: 'end' },
+        orientation: 'horizontal',
+      },
+    }).document;
+
+    const value = measureCutDimension(withDimension, getConstraint(withDimension, 'cut-width')!);
+    expect(value).toBeCloseTo(220);
+  });
+
+  it('updates the loop when the radius changes', () => {
+    const document = roundedPiece();
+    const piece = pieceById(document, 'piece-1')!;
+    const before = pieceLoop(document, piece)!;
+
+    const changed = applyCommand(document, {
+      id: 'radius',
+      type: 'set_corner_round_radius',
+      params: { id: 'round-1', radius: 40 },
+    }).document;
+    const after = pieceLoop(changed, pieceById(changed, 'piece-1')!)!;
+
+    expect(after).not.toBeNull();
+    expect(after.points).not.toEqual(before.points);
+  });
+
+  it('does not block a round when an unrelated piece loop cannot resolve', () => {
+    const broken: Piece = {
+      id: 'piece-1',
+      edges: ['right', 'top'],
+      allowances: [
+        { edge: 'right', width: 10 },
+        { edge: 'top', width: 10 },
+      ],
+    };
+    const document = { ...documentOf(), pieces: [broken] };
+
+    const rounded = applyCommand(document, roundCorner()).document;
+    expect(pieceById(rounded, 'piece-1')!.edges).toEqual(['right', 'top']);
+  });
+
+  it('rejects a radius whose allowance folds the cut line', () => {
+    const lShape: Entity[] = [
+      point('a', 0, 0),
+      point('b', 100, 0),
+      point('c', 100, 40),
+      point('d', 40, 40),
+      point('e', 40, 100),
+      point('f', 0, 100),
+      line('ab', 'a', 'b'),
+      line('bc', 'b', 'c'),
+      line('cd', 'c', 'd'),
+      line('de', 'd', 'e'),
+      line('ef', 'e', 'f'),
+      line('fa', 'f', 'a'),
+    ];
+    const edges = ['ab', 'bc', 'cd', 'de', 'ef', 'fa'];
+    let document = applyCommand(
+      { ...createEmptyDocument(), entities: lShape },
+      {
+        id: 'piece-1',
+        type: 'create_piece',
+        params: { edges },
+      },
+    ).document;
+    for (const [index, edge] of ['cd', 'de'].entries()) {
+      document = applyCommand(document, {
+        id: `allow-${index}`,
+        type: 'set_piece_allowance',
+        params: { piece: 'piece-1', edge, width: 10 },
+      }).document;
+    }
+
+    const piece = pieceById(document, 'piece-1')!;
+    expect(pieceCutLoop(document, piece)?.selfIntersections).toEqual([]);
+
+    expect(() =>
+      applyCommand(document, {
+        id: 'round-concave',
+        type: 'add_corner_round',
+        params: { first: 'cd', second: 'de', radius: 1 },
+      }),
+    ).toThrowError(/folds the cut line/);
   });
 });
