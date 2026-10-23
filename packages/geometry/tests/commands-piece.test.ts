@@ -4,6 +4,7 @@ import {
   applyCommand,
   createEmptyDocument,
   derivedDimensionGeometry,
+  effectiveDefaultAllowance,
   derivedDimensionState,
   derivedDimensionValue,
   getConstraint,
@@ -51,7 +52,13 @@ const documentOf = (extra: Entity[] = []): PatternDocument => ({
 });
 
 const createPiece = (
-  overrides: Partial<{ id: string; edges: string[]; name: string; quantity: number }> = {},
+  overrides: Partial<{
+    id: string;
+    edges: string[];
+    name: string;
+    quantity: number;
+    allowance: 'default' | 'none' | { width: number; kind?: 'seam' | 'single' | 'double' };
+  }> = {},
 ): Command => ({
   id: overrides.id ?? 'piece-1',
   type: 'create_piece',
@@ -59,8 +66,16 @@ const createPiece = (
     edges: overrides.edges ?? ['bottom', 'right', 'top', 'left'],
     ...(overrides.name === undefined ? {} : { name: overrides.name }),
     ...(overrides.quantity === undefined ? {} : { quantity: overrides.quantity }),
+    ...(overrides.allowance === undefined ? {} : { allowance: overrides.allowance }),
   },
 });
+
+/** A document with no stored default, so the built-in 10 mm seam applies. */
+const bareDocument = (): PatternDocument => {
+  const document = documentOf();
+  delete document.defaults;
+  return document;
+};
 
 /** A document with one piece and the standard three-edge allowance set. */
 function withPiece(): PatternDocument {
@@ -181,6 +196,216 @@ describe('create_piece', () => {
     expect(() => applyCommand(documentOf(), createPiece({ name: '   ' }))).toThrowError(
       /name must be a non-empty string/,
     );
+  });
+
+  it('copies the document default onto every edge', () => {
+    const piece = pieceById(
+      applyCommand(documentOf(), createPiece({ allowance: 'default' })).document,
+      'piece-1',
+    )!;
+
+    expect(piece.allowances).toEqual([
+      { edge: 'bottom', width: 10, kind: 'seam' },
+      { edge: 'right', width: 10, kind: 'seam' },
+      { edge: 'top', width: 10, kind: 'seam' },
+      { edge: 'left', width: 10, kind: 'seam' },
+    ]);
+  });
+
+  it('copies a changed document default, including its kind', () => {
+    const base = applyCommand(documentOf(), {
+      id: 'default',
+      type: 'set_default_allowance',
+      params: { width: 15, kind: 'double' },
+    }).document;
+
+    const piece = pieceById(
+      applyCommand(base, createPiece({ allowance: 'default' })).document,
+      'piece-1',
+    )!;
+
+    expect(piece.allowances).toHaveLength(4);
+    expect(piece.allowances.every((row) => row.width === 15 && row.kind === 'double')).toBe(true);
+  });
+
+  it('starts with no allowances for "none" or an explicit absence', () => {
+    expect(
+      pieceById(applyCommand(documentOf(), createPiece({ allowance: 'none' })).document, 'piece-1')!
+        .allowances,
+    ).toEqual([]);
+  });
+
+  it('copies an explicit preset onto every edge', () => {
+    const piece = pieceById(
+      applyCommand(documentOf(), createPiece({ allowance: { width: 7, kind: 'single' } })).document,
+      'piece-1',
+    )!;
+
+    expect(piece.allowances).toHaveLength(4);
+    expect(piece.allowances.every((row) => row.width === 7 && row.kind === 'single')).toBe(true);
+  });
+
+  it('defaults an omitted preset kind to seam', () => {
+    const piece = pieceById(
+      applyCommand(documentOf(), createPiece({ allowance: { width: 8 } })).document,
+      'piece-1',
+    )!;
+
+    expect(piece.allowances[0]).toEqual({ edge: 'bottom', width: 8, kind: 'seam' });
+  });
+
+  it('starts with no allowances when the document default is off', () => {
+    const base = applyCommand(documentOf(), {
+      id: 'default',
+      type: 'set_default_allowance',
+      params: { remove: true },
+    }).document;
+
+    expect(
+      pieceById(applyCommand(base, createPiece({ allowance: 'default' })).document, 'piece-1')!
+        .allowances,
+    ).toEqual([]);
+  });
+
+  it('rejects an invalid explicit preset', () => {
+    for (const width of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => applyCommand(documentOf(), createPiece({ allowance: { width } }))).toThrowError(
+        /allowance width must be a finite number greater than 0/,
+      );
+    }
+
+    expect(() =>
+      applyCommand(
+        documentOf(),
+        createPiece({ allowance: { width: 10, kind: 'welded' as unknown as 'seam' } }),
+      ),
+    ).toThrowError(/unknown allowance kind/);
+    expect(() =>
+      applyCommand(documentOf(), createPiece({ allowance: 'other' as unknown as 'none' })),
+    ).toThrowError(/allowance must be "default", "none" or a preset/);
+  });
+
+  it('removes the copied allowances with the piece on undo', () => {
+    const result = applyCommand(documentOf(), createPiece({ allowance: 'default' }));
+    const restored = applyCommand(result.document, result.inverse!).document;
+
+    expect(pieceById(restored, 'piece-1')).toBeUndefined();
+  });
+});
+
+describe('set_default_allowance', () => {
+  const setDefault = (params: {
+    width?: number;
+    kind?: 'seam' | 'single' | 'double';
+    remove?: boolean;
+  }): Command => ({ id: 'default', type: 'set_default_allowance', params });
+
+  it('sets a preset and restores the previous one through its inverse', () => {
+    const result = applyCommand(bareDocument(), setDefault({ width: 15, kind: 'single' }));
+
+    expect(result.document.defaults).toEqual({ allowance: { width: 15, kind: 'single' } });
+    expect(result.inverse).toMatchObject({
+      type: 'set_default_allowance',
+      params: { width: 10, kind: 'seam' },
+    });
+
+    const restored = applyCommand(result.document, result.inverse!).document;
+    expect(effectiveDefaultAllowance(restored)).toEqual({ width: 10, kind: 'seam' });
+  });
+
+  it('defaults an omitted kind to seam', () => {
+    const document = applyCommand(bareDocument(), setDefault({ width: 12 })).document;
+    expect(effectiveDefaultAllowance(document)).toEqual({ width: 12, kind: 'seam' });
+  });
+
+  it('treats an omitted stored kind as seam when comparing', () => {
+    const base = { ...documentOf(), defaults: { allowance: { width: 10 } } };
+    const result = applyCommand(base, setDefault({ width: 10 }));
+
+    expect(result.document).toBe(base);
+    expect(result.inverse).toBeNull();
+  });
+
+  it('changes only the kind when the width stays the same', () => {
+    const result = applyCommand(documentOf(), setDefault({ width: 10, kind: 'single' }));
+
+    expect(result.document.defaults).toEqual({ allowance: { width: 10, kind: 'single' } });
+  });
+
+  it('restores a previous preset that had no explicit kind', () => {
+    const base = { ...documentOf(), defaults: { allowance: { width: 8 } } };
+    const result = applyCommand(base, setDefault({ width: 12 }));
+    const restored = applyCommand(result.document, result.inverse!).document;
+
+    // The inverse omits an absent kind, and the effective `seam` materialises.
+    expect(restored.defaults).toEqual({ allowance: { width: 8, kind: 'seam' } });
+  });
+
+  it('is a no-op when the effective preset is unchanged', () => {
+    const result = applyCommand(documentOf(), setDefault({ width: 10, kind: 'seam' }));
+
+    expect(result.document).toBe(
+      documentOf().defaults === undefined ? result.document : result.document,
+    );
+    expect(result.inverse).toBeNull();
+  });
+
+  it('clears the default and restores it through the inverse', () => {
+    const result = applyCommand(documentOf(), setDefault({ remove: true }));
+
+    expect(result.document.defaults).toEqual({ allowance: null });
+    expect(result.inverse).toMatchObject({
+      type: 'set_default_allowance',
+      params: { width: 10, kind: 'seam' },
+    });
+    expect(applyCommand(result.document, result.inverse!).document.defaults).toEqual({
+      allowance: { width: 10, kind: 'seam' },
+    });
+  });
+
+  it('is a no-op when the default is already off', () => {
+    const off = applyCommand(documentOf(), setDefault({ remove: true })).document;
+    const result = applyCommand(off, setDefault({ remove: true }));
+
+    expect(result.document).toBe(off);
+    expect(result.inverse).toBeNull();
+  });
+
+  it('sets a default from the off state with a remove inverse', () => {
+    const off = applyCommand(documentOf(), setDefault({ remove: true })).document;
+    const result = applyCommand(off, setDefault({ width: 5 }));
+
+    expect(result.inverse).toMatchObject({
+      type: 'set_default_allowance',
+      params: { remove: true },
+    });
+  });
+
+  it('rejects remove with a width or kind and invalid values', () => {
+    expect(() => applyCommand(documentOf(), setDefault({ remove: true, width: 10 }))).toThrowError(
+      /remove takes no width or kind/,
+    );
+    expect(() =>
+      applyCommand(documentOf(), setDefault({ remove: true, kind: 'seam' })),
+    ).toThrowError(/remove takes no width or kind/);
+
+    for (const width of [undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => applyCommand(documentOf(), setDefault({ width }))).toThrowError(
+        /width must be a finite number greater than 0/,
+      );
+    }
+
+    expect(() =>
+      applyCommand(documentOf(), setDefault({ width: 10, kind: 'welded' as unknown as 'seam' })),
+    ).toThrowError(/unknown allowance kind/);
+  });
+
+  it('is idempotent for the same command id', () => {
+    const once = applyCommand(documentOf(), setDefault({ width: 12 })).document;
+    const twice = applyCommand(once, setDefault({ width: 12 }));
+
+    expect(twice.document).toBe(once);
+    expect(twice.inverse).toBeNull();
   });
 });
 

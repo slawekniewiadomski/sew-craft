@@ -3,7 +3,7 @@
 it('exposes the command spec', function () {
     $this->getJson('/api/commands')
         ->assertOk()
-        ->assertJsonPath('version', '0.10.0')
+        ->assertJsonPath('version', '0.11.0')
         ->assertJsonStructure([
             'version',
             'commands' => [
@@ -82,6 +82,7 @@ it('exposes the piece commands', function () {
         ->assertJsonPath('commands.create_piece.params.edges', 'entity_id[]')
         ->assertJsonPath('commands.create_piece.params.name', 'string?')
         ->assertJsonPath('commands.create_piece.params.quantity', 'int?')
+        ->assertJsonPath('commands.create_piece.params.allowance', 'default|none|preset?')
         ->assertJsonPath('commands.create_piece.inverse', 'delete_piece')
         ->assertJsonPath('commands.update_piece.params.name', 'string|null?')
         ->assertJsonPath('commands.update_piece.params.quantity', 'int|null?')
@@ -93,6 +94,15 @@ it('exposes the piece commands', function () {
         ->assertJsonPath('commands.set_piece_allowance.params.kind', 'seam|single|double?')
         ->assertJsonPath('commands.set_piece_allowance.params.remove', 'bool?')
         ->assertJsonPath('commands.set_piece_allowance.inverse', 'set_piece_allowance');
+});
+
+it('exposes the default allowance command', function () {
+    $this->getJson('/api/commands')
+        ->assertOk()
+        ->assertJsonPath('commands.set_default_allowance.params.width', 'number?')
+        ->assertJsonPath('commands.set_default_allowance.params.kind', 'seam|single|double?')
+        ->assertJsonPath('commands.set_default_allowance.params.remove', 'bool?')
+        ->assertJsonPath('commands.set_default_allowance.inverse', 'set_default_allowance');
 });
 
 it('exposes the derived cut dimension command', function () {

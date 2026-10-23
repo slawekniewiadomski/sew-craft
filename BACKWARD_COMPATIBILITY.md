@@ -80,6 +80,11 @@ or the geometry package depend on.
   `set_seam_allowance` and `remove_seam_allowance` stay valid commands with no UI
   surface), and it is removed in 0.3. A document already at 0.2 is returned
   unchanged.
+- Since spec 0.11 the document may carry an optional `defaults.allowance`
+  preset copied onto new pieces (`set_default_allowance`). It is additive: a
+  document without it resolves the built-in 10 mm seam on load, no existing field
+  changes meaning, and no piece's allowances are rewritten. The schema string
+  stays `sewcraft.pattern/0.2`.
 
 ## Not (yet) protected
 
