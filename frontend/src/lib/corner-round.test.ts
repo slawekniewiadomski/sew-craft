@@ -21,6 +21,7 @@ import {
   maxCornerRadiusForLines,
   parseCornerRadius,
   radiusFromTangentDistance,
+  roundableCorners,
   tangentDragRadius,
   type CornerRoundRejectionReason,
 } from './corner-round';
@@ -70,7 +71,9 @@ describe('corner-round pick state', () => {
   });
 
   it('prompts for each slot in turn', () => {
-    expect(cornerRoundPrompt(emptyCornerRoundPicks())).toBe('Round corner — pick the first line.');
+    expect(cornerRoundPrompt(emptyCornerRoundPicks())).toBe(
+      'Round corner — pick two lines or a corner.',
+    );
     expect(cornerRoundPrompt({ first: 'ab', second: null })).toBe(
       'Round corner — pick the second line.',
     );
@@ -79,13 +82,15 @@ describe('corner-round pick state', () => {
 
   it('explains every rejection', () => {
     const messages: Record<CornerRoundRejectionReason, string> = {
-      'not-line': 'Pick a line.',
+      'needs-lines': 'Rounding needs two straight lines.',
+      'not-corner': 'Pick a corner between two lines.',
       distinct: 'Pick two different lines.',
       'no-corner': 'The lines must meet at a corner.',
       'already-rounded': 'This corner is already rounded.',
       mixed: 'Both lines must be cut edges or both construction.',
       'third-edge': 'The corner is shared by more than two edges of this kind.',
       seam: 'Remove the seam allowance first.',
+      allowance: 'Both edges need the same allowance to round this corner.',
       sharp: 'The corner is too sharp for a round.',
       straight: 'The lines are straight; there is no corner to round.',
       'no-direction': 'The line has no direction.',
@@ -134,12 +139,104 @@ describe('corner-round radius helpers', () => {
 });
 
 describe('applyCornerRoundPick', () => {
-  it('rejects a point and keeps both slots', () => {
-    const picks = { first: 'ab', second: null };
-    expect(applyCornerRoundPick(picks, 'a', square())).toEqual({
+  it('resolves a corner point into both line slots', () => {
+    const result = applyCornerRoundPick({ first: 'ab', second: null }, 'b', square());
+
+    expect(result.status).toBe('ready');
+    if (result.status !== 'ready') return;
+    expect(result.picks).toEqual({ first: 'ab', second: 'bc' });
+    expect(result.corner).toBe('b');
+    expect(result.maxRadius).toBeCloseTo(99.999, 3);
+  });
+
+  it('rejects a point that is not between two lines', () => {
+    const document = doc([point('a', 0, 0), point('b', 100, 0), line('ab', 'a', 'b')]);
+
+    expect(applyCornerRoundPick(emptyCornerRoundPicks(), 'b', document)).toEqual({
       status: 'rejected',
-      picks,
-      reason: 'not-line',
+      picks: emptyCornerRoundPicks(),
+      reason: 'not-corner',
+    });
+  });
+
+  it('rejects a point with more than two incident lines', () => {
+    const document = doc([
+      point('a', 0, 0),
+      point('b', 100, 0),
+      point('c', 100, 100),
+      point('d', 0, 100),
+      line('ab', 'a', 'b'),
+      line('bc', 'b', 'c'),
+      line('bd', 'b', 'd'),
+    ]);
+
+    expect(applyCornerRoundPick(emptyCornerRoundPicks(), 'b', document)).toEqual({
+      status: 'rejected',
+      picks: emptyCornerRoundPicks(),
+      reason: 'third-edge',
+    });
+  });
+
+  it('rejects an already rounded corner point', () => {
+    expect(applyCornerRoundPick(emptyCornerRoundPicks(), 'b', rounded())).toEqual({
+      status: 'rejected',
+      picks: emptyCornerRoundPicks(),
+      reason: 'already-rounded',
+    });
+  });
+
+  it('rejects a point between mixed construction lines', () => {
+    const document = doc([
+      point('a', 0, 0),
+      point('b', 100, 0),
+      point('c', 100, 100),
+      line('ab', 'a', 'b'),
+      line('bc', 'b', 'c', true),
+    ]);
+
+    expect(applyCornerRoundPick(emptyCornerRoundPicks(), 'b', document)).toEqual({
+      status: 'rejected',
+      picks: emptyCornerRoundPicks(),
+      reason: 'mixed',
+    });
+  });
+
+  it('resolves a corner point whose lines both start or end there', () => {
+    const result = applyCornerRoundPick(emptyCornerRoundPicks(), 'a', square());
+
+    expect(result.status).toBe('ready');
+    if (result.status !== 'ready') return;
+    expect(result.picks).toEqual({ first: 'ab', second: 'da' });
+    expect(result.corner).toBe('a');
+  });
+
+  it('rejects a point whose lines carry a legacy seam', () => {
+    for (const edge of ['ab', 'bc']) {
+      const withSeam = executeCommand(square(), {
+        id: 'seam',
+        type: 'add_seam_allowance',
+        params: { edge },
+      }).document;
+
+      expect(applyCornerRoundPick(emptyCornerRoundPicks(), 'b', withSeam)).toEqual({
+        status: 'rejected',
+        picks: emptyCornerRoundPicks(),
+        reason: 'seam',
+      });
+    }
+  });
+
+  it('rejects a non-line, non-point entity', () => {
+    const document = doc([
+      point('a', 0, 0),
+      point('c', 100, 100),
+      { id: 'curve', kind: 'curve', p0: 'a', p1: 'a', p2: 'c', p3: 'c', construction: false },
+    ]);
+
+    expect(applyCornerRoundPick(emptyCornerRoundPicks(), 'curve', document)).toEqual({
+      status: 'rejected',
+      picks: emptyCornerRoundPicks(),
+      reason: 'needs-lines',
     });
   });
 
@@ -292,6 +389,82 @@ describe('applyCornerRoundPick', () => {
       picks: { first: 'ab', second: null },
       reason: 'radius',
     });
+    expect(applyCornerRoundPick(emptyCornerRoundPicks(), 'b', document)).toEqual({
+      status: 'rejected',
+      picks: emptyCornerRoundPicks(),
+      reason: 'radius',
+    });
+  });
+
+  it('rejects a corner point with no direction', () => {
+    const document = doc([
+      point('a', 0, 0),
+      point('b', 0, 0),
+      point('c', 100, 0),
+      line('ab', 'a', 'b'),
+      line('bc', 'b', 'c'),
+    ]);
+
+    expect(applyCornerRoundPick(emptyCornerRoundPicks(), 'b', document)).toEqual({
+      status: 'rejected',
+      picks: emptyCornerRoundPicks(),
+      reason: 'no-direction',
+    });
+  });
+
+  it('rejects a line pair whose piece allowances differ', () => {
+    let document = executeCommand(square(), {
+      id: 'piece',
+      type: 'create_piece',
+      params: { edges: ['ab', 'bc', 'cd', 'da'] },
+    }).document;
+    document = executeCommand(document, {
+      id: 'allow-ab',
+      type: 'set_piece_allowance',
+      params: { piece: 'piece', edge: 'ab', width: 10 },
+    }).document;
+
+    expect(applyCornerRoundPick({ first: 'ab', second: null }, 'bc', document)).toEqual({
+      status: 'rejected',
+      picks: { first: 'ab', second: null },
+      reason: 'allowance',
+    });
+  });
+
+  it('rejects a corner point whose piece allowances differ', () => {
+    let document = executeCommand(square(), {
+      id: 'piece',
+      type: 'create_piece',
+      params: { edges: ['ab', 'bc', 'cd', 'da'] },
+    }).document;
+    document = executeCommand(document, {
+      id: 'allow-ab',
+      type: 'set_piece_allowance',
+      params: { piece: 'piece', edge: 'ab', width: 10 },
+    }).document;
+
+    expect(applyCornerRoundPick(emptyCornerRoundPicks(), 'b', document)).toEqual({
+      status: 'rejected',
+      picks: emptyCornerRoundPicks(),
+      reason: 'allowance',
+    });
+  });
+
+  it('accepts a corner point whose piece allowances match', () => {
+    let document = executeCommand(square(), {
+      id: 'piece',
+      type: 'create_piece',
+      params: { edges: ['ab', 'bc', 'cd', 'da'] },
+    }).document;
+    for (const [index, edge] of ['ab', 'bc'].entries()) {
+      document = executeCommand(document, {
+        id: `allow-${index}`,
+        type: 'set_piece_allowance',
+        params: { piece: 'piece', edge, width: 10 },
+      }).document;
+    }
+
+    expect(applyCornerRoundPick(emptyCornerRoundPicks(), 'b', document).status).toBe('ready');
   });
 
   it('reports a usable corner and its ceiling', () => {
@@ -516,5 +689,116 @@ describe('tangentDragRadius', () => {
     expect(tangentDragRadius(document, round, 1, { x: 100, y: 20 })).toBeCloseTo(20, 3);
     expect(tangentDragRadius(document, round, 0, { x: 100, y: 0 })).toBe(0.001);
     expect(tangentDragRadius(document, round, 0, { x: -100, y: 0 })).toBeCloseTo(99.999, 3);
+  });
+});
+
+describe('roundableCorners', () => {
+  it('lists every two-line corner point', () => {
+    expect(roundableCorners(square())).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('skips a rounded corner and the derived points it adds', () => {
+    expect(roundableCorners(rounded())).toEqual(['a', 'c', 'd']);
+  });
+
+  it('skips points on a legacy seam edge', () => {
+    const withSeam = executeCommand(square(), {
+      id: 'seam',
+      type: 'add_seam_allowance',
+      params: { edge: 'ab' },
+    }).document;
+
+    expect(roundableCorners(withSeam)).toEqual(['c', 'd']);
+  });
+
+  it('skips a point between mixed construction lines', () => {
+    const document = doc([
+      point('a', 0, 0),
+      point('b', 100, 0),
+      point('c', 100, 100),
+      point('d', 0, 100),
+      line('ab', 'a', 'b'),
+      line('bc', 'b', 'c', true),
+      line('cd', 'c', 'd'),
+      line('da', 'd', 'a'),
+    ]);
+
+    // `b` and `c` each mix a cut and a construction line; `a` and `d` do not.
+    expect(roundableCorners(document)).toEqual(['a', 'd']);
+  });
+
+  it('skips a branch and a single-line point', () => {
+    const document = doc([
+      point('a', 0, 0),
+      point('b', 100, 0),
+      point('c', 100, 100),
+      point('d', 0, 100),
+      point('lone', 50, 50),
+      line('ab', 'a', 'b'),
+      line('bc', 'b', 'c'),
+      line('bd', 'b', 'd'),
+      line('cd', 'c', 'd'),
+      line('da', 'd', 'a'),
+      line('lone-line', 'lone', 'a'),
+    ]);
+
+    // `b` and `d` each have three lines, `lone` has one, and `a` gains a third.
+    expect(roundableCorners(document)).toEqual(['c']);
+  });
+
+  it('includes a corner between construction lines', () => {
+    const document = doc([
+      point('a', 0, 0),
+      point('b', 100, 0),
+      point('c', 100, 100),
+      line('ab', 'a', 'b', true),
+      line('bc', 'b', 'c', true),
+    ]);
+
+    expect(roundableCorners(document)).toEqual(['b']);
+  });
+
+  it('skips a corner whose piece allowances differ or are absent on one side', () => {
+    let document = executeCommand(square(), {
+      id: 'piece',
+      type: 'create_piece',
+      params: { edges: ['ab', 'bc', 'cd', 'da'] },
+    }).document;
+    document = executeCommand(document, {
+      id: 'allow-ab',
+      type: 'set_piece_allowance',
+      params: { piece: 'piece', edge: 'ab', width: 10 },
+    }).document;
+    expect(roundableCorners(document)).toEqual(['c', 'd']);
+
+    const kinds = executeCommand(square(), {
+      id: 'piece',
+      type: 'create_piece',
+      params: { edges: ['ab', 'bc', 'cd', 'da'] },
+    }).document;
+    const withKinds: PatternDocument = {
+      ...kinds,
+      pieces: [
+        {
+          id: 'piece',
+          edges: ['ab', 'bc', 'cd', 'da'],
+          allowances: [
+            { edge: 'ab', width: 10, kind: 'single' },
+            { edge: 'bc', width: 10, kind: 'double' },
+          ],
+        },
+      ],
+    };
+    expect(roundableCorners(withKinds)).toEqual(['d']);
+  });
+
+  it('ignores a piece that does not contain both edge lines', () => {
+    const document: PatternDocument = {
+      ...square(),
+      pieces: [{ id: 'p', edges: ['ab'], allowances: [{ edge: 'ab', width: 10 }] }],
+    };
+
+    // A piece that never contains both lines of a corner imposes no rule.
+    expect(roundableCorners(document)).toEqual(['a', 'b', 'c', 'd']);
   });
 });

@@ -17,7 +17,7 @@ function mountBar(
 ): VueWrapper {
   return mount(CornerRoundPromptBar, {
     props: {
-      prompt: 'Round corner — pick the first line.',
+      prompt: 'Round corner — pick two lines or a corner.',
       rejection: null,
       ready: false,
       initialValue: '5',
@@ -37,7 +37,7 @@ describe('CornerRoundPromptBar', () => {
     const wrapper = mountBar({ rejection: 'The lines must meet at a corner.' });
 
     expect(wrapper.find('[data-testid="corner-round-prompt"]').text()).toBe(
-      'Round corner — pick the first line.',
+      'Round corner — pick two lines or a corner.',
     );
     expect(wrapper.find('[data-testid="corner-round-prompt"]').attributes('role')).toBe('status');
     expect(wrapper.find('[data-testid="corner-round-rejection"]').text()).toBe(

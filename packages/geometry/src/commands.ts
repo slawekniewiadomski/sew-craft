@@ -12,6 +12,7 @@ import {
 import {
   allowanceForEdge,
   pieceById,
+  pieceCutLoop,
   pieceCutVertex,
   pieceForEdge,
   validatePiece,
@@ -1400,8 +1401,19 @@ function applyAddCornerRound(
   if (seamForEdge(document, first) !== undefined || seamForEdge(document, second) !== undefined) {
     throw new CommandValidationError('add_corner_round', 'Remove the seam allowance first.');
   }
-  if (pieceForEdge(document, first) !== undefined || pieceForEdge(document, second) !== undefined) {
-    throw new CommandValidationError('add_corner_round', 'Remove the piece first.');
+
+  // A round inside a piece keeps the piece and its allowances. The cut loop
+  // offsets the bridge by one distance, so both adjacent allowances must agree.
+  const pieces = document.pieces.filter(
+    (piece) => piece.edges.includes(first) && piece.edges.includes(second),
+  );
+  for (const piece of pieces) {
+    if (!allowancesAgree(allowanceForEdge(piece, first), allowanceForEdge(piece, second))) {
+      throw new CommandValidationError(
+        'add_corner_round',
+        'Both edges need the same allowance to round this corner.',
+      );
+    }
   }
 
   const meeting = document.entities.filter(
@@ -1528,13 +1540,27 @@ function applyAddCornerRound(
   );
 
   const round: CornerRound = { ...tentative, cornerConstruction: cornerEntity.construction };
+  const next: PatternDocument = {
+    ...document,
+    entities,
+    cornerRounds: [...cornerRounds(document), round],
+  };
+
+  // A radius that folds a piece's cut line is not a usable round: compare the
+  // affected loops so an unrelated pre-existing fold does not block the edit.
+  for (const piece of pieces) {
+    const before = pieceCutLoop(document, piece)?.selfIntersections.length ?? 0;
+    const after = pieceCutLoop(next, piece)?.selfIntersections.length ?? 0;
+    if (after > before) {
+      throw new CommandValidationError(
+        'add_corner_round',
+        'This radius with the current allowance folds the cut line.',
+      );
+    }
+  }
 
   return {
-    document: {
-      ...document,
-      entities,
-      cornerRounds: [...cornerRounds(document), round],
-    },
+    document: next,
     inverse: {
       id: `${command.id}:remove`,
       type: 'remove_corner_round',
@@ -1740,6 +1766,12 @@ function resolveCreateAllowance(
   };
 }
 
+/** Whether two loop-edge allowances carry the same width and effective kind. */
+function allowancesAgree(a: Allowance | undefined, b: Allowance | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.width === b.width && effectiveKind(a) === effectiveKind(b);
+}
+
 /** A command that restores an allowance to its previous width and kind. */
 function restoreAllowance(id: EntityId, piece: EntityId, allowance: Allowance): Command {
   return {
@@ -1922,6 +1954,38 @@ function restoreDefaultAllowance(id: EntityId, preset: AllowancePreset): Command
   };
 }
 
+/** The edges joined to `edge` by a committed round inside this piece. */
+function roundedNeighbours(document: PatternDocument, piece: Piece, edge: EntityId): EntityId[] {
+  const neighbours: EntityId[] = [];
+  for (const round of cornerRounds(document)) {
+    const index = round.ends.findIndex((end) => end.line === edge);
+    if (index < 0) continue;
+    const other = round.ends[1 - index]!.line;
+    if (piece.edges.includes(other)) neighbours.push(other);
+  }
+  return neighbours;
+}
+
+/**
+ * Reject an allowance change that would leave a rounded corner's two edges with
+ * different allowances: its bridge can offset by only one distance.
+ */
+function requireRoundedAllowancesMatch(
+  document: PatternDocument,
+  piece: Piece,
+  edge: EntityId,
+  proposed: Allowance | undefined,
+): void {
+  for (const other of roundedNeighbours(document, piece, edge)) {
+    if (!allowancesAgree(proposed, allowanceForEdge(piece, other))) {
+      throw new CommandValidationError(
+        'set_piece_allowance',
+        'Remove the corner round before changing one side of a rounded corner.',
+      );
+    }
+  }
+}
+
 /** Set, change or remove the allowance of one loop edge. */
 function applySetPieceAllowance(
   document: PatternDocument,
@@ -1948,6 +2012,7 @@ function applySetPieceAllowance(
     if (existing === undefined) {
       return noOp(document);
     }
+    requireRoundedAllowancesMatch(document, piece, edge, undefined);
     return {
       document: replacePiece(document, {
         ...piece,
@@ -1978,6 +2043,8 @@ function applySetPieceAllowance(
   ) {
     return noOp(document);
   }
+
+  requireRoundedAllowancesMatch(document, piece, edge, next);
 
   const allowances =
     existing === undefined

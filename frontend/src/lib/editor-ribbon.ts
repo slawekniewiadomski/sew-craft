@@ -89,13 +89,17 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
     label: 'Tools',
     items: [
       toolItem('select'),
-      toolItem('round_corner'),
       actionItem('create-piece', 'Create piece', 'create_piece', 'piece'),
       actionItem('undo', 'Undo', 'undo', 'undo'),
       actionItem('redo', 'Redo', 'redo', 'redo'),
       actionItem('delete', 'Delete', 'delete', 'delete'),
       actionItem('fit', 'Fit', 'fit', 'fit'),
     ],
+  },
+  {
+    id: 'features',
+    label: 'Features',
+    items: [toolItem('round_corner')],
   },
   {
     id: 'sketching',

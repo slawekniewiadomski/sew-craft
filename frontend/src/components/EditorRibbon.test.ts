@@ -27,12 +27,12 @@ function mountRibbon(
 
 const RIBBON_LABELS = [
   'Select',
-  'Round corner',
   'Create piece',
   'Undo',
   'Redo',
   'Delete',
   'Fit',
+  'Round corner',
   'Point',
   'Line',
   'Curve',
@@ -76,6 +76,7 @@ describe('EditorRibbon', () => {
     const captions = wrapper.findAll('[data-testid$="-label"]');
     expect(captions.map((caption) => caption.text())).toEqual([
       'Tools',
+      'Features',
       'Sketching',
       'Constraints',
       'Export',
@@ -85,6 +86,7 @@ describe('EditorRibbon', () => {
     const groups = wrapper.findAll('[role="group"]');
     expect(groups.map((group) => group.attributes('aria-label'))).toEqual([
       'Tools',
+      'Features',
       'Sketching',
       'Constraints',
       'Export',
