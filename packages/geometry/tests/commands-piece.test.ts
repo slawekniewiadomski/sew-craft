@@ -1136,10 +1136,10 @@ describe('corner rounds on piece corners', () => {
     expect(target.allowances).toHaveLength(3);
   });
 
-  it('removing the round restores the sharp loop and keeps the piece', () => {
-    const before = withPiece();
+  it('removing the round restores the sharp loop, the piece and its cut dimension', () => {
+    const before = applyCommand(withPiece(), addDerived()).document;
     const sharp = pieceCutLoop(before, pieceById(before, 'piece-1')!);
-    const rounded = roundedPiece();
+    const rounded = applyCommand(before, roundCorner()).document;
 
     const removed = applyCommand(rounded, {
       id: 'remove-round',
@@ -1151,6 +1151,25 @@ describe('corner rounds on piece corners', () => {
       pieceById(before, 'piece-1')!.allowances,
     );
     expect(pieceCutLoop(removed, pieceById(removed, 'piece-1')!)).toEqual(sharp);
+    expect(getConstraint(removed, 'cut-width')).toEqual(getConstraint(before, 'cut-width'));
+    expect(measureCutDimension(removed, getConstraint(removed, 'cut-width')!)).toBeCloseTo(220);
+  });
+
+  it('rounds every piece that contains the two corner edges', () => {
+    const shared: Piece = {
+      id: 'piece-2',
+      edges: ['bottom', 'right', 'top', 'left'],
+      allowances: [],
+    };
+    const base = withPiece();
+    const document: PatternDocument = { ...base, pieces: [...base.pieces, shared] };
+
+    const rounded = applyCommand(document, roundCorner()).document;
+
+    for (const id of ['piece-1', 'piece-2']) {
+      expect(pieceLoop(rounded, pieceById(rounded, id)!)).not.toBeNull();
+      expect(pieceCutLoop(rounded, pieceById(rounded, id)!)).not.toBeNull();
+    }
   });
 
   it('keeps a cut dimension anchored to a rounded piece', () => {
