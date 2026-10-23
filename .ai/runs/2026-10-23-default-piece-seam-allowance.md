@@ -114,6 +114,6 @@ spec's recommended answers are taken as accepted:
 
 ### Phase 5: Verification
 
-- [ ] 5.1 Full validation gate green (format, typecheck, lint, format:check, coverage, build, Pest 100 %, Pint)
-- [ ] 5.2 `om-auto-review-pr` pass with findings addressed
-- [ ] 5.3 Retitle the PR, flip to ready, normalize labels and report
+- [x] 5.1 Full validation gate green (format, typecheck, lint, format:check, coverage, build, Pest 100 %, Pint) — 48fd9f3
+- [x] 5.2 `om-auto-review-pr` pass with findings addressed — 48fd9f3
+- [x] 5.3 Retitle the PR, flip to ready, normalize labels and report — 48fd9f3
