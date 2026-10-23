@@ -187,6 +187,13 @@ export function dimensionStateLabel(state: DimensionState): string {
   }
 }
 
+/** The pill tone for a dimension state: broken is danger, linked/cut accent, rest neutral. */
+export function dimensionTone(state: DimensionState): 'neutral' | 'accent' | 'danger' {
+  if (state === 'broken') return 'danger';
+  if (state === 'referenced' || state === 'derived') return 'accent';
+  return 'neutral';
+}
+
 /** The accessible name of a label: the state is never conveyed by color alone. */
 export function dimensionAccessibleName(
   value: number,

@@ -1,18 +1,22 @@
+import type { RibbonIconName } from './ribbon-icons';
+
 export type DrawerId = 'properties' | 'pieces' | 'outline' | 'dimensions' | 'constraints' | 'view';
 
 export interface DrawerDefinition {
   id: DrawerId;
   label: string;
   defaultOpen: boolean;
+  /** Rail glyph; typed against the registry so a typo is a compile error. */
+  icon: RibbonIconName;
 }
 
 export const EDITOR_DRAWERS: DrawerDefinition[] = [
-  { id: 'properties', label: 'Properties', defaultOpen: true },
-  { id: 'pieces', label: 'Pieces', defaultOpen: true },
-  { id: 'outline', label: 'Outline', defaultOpen: true },
-  { id: 'dimensions', label: 'Dimensions', defaultOpen: false },
-  { id: 'constraints', label: 'Constraints', defaultOpen: false },
-  { id: 'view', label: 'View', defaultOpen: false },
+  { id: 'properties', label: 'Properties', defaultOpen: true, icon: 'select' },
+  { id: 'pieces', label: 'Pieces', defaultOpen: true, icon: 'piece' },
+  { id: 'outline', label: 'Outline', defaultOpen: true, icon: 'line' },
+  { id: 'dimensions', label: 'Dimensions', defaultOpen: false, icon: 'dimension' },
+  { id: 'constraints', label: 'Constraints', defaultOpen: false, icon: 'constraints' },
+  { id: 'view', label: 'View', defaultOpen: false, icon: 'eye' },
 ];
 
 /** Which drawers start open, keyed by id, derived from the drawer definitions. */

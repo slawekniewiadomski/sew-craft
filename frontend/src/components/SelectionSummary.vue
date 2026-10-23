@@ -2,7 +2,8 @@
 import type { Entity } from '@sewcraft/geometry';
 import { computed } from 'vue';
 
-import { Button } from '@/components/ui/button';
+import SidebarAction from '@/components/sidebar/SidebarAction.vue';
+import SidebarHeading from '@/components/sidebar/SidebarHeading.vue';
 
 const props = withDefaults(
   defineProps<{
@@ -50,21 +51,21 @@ const breakdown = computed(() => {
 </script>
 
 <template>
-  <section class="space-y-2 text-sm" aria-label="Selection" data-testid="selection-summary">
-    <h3 class="text-xs font-semibold uppercase text-muted-foreground">Selection</h3>
-    <p class="font-medium" data-testid="selection-count">{{ countLabel }}</p>
-    <p class="text-xs text-muted-foreground" data-testid="selection-breakdown">{{ breakdown }}</p>
-    <Button
-      variant="outline"
-      size="sm"
-      :disabled="deleteDisabled"
-      :title="deleteHint"
+  <section class="space-y-2" aria-label="Selection" data-testid="selection-summary">
+    <SidebarHeading label="Selection" />
+    <p class="text-[13px] font-semibold tabular-nums" data-testid="selection-count">
+      {{ countLabel }}
+    </p>
+    <p class="text-2xs text-muted-foreground" data-testid="selection-breakdown">{{ breakdown }}</p>
+    <SidebarAction
+      icon="delete"
+      label="Delete selection"
+      :title="props.deleteHint"
+      :disabled="props.deleteDisabled"
       data-testid="selection-delete"
       @click="emit('delete')"
-    >
-      Delete selection
-    </Button>
-    <p class="text-xs text-muted-foreground" data-testid="selection-pointer-note">
+    />
+    <p class="text-2xs leading-snug text-muted-foreground" data-testid="selection-pointer-note">
       Rectangle selection is pointer-only. Ctrl/Cmd-click adds or removes an entity.
     </p>
   </section>

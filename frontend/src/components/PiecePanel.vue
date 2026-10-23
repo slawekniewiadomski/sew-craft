@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import type { AllowanceKind, EntityId } from '@sewcraft/geometry';
 
-import { Button } from '@/components/ui/button';
+import SidebarAction from '@/components/sidebar/SidebarAction.vue';
+import SidebarField from '@/components/sidebar/SidebarField.vue';
+import SidebarHeading from '@/components/sidebar/SidebarHeading.vue';
 import { parseAllowanceWidth } from '@/lib/allowance-width';
 import { formatDimensionValue } from '@/lib/dimensions';
-import type { PieceAllowanceRow, PieceSummary } from '@/lib/pieces';
+import { pieceSizeText, type PieceAllowanceRow, type PieceSummary } from '@/lib/pieces';
 
 /**
  * The one piece card in the editor: the Pieces drawer and the Properties
@@ -43,13 +45,6 @@ const DEFAULT_ALLOWANCE_WIDTH = 10;
 
 function testId(suffix: string): string {
   return `${props.prefix}-${suffix}`;
-}
-
-/** How a piece size reads in the card: `220 × 210 mm`. */
-function sizeText(size: { width: number; height: number } | null | undefined): string {
-  return size === undefined || size === null
-    ? '—'
-    : `${formatDimensionValue(size.width)} × ${formatDimensionValue(size.height)} mm`;
 }
 
 /** Area text in square millimetres and square centimetres. */
@@ -107,95 +102,77 @@ function pieceQuantity(event: Event): void {
 </script>
 
 <template>
-  <section :aria-labelledby="testId('piece-heading')" :data-testid="testId('piece')">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <h3
+  <section
+    class="space-y-2 rounded-md border p-2.5"
+    :aria-labelledby="testId('piece-heading')"
+    :data-testid="testId('piece')"
+  >
+    <div class="flex items-center justify-between gap-2">
+      <SidebarHeading
         :id="testId('piece-heading')"
-        class="text-xs font-semibold uppercase text-muted-foreground"
+        :label="props.label"
         :data-testid="testId('piece-heading')"
-      >
-        {{ props.label }}
-      </h3>
-      <Button
-        variant="outline"
-        size="sm"
-        :aria-label="`Remove piece ${props.summary.id}`"
+      />
+      <SidebarAction
+        icon="delete"
+        :label="`Remove piece ${props.summary.id}`"
         :data-testid="testId(`remove-piece-${props.summary.id}`)"
         @click="emit('remove-piece', props.summary.id)"
-      >
-        Remove piece
-      </Button>
+      />
     </div>
 
-    <dl class="mt-1 space-y-1">
-      <div class="flex items-center justify-between gap-2">
-        <dt class="text-muted-foreground">Id</dt>
-        <dd class="font-mono" :data-testid="testId('piece-id')">{{ props.summary.id }}</dd>
-      </div>
-      <div class="flex items-center justify-between gap-2">
-        <dt class="text-muted-foreground">Name</dt>
-        <dd>
-          <input
-            type="text"
-            class="w-40 rounded-md border px-2 py-1 text-sm"
-            :value="props.summary.name ?? ''"
-            :aria-label="`Name for piece ${props.summary.id}`"
-            :data-testid="testId('piece-name')"
-            @change="pieceName"
-          />
-        </dd>
-      </div>
-      <div class="flex items-center justify-between gap-2">
-        <dt class="text-muted-foreground">Quantity</dt>
-        <dd>
-          <input
-            type="number"
-            min="1"
-            step="1"
-            class="w-20 rounded-md border px-2 py-1 text-sm"
-            :value="props.summary.quantity"
-            :aria-label="`Quantity for piece ${props.summary.id}`"
-            :data-testid="testId('piece-quantity')"
-            @change="pieceQuantity"
-          />
-        </dd>
-      </div>
-      <div class="flex items-center justify-between gap-2">
-        <dt class="text-muted-foreground">Finished</dt>
-        <dd :data-testid="testId('piece-finished')">
-          {{ sizeText(props.summary.metrics?.finished) }}
-        </dd>
-      </div>
-      <div class="flex items-center justify-between gap-2">
-        <dt class="text-muted-foreground">Cut</dt>
-        <dd :data-testid="testId('piece-cut')">{{ sizeText(props.summary.metrics?.cut) }}</dd>
-      </div>
-      <div class="flex items-center justify-between gap-2">
-        <dt class="text-muted-foreground">Cut area</dt>
-        <dd :data-testid="testId('piece-cut-area')">
-          {{ areaText(props.summary.metrics?.cutArea) }}
-        </dd>
-      </div>
-      <div class="flex items-center justify-between gap-2">
-        <dt class="text-muted-foreground">Allowance area</dt>
-        <dd :data-testid="testId('piece-allowance-area')">
-          {{ areaText(props.summary.metrics?.allowanceArea) }}
-        </dd>
-      </div>
+    <dl class="space-y-1">
+      <SidebarField label="Id" mono :data-testid="testId('piece-id')">
+        {{ props.summary.id }}
+      </SidebarField>
+      <SidebarField label="Name">
+        <input
+          type="text"
+          class="h-7 w-40 rounded-sm border px-2 text-[13px]"
+          :value="props.summary.name ?? ''"
+          :aria-label="`Name for piece ${props.summary.id}`"
+          :data-testid="testId('piece-name')"
+          @change="pieceName"
+        />
+      </SidebarField>
+      <SidebarField label="Quantity">
+        <input
+          type="number"
+          min="1"
+          step="1"
+          class="h-7 w-20 rounded-sm border px-2 text-[13px] tabular-nums"
+          :value="props.summary.quantity"
+          :aria-label="`Quantity for piece ${props.summary.id}`"
+          :data-testid="testId('piece-quantity')"
+          @change="pieceQuantity"
+        />
+      </SidebarField>
+      <SidebarField label="Finished" :data-testid="testId('piece-finished')">
+        {{ pieceSizeText(props.summary.metrics?.finished) }}
+      </SidebarField>
+      <SidebarField label="Cut" :data-testid="testId('piece-cut')">
+        {{ pieceSizeText(props.summary.metrics?.cut) }}
+      </SidebarField>
+      <SidebarField label="Cut area" :data-testid="testId('piece-cut-area')">
+        {{ areaText(props.summary.metrics?.cutArea) }}
+      </SidebarField>
+      <SidebarField label="Allowance area" :data-testid="testId('piece-allowance-area')">
+        {{ areaText(props.summary.metrics?.allowanceArea) }}
+      </SidebarField>
     </dl>
 
-    <ul class="mt-2 space-y-2" :aria-label="`Allowances for piece ${props.summary.id}`">
+    <ul class="space-y-1.5 border-t pt-2" :aria-label="`Allowances for piece ${props.summary.id}`">
       <li
         v-for="row in props.summary.allowances"
         :key="row.edge"
-        class="flex flex-wrap items-center gap-2"
+        class="flex flex-wrap items-center gap-1.5"
         :data-testid="testId(`piece-allowance-${row.edge}`)"
       >
-        <span class="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
+        <span class="min-w-0 flex-1 truncate font-mono text-2xs text-muted-foreground">
           {{ row.edge }}
         </span>
         <select
-          class="rounded-md border px-2 py-1 text-sm"
+          class="h-7 rounded-sm border px-1.5 text-2xs"
           :value="row.kind"
           :aria-label="`Allowance kind for edge ${row.edge}`"
           :data-testid="testId(`piece-kind-${row.edge}`)"
@@ -213,14 +190,14 @@ function pieceQuantity(event: Event): void {
           type="number"
           min="0.1"
           step="0.1"
-          class="w-16 rounded-md border px-2 py-1 text-sm"
+          class="h-7 w-16 rounded-sm border px-1.5 text-2xs tabular-nums"
           :value="row.width > 0 ? row.width : ''"
           :disabled="row.kind === 'none'"
           :aria-label="`Finished width for edge ${row.edge}`"
           :data-testid="testId(`piece-width-${row.edge}`)"
           @change="allowanceWidth(row, $event)"
         />
-        <span class="text-xs text-muted-foreground">mm</span>
+        <span class="text-2xs text-muted-foreground">mm</span>
       </li>
     </ul>
   </section>

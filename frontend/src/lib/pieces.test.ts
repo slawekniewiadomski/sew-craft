@@ -14,14 +14,18 @@ import { describe, expect, it } from 'vitest';
 import {
   anchorForPoint,
   edgeEndpoints,
+  edgeLabel,
   findDerivedDimension,
   pieceAllowanceRows,
   pieceCreationFromSelection,
   pieceLabel,
   pieceOwningEdge,
+  pieceSizeLine,
+  pieceSizeText,
   pieceSummaries,
   pieceSummary,
   piecesAtPoint,
+  pieceTitleLine,
 } from './pieces';
 
 const point = (id: string, x: number, y: number): PointEntity => ({
@@ -411,5 +415,43 @@ describe('pieceSummaries / pieceLabel', () => {
 
     expect(pieceLabel(first!, 0)).toBe('Bodice');
     expect(pieceLabel(second!, 1)).toBe('Piece 2');
+  });
+});
+
+describe('drawer row helpers', () => {
+  it('uses the piece label as the title line', () => {
+    const document = squareDocument();
+    document.pieces.push({ id: 'p2', edges: ['ab', 'bc', 'da'], allowances: [] });
+    const [first, second] = pieceSummaries(document);
+
+    expect(pieceTitleLine(first!, 0)).toBe('Bodice');
+    expect(pieceTitleLine(second!, 1)).toBe('Piece 2');
+  });
+
+  it('formats one size and falls back to an em dash', () => {
+    expect(pieceSizeText({ width: 220, height: 210 })).toBe('220 × 210 mm');
+    expect(pieceSizeText(null)).toBe('—');
+    expect(pieceSizeText(undefined)).toBe('—');
+  });
+
+  it('joins the finished and cut sizes into the secondary line', () => {
+    expect(
+      pieceSizeLine({
+        finished: { width: 220, height: 210 },
+        cut: { width: 240, height: 230 },
+        cutArea: 1000,
+        allowanceArea: 100,
+        quantity: 2,
+      }),
+    ).toBe('220 × 210 mm finished · 240 × 230 mm cut');
+    expect(pieceSizeLine(null)).toBe('— finished · — cut');
+  });
+
+  it('labels an edge with its endpoints and falls back to its id', () => {
+    const document = squareDocument();
+
+    expect(edgeLabel(document, 'ab')).toBe('a → b');
+    expect(edgeLabel(document, 'missing')).toBe('missing');
+    expect(edgeLabel(document, 'k1')).toBe('k1');
   });
 });

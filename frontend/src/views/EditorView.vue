@@ -21,13 +21,11 @@ import type {
   AllowanceKind,
   Command,
   ConstraintType,
-  CurveEntity,
   DerivedDistanceConstraint,
   DimensionOrientation,
   DimensionState,
   DistanceConstraint,
   EntityId,
-  LineEntity,
 } from '@sewcraft/geometry';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
@@ -39,6 +37,12 @@ import EditorSidebar from '@/components/EditorSidebar.vue';
 import EntityPropertiesPanel from '@/components/EntityPropertiesPanel.vue';
 import PatternCanvas from '@/components/PatternCanvas.vue';
 import PiecePanel from '@/components/PiecePanel.vue';
+import RibbonIcon from '@/components/RibbonIcon.vue';
+import Pill from '@/components/sidebar/Pill.vue';
+import SidebarAction from '@/components/sidebar/SidebarAction.vue';
+import SidebarEmpty from '@/components/sidebar/SidebarEmpty.vue';
+import SidebarHeading from '@/components/sidebar/SidebarHeading.vue';
+import SidebarStat from '@/components/sidebar/SidebarStat.vue';
 import SelectionSummary from '@/components/SelectionSummary.vue';
 import { Button } from '@/components/ui/button';
 import { useCommandBus } from '@/composables/use-command-bus';
@@ -69,6 +73,7 @@ import {
   DIMENSION_ORIENTATION_OPTIONS,
   dimensionPatchForEdit,
   dimensionStateLabel,
+  dimensionTone,
   filterReferenceOptions,
   formatDimensionField,
   formatDimensionValue,
@@ -85,16 +90,20 @@ import {
 import { buildArcCommands, type ArcEndpoint } from '@/lib/arc-tool';
 import { downloadSvgFile } from '@/lib/download';
 import type { RibbonAction } from '@/lib/editor-ribbon';
+import type { DrawerId } from '@/lib/editor-drawers';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 import { entityProperties } from '@/lib/entity-properties';
 import { buildLineCommands, type LineEndpoint } from '@/lib/line-tool';
 import {
+  edgeLabel,
   findDerivedDimension,
   pieceCreationFromSelection,
   pieceLabel,
+  pieceSizeLine,
   pieceSummaries,
-  type PieceSummary,
+  pieceTitleLine,
 } from '@/lib/pieces';
+import { ribbonIcon, type RibbonIconName } from '@/lib/ribbon-icons';
 import { applySelection, orphanedEdges, selectionModeFrom, toggleSelection } from '@/lib/selection';
 
 const props = defineProps<{ id: string }>();
@@ -152,16 +161,18 @@ const visibleDocument = computed(() =>
       },
 );
 
-/** Every line and curve, so any edge can be converted between guide and cut. */
+/** Every line, curve, arc and circle, so any edge can be converted between guide and cut. */
 const edges = computed(() =>
   pattern.value.entities
-    .filter((entity): entity is LineEntity | CurveEntity => entity.kind !== 'point')
+    .filter((entity) => entity.kind !== 'point')
     .map((entity) => {
       const seam = seamForEdge(pattern.value, entity.id);
       const piece = pattern.value.pieces.find((candidate) => candidate.edges.includes(entity.id));
       const allowance = piece?.allowances.find((candidate) => candidate.edge === entity.id);
       return {
         id: entity.id,
+        kind: entity.kind,
+        label: edgeLabel(pattern.value, entity.id),
         construction: entity.construction,
         seamWidth: seam?.width ?? null,
         pieceId: piece?.id ?? null,
@@ -192,17 +203,28 @@ const selectedIds = computed(() => new Set(selectedEntityIds.value));
 /** Every piece, in document order, as the Pieces drawer lists them. */
 const pieces = computed(() => pieceSummaries(pattern.value));
 
-/** How a piece size reads in a drawer row: `220 × 210 mm`, or `—`. */
-function pieceSize(size: { width: number; height: number } | null | undefined): string {
-  return size === undefined || size === null
-    ? '—'
-    : `${formatDimensionValue(size.width)} × ${formatDimensionValue(size.height)} mm`;
-}
+/** Per-drawer row counts for the header badges; the View drawer has none. */
+const drawerCounts = computed<Partial<Record<DrawerId, number>>>(() => ({
+  properties: selectedEntityIds.value.length,
+  pieces: pieces.value.length,
+  outline: edges.value.length,
+  dimensions: dimensions.value.length,
+  constraints: otherConstraints.value.length,
+}));
 
-/** A row's one-line summary: `Front · ×2 · 220 × 210 mm finished · 240 × 230 mm cut`. */
-function pieceRowText(piece: PieceSummary, index: number): string {
-  return `${pieceLabel(piece, index)} · ×${piece.quantity} · ${pieceSize(piece.metrics?.finished)} finished · ${pieceSize(piece.metrics?.cut)} cut`;
-}
+const EDGE_KIND_LABELS: Record<'line' | 'curve' | 'arc' | 'circle', string> = {
+  line: 'Line',
+  curve: 'Curve',
+  arc: 'Arc',
+  circle: 'Circle',
+};
+
+const EDGE_KIND_ICONS: Record<'line' | 'curve' | 'arc' | 'circle', RibbonIconName> = {
+  line: 'line',
+  curve: 'curve',
+  arc: 'arc',
+  circle: 'circle',
+};
 
 /**
  * Open or collapse one piece's card. Selecting a piece clears the entity
@@ -230,8 +252,6 @@ const orphanHint = computed(() =>
     ? undefined
     : `Include ${orphanCandidates.value.join(', ')} in the selection to delete these points.`,
 );
-
-const hasSelection = computed(() => selectedEntityIds.value.length > 0);
 
 /** Live-region text, announced whenever the selection count changes. */
 const selectionStatus = computed(() =>
@@ -1112,6 +1132,7 @@ onBeforeUnmount(() => {
       <EditorSidebar
         :width="width"
         :collapsed="collapsed"
+        :counts="drawerCounts"
         @update:width="setWidth"
         @update:collapsed="collapsed = $event"
       >
@@ -1139,51 +1160,52 @@ onBeforeUnmount(() => {
             @remove-piece="onRemovePiece"
           />
 
-          <section
-            class="space-y-1 text-sm"
-            :class="hasSelection ? 'mt-3 border-t pt-3' : ''"
-            aria-label="Workspace"
-            data-testid="workspace-summary"
-          >
-            <h3
-              class="text-xs font-semibold uppercase text-muted-foreground"
-              :class="hasSelection ? '' : 'sr-only'"
-            >
-              Workspace
-            </h3>
-            <dl class="space-y-1">
-              <div class="flex items-center justify-between gap-2">
-                <dt class="text-muted-foreground">Tool</dt>
-                <dd data-testid="active-tool">{{ activeToolLabel }}</dd>
-              </div>
-              <div class="flex items-center justify-between gap-2">
-                <dt class="text-muted-foreground">Project</dt>
-                <dd>#{{ props.id }}</dd>
-              </div>
-            </dl>
-            <p class="text-xs text-muted-foreground">{{ journal.length }} command(s)</p>
-            <p class="text-xs text-muted-foreground">{{ cutEdgeCount }} cut edge(s)</p>
-            <p v-if="!hasSelection" class="pt-1 text-xs text-muted-foreground">
-              Select a point, line or curve to inspect it.
-            </p>
-          </section>
+          <SidebarEmpty
+            v-else
+            icon="select"
+            message="Nothing selected"
+            hint="Select a point, line, curve, arc or circle on the canvas."
+            data-testid="properties-empty"
+          />
+        </template>
+
+        <template #stats>
+          <SidebarStat data-testid="workspace-summary">
+            <span data-testid="active-tool">{{ activeToolLabel }}</span>
+            <span aria-hidden="true">·</span>
+            <span>{{ journal.length }} command(s)</span>
+            <span aria-hidden="true">·</span>
+            <span>{{ cutEdgeCount }} cut edge(s)</span>
+          </SidebarStat>
         </template>
 
         <template #pieces>
           <div class="space-y-2">
-            <ul v-if="pieces.length > 0" class="space-y-2" aria-label="Pieces">
-              <li v-for="(piece, index) in pieces" :key="piece.id" class="text-sm">
+            <ul v-if="pieces.length > 0" class="space-y-1" aria-label="Pieces">
+              <li v-for="(piece, index) in pieces" :key="piece.id">
                 <button
                   type="button"
-                  class="flex w-full items-center justify-between gap-2 rounded-md px-1 py-1 text-left hover:bg-accent"
+                  class="flex w-full items-start justify-between gap-2 rounded-sm px-1 py-1 text-left hover:bg-accent"
                   :class="selectedPieceId === piece.id ? 'bg-accent text-accent-foreground' : ''"
                   :aria-expanded="selectedPieceId === piece.id"
                   :aria-label="`${pieceLabel(piece, index)}: toggle piece details`"
                   :data-testid="`piece-row-${piece.id}`"
                   @click="selectPiece(piece.id)"
                 >
-                  <span class="min-w-0 flex-1 truncate">{{ pieceRowText(piece, index) }}</span>
-                  <span aria-hidden="true">{{ selectedPieceId === piece.id ? '▾' : '▸' }}</span>
+                  <span class="min-w-0 flex-1 space-y-0.5">
+                    <span class="flex items-center gap-1.5">
+                      <span class="truncate text-[13px] font-semibold">
+                        {{ pieceTitleLine(piece, index) }}
+                      </span>
+                      <Pill tone="neutral">×{{ piece.quantity }}</Pill>
+                    </span>
+                    <span class="block text-2xs leading-snug text-muted-foreground">
+                      {{ pieceSizeLine(piece.metrics) }}
+                    </span>
+                  </span>
+                  <span aria-hidden="true" class="shrink-0 text-muted-foreground">
+                    {{ selectedPieceId === piece.id ? '▾' : '▸' }}
+                  </span>
                 </button>
 
                 <div v-if="selectedPieceId === piece.id" class="mt-1 px-1">
@@ -1199,9 +1221,7 @@ onBeforeUnmount(() => {
               </li>
             </ul>
 
-            <p v-else class="text-sm text-muted-foreground" data-testid="pieces-empty">
-              No pieces yet.
-            </p>
+            <SidebarEmpty v-else message="No pieces yet." data-testid="pieces-empty" />
 
             <Button
               variant="outline"
@@ -1217,84 +1237,101 @@ onBeforeUnmount(() => {
         </template>
 
         <template #outline>
-          <ul v-if="edges.length > 0" class="space-y-2" aria-label="Edges">
+          <ul v-if="edges.length > 0" class="space-y-1" aria-label="Edges">
             <li
               v-for="edge in edges"
               :key="edge.id"
-              class="flex flex-wrap items-center justify-between gap-2 text-sm"
-              :class="selectedIds.has(edge.id) ? 'rounded-md bg-accent text-accent-foreground' : ''"
+              class="flex items-center gap-1 border-l-2 border-transparent pl-1"
+              :class="selectedIds.has(edge.id) ? 'rounded-r-sm border-primary bg-primary/10' : ''"
               :data-testid="`outline-row-${edge.id}`"
             >
               <button
                 type="button"
-                class="flex min-w-0 flex-1 flex-wrap items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                class="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm py-1 text-left hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                 :aria-label="`Select entity ${edge.id}`"
                 :aria-current="selectedIds.has(edge.id) ? 'true' : undefined"
                 :data-testid="`outline-select-${edge.id}`"
                 @click="onOutlineSelect(edge.id, $event)"
               >
-                <span class="font-mono text-muted-foreground">{{ edge.id }}</span>
+                <RibbonIcon
+                  :icon="ribbonIcon(EDGE_KIND_ICONS[edge.kind])"
+                  :size="12"
+                  class="shrink-0 text-muted-foreground"
+                />
+                <span class="shrink-0 text-[13px] font-medium">
+                  {{ EDGE_KIND_LABELS[edge.kind] }}
+                </span>
+                <span class="truncate font-mono text-2xs text-muted-foreground">
+                  {{ edge.label }}
+                </span>
 
-                <span
+                <Pill
                   v-if="edge.seamWidth !== null"
-                  class="text-muted-foreground"
+                  tone="accent"
+                  class="ml-auto"
                   :data-testid="`seam-label-${edge.id}`"
                 >
                   Allowance {{ edge.seamWidth }} mm
-                </span>
+                </Pill>
                 <span
                   v-else-if="edge.pieceId !== null"
-                  class="text-muted-foreground"
+                  class="ml-auto flex items-center gap-1"
                   :data-testid="`edge-piece-${edge.id}`"
                 >
-                  In piece {{ edge.pieceId }}
-                  <template v-if="edge.allowanceKind !== null">
-                    · {{ edge.allowanceKind }} {{ edge.allowanceWidth }} mm
-                  </template>
+                  <span class="text-2xs text-muted-foreground">In piece {{ edge.pieceId }}</span>
+                  <Pill v-if="edge.allowanceKind !== null" tone="accent">
+                    {{ edge.allowanceKind }} {{ edge.allowanceWidth }} mm
+                  </Pill>
                 </span>
-                <span v-else class="text-muted-foreground" :data-testid="`seam-empty-${edge.id}`">
+                <Pill
+                  v-else
+                  tone="neutral"
+                  class="ml-auto border-dashed"
+                  :data-testid="`seam-empty-${edge.id}`"
+                >
                   No allowance
-                </span>
+                </Pill>
               </button>
 
-              <Button variant="outline" size="sm" @click="convert(edge.id, !edge.construction)">
-                {{ edge.construction ? 'Make cut edge' : 'Make construction' }}
-              </Button>
+              <SidebarAction
+                icon="line"
+                :label="edge.construction ? 'Make cut edge' : 'Make construction'"
+                :data-testid="`outline-construction-${edge.id}`"
+                @click="convert(edge.id, !edge.construction)"
+              />
             </li>
           </ul>
-          <p v-else class="text-sm text-muted-foreground">No edges yet.</p>
+          <SidebarEmpty v-else message="No edges yet." />
         </template>
 
         <template #dimensions>
-          <ul v-if="dimensions.length > 0" class="space-y-3" aria-label="Dimensions">
+          <ul v-if="dimensions.length > 0" class="space-y-2" aria-label="Dimensions">
             <li
               v-for="dimension in dimensions"
               :key="dimension.id"
-              class="space-y-1 text-sm"
+              class="space-y-1.5 border-t pt-2 first:border-t-0 first:pt-0"
               :data-testid="`dimension-${dimension.id}`"
             >
               <div class="flex items-center justify-between gap-2">
-                <div class="min-w-0">
-                  <span class="font-mono text-muted-foreground">{{ dimension.id }}</span>
-                  <span class="ml-2 text-xs text-muted-foreground">
+                <div class="min-w-0 flex flex-wrap items-baseline gap-1">
+                  <span class="font-mono text-2xs text-muted-foreground">{{ dimension.id }}</span>
+                  <span class="text-2xs text-muted-foreground">
                     ({{ dimension.entities.join(', ') }})
                   </span>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
+                <SidebarAction
+                  icon="delete"
+                  :label="`Remove dimension ${dimension.id}`"
                   :data-testid="`remove-dimension-${dimension.id}`"
                   @click="removeConstraint(dimension.id)"
-                >
-                  Remove
-                </Button>
+                />
               </div>
 
-              <div class="relative flex flex-wrap items-center gap-2">
+              <div class="relative flex flex-wrap items-center gap-1.5">
                 <input
                   type="text"
                   inputmode="decimal"
-                  class="w-20 rounded-md border px-2 py-1 text-sm"
+                  class="h-7 w-24 rounded-sm border px-2 text-[13px] font-medium tabular-nums"
                   :class="dimension.readOnly ? 'bg-muted' : ''"
                   :value="dimension.field"
                   :readonly="dimension.readOnly"
@@ -1317,7 +1354,14 @@ onBeforeUnmount(() => {
                   @keydown="onDimensionKeydown(dimension.id, $event)"
                   @change="onDimensionValueEdit(dimension.id, $event)"
                 />
-                <span class="text-xs text-muted-foreground">mm</span>
+                <span class="text-2xs text-muted-foreground">mm</span>
+                <Pill
+                  :tone="dimensionTone(dimension.state)"
+                  :data-dimension-state="dimension.state"
+                  :data-testid="`dimension-state-${dimension.id}`"
+                >
+                  {{ dimension.stateLabel }}
+                </Pill>
                 <Button
                   v-if="!dimension.readOnly"
                   variant="outline"
@@ -1327,25 +1371,20 @@ onBeforeUnmount(() => {
                 >
                   {{ dimension.state === 'broken' ? 'Re-link' : 'Reference' }}
                 </Button>
-                <span
-                  class="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
-                  :data-dimension-state="dimension.state"
-                  :data-testid="`dimension-state-${dimension.id}`"
-                >
-                  {{ dimension.stateLabel }}
-                </span>
 
                 <DimensionReferencePicker
                   v-if="dimensionPicker?.id === dimension.id"
                   :list-id="`dimension-drawer-reference-list-${dimension.id}`"
-                  class="left-0 top-full mt-1"
+                  class="top-full left-0 mt-1"
                   :options="dimensionPickerOptions"
                   :active-index="activeDimensionPickerIndex"
                   @select="selectDimensionReference(dimension.id, $event)"
                 />
+              </div>
 
+              <div class="flex flex-wrap items-center gap-1.5">
                 <select
-                  class="rounded-md border px-2 py-1 text-sm"
+                  class="h-7 rounded-sm border px-1.5 text-2xs"
                   :value="dimension.orientation"
                   :aria-label="`Orientation for ${dimension.id}`"
                   :data-testid="`dimension-orientation-${dimension.id}`"
@@ -1359,44 +1398,41 @@ onBeforeUnmount(() => {
                     {{ option.label }}
                   </option>
                 </select>
-              </div>
-
-              <div class="flex flex-wrap items-center gap-2">
                 <input
                   type="number"
                   step="1"
-                  class="w-20 rounded-md border px-2 py-1 text-sm"
+                  class="h-7 w-24 rounded-sm border px-2 text-[13px] tabular-nums"
                   :value="dimension.offset"
                   :aria-label="`Offset for ${dimension.id}`"
                   :data-testid="`dimension-offset-${dimension.id}`"
                   @change="onDimensionOffsetEdit(dimension.id, $event)"
                 />
-                <span class="text-xs text-muted-foreground">offset (mm)</span>
+                <span class="text-2xs text-muted-foreground">offset (mm)</span>
               </div>
 
               <p
                 v-if="dimension.readOnly"
-                class="text-xs text-muted-foreground"
+                class="text-2xs leading-snug text-muted-foreground"
                 :data-testid="`dimension-readonly-${dimension.id}`"
               >
                 Cut dimension — read-only; it follows the stitch dimension and the allowance widths.
               </p>
               <p
                 v-else-if="dimension.state === 'referenced'"
-                class="text-xs text-muted-foreground"
+                class="text-2xs leading-snug text-muted-foreground"
                 :data-testid="`dimension-source-${dimension.id}`"
               >
                 Source: <span class="font-mono">{{ dimension.sourceId }}</span>
               </p>
               <p
                 v-else-if="dimension.state === 'broken'"
-                class="text-xs text-destructive"
+                class="text-2xs leading-snug text-destructive"
                 :data-testid="`dimension-broken-${dimension.id}`"
               >
                 Source {{ dimension.sourceId }} is missing. Type a value or press # to re-link.
               </p>
 
-              <div v-if="dimension.sourceId !== null" class="flex flex-wrap items-center gap-2">
+              <div v-if="dimension.sourceId !== null" class="flex flex-wrap items-center gap-1.5">
                 <Button
                   variant="outline"
                   size="sm"
@@ -1408,7 +1444,7 @@ onBeforeUnmount(() => {
               </div>
             </li>
           </ul>
-          <p v-else class="text-sm text-muted-foreground">No dimensions yet.</p>
+          <SidebarEmpty v-else message="No dimensions yet." />
         </template>
 
         <template #constraints>
@@ -1416,62 +1452,77 @@ onBeforeUnmount(() => {
             <li
               v-for="constraint in otherConstraints"
               :key="constraint.id"
-              class="flex flex-wrap items-center justify-between gap-2 text-sm"
+              class="flex items-center justify-between gap-2 border-t pt-2 first:border-t-0 first:pt-0"
             >
               <div class="min-w-0">
-                <span class="font-mono text-muted-foreground">{{ constraint.id }}</span>
-                <span class="ml-2">{{ constraintLabel(constraint) }}</span>
-                <span class="ml-2 text-xs text-muted-foreground">
+                <span class="text-[13px] font-medium">{{ constraintLabel(constraint) }}</span>
+                <span class="ml-1.5 font-mono text-2xs text-muted-foreground">
+                  {{ constraint.id }}
+                </span>
+                <span class="ml-1.5 text-2xs text-muted-foreground">
                   ({{ constraintEntityIds(constraint).join(', ') }})
                 </span>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
+              <SidebarAction
+                icon="delete"
+                :label="`Remove constraint ${constraint.id}`"
                 :data-testid="`remove-constraint-${constraint.id}`"
                 @click="removeConstraint(constraint.id)"
-              >
-                Remove
-              </Button>
+              />
             </li>
           </ul>
-          <p v-else class="text-sm text-muted-foreground">No constraints yet.</p>
+          <SidebarEmpty v-else message="No constraints yet." />
         </template>
 
         <template #view>
-          <div class="space-y-2">
-            <label class="flex items-center gap-2 text-sm">
-              <input v-model="showConstruction" type="checkbox" data-testid="show-construction" />
-              Show construction
-            </label>
-            <label class="flex items-center gap-2 text-sm">
-              <input v-model="showAllowances" type="checkbox" data-testid="show-allowances" />
-              Show allowances
-            </label>
-            <label class="flex items-center gap-2 text-sm">
-              <input
-                v-model="includeConstruction"
-                type="checkbox"
-                data-testid="toggle-construction"
-              />
-              Include construction
-            </label>
-            <label class="flex items-center gap-2 text-sm">
-              <input v-model="exportStitch" type="checkbox" data-testid="toggle-stitch" />
-              Include stitch layer
-            </label>
-            <label class="flex items-center gap-2 text-sm">
-              <input v-model="exportFold" type="checkbox" data-testid="toggle-fold" />
-              Include fold lines
-            </label>
-            <label class="flex items-center gap-2 text-sm">
-              <input v-model="showConstraints" type="checkbox" data-testid="show-constraints" />
-              Show constraints
-            </label>
-            <label class="flex items-center gap-2 text-sm">
-              <input v-model="showDimensions" type="checkbox" data-testid="show-dimensions" />
-              Show dimensions
-            </label>
+          <div class="space-y-3">
+            <section aria-label="Display">
+              <SidebarHeading label="Display" />
+              <div class="space-y-1.5">
+                <label class="flex items-center gap-2 text-[13px]">
+                  <input
+                    v-model="showConstruction"
+                    type="checkbox"
+                    data-testid="show-construction"
+                  />
+                  Show construction
+                </label>
+                <label class="flex items-center gap-2 text-[13px]">
+                  <input v-model="showAllowances" type="checkbox" data-testid="show-allowances" />
+                  Show allowances
+                </label>
+                <label class="flex items-center gap-2 text-[13px]">
+                  <input v-model="showConstraints" type="checkbox" data-testid="show-constraints" />
+                  Show constraints
+                </label>
+                <label class="flex items-center gap-2 text-[13px]">
+                  <input v-model="showDimensions" type="checkbox" data-testid="show-dimensions" />
+                  Show dimensions
+                </label>
+              </div>
+            </section>
+
+            <section aria-label="Export">
+              <SidebarHeading label="Export" />
+              <div class="space-y-1.5">
+                <label class="flex items-center gap-2 text-[13px]">
+                  <input
+                    v-model="includeConstruction"
+                    type="checkbox"
+                    data-testid="toggle-construction"
+                  />
+                  Include construction
+                </label>
+                <label class="flex items-center gap-2 text-[13px]">
+                  <input v-model="exportStitch" type="checkbox" data-testid="toggle-stitch" />
+                  Include stitch layer
+                </label>
+                <label class="flex items-center gap-2 text-[13px]">
+                  <input v-model="exportFold" type="checkbox" data-testid="toggle-fold" />
+                  Include fold lines
+                </label>
+              </div>
+            </section>
           </div>
         </template>
       </EditorSidebar>
