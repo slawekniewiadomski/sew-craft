@@ -7,10 +7,14 @@ import {
   cornerRounds,
   cornerRoundsForEntity,
   createEmptyDocument,
+  getEntity,
+  incidentLines,
   isCornerRoundDerived,
   maxCornerRadius,
   normalizeCornerRounds,
   regenerateCornerRounds,
+  roundBetween,
+  roundBridge,
   type CornerRound,
   type Entity,
   type LineEntity,
@@ -447,5 +451,51 @@ describe('normalizeCornerRounds', () => {
     for (const document of broken) {
       expect(normalizeCornerRounds(document).cornerRounds).toHaveLength(0);
     }
+  });
+});
+
+describe('round helpers', () => {
+  it('finds the round between two lines in either order', () => {
+    const document = rounded();
+
+    expect(roundBetween(document, 'l1', 'l2')?.id).toBe('r1');
+    expect(roundBetween(document, 'l2', 'l1')?.id).toBe('r1');
+    expect(roundBetween(document, 'l1', 'l1')).toBeNull();
+    expect(roundBetween(document, 'l1', 'missing')).toBeNull();
+  });
+
+  it('orients the bridge arc from the first line to the second', () => {
+    const document = rounded();
+    const round = cornerRounds(document)[0]!;
+    const tangentA = getEntity(document, round.ends[0].tangent) as PointEntity;
+    const tangentB = getEntity(document, round.ends[1].tangent) as PointEntity;
+
+    const forward = roundBridge(document, 'l1', 'l2')!;
+    expect(forward[0]).toEqual({ x: tangentA.x, y: tangentA.y });
+    expect(forward[forward.length - 1]).toEqual({ x: tangentB.x, y: tangentB.y });
+
+    const backward = roundBridge(document, 'l2', 'l1')!;
+    expect(backward[0]).toEqual({ x: tangentB.x, y: tangentB.y });
+    expect(backward[backward.length - 1]).toEqual({ x: tangentA.x, y: tangentA.y });
+
+    expect(roundBridge(document, 'l1', 'missing')).toBeNull();
+  });
+
+  it('returns no bridge when the arc cannot be resolved', () => {
+    const document = rounded();
+    const withoutArc: PatternDocument = {
+      ...document,
+      entities: document.entities.filter((entity) => entity.id !== 'r1:arc'),
+    };
+
+    expect(roundBridge(withoutArc, 'l1', 'l2')).toBeNull();
+  });
+
+  it('lists the lines incident to a point', () => {
+    const document = rightAngle();
+
+    expect(incidentLines(document, 'c').map((line) => line.id)).toEqual(['l1', 'l2']);
+    expect(incidentLines(document, 'a').map((line) => line.id)).toEqual(['l1']);
+    expect(incidentLines(document, 'missing')).toEqual([]);
   });
 });

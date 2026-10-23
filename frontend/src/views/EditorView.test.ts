@@ -2145,7 +2145,7 @@ describe('EditorView', () => {
     await wrapper.find('[data-testid="tool-round_corner"]').trigger('click');
     await nextTick();
     expect(wrapper.find('[data-testid="corner-round-prompt"]').text()).toBe(
-      'Round corner — pick the first line.',
+      'Round corner — pick two lines or a corner.',
     );
 
     entityDown(wrapper, 'line', 'ab');
@@ -2175,11 +2175,39 @@ describe('EditorView', () => {
     expect(store.document.cornerRounds?.[0]?.id).toMatch(/^corner-round-/);
     expect(wrapper.find('[data-testid="corner-round-value"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="corner-round-prompt"]').text()).toBe(
-      'Round corner — pick the first line.',
+      'Round corner — pick two lines or a corner.',
     );
     expect(wrapper.find('[data-testid="tool-round_corner"]').attributes('aria-pressed')).toBe(
       'true',
     );
+  });
+
+  it('rounds a corner picked as a point and replaces a pending line pick', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    await wrapper.find('[data-testid="tool-round_corner"]').trigger('click');
+    await nextTick();
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+    expect(wrapper.find('[data-testid="corner-round-prompt"]').text()).toBe(
+      'Round corner — pick the second line.',
+    );
+
+    pointDown(wrapper, 'c');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="corner-round-prompt"]').text()).toBe(
+      'Round corner — set the radius.',
+    );
+    expect(wrapper.findComponent(PatternCanvas).props('roundCornerPicks')).toEqual({
+      first: 'bc',
+      second: 'cd',
+    });
+
+    await wrapper.find('[data-testid="corner-round-prompt-bar"] form').trigger('submit');
+    await flushPromises();
+
+    expect(store.document.cornerRounds).toHaveLength(1);
+    expect(store.document.cornerRounds?.[0]).toMatchObject({ corner: 'c' });
   });
 
   it('rejects bad picks with a concrete reason and clears them on Escape', async () => {
@@ -2188,9 +2216,11 @@ describe('EditorView', () => {
     await wrapper.find('[data-testid="tool-round_corner"]').trigger('click');
     await nextTick();
 
-    pointDown(wrapper, 'a');
+    pointDown(wrapper, 'e');
     await nextTick();
-    expect(wrapper.find('[data-testid="corner-round-rejection"]').text()).toBe('Pick a line.');
+    expect(wrapper.find('[data-testid="corner-round-rejection"]').text()).toBe(
+      'Pick a corner between two lines.',
+    );
 
     entityDown(wrapper, 'line', 'ab');
     await nextTick();
@@ -2221,7 +2251,7 @@ describe('EditorView', () => {
     await nextTick();
 
     expect(wrapper.find('[data-testid="corner-round-prompt"]').text()).toBe(
-      'Round corner — pick the first line.',
+      'Round corner — pick two lines or a corner.',
     );
     expect(wrapper.find('[data-testid="corner-round-value"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="tool-round_corner"]').attributes('aria-pressed')).toBe(
@@ -2260,7 +2290,7 @@ describe('EditorView', () => {
     await nextTick();
 
     expect(wrapper.find('[data-testid="corner-round-prompt"]').text()).toBe(
-      'Round corner — pick the first line.',
+      'Round corner — pick two lines or a corner.',
     );
   });
 
@@ -2293,7 +2323,7 @@ describe('EditorView', () => {
     await nextTick();
 
     expect(wrapper.find('[data-testid="corner-round-prompt"]').text()).toBe(
-      'Round corner — pick the first line.',
+      'Round corner — pick two lines or a corner.',
     );
   });
 

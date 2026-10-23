@@ -59,6 +59,7 @@ import {
   cornerRoundPreview,
   formatCornerRadius,
   parseCornerRadius,
+  roundableCorners,
   tangentDragRadius,
   type CornerRoundLabel,
   type CornerRoundPicks,
@@ -449,6 +450,15 @@ const roundPreview = computed(() => {
   const radius = props.cornerRoundPreviewRadius;
   if (!props.roundCornerActive || radius === null) return null;
   return cornerRoundPreview(props.document, props.roundCornerPicks, radius);
+});
+
+/**
+ * Corners the Round corner tool can act on, drawn as small rings while it is
+ * active. The prompt and live region carry the meaning; the rings are decorative.
+ */
+const roundableCornerPoints = computed(() => {
+  const ids = new Set(roundableCorners(props.document));
+  return visiblePoints.value.filter((point) => ids.has(point.id));
 });
 
 /** Rounds whose handles and label are visible: selected, hovered or dragging. */
@@ -2657,6 +2667,24 @@ watch(
           />
         </g>
 
+        <g
+          v-if="props.roundCornerActive"
+          class="pointer-events-none"
+          aria-hidden="true"
+          data-testid="roundable-corner-layer"
+        >
+          <circle
+            v-for="corner in roundableCornerPoints"
+            :key="`roundable-${corner.id}`"
+            :cx="corner.x"
+            :cy="corner.y"
+            r="2"
+            class="roundable-corner fill-primary/60"
+            data-testid="roundable-corner"
+            :data-roundable-corner="corner.id"
+          />
+        </g>
+
         <g v-if="rectanglePreview !== null" class="pointer-events-none" aria-hidden="true">
           <path
             :d="rectanglePreview.path"
@@ -2692,6 +2720,16 @@ watch(
             :class="pointClass(point)"
             :data-entity-id="point.id"
             data-kind="point"
+          />
+          <circle
+            v-if="props.roundCornerActive"
+            :cx="point.x"
+            :cy="point.y"
+            r="6"
+            fill="transparent"
+            :data-entity-id="point.id"
+            data-kind="point"
+            data-testid="round-corner-point-target"
           />
           <circle
             v-if="selectedIds.has(point.id)"

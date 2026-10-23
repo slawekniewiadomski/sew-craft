@@ -1,8 +1,11 @@
 import {
+  allowanceForEdge,
   cornerRoundGeometry,
   cornerRounds,
   documentSeams,
   getEntity,
+  incidentLines,
+  isCornerRoundDerived,
   maxCornerRadius,
   MIN_CORNER_ROUND,
   type CornerRound,
@@ -22,13 +25,15 @@ export interface CornerRoundPicks {
 }
 
 export type CornerRoundRejectionReason =
-  | 'not-line'
+  | 'needs-lines'
+  | 'not-corner'
   | 'distinct'
   | 'no-corner'
   | 'already-rounded'
   | 'mixed'
   | 'third-edge'
   | 'seam'
+  | 'allowance'
   | 'sharp'
   | 'straight'
   | 'no-direction'
@@ -136,7 +141,7 @@ export function formatCornerRadius(radius: number): string {
 
 /** Prompt text for the tool's current pick state. */
 export function cornerRoundPrompt(picks: CornerRoundPicks): string {
-  if (picks.first === null) return 'Round corner — pick the first line.';
+  if (picks.first === null) return 'Round corner — pick two lines or a corner.';
   if (picks.second === null) return 'Round corner — pick the second line.';
   return 'Round corner — set the radius.';
 }
@@ -144,8 +149,10 @@ export function cornerRoundPrompt(picks: CornerRoundPicks): string {
 /** Human reason for a rejected pick. */
 export function cornerRoundRejection(reason: CornerRoundRejectionReason): string {
   switch (reason) {
-    case 'not-line':
-      return 'Pick a line.';
+    case 'needs-lines':
+      return 'Rounding needs two straight lines.';
+    case 'not-corner':
+      return 'Pick a corner between two lines.';
     case 'distinct':
       return 'Pick two different lines.';
     case 'no-corner':
@@ -158,6 +165,8 @@ export function cornerRoundRejection(reason: CornerRoundRejectionReason): string
       return 'The corner is shared by more than two edges of this kind.';
     case 'seam':
       return 'Remove the seam allowance first.';
+    case 'allowance':
+      return 'Both edges need the same allowance to round this corner.';
     case 'sharp':
       return 'The corner is too sharp for a round.';
     case 'straight':
@@ -170,17 +179,124 @@ export function cornerRoundRejection(reason: CornerRoundRejectionReason): string
 }
 
 /**
- * Apply one line pick. The first pick fills its slot; the second must form a
- * usable corner and then reports the radius ceiling.
+ * Whether a piece containing both lines carries different allowances on them,
+ * which a rounded corner's single bridge offset cannot express.
+ */
+function hasAllowanceMismatch(
+  document: PatternDocument,
+  first: EntityId,
+  second: EntityId,
+): boolean {
+  return document.pieces.some((piece) => {
+    if (!piece.edges.includes(first) || !piece.edges.includes(second)) return false;
+
+    const a = allowanceForEdge(piece, first);
+    const b = allowanceForEdge(piece, second);
+    if (a === undefined || b === undefined) return a !== b;
+    return a.width !== b.width || (a.kind ?? 'seam') !== (b.kind ?? 'seam');
+  });
+}
+
+/** Every point that can define a roundable corner right now. */
+export function roundableCorners(document: PatternDocument): EntityId[] {
+  const seamEdges = new Set(documentSeams(document).map((seam) => seam.edge));
+  const roundedCorners = new Set(cornerRounds(document).map((round) => round.corner));
+  const corners: EntityId[] = [];
+
+  for (const point of document.entities) {
+    if (point.kind !== 'point') continue;
+    if (isCornerRoundDerived(document, point.id) || roundedCorners.has(point.id)) continue;
+
+    const lines = incidentLines(document, point.id);
+    if (lines.length !== 2) continue;
+    if (lines[0]!.construction !== lines[1]!.construction) continue;
+    if (lines.some((line) => seamEdges.has(line.id))) continue;
+    if (hasAllowanceMismatch(document, lines[0]!.id, lines[1]!.id)) continue;
+
+    corners.push(point.id);
+  }
+
+  return corners;
+}
+
+/** Resolve a picked corner point into its two lines, or explain why it cannot. */
+function applyCornerPointPick(
+  picks: CornerRoundPicks,
+  pointId: EntityId,
+  document: PatternDocument,
+): CornerRoundPickResult {
+  if (cornerRounds(document).some((round) => round.corner === pointId)) {
+    return { status: 'rejected', picks, reason: 'already-rounded' };
+  }
+
+  const lines = incidentLines(document, pointId);
+  if (lines.length !== 2) {
+    return {
+      status: 'rejected',
+      picks,
+      reason: lines.length > 2 ? 'third-edge' : 'not-corner',
+    };
+  }
+
+  const [lineA, lineB] = lines as [LineEntity, LineEntity];
+  if (lineA.construction !== lineB.construction) {
+    return { status: 'rejected', picks, reason: 'mixed' };
+  }
+  if (documentSeams(document).some((seam) => seam.edge === lineA.id || seam.edge === lineB.id)) {
+    return { status: 'rejected', picks, reason: 'seam' };
+  }
+  if (hasAllowanceMismatch(document, lineA.id, lineB.id)) {
+    return { status: 'rejected', picks, reason: 'allowance' };
+  }
+
+  const anchorA = anchorOf(document, lineA.id, lineA.start === pointId ? lineA.end : lineA.start);
+  const anchorB = anchorOf(document, lineB.id, lineB.start === pointId ? lineB.end : lineB.start);
+  const geometry = cornerRoundGeometry(document, pointId, anchorA, anchorB, 1);
+  if (geometry.geometry === null) {
+    return { status: 'rejected', picks, reason: geometryReason(geometry.error) };
+  }
+
+  const maxRadius = maxCornerRadiusForLines(document, lineA.id, lineB.id);
+  if (maxRadius === null || maxRadius < MIN_CORNER_ROUND) {
+    return { status: 'rejected', picks, reason: 'radius' };
+  }
+
+  return {
+    status: 'ready',
+    picks: { first: lineA.id, second: lineB.id },
+    corner: pointId,
+    maxRadius,
+  };
+}
+
+/** Map a geometry error to the reason the prompt bar shows. */
+function geometryReason(error: string): CornerRoundRejectionReason {
+  return error === 'The corner is too sharp for a round.'
+    ? 'sharp'
+    : error === 'The lines are straight; there is no corner to round.'
+      ? 'straight'
+      : error === 'The line has no direction.'
+        ? 'no-direction'
+        : 'radius';
+}
+
+/**
+ * Apply one pick. A line fills a slot; a corner point resolves both slots at
+ * once and replaces any pending line pick.
  */
 export function applyCornerRoundPick(
   picks: CornerRoundPicks,
   id: EntityId,
   document: PatternDocument,
 ): CornerRoundPickResult {
+  const entity = getEntity(document, id);
+  if (entity?.kind === 'point') {
+    return applyCornerPointPick(picks, id, document);
+  }
+
   const line = lineOf(document, id);
   if (line === undefined) {
-    return { status: 'rejected', picks, reason: 'not-line' };
+    return { status: 'rejected', picks, reason: 'needs-lines' };
   }
   if (picks.first === null) {
     return { status: 'picking', picks: { first: id, second: null } };
@@ -221,6 +337,9 @@ export function applyCornerRoundPick(
   ) {
     return { status: 'rejected', picks, reason: 'seam' };
   }
+  if (hasAllowanceMismatch(document, picks.first, id)) {
+    return { status: 'rejected', picks, reason: 'allowance' };
+  }
   const meeting = document.entities.filter(
     (entity) =>
       entity.kind === 'line' &&
@@ -239,15 +358,7 @@ export function applyCornerRoundPick(
   const anchorB = anchorOf(document, id, line.start === corner ? line.end : line.start);
   const geometry = cornerRoundGeometry(document, corner, anchorA, anchorB, 1);
   if (geometry.geometry === null) {
-    const reason =
-      geometry.error === 'The corner is too sharp for a round.'
-        ? 'sharp'
-        : geometry.error === 'The lines are straight; there is no corner to round.'
-          ? 'straight'
-          : geometry.error === 'The line has no direction.'
-            ? 'no-direction'
-            : 'radius';
-    return { status: 'rejected', picks, reason };
+    return { status: 'rejected', picks, reason: geometryReason(geometry.error) };
   }
 
   const maxRadius = maxCornerRadiusForLines(document, picks.first, id);

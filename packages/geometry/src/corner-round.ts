@@ -1,5 +1,6 @@
 import { cornerRounds, getEntity } from './document.js';
 import { CommandValidationError } from './errors.js';
+import { edgePolyline } from './offset.js';
 import type {
   CornerRound,
   CurveEntity,
@@ -115,6 +116,48 @@ export function cornerRoundsForEntity(document: PatternDocument, id: EntityId): 
       round.arc === id ||
       round.controls.includes(id) ||
       round.ends.some((end) => end.line === id || end.anchor === id || end.tangent === id),
+  );
+}
+
+/** The committed round whose two ends are exactly these lines, in either order. */
+export function roundBetween(
+  document: PatternDocument,
+  first: EntityId,
+  second: EntityId,
+): CornerRound | null {
+  if (first === second) return null;
+  return (
+    cornerRounds(document).find(
+      (round) =>
+        (round.ends[0].line === first && round.ends[1].line === second) ||
+        (round.ends[0].line === second && round.ends[1].line === first),
+    ) ?? null
+  );
+}
+
+/**
+ * The arc a committed round contributes between two piece edges, oriented from
+ * `first`'s tangent to `second`'s tangent. `null` when there is no round between
+ * them or its arc cannot be resolved.
+ */
+export function roundBridge(
+  document: PatternDocument,
+  first: EntityId,
+  second: EntityId,
+): Vec2[] | null {
+  const round = roundBetween(document, first, second);
+  if (round === null) return null;
+
+  const points = edgePolyline(document, round.arc);
+  if (points === null) return null;
+  return round.ends[0].line === first ? points : [...points].reverse();
+}
+
+/** Every line whose start or end is the given point, in document order. */
+export function incidentLines(document: PatternDocument, pointId: EntityId): LineEntity[] {
+  return document.entities.filter(
+    (entity): entity is LineEntity =>
+      entity.kind === 'line' && (entity.start === pointId || entity.end === pointId),
   );
 }
 
