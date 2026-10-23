@@ -1,6 +1,6 @@
 # Project save, version checkpoints and document upgrades
 
-Status: draft — design review
+Status: implemented — PR #65
 Refs #62
 Builds on: `001-project-crud-persistence.md` (projects only), `docs/architecture/data-model.md`,
 `docs/architecture/api.md` (planned pattern endpoints), `packages/geometry/src/migration.ts`
@@ -16,8 +16,8 @@ was written by an older build. One pattern per project in v1. The write path is 
 **document snapshot** (`PUT /projects/{id}/pattern`), not server-side command replay,
 because the only command interpreter is the TypeScript geometry package.
 
-Three product calls stay open and are asked on the issue: when a save happens, what a save
-checkpoints, and what declining an upgrade does.
+Three product calls were open during design and follow the recommendations
+below; `spec-ready` was applied without a different answer.
 
 ## 📝 Problem Statement
 
