@@ -119,5 +119,5 @@ recommended answer is taken as accepted:
 
 - [x] 6.1 `docs/architecture/geometry-core.md` and `docs/domain/glossary.md` describe the bridge rule — 8c3d5a5
 - [x] 6.2 Full validation gate green (format, typecheck, lint, format:check, coverage, build, Pest 100 %, Pint) — 8c3d5a5
-- [ ] 6.3 `om-auto-review-pr` pass with findings addressed
-- [ ] 6.4 Retitle the PR, flip to ready, normalize labels and report
+- [x] 6.3 `om-auto-review-pr` pass with findings addressed — a8989bf
+- [x] 6.4 Retitle the PR, flip to ready, normalize labels and report — a8989bf
