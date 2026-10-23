@@ -27,7 +27,10 @@ A project is the top-level container a user opens and exports.
 | `created_at` / `updated_at` | timestamp               |                                       |
 
 The `geometry` column holds the working copy. It is a snapshot, not the source of
-truth history — that is `pattern_versions`.
+truth history — that is `pattern_versions`. Saves write it as a whole document
+snapshot (`PUT /projects/{id}/pattern`) rather than replaying commands on the
+server; see `api.md`. One pattern per project in v1: the lowest id wins, and the
+first save creates it lazily with the project's name.
 
 ### `pattern_versions`
 
@@ -39,7 +42,10 @@ truth history — that is `pattern_versions`.
 | `geometry`   | json                    | frozen `PatternDocument` |
 | `created_at` | timestamp               |                          |
 
-Unique on `(pattern_id, version)`. Appended when a command batch is committed.
+Unique on `(pattern_id, version)`. Appended once per changed save, and once for
+the pre-upgrade working copy immediately before an upgrade save. An unchanged
+save appends nothing, so history stays meaningful without pruning. The next
+version is `max(version) + 1`, computed under a row lock.
 
 ### `exports`
 
