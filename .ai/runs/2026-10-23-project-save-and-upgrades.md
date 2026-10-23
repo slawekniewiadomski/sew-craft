@@ -32,30 +32,30 @@ after review without a different answer on the issue:
 
 ### Phase 1: Persistence API
 
-- [ ] 1.1 Add route, controller, request, resource and service for GET/PUT pattern
-- [ ] 1.2 Add Pest coverage for checkpoints, conflicts and archive-before-upgrade
+- [x] 1.1 Add route, controller, request, resource and service for GET/PUT pattern — d3e5a6a
+- [x] 1.2 Add Pest coverage for checkpoints, conflicts and archive-before-upgrade — d3e5a6a
 
 ### Phase 2: Client API and store
 
-- [ ] 2.1 Add `getPattern`/`savePattern` and a typed `ApiError`
-- [ ] 2.2 Add dirty/save/read-only state and known-schema guard
+- [x] 2.1 Add `getPattern`/`savePattern` and a typed `ApiError` — f7d7c1a
+- [x] 2.2 Add dirty/save/read-only state and known-schema guard — f7d7c1a
 
 ### Phase 3: Editor load and save bar
 
-- [ ] 3.1 Load the stored document on open with empty, loading and error states
-- [ ] 3.2 Add the save bar, status, Save button and Cmd/Ctrl+S
+- [x] 3.1 Load the stored document on open with empty, loading and error states — ebce309
+- [x] 3.2 Add the save bar, status, Save button and Cmd/Ctrl+S — ebce309
 
 ### Phase 4: Guards and recovery
 
-- [ ] 4.1 Add the leave guard, `beforeunload`, failure retry and 404 handling
-- [ ] 4.2 Add the conflict dialog with Reload and explicit Overwrite
+- [x] 4.1 Add the leave guard, `beforeunload`, failure retry and 404 handling — ebce309
+- [x] 4.2 Add the conflict dialog with Reload and explicit Overwrite — ebce309
 
 ### Phase 5: Upgrade flow
 
-- [ ] 5.1 Add upgrade detection, modal and update-and-open with archive
-- [ ] 5.2 Add read-only mode and the unknown-schema guard
+- [x] 5.1 Add upgrade detection, modal and update-and-open with archive — ebce309
+- [x] 5.2 Add read-only mode and the unknown-schema guard — ebce309
 
 ### Phase 6: Docs and gate
 
-- [ ] 6.1 Update `docs/architecture/api.md` and `data-model.md`
+- [x] 6.1 Update `docs/architecture/api.md` and `data-model.md` — b471bc0
 - [ ] 6.2 Run the full validation gate and the code-review pass
