@@ -1197,7 +1197,7 @@ onBeforeUnmount(() => {
               size="sm"
               :disabled="!canCreatePiece"
               :title="pieceCreation.ok ? undefined : pieceCreation.message"
-              :data-testid="pieces.length > 0 ? 'pieces-create' : 'pieces-create-empty'"
+              data-testid="pieces-create"
               @click="createPiece"
             >
               Create piece

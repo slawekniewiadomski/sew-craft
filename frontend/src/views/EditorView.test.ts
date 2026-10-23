@@ -2354,14 +2354,14 @@ describe('EditorView pieces drawer', () => {
     const { wrapper } = await mountLoaded(lineDoc);
 
     expect(wrapper.find('[data-testid="pieces-empty"]').text()).toBe('No pieces yet.');
-    const create = wrapper.find('[data-testid="pieces-create-empty"]');
+    const create = wrapper.find('[data-testid="pieces-create"]');
     expect(create.attributes('disabled')).toBeDefined();
     expect(create.attributes('title')).toBe('Select at least three cut edges to create a piece.');
   });
 
   it('creates a piece from the drawer once a closed chain is selected', async () => {
     const { wrapper, store } = await mountLoaded(lineDoc);
-    const create = () => wrapper.find('[data-testid="pieces-create-empty"]');
+    const create = () => wrapper.find('[data-testid="pieces-create"]');
 
     entityDown(wrapper, 'line', 'ab');
     await nextTick();
