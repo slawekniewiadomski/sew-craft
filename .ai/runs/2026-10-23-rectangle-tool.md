@@ -86,8 +86,8 @@ to start implementation, so the spec's recommended answers are taken as accepted
 
 ### Phase 1: Gesture math
 
-- [ ] 1.1 Add `rectangleCorners` with `RectangleMode`, `MIN_RECTANGLE_SIZE` and `RECTANGLE_CLICKS`, tested per mode, per corner reuse and per degenerate guard
-- [ ] 1.2 Add `newRectangleCorners` and `buildRectangleCommands`, tested for command order, id uniqueness, point reuse and a batch the command core accepts
+- [x] 1.1 Add `rectangleCorners` with `RectangleMode`, `MIN_RECTANGLE_SIZE` and `RECTANGLE_CLICKS`, tested per mode, per corner reuse and per degenerate guard — 0aa5afc
+- [x] 1.2 Add `newRectangleCorners` and `buildRectangleCommands`, tested for command order, id uniqueness, point reuse and a batch the command core accepts — 0aa5afc
 
 ### Phase 2: Tool surface
 
