@@ -94,23 +94,23 @@ spec's recommended answers are taken as accepted:
 
 ### Phase 2: Model and normalisation
 
-- [ ] 2.1 `AllowancePreset`, `PatternDefaults`, `PatternDocument.defaults`, with type tests
-- [ ] 2.2 `defaults.ts`: built-in preset, `effectiveDefaultAllowance`, `normalizeDefaults`, with tests
-- [ ] 2.3 `createEmptyDocument` starts with the preset; both `normalizeDocument` paths normalise it, with old-fixture tests
+- [x] 2.1 `AllowancePreset`, `PatternDefaults`, `PatternDocument.defaults`, with type tests — 0f209da
+- [x] 2.2 `defaults.ts`: built-in preset, `effectiveDefaultAllowance`, `normalizeDefaults`, with tests — 0f209da
+- [x] 2.3 `createEmptyDocument` starts with the preset; both `normalizeDocument` paths normalise it, with old-fixture tests — 0f209da
 
 ### Phase 3: Commands
 
-- [ ] 3.1 `set_default_allowance`: validation, apply, no-op and inverse, with tests
-- [ ] 3.2 `create_piece` `allowance` param: default, none, explicit and absent, with tests
-- [ ] 3.3 Command-spec three-way sync and `spec_version` `0.11.0`, with the PHP spec test
-- [ ] 3.4 `docs/architecture/data-model.md` and `BACKWARD_COMPATIBILITY.md` record the field
+- [x] 3.1 `set_default_allowance`: validation, apply, no-op and inverse, with tests — ceffcc2
+- [x] 3.2 `create_piece` `allowance` param: default, none, explicit and absent, with tests — ceffcc2
+- [x] 3.3 Command-spec three-way sync and `spec_version` `0.11.0`, with the PHP spec test — ceffcc2
+- [x] 3.4 `docs/architecture/data-model.md` and `BACKWARD_COMPATIBILITY.md` record the field — ceffcc2
 
 ### Phase 4: Editor UI
 
-- [ ] 4.1 `allowance-defaults.ts`: `defaultAllowanceSummary` and `uniformAllowance`, with tests
-- [ ] 4.2 Pieces drawer default-allowance row and create hint, with tests
-- [ ] 4.3 Create piece sends `allowance: 'default'`, with tests
-- [ ] 4.4 Piece card All edges row and the grouped apply, with tests
+- [x] 4.1 `allowance-defaults.ts`: `defaultAllowanceSummary` and `uniformAllowance`, with tests — 83c07c8
+- [x] 4.2 Pieces drawer default-allowance row and create hint, with tests — 83c07c8
+- [x] 4.3 Create piece sends `allowance: 'default'`, with tests — 83c07c8
+- [x] 4.4 Piece card All edges row and the grouped apply, with tests — 83c07c8
 
 ### Phase 5: Verification
 

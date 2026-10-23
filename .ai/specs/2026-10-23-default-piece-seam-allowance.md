@@ -1,6 +1,6 @@
 # Default piece seam allowance
 
-Status: draft — design review; Q1–Q3 are open and asked on the issue
+Status: implemented — shipped on PR #67
 Refs #64
 Builds on: 2026-10-22-pieces-and-allowance (pieces and per-edge allowances),
 2026-10-23-pieces-sidebar-and-selection (Pieces drawer and the shared piece card),
@@ -353,7 +353,10 @@ installed in this run. The wireframes above are the design reference.
 
 ## ❓ Open Questions
 
-Asked on issue #64. The PR is a draft until these are answered.
+Asked on issue #64. The maintainer applied `spec-ready`, which the repository's
+issue-driven workflow defines as the signal to implement, so the recommended
+answers below were taken as accepted. The implemented behaviour is the
+recommendation in each row (A/A/A).
 
 | #   | Question                                                                                                                                                                                                                                                     | Why it matters                                                                                                                                                                                                                                                       | Recommended answer                                                                                                                                              |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
