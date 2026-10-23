@@ -256,6 +256,8 @@ const props = withDefaults(
     selectedEntityIds?: EntityId[];
     fitToken?: number;
     showAllowances?: boolean;
+    /** The piece whose card is open; its band reads as selected. */
+    selectedPieceId?: EntityId | null;
     showConstraints?: boolean;
     showDimensions?: boolean;
     constraintActive?: boolean;
@@ -268,6 +270,7 @@ const props = withDefaults(
     selectedEntityIds: () => [],
     fitToken: 0,
     showAllowances: true,
+    selectedPieceId: null,
     showConstraints: false,
     showDimensions: true,
     constraintActive: false,
@@ -643,7 +646,9 @@ const pieceViews = computed<PieceView[]>(() =>
             ? `${cutPath} ${stitchPath}`
             : null,
         selfIntersects: cut.selfIntersections.length > 0,
-        selected: piece.edges.some((edge) => props.selectedEntityIds.includes(edge)),
+        selected:
+          piece.id === props.selectedPieceId ||
+          piece.edges.some((edge) => props.selectedEntityIds.includes(edge)),
       },
     ];
   }),

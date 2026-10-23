@@ -15,7 +15,9 @@ import {
   cutDimensionForPoints,
   pieceAllowanceRows,
   pieceCreationFromSelection,
+  pieceLabel,
   pieceOwningEdge,
+  pieceSummaries,
   pieceSummary,
 } from './pieces';
 
@@ -329,5 +331,31 @@ describe('cutDimensionForPoints', () => {
     document.pieces.unshift({ id: 'partial', edges: ['ad'], allowances: [] });
 
     expect(cutDimensionForPoints(document, 'a', 'c')?.piece.id).toBe('p1');
+  });
+});
+
+describe('pieceSummaries / pieceLabel', () => {
+  it('summarises every piece in document order', () => {
+    const document = squareDocument();
+    document.pieces.push({ id: 'p2', edges: ['ab', 'bc', 'da'], allowances: [] });
+
+    const summaries = pieceSummaries(document);
+
+    expect(summaries.map((summary) => summary.id)).toEqual(['p1', 'p2']);
+    expect(summaries[0]!.edges).toEqual(['ab', 'bc', 'cd', 'da']);
+    expect(summaries[1]!.name).toBeNull();
+  });
+
+  it('returns an empty list for a document without pieces', () => {
+    expect(pieceSummaries({ ...squareDocument(), pieces: [] })).toEqual([]);
+  });
+
+  it('names a piece by its label or its 1-based position', () => {
+    const document = squareDocument();
+    document.pieces.push({ id: 'p2', edges: ['ab', 'bc', 'da'], allowances: [] });
+    const [first, second] = pieceSummaries(document);
+
+    expect(pieceLabel(first!, 0)).toBe('Bodice');
+    expect(pieceLabel(second!, 1)).toBe('Piece 2');
   });
 });

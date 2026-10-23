@@ -11,6 +11,7 @@ function mountSidebar(width = 320, collapsed = false): VueWrapper {
     props: { width, collapsed },
     slots: {
       properties: '<p data-testid="slot-properties">Props</p>',
+      pieces: '<p data-testid="slot-pieces">Pieces</p>',
       outline: '<p data-testid="slot-outline">Outline</p>',
       view: '<p data-testid="slot-view">View</p>',
     },
@@ -32,10 +33,12 @@ function up(): void {
 }
 
 describe('EditorSidebar', () => {
-  it('opens properties and outline by default and collapses view', () => {
+  it('opens properties, pieces and outline by default and collapses view', () => {
     const wrapper = mountSidebar();
 
     expect(wrapper.find('[data-testid="drawer-content-properties"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="drawer-content-pieces"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="slot-pieces"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="drawer-content-outline"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="drawer-content-view"]').exists()).toBe(false);
   });

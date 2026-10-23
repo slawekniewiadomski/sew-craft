@@ -74,17 +74,17 @@ and PR**, and no second PR is opened.
 
 ### Phase 2: Pieces drawer
 
-- [ ] 2.1 Add the `pieces` drawer after Properties, open by default, + drawer/sidebar tests
-- [ ] 2.2 `pieceSummaries(document)` in `pieces.ts` + tests for empty, named, unnamed, broken
-- [ ] 2.3 Extract `PiecePanel.vue` from the inspector with `PieceSummary`, edits and Remove piece; use it in the inspector + tests
-- [ ] 2.4 `selectedPieceId` in `EditorView`: row toggle, expansion, entity-selection clearing, missing-piece clearing, empty state
-- [ ] 2.5 Highlight the selected piece on the canvas (`selectedPieceId` prop) + tests
+- [x] 2.1 Add the `pieces` drawer after Properties, open by default, + drawer/sidebar tests
+- [x] 2.2 `pieceSummaries(document)` in `pieces.ts` + tests for empty, named, unnamed, broken
+- [x] 2.3 Extract `PiecePanel.vue` from the inspector with `PieceSummary`, edits and Remove piece; use it in the inspector + tests
+- [x] 2.4 `selectedPieceId` in `EditorView`: row toggle, expansion, entity-selection clearing, missing-piece clearing, empty state
+- [x] 2.5 Highlight the selected piece on the canvas (`selectedPieceId` prop) + tests
 
 ### Phase 3: Outline selection
 
-- [ ] 3.1 Outline id/summary becomes a selection button (`selectionModeFrom`/`toggleSelection`/`applySelection`), `aria-current`, selected tint, controls outside it
-- [ ] 3.2 Clear `selectedPieceId` on entity selection and entity selection on piece selection
-- [ ] 3.3 `EditorView.test.ts` for plain click, Ctrl/Cmd toggle, Ctrl/Cmd+Shift subtract, control isolation, empty values, hand-off
+- [x] 3.1 Outline id/summary becomes a selection button (`selectionModeFrom`/`toggleSelection`/`applySelection`), `aria-current`, selected tint, controls outside it
+- [x] 3.2 Clear `selectedPieceId` on entity selection and entity selection on piece selection
+- [x] 3.3 `EditorView.test.ts` for plain click, Ctrl/Cmd toggle, Ctrl/Cmd+Shift subtract, control isolation, empty values, hand-off
 
 ### Phase 4: Docs and gate
 

@@ -38,6 +38,7 @@ import EditorRibbon from '@/components/EditorRibbon.vue';
 import EditorSidebar from '@/components/EditorSidebar.vue';
 import EntityPropertiesPanel from '@/components/EntityPropertiesPanel.vue';
 import PatternCanvas from '@/components/PatternCanvas.vue';
+import PiecePanel from '@/components/PiecePanel.vue';
 import SelectionSummary from '@/components/SelectionSummary.vue';
 import { Button } from '@/components/ui/button';
 import { useCommandBus } from '@/composables/use-command-bus';
@@ -86,8 +87,19 @@ import type { RibbonAction } from '@/lib/editor-ribbon';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 import { entityProperties } from '@/lib/entity-properties';
 import { buildLineCommands, type LineEndpoint } from '@/lib/line-tool';
-import { cutDimensionForPoints, pieceCreationFromSelection } from '@/lib/pieces';
-import { orphanedEdges } from '@/lib/selection';
+import {
+  cutDimensionForPoints,
+  pieceCreationFromSelection,
+  pieceLabel,
+  pieceSummaries,
+  type PieceSummary,
+} from '@/lib/pieces';
+import {
+  applySelection,
+  orphanedEdges,
+  selectionModeFrom,
+  toggleSelection,
+} from '@/lib/selection';
 
 const props = defineProps<{ id: string }>();
 
@@ -107,6 +119,12 @@ const error = ref<string | null>(null);
 const activeTool = ref<EditorTool>('select');
 /** Ordered, ephemeral selection: never written to the document or journal. */
 const selectedEntityIds = ref<EntityId[]>([]);
+/**
+ * The piece whose card is open in the Pieces drawer. Ephemeral like the entity
+ * selection, and deliberately separate from it: deleting a row never targets a
+ * loop by accident.
+ */
+const selectedPieceId = ref<EntityId | null>(null);
 /** True while a marquee owns the pointer, so Delete/Escape defer to the canvas. */
 const marqueeActive = ref(false);
 const fitToken = ref(0);
@@ -171,6 +189,33 @@ const pieceCreation = computed(() =>
   pieceCreationFromSelection(pattern.value, selectedEntityIds.value),
 );
 const canCreatePiece = computed(() => pieceCreation.value.ok);
+
+/** The entity selection as a set, for row highlighting and `aria-current`. */
+const selectedIds = computed(() => new Set(selectedEntityIds.value));
+
+/** Every piece, in document order, as the Pieces drawer lists them. */
+const pieces = computed(() => pieceSummaries(pattern.value));
+
+/** How a piece size reads in a drawer row: `220 × 210 mm`, or `—`. */
+function pieceSize(size: { width: number; height: number } | null | undefined): string {
+  return size === undefined || size === null
+    ? '—'
+    : `${formatDimensionValue(size.width)} × ${formatDimensionValue(size.height)} mm`;
+}
+
+/** A row's one-line summary: `Front · ×2 · 220 × 210 mm finished · 240 × 230 mm cut`. */
+function pieceRowText(piece: PieceSummary, index: number): string {
+  return `${pieceLabel(piece, index)} · ×${piece.quantity} · ${pieceSize(piece.metrics?.finished)} finished · ${pieceSize(piece.metrics?.cut)} cut`;
+}
+
+/**
+ * Open or collapse one piece's card. Selecting a piece clears the entity
+ * selection so Delete and the inspector never act on the wrong target.
+ */
+function selectPiece(id: EntityId): void {
+  selectedPieceId.value = selectedPieceId.value === id ? null : id;
+  if (selectedPieceId.value !== null) selectedEntityIds.value = [];
+}
 
 /** The selected entities in selection order, for the multi-selection summary. */
 const selectedEntities = computed(() =>
@@ -481,6 +526,26 @@ function createPiece(): void {
   ) {
     selectedEntityIds.value = [];
   }
+}
+
+watch(selectedEntityIds, (ids) => {
+  if (ids.length > 0) selectedPieceId.value = null;
+});
+
+/**
+ * Select one Outline row's entity with the canvas' modifier rules: plain click
+ * replaces, Ctrl/Cmd toggles, Ctrl/Cmd+Shift (or Alt) subtracts.
+ */
+function onOutlineSelect(id: EntityId, event: MouseEvent): void {
+  const mode = selectionModeFrom(event);
+  if (mode === 'replace') {
+    selectedEntityIds.value = [id];
+    return;
+  }
+  selectedEntityIds.value =
+    mode === 'add'
+      ? toggleSelection(selectedEntityIds.value, id)
+      : applySelection(selectedEntityIds.value, [id], 'subtract');
 }
 
 function deleteSelected(): void {
@@ -894,6 +959,13 @@ watch(pattern, (next) => {
     selectedEntityIds.value = surviving;
   }
 
+  if (
+    selectedPieceId.value !== null &&
+    !next.pieces.some((piece) => piece.id === selectedPieceId.value)
+  ) {
+    selectedPieceId.value = null;
+  }
+
   if (activeConstraint.value === null) return;
 
   const pruned = prunePicks(constraintPicks.value, next);
@@ -1008,6 +1080,7 @@ onBeforeUnmount(() => {
           :tool="activeTool"
           :fit-token="fitToken"
           :show-allowances="showAllowances"
+          :selected-piece-id="selectedPieceId"
           :show-constraints="showConstraints"
           :show-dimensions="showDimensions"
           :constraint-active="activeConstraint !== null"
@@ -1090,16 +1163,74 @@ onBeforeUnmount(() => {
           </section>
         </template>
 
+        <template #pieces>
+          <div class="space-y-2">
+            <ul v-if="pieces.length > 0" class="space-y-2" aria-label="Pieces">
+              <li v-for="(piece, index) in pieces" :key="piece.id" class="text-sm">
+                <button
+                  type="button"
+                  class="flex w-full items-center justify-between gap-2 rounded-md px-1 py-1 text-left hover:bg-accent"
+                  :class="
+                    selectedPieceId === piece.id ? 'bg-accent text-accent-foreground' : ''
+                  "
+                  :aria-expanded="selectedPieceId === piece.id"
+                  :aria-label="`${pieceLabel(piece, index)}: toggle piece details`"
+                  :data-testid="`piece-row-${piece.id}`"
+                  @click="selectPiece(piece.id)"
+                >
+                  <span class="min-w-0 flex-1 truncate">{{ pieceRowText(piece, index) }}</span>
+                  <span aria-hidden="true">{{ selectedPieceId === piece.id ? '▾' : '▸' }}</span>
+                </button>
+
+                <div v-if="selectedPieceId === piece.id" class="mt-1 px-1">
+                  <PiecePanel
+                    :summary="piece"
+                    :label="pieceLabel(piece, index)"
+                    prefix="piece-drawer"
+                    @update-piece="onUpdatePiece"
+                    @set-piece-allowance="onSetPieceAllowance"
+                    @remove-piece="onRemovePiece"
+                  />
+                </div>
+              </li>
+            </ul>
+
+            <p v-else class="text-sm text-muted-foreground" data-testid="pieces-empty">
+              No pieces yet.
+            </p>
+
+            <Button
+              variant="outline"
+              size="sm"
+              :disabled="!canCreatePiece"
+              :title="pieceCreation.ok ? undefined : pieceCreation.message"
+              :data-testid="pieces.length > 0 ? 'pieces-create' : 'pieces-create-empty'"
+              @click="createPiece"
+            >
+              Create piece
+            </Button>
+          </div>
+        </template>
+
         <template #outline>
           <ul v-if="edges.length > 0" class="space-y-2" aria-label="Edges">
             <li
               v-for="edge in edges"
               :key="edge.id"
               class="flex flex-wrap items-center justify-between gap-2 text-sm"
+              :class="selectedIds.has(edge.id) ? 'rounded-md bg-accent text-accent-foreground' : ''"
+              :data-testid="`outline-row-${edge.id}`"
             >
-              <span class="font-mono text-muted-foreground">{{ edge.id }}</span>
+              <button
+                type="button"
+                class="flex min-w-0 flex-1 flex-wrap items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                :aria-label="`Select entity ${edge.id}`"
+                :aria-current="selectedIds.has(edge.id) ? 'true' : undefined"
+                :data-testid="`outline-select-${edge.id}`"
+                @click="onOutlineSelect(edge.id, $event)"
+              >
+                <span class="font-mono text-muted-foreground">{{ edge.id }}</span>
 
-              <div class="flex items-center gap-2">
                 <span
                   v-if="edge.seamWidth !== null"
                   class="text-muted-foreground"
@@ -1107,24 +1238,24 @@ onBeforeUnmount(() => {
                 >
                   Allowance {{ edge.seamWidth }} mm
                 </span>
-                <template v-else-if="edge.pieceId !== null">
-                  <span class="text-muted-foreground" :data-testid="`edge-piece-${edge.id}`">
-                    In piece {{ edge.pieceId }}
-                    <template v-if="edge.allowanceKind !== null">
-                      · {{ edge.allowanceKind }} {{ edge.allowanceWidth }} mm
-                    </template>
-                  </span>
-                </template>
-                <template v-else>
-                  <span class="text-muted-foreground" :data-testid="`seam-empty-${edge.id}`">
-                    No allowance
-                  </span>
-                </template>
+                <span
+                  v-else-if="edge.pieceId !== null"
+                  class="text-muted-foreground"
+                  :data-testid="`edge-piece-${edge.id}`"
+                >
+                  In piece {{ edge.pieceId }}
+                  <template v-if="edge.allowanceKind !== null">
+                    · {{ edge.allowanceKind }} {{ edge.allowanceWidth }} mm
+                  </template>
+                </span>
+                <span v-else class="text-muted-foreground" :data-testid="`seam-empty-${edge.id}`">
+                  No allowance
+                </span>
+              </button>
 
-                <Button variant="outline" size="sm" @click="convert(edge.id, !edge.construction)">
-                  {{ edge.construction ? 'Make cut edge' : 'Make construction' }}
-                </Button>
-              </div>
+              <Button variant="outline" size="sm" @click="convert(edge.id, !edge.construction)">
+                {{ edge.construction ? 'Make cut edge' : 'Make construction' }}
+              </Button>
             </li>
           </ul>
           <p v-else class="text-sm text-muted-foreground">No edges yet.</p>

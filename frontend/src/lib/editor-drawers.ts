@@ -1,4 +1,4 @@
-export type DrawerId = 'properties' | 'outline' | 'dimensions' | 'constraints' | 'view';
+export type DrawerId = 'properties' | 'pieces' | 'outline' | 'dimensions' | 'constraints' | 'view';
 
 export interface DrawerDefinition {
   id: DrawerId;
@@ -8,6 +8,7 @@ export interface DrawerDefinition {
 
 export const EDITOR_DRAWERS: DrawerDefinition[] = [
   { id: 'properties', label: 'Properties', defaultOpen: true },
+  { id: 'pieces', label: 'Pieces', defaultOpen: true },
   { id: 'outline', label: 'Outline', defaultOpen: true },
   { id: 'dimensions', label: 'Dimensions', defaultOpen: false },
   { id: 'constraints', label: 'Constraints', defaultOpen: false },

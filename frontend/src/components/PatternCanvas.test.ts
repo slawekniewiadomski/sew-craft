@@ -132,6 +132,7 @@ function mountCanvas(
     tool:
       'select' | 'add_point' | 'add_line' | 'add_curve' | 'add_arc' | 'add_circle' | 'dimension';
     selectedEntityIds: EntityId[];
+    selectedPieceId: EntityId | null;
     fitToken: number;
     showAllowances: boolean;
     showConstraints: boolean;
@@ -2384,6 +2385,12 @@ describe('PatternCanvas', () => {
       showAllowances: true,
     });
     expect(selected.find('[data-piece-band="p1"]').classes()).toContain('fill-primary/25');
+
+    const pieceSelected = mountCanvas({ document: pieceDoc, selectedPieceId: 'p1' });
+    expect(pieceSelected.find('[data-piece-band="p1"]').classes()).toContain('fill-primary/25');
+
+    const otherSelected = mountCanvas({ document: pieceDoc, selectedPieceId: 'p2' });
+    expect(otherSelected.find('[data-piece-band="p1"]').classes()).toContain('fill-primary/10');
 
     const hidden = mountCanvas({ document: pieceDoc, showAllowances: false });
     expect(hidden.find('[data-piece-band="p1"]').isVisible()).toBe(false);
