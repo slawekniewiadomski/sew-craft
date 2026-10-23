@@ -58,4 +58,4 @@ after review without a different answer on the issue:
 ### Phase 6: Docs and gate
 
 - [x] 6.1 Update `docs/architecture/api.md` and `data-model.md` — b471bc0
-- [ ] 6.2 Run the full validation gate and the code-review pass
+- [x] 6.2 Run the full validation gate and the code-review pass — bec50e7
