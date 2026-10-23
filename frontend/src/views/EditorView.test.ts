@@ -479,6 +479,50 @@ describe('EditorView', () => {
     expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Circle');
   });
 
+  it('draws a rectangle over existing corners and undoes the four sides in one step', async () => {
+    const { wrapper, store } = await mountLoaded(simpleDoc);
+    const before = store.document.entities.length;
+
+    await wrapper.find('[data-testid="tool-add_rectangle"]').trigger('click');
+    pointDown(wrapper, 'p');
+    pointDown(wrapper, 'r');
+    await flushPromises();
+
+    expect(store.journal).toHaveLength(1);
+    expect(store.document.entities).toHaveLength(before + 4);
+    expect(store.document.entities.filter((entity) => entity.kind === 'line')).toHaveLength(4);
+    expect(store.document.entities.filter((entity) => entity.kind === 'point')).toHaveLength(4);
+
+    store.undo();
+    await nextTick();
+
+    expect(store.document.entities).toHaveLength(before);
+    expect(store.journal).toHaveLength(0);
+  });
+
+  it('draws a rectangle in empty space as one undoable gesture', async () => {
+    const { wrapper, store } = await mountLoaded(simpleDoc);
+    const before = store.document.entities.length;
+
+    await wrapper.find('[data-testid="tool-add_center_rectangle"]').trigger('click');
+    canvasDown(wrapper, 700, 200);
+    await nextTick();
+    expect(wrapper.findAll('[data-testid^="rectangle-pending-corner-"]')).toHaveLength(1);
+
+    canvasDown(wrapper, 300, 500);
+    await flushPromises();
+
+    expect(store.document.entities).toHaveLength(before + 8);
+    expect(store.journal).toHaveLength(1);
+    expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Centre rectangle');
+
+    store.undo();
+    await nextTick();
+
+    expect(store.document.entities).toHaveLength(before);
+    expect(store.journal).toHaveLength(0);
+  });
+
   it('edits a circle radius from the inspector by moving the rim', async () => {
     const { wrapper, store } = await mountLoaded(circleDoc);
 

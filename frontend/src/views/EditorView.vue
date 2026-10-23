@@ -89,11 +89,13 @@ import {
 } from '@/lib/dimensions';
 import { buildArcCommands, type ArcEndpoint } from '@/lib/arc-tool';
 import { downloadSvgFile } from '@/lib/download';
+import type { DraftingEndpoint } from '@/lib/drafting';
 import type { RibbonAction } from '@/lib/editor-ribbon';
 import type { DrawerId } from '@/lib/editor-drawers';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 import { entityProperties } from '@/lib/entity-properties';
 import { buildLineCommands, type LineEndpoint } from '@/lib/line-tool';
+import { buildRectangleCommands, type RectangleMode } from '@/lib/rectangle-tool';
 import {
   edgeLabel,
   findDerivedDimension,
@@ -630,6 +632,14 @@ function onAddCircle(center: CircleEndpoint, rim: CircleEndpoint): void {
   run(() => dispatchGroup(buildCircleCommands(center, rim, nextCommandId)));
 }
 
+/**
+ * One gesture: new corners become points, then the four sides and their
+ * constraints, as a single entry and a single undo.
+ */
+function onAddRectangle(mode: RectangleMode, clicks: DraftingEndpoint[]): void {
+  run(() => dispatchGroup(buildRectangleCommands(pattern.value, mode, clicks, nextCommandId)));
+}
+
 function onAddCurve(points: [EntityId, EntityId, EntityId, EntityId]): void {
   run(() =>
     dispatch({
@@ -1119,6 +1129,7 @@ onBeforeUnmount(() => {
           @add-curve="onAddCurve"
           @add-arc="onAddArc"
           @add-circle="onAddCircle"
+          @add-rectangle="onAddRectangle"
           @constraint-pick="onConstraintPick"
           @round-corner-pick="onRoundCornerPick"
           @set-corner-round-radius="setCornerRoundRadius"

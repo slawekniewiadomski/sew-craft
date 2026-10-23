@@ -179,6 +179,14 @@ describe('rectangleCorners', () => {
     ).toBeNull();
   });
 
+  it('refuses a three-point gesture whose first side is shorter than the minimum', () => {
+    const document = doc([pt('a', 0, 0), pt('b', 0.0005, 0)]);
+
+    expect(
+      rectangleCorners(document, 'three_point', [existing('a'), existing('b'), fresh(10, 40)]),
+    ).toBeNull();
+  });
+
   it('refuses a three-point gesture whose third click lies on the first side', () => {
     expect(
       rectangleCorners(empty, 'three_point', [fresh(0, 0), fresh(100, 0), fresh(50, 0)]),
