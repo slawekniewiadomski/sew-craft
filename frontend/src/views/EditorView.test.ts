@@ -2147,12 +2147,37 @@ describe('EditorView', () => {
     expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(true);
   });
 
-  it('creates a read-only cut dimension between two loop vertices', async () => {
+  it('creates a distance between two piece corners, not a cut dimension', async () => {
     const { wrapper, store } = await mountLoaded(pieceDoc);
 
     await wrapper.find('[data-testid="tool-dimension"]').trigger('click');
     pointDown(wrapper, 'a');
     pointDown(wrapper, 'c');
+    canvasDown(wrapper, 400, 300);
+    await flushPromises();
+
+    expect(store.document.constraints).toEqual([
+      expect.objectContaining({
+        type: 'distance',
+        a: 'a',
+        b: 'c',
+      }),
+    ]);
+    expect(store.document.constraints[0]).not.toHaveProperty('value');
+  });
+
+  it('creates a cut dimension between two piece corners with the cut tool', async () => {
+    const { wrapper, store } = await mountLoaded(pieceDoc);
+
+    await wrapper.find('[data-testid="tool-cut_dimension"]').trigger('click');
+    pointDown(wrapper, 'a');
+    pointDown(wrapper, 'c');
+    await nextTick();
+
+    expect(
+      wrapper.find('[data-testid="dimension-label-cut-dimension-preview"]').find('text').text(),
+    ).toMatch(/ cut$/);
+
     canvasDown(wrapper, 400, 300);
     await flushPromises();
 
@@ -2164,6 +2189,56 @@ describe('EditorView', () => {
         b: { edge: 'bc', at: 'end' },
       }),
     ]);
+  });
+
+  it('creates a cut dimension from one piece edge', async () => {
+    const { wrapper, store } = await mountLoaded(pieceDoc);
+
+    await wrapper.find('[data-testid="tool-cut_dimension"]').trigger('click');
+    entityDown(wrapper, 'line', 'ab');
+    canvasDown(wrapper, 400, 300);
+    await flushPromises();
+
+    expect(store.document.constraints).toEqual([
+      expect.objectContaining({
+        type: 'derived_distance',
+        piece: 'p1',
+        a: { edge: 'ab', at: 'start' },
+        b: { edge: 'ab', at: 'end' },
+      }),
+    ]);
+  });
+
+  it('updates an existing cut dimension instead of duplicating it', async () => {
+    const { wrapper, store } = await mountLoaded(cutDimensionDoc);
+
+    await wrapper.find('[data-testid="tool-cut_dimension"]').trigger('click');
+    pointDown(wrapper, 'a');
+    pointDown(wrapper, 'c');
+    canvasDown(wrapper, 400, 300);
+    await flushPromises();
+
+    expect(store.document.constraints).toHaveLength(1);
+    expect(store.document.constraints[0]).toMatchObject({
+      id: 'cut',
+      type: 'derived_distance',
+      orientation: 'aligned',
+    });
+    expect(store.journal).toHaveLength(1);
+  });
+
+  it('rejects a cut dimension pick outside a piece without emitting a command', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    await wrapper.find('[data-testid="tool-cut_dimension"]').trigger('click');
+    pointDown(wrapper, 'a');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="cut-dimension-hint"]').text()).toBe(
+      'Pick a corner of a piece',
+    );
+    expect(store.document.constraints).toHaveLength(0);
+    expect(store.journal).toHaveLength(0);
   });
 
   it('shows a cut dimension as read-only and refuses edits in the drawer', async () => {

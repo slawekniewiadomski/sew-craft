@@ -14,6 +14,7 @@ export type RibbonIconName =
   | 'arc'
   | 'circle'
   | 'dimension'
+  | 'cut-dimension'
   | 'piece'
   | 'round-corner'
   | 'undo'
@@ -41,6 +42,9 @@ const ACTION_ICONS: Record<ActionIconName, RibbonIcon> = {
       'M4.5 4.2 L2.5 6 L4.5 7.8',
       'M7.5 4.2 L9.5 6 L7.5 7.8',
     ],
+  },
+  'cut-dimension': {
+    paths: ['M2.5 2 V10', 'M9.5 2 V10', 'M2.5 6 H6', 'M7.5 6 H9.5', 'M4.8 9.4 L9.2 2.6'],
   },
   piece: {
     paths: [

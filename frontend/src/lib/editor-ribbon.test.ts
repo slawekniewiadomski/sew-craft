@@ -56,6 +56,13 @@ describe('RIBBON_GROUPS', () => {
         icon: 'dimension',
         tool: 'dimension',
       },
+      {
+        kind: 'tool',
+        id: 'tool-cut_dimension',
+        label: 'Cut dimension',
+        icon: 'cut-dimension',
+        tool: 'cut_dimension',
+      },
     ]);
   });
 

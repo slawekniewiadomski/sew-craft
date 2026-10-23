@@ -6,7 +6,8 @@ export type EditorTool =
   | 'add_arc'
   | 'add_circle'
   | 'round_corner'
-  | 'dimension';
+  | 'dimension'
+  | 'cut_dimension';
 
 export interface EditorToolDefinition {
   id: EditorTool;
@@ -22,4 +23,5 @@ export const EDITOR_TOOLS: EditorToolDefinition[] = [
   { id: 'add_circle', label: 'Circle' },
   { id: 'round_corner', label: 'Round corner' },
   { id: 'dimension', label: 'Dimension' },
+  { id: 'cut_dimension', label: 'Cut dimension' },
 ];

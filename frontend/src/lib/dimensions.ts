@@ -1,6 +1,7 @@
 import {
   dimensionValue,
   referenceCandidates,
+  type CutAnchor,
   type DimensionLayout,
   type DimensionOrientation,
   type DimensionState,
@@ -13,6 +14,15 @@ import {
 export interface DimensionPlacement {
   a: EntityId;
   b: EntityId;
+  orientation: DimensionOrientation;
+  offset: number;
+}
+
+/** What the canvas emits when a cut dimension is placed on a piece. */
+export interface CutDimensionPlacement {
+  piece: EntityId;
+  a: CutAnchor;
+  b: CutAnchor;
   orientation: DimensionOrientation;
   offset: number;
 }

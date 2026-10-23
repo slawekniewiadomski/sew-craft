@@ -16,6 +16,7 @@ import {
   dimensionValue,
   findDistanceConstraint,
   inferDimensionOrientation,
+  inferOrientationFromSpan,
   isBrokenDimension,
   isDrivenDimension,
   isReferencedDimension,
@@ -197,6 +198,23 @@ describe('inferDimensionOrientation', () => {
   it('falls back to aligned for missing or degenerate spans', () => {
     expect(inferDimensionOrientation(document, 'a', 'missing', { x: 0, y: 0 })).toBe('aligned');
     expect(inferDimensionOrientation(document, 'a', 'a', { x: 0, y: 0 })).toBe('aligned');
+  });
+});
+
+describe('inferOrientationFromSpan', () => {
+  const span = { a: { x: 0, y: 0 }, b: { x: 100, y: 50 } };
+
+  it('chooses the same axis as the point-based helper', () => {
+    expect(inferOrientationFromSpan(span, { x: 150, y: 25 })).toBe('vertical');
+    expect(
+      inferOrientationFromSpan({ a: { x: 0, y: 0 }, b: { x: 100, y: 0 } }, { x: 50, y: 40 }),
+    ).toBe('horizontal');
+  });
+
+  it('falls back to aligned for a degenerate span', () => {
+    expect(
+      inferOrientationFromSpan({ a: { x: 20, y: 20 }, b: { x: 20, y: 20 } }, { x: 0, y: 0 }),
+    ).toBe('aligned');
   });
 });
 

@@ -46,6 +46,7 @@ const TOOL_ICONS: Record<EditorTool, RibbonIconName> = {
   add_circle: 'circle',
   round_corner: 'round-corner',
   dimension: 'dimension',
+  cut_dimension: 'cut-dimension',
 };
 
 const TOOL_ITEMS = new Map<EditorTool, RibbonToolItem>(
@@ -103,6 +104,7 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
       toolItem('add_arc'),
       toolItem('add_circle'),
       toolItem('dimension'),
+      toolItem('cut_dimension'),
     ],
   },
   {

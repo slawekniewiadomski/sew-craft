@@ -80,6 +80,7 @@ import {
   type DimensionPatch,
   type DimensionPlacement,
   type DimensionReferenceOption,
+  type CutDimensionPlacement,
 } from '@/lib/dimensions';
 import { buildArcCommands, type ArcEndpoint } from '@/lib/arc-tool';
 import { downloadSvgFile } from '@/lib/download';
@@ -88,7 +89,7 @@ import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 import { entityProperties } from '@/lib/entity-properties';
 import { buildLineCommands, type LineEndpoint } from '@/lib/line-tool';
 import {
-  cutDimensionForPoints,
+  findDerivedDimension,
   pieceCreationFromSelection,
   pieceLabel,
   pieceSummaries,
@@ -626,26 +627,6 @@ function onAddCurve(points: [EntityId, EntityId, EntityId, EntityId]): void {
  * then only updates its presentation.
  */
 function onAddDimension(placement: DimensionPlacement): void {
-  // Two loop vertices of one piece measure the cut line: a read-only derived
-  // dimension. Two free points keep the driving distance dimension path.
-  const cut = cutDimensionForPoints(pattern.value, placement.a, placement.b);
-  if (cut !== null) {
-    run(() =>
-      dispatch({
-        id: nextCommandId('cut-dimension'),
-        type: 'add_derived_dimension',
-        params: {
-          piece: cut.piece.id,
-          a: cut.a,
-          b: cut.b,
-          orientation: placement.orientation,
-          offset: placement.offset,
-        },
-      }),
-    );
-    return;
-  }
-
   const existing = findDistanceConstraint(pattern.value, placement.a, placement.b);
   if (existing !== undefined) {
     run(() =>
@@ -673,6 +654,35 @@ function onAddDimension(placement: DimensionPlacement): void {
       params: {
         type: 'distance',
         entities: [placement.a, placement.b],
+        orientation: placement.orientation,
+        offset: placement.offset,
+      },
+    }),
+  );
+}
+
+/** Place a read-only cut dimension, updating the existing one on the same span. */
+function onAddCutDimension(placement: CutDimensionPlacement): void {
+  const existing = findDerivedDimension(pattern.value, placement.piece, placement.a, placement.b);
+  if (existing !== undefined) {
+    run(() =>
+      dispatch({
+        id: nextCommandId('cut-dimension'),
+        type: 'update_constraint',
+        params: { id: existing.id, orientation: placement.orientation, offset: placement.offset },
+      }),
+    );
+    return;
+  }
+
+  run(() =>
+    dispatch({
+      id: nextCommandId('cut-dimension'),
+      type: 'add_derived_dimension',
+      params: {
+        piece: placement.piece,
+        a: placement.a,
+        b: placement.b,
         orientation: placement.orientation,
         offset: placement.offset,
       },
@@ -1093,6 +1103,7 @@ onBeforeUnmount(() => {
           @round-corner-pick="onRoundCornerPick"
           @set-corner-round-radius="setCornerRoundRadius"
           @add-dimension="onAddDimension"
+          @add-cut-dimension="onAddCutDimension"
           @update-dimension="onUpdateDimension"
           @marquee-change="marqueeActive = $event"
         />

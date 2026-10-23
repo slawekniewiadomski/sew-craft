@@ -301,7 +301,17 @@ export function inferDimensionOrientation(
 ): DimensionOrientation {
   const span = resolveSpan(document, a, b);
   if (span === null) return 'aligned';
+  return inferOrientationFromSpan(span, pointer);
+}
 
+/**
+ * The same axis choice for a span that is already resolved, such as a piece's
+ * cut loop, which has no point entities to look up.
+ */
+export function inferOrientationFromSpan(
+  span: { a: Vec2; b: Vec2 },
+  pointer: Vec2,
+): DimensionOrientation {
   const spanVector = sub(span.b, span.a);
   const spanLength = magnitude(spanVector);
   if (spanLength === 0) return 'aligned';

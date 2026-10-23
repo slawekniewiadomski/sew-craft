@@ -143,14 +143,17 @@ fold line exactly on the 220 × 210 outline.
     cut width × height, cut area, allowance area, quantity. These answer "cut
     220 × 210" without any annotation on the sheet.
 11. **Cut dimensions.** A cut dimension is a `derived_distance` between two loop
-    vertices of one piece. Its value is computed from the resolved cut loop on
-    every read, adds no solver equation, and is **read-only** in v1: the editor
-    field explains that the number follows the stitch dimension and the
+    vertices of one piece, created with the dedicated **Cut dimension** tool (see
+    `2026-10-23-cut-dimension-tool.md`). Its value is computed from the resolved
+    cut loop on every read, adds no solver equation, and is **read-only** in v1:
+    the editor field explains that the number follows the stitch dimension and the
     allowances. Typing a value into it is out of scope (it would have to rewrite
     the stitch dimension or an allowance width, and is ambiguous when the span
     touches edges with different widths). A missing piece or edge leaves the
     dimension `broken` with no number to show, exactly like a dangling reference;
     a cut dimension never captures a stale `lastKnownValue`.
+    The Dimension tool always creates a stitch `distance` constraint, even between
+    two piece corners, so the net piece stays dimensionable when allowances exist.
 12. **Legacy documents.** A 0.1 document's `seams` are adopted on load: every
     closed chain of seam-carrying edges becomes one piece with those allowances
     as `kind: 'seam'` and the stored width, and `side` is discarded. Seams on
@@ -483,8 +486,10 @@ removed in 0.3.
 
 5.1 `dimension.ts`: `derived` state, `resolveCutSpan` via `pieceCutVertex`, reuse
     of `dimensionGeometry`; `dimensionState`, label text and colour.
-5.2 Creation gesture from two loop vertices on the selected piece; read-only
-    value field naming the driving span and allowances.
+5.2 Creation gesture with the dedicated Cut dimension tool: two loop vertices on
+    the selected piece or one piece edge; read-only value field naming the
+    driving span and allowances. Dimension on the same corners creates a stitch
+    `distance` instead.
 5.3 Broken handling when a piece or edge disappears; tests for the reference
     values (220 and 210, then 240 and 220 after switching to double).
 5.4 Ensure the solver never sees a `derived_distance`.

@@ -3,6 +3,7 @@ import {
   type ArcEntity,
   type CircleEntity,
   type CurveEntity,
+  type DerivedDistanceConstraint,
   type LineEntity,
   type PatternDocument,
   type Piece,
@@ -12,13 +13,15 @@ import { describe, expect, it } from 'vitest';
 
 import {
   anchorForPoint,
-  cutDimensionForPoints,
+  edgeEndpoints,
+  findDerivedDimension,
   pieceAllowanceRows,
   pieceCreationFromSelection,
   pieceLabel,
   pieceOwningEdge,
   pieceSummaries,
   pieceSummary,
+  piecesAtPoint,
 } from './pieces';
 
 const point = (id: string, x: number, y: number): PointEntity => ({
@@ -308,29 +311,80 @@ describe('anchorForPoint', () => {
   });
 });
 
-describe('cutDimensionForPoints', () => {
-  it('returns the piece and both anchors when two loop vertices belong to it', () => {
+describe('piecesAtPoint', () => {
+  it('returns every piece that has the point on its loop, in document order', () => {
     const document = squareDocument();
-    const result = cutDimensionForPoints(document, 'a', 'c');
+    document.pieces.push({ id: 'p2', edges: ['ab', 'da'], allowances: [] });
 
-    expect(result).toEqual({
-      piece: squarePiece(document),
-      a: { edge: 'ab', at: 'start' },
-      b: { edge: 'bc', at: 'end' },
-    });
+    expect(piecesAtPoint(document, 'a').map((piece) => piece.id)).toEqual(['p1', 'p2']);
+    expect(piecesAtPoint(document, 'c').map((piece) => piece.id)).toEqual(['p1']);
   });
 
-  it('returns null when the points are not both on one piece', () => {
-    const document = squareDocument();
+  it('returns no piece for a point outside every loop', () => {
+    expect(piecesAtPoint(squareDocument(), 'missing')).toEqual([]);
+  });
+});
 
-    expect(cutDimensionForPoints(document, 'a', 'missing')).toBeNull();
+describe('edgeEndpoints', () => {
+  it('returns the two point ids a line, curve or arc joins', () => {
+    const document: PatternDocument = {
+      ...bareSquareDocument(),
+      entities: [
+        ...bareSquareDocument().entities,
+        curve('curve', 'a', 'b', 'c', 'd'),
+        arc('arc', 'a', 'b', 'c'),
+      ],
+    };
+
+    expect(edgeEndpoints(document, 'ab')).toEqual(['a', 'b']);
+    expect(edgeEndpoints(document, 'curve')).toEqual(['a', 'd']);
+    expect(edgeEndpoints(document, 'arc')).toEqual(['a', 'c']);
   });
 
-  it('skips a piece that resolves only one end', () => {
-    const document = squareDocument();
-    document.pieces.unshift({ id: 'partial', edges: ['ad'], allowances: [] });
+  it('returns null for a point, a circle and a missing edge', () => {
+    const document: PatternDocument = {
+      ...bareSquareDocument(),
+      entities: [...bareSquareDocument().entities, circle('circle', 'a', 'b')],
+    };
 
-    expect(cutDimensionForPoints(document, 'a', 'c')?.piece.id).toBe('p1');
+    expect(edgeEndpoints(document, 'a')).toBeNull();
+    expect(edgeEndpoints(document, 'circle')).toBeNull();
+    expect(edgeEndpoints(document, 'missing')).toBeNull();
+  });
+});
+
+describe('findDerivedDimension', () => {
+  const constraint: DerivedDistanceConstraint = {
+    id: 'cut',
+    type: 'derived_distance',
+    piece: 'p1',
+    a: { edge: 'ab', at: 'start' },
+    b: { edge: 'bc', at: 'end' },
+  };
+
+  it('finds a span in either direction', () => {
+    const document: PatternDocument = { ...squareDocument(), constraints: [constraint] };
+    const a = { edge: 'ab', at: 'start' } as const;
+    const b = { edge: 'bc', at: 'end' } as const;
+
+    expect(findDerivedDimension(document, 'p1', a, b)).toBe(constraint);
+    expect(findDerivedDimension(document, 'p1', b, a)).toBe(constraint);
+  });
+
+  it('ignores another piece and a different anchor pair', () => {
+    const document: PatternDocument = { ...squareDocument(), constraints: [constraint] };
+
+    expect(
+      findDerivedDimension(document, 'p2', { edge: 'ab', at: 'start' }, { edge: 'bc', at: 'end' }),
+    ).toBeUndefined();
+    expect(
+      findDerivedDimension(
+        document,
+        'p1',
+        { edge: 'ab', at: 'start' },
+        { edge: 'cd', at: 'start' },
+      ),
+    ).toBeUndefined();
   });
 });
 

@@ -1,6 +1,6 @@
 # Cut dimension tool
 
-Status: draft
+Status: implemented
 Builds on: 2026-10-22-pieces-and-allowance (pieces, allowance kinds, cut dimensions)
 Supersedes: the Dimension tool's implicit cut-dimension behaviour on piece corners
 
@@ -179,14 +179,14 @@ Icon: new `cut-dimension` glyph (12×12 box, similar weight to `dimension`, visu
 
 ## ✅ Acceptance Criteria
 
-- [ ] Cut dimension tool appears in Sketching ribbon group after Dimension
-- [ ] Selecting Cut dimension tool highlights piece corners (`cut-vertex-handle`)
-- [ ] Two same-piece corners → `add_derived_dimension` with correct anchors, cut-span preview while placing
-- [ ] One piece edge click → `add_derived_dimension` for that edge's cut span
-- [ ] Non-piece point / cross-piece / same corner / non-piece edge → no command, hint shown
-- [ ] Dedupe: second placement on same piece + anchors updates orientation/offset, no duplicate constraint
-- [ ] **Regression**: Dimension tool on `pieceDoc` corners `a→c` creates `distance` constraint (not `derived_distance`)
-- [ ] Derived dimensions draggable with Select, Dimension **and** Cut dimension tools
-- [ ] Tool switch / Escape clears pending state, preview, hint
-- [ ] All unit tests pass; 100% coverage maintained
-- [ ] `npm run lint`, `npm run typecheck`, `npm run format:check` pass
+- [x] Cut dimension tool appears in Sketching ribbon group after Dimension
+- [x] Selecting Cut dimension tool highlights piece corners (`cut-vertex-handle`)
+- [x] Two same-piece corners → `add_derived_dimension` with correct anchors, cut-span preview while placing
+- [x] One piece edge click → `add_derived_dimension` for that edge's cut span
+- [x] Non-piece point / cross-piece / same corner / non-piece edge → no command, hint shown
+- [x] Dedupe: second placement on same piece + anchors updates orientation/offset, no duplicate constraint
+- [x] **Regression**: Dimension tool on `pieceDoc` corners `a→c` creates `distance` constraint (not `derived_distance`)
+- [x] Derived dimensions draggable with Select, Dimension **and** Cut dimension tools
+- [x] Tool switch / Escape clears pending state, preview, hint
+- [x] All unit tests pass; 100% coverage maintained
+- [x] `npm run lint`, `npm run typecheck`, `npm run format:check` pass

@@ -6,6 +6,7 @@ import {
   validatePiece,
   type AllowanceKind,
   type CutAnchor,
+  type DerivedDistanceConstraint,
   type Entity,
   type EntityId,
   type PatternDocument,
@@ -206,18 +207,36 @@ export function anchorForPoint(
   return null;
 }
 
-/** A cut dimension between two loop vertices of the same piece, or `null`. */
-export function cutDimensionForPoints(
+/** Every piece that has this point on its loop, in document order. */
+export function piecesAtPoint(document: PatternDocument, pointId: EntityId): Piece[] {
+  return document.pieces.filter((piece) => anchorForPoint(document, piece, pointId) !== null);
+}
+
+/** The two point ids a line, curve or arc joins, or `null` for anything else. */
+export function edgeEndpoints(
   document: PatternDocument,
-  a: EntityId,
-  b: EntityId,
-): { piece: Piece; a: CutAnchor; b: CutAnchor } | null {
-  for (const piece of document.pieces) {
-    const first = anchorForPoint(document, piece, a);
-    const second = anchorForPoint(document, piece, b);
-    if (first !== null && second !== null) {
-      return { piece, a: first, b: second };
-    }
-  }
-  return null;
+  edgeId: EntityId,
+): [EntityId, EntityId] | null {
+  const entity = getEntity(document, edgeId);
+  return entity === undefined ? null : endpointIds(entity);
+}
+
+function sameAnchor(a: CutAnchor, b: CutAnchor): boolean {
+  return a.edge === b.edge && a.at === b.at;
+}
+
+/** A cut dimension already measuring this piece span, in either direction. */
+export function findDerivedDimension(
+  document: PatternDocument,
+  piece: EntityId,
+  a: CutAnchor,
+  b: CutAnchor,
+): DerivedDistanceConstraint | undefined {
+  return document.constraints.find(
+    (constraint): constraint is DerivedDistanceConstraint =>
+      constraint.type === 'derived_distance' &&
+      constraint.piece === piece &&
+      ((sameAnchor(constraint.a, a) && sameAnchor(constraint.b, b)) ||
+        (sameAnchor(constraint.a, b) && sameAnchor(constraint.b, a))),
+  );
 }
