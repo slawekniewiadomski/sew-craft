@@ -28,7 +28,24 @@ export interface RibbonActionItem {
   action: RibbonAction;
 }
 
-export type RibbonItem = RibbonToolItem | RibbonConstraintItem | RibbonActionItem;
+/**
+ * A family of tools drawn as one split control: the icon half arms `primary`
+ * and the caret opens a menu of every `item`.
+ */
+export interface RibbonToolGroupItem {
+  kind: 'tool-group';
+  /** The icon half's `data-testid`, e.g. `tool-rectangle`. */
+  id: string;
+  /** Group caption and tooltip noun, e.g. `Rectangle`. */
+  label: string;
+  /** The mode the icon half shows by default. */
+  primary: RibbonToolItem;
+  /** Modes offered by the menu, `primary` included. */
+  items: RibbonToolItem[];
+}
+
+export type RibbonItem =
+  RibbonToolItem | RibbonConstraintItem | RibbonActionItem | RibbonToolGroupItem;
 
 export interface RibbonGroup {
   id: string;
@@ -79,6 +96,19 @@ function actionItem(
 }
 
 /**
+ * `id` is the bare control name (`rectangle`); the helper adds the `tool-`
+ * prefix so the icon half's test id matches a single tool's.
+ */
+function toolGroup(
+  id: string,
+  label: string,
+  items: RibbonToolItem[],
+  primary: RibbonToolItem = items[0]!,
+): RibbonToolGroupItem {
+  return { kind: 'tool-group', id: `tool-${id}`, label, primary, items };
+}
+
+/**
  * The ribbon is data-driven so a group can gain items by editing this list
  * alone. `id` is the control's `data-testid`; `label` is its tooltip and
  * accessible name. Each group renders its label as a small uppercase caption.
@@ -110,9 +140,11 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
       toolItem('add_curve'),
       toolItem('add_arc'),
       toolItem('add_circle'),
-      toolItem('add_rectangle'),
-      toolItem('add_center_rectangle'),
-      toolItem('add_3point_rectangle'),
+      toolGroup('rectangle', 'Rectangle', [
+        toolItem('add_rectangle'),
+        toolItem('add_center_rectangle'),
+        toolItem('add_3point_rectangle'),
+      ]),
       toolItem('dimension'),
       toolItem('cut_dimension'),
     ],

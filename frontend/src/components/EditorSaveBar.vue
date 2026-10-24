@@ -2,7 +2,7 @@
 import { Button } from '@/components/ui/button';
 import { computed } from 'vue';
 
-type SaveBarState = 'new' | 'dirty' | 'saving' | 'saved' | 'failed';
+type SaveBarState = 'new' | 'dirty' | 'saving' | 'saved' | 'failed' | 'paused' | 'error';
 
 const props = withDefaults(
   defineProps<{
@@ -10,9 +10,11 @@ const props = withDefaults(
     state: SaveBarState;
     /** ISO-8601 timestamp of the last checkpoint, or null when none exists. */
     savedAt?: string | null;
+    /** Which writer produced the last save; only the saved copy uses it. */
+    origin?: 'manual' | 'autosave' | null;
     readOnly?: boolean;
   }>(),
-  { savedAt: null, readOnly: false },
+  { savedAt: null, origin: null, readOnly: false },
 );
 
 const emit = defineEmits<{ save: [] }>();
@@ -24,25 +26,35 @@ const savedTime = computed(() => {
   );
 });
 
+const savedLabel = computed(() => (props.origin === 'autosave' ? 'Autosaved' : 'Saved'));
+
 const statusText = computed(() => {
   const labels: Record<SaveBarState, string> = {
     new: 'New pattern — not saved yet',
     dirty: 'Unsaved changes',
     saving: 'Saving…',
-    failed: 'Save failed — retry',
-    saved: savedTime.value === '' ? 'Saved' : `Saved ${savedTime.value}`,
+    failed: 'Save failed — retrying',
+    error: 'Save failed',
+    paused: 'Save paused — changed elsewhere',
+    saved: savedTime.value === '' ? savedLabel.value : `${savedLabel.value} ${savedTime.value}`,
   };
 
   return labels[props.state];
 });
 
 const canSave = computed(
-  () =>
-    !props.readOnly &&
-    (props.state === 'dirty' || props.state === 'failed' || props.state === 'new'),
+  () => !props.readOnly && props.state !== 'saving' && props.state !== 'saved',
 );
 
-const liveMode = computed(() => (props.state === 'failed' ? 'assertive' : 'polite'));
+const liveMode = computed(() =>
+  props.state === 'failed' || props.state === 'error' || props.state === 'paused'
+    ? 'assertive'
+    : 'polite',
+);
+
+const attention = computed(
+  () => props.state === 'failed' || props.state === 'error' || props.state === 'paused',
+);
 </script>
 
 <template>
@@ -67,7 +79,7 @@ const liveMode = computed(() => (props.state === 'failed' ? 'assertive' : 'polit
 
     <p
       class="text-2xs"
-      :class="state === 'failed' ? 'text-destructive' : 'text-muted-foreground'"
+      :class="attention ? 'text-destructive' : 'text-muted-foreground'"
       role="status"
       :aria-live="liveMode"
       data-testid="save-status"
@@ -84,7 +96,7 @@ const liveMode = computed(() => (props.state === 'failed' ? 'assertive' : 'polit
       @click="emit('save')"
     >
       <span
-        v-if="state === 'dirty' || state === 'failed'"
+        v-if="state !== 'saved' && state !== 'saving' && state !== 'new'"
         aria-hidden="true"
         class="mr-1.5 inline-block size-1.5 rounded-full bg-primary"
         data-testid="save-dirty-dot"

@@ -45,6 +45,13 @@ export interface SavePatternPayload {
   expected_version: number | null;
   /** The schema the stored document had, so the server archives it first. */
   expected_schema?: string;
+  /** Omitted means `manual`; `autosave` rows are coalesced in history. */
+  origin?: 'manual' | 'autosave';
+}
+
+export interface SavePatternOptions {
+  /** Keep the request alive when the page is hidden or unloading. */
+  keepalive?: boolean;
 }
 
 /**
@@ -96,6 +103,14 @@ export const projectsApi = {
     request('/projects', { method: 'POST', body: JSON.stringify(payload) }),
   remove: (id: number): Promise<void> => request(`/projects/${id}`, { method: 'DELETE' }),
   getPattern: (id: number): Promise<Resource<Pattern>> => request(`/projects/${id}/pattern`),
-  savePattern: (id: number, payload: SavePatternPayload): Promise<Resource<SavedPattern>> =>
-    request(`/projects/${id}/pattern`, { method: 'PUT', body: JSON.stringify(payload) }),
+  savePattern: (
+    id: number,
+    payload: SavePatternPayload,
+    options: SavePatternOptions = {},
+  ): Promise<Resource<SavedPattern>> =>
+    request(`/projects/${id}/pattern`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+      keepalive: options.keepalive ?? false,
+    }),
 };

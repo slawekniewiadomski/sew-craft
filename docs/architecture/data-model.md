@@ -39,13 +39,22 @@ first save creates it lazily with the project's name.
 | `id`         | bigint PK               |                          |
 | `pattern_id` | FK → patterns (cascade) |                          |
 | `version`    | unsigned int            | monotonic per pattern    |
+| `origin`     | string(16)              | `manual` \| `autosave`   |
 | `geometry`   | json                    | frozen `PatternDocument` |
 | `created_at` | timestamp               |                          |
 
 Unique on `(pattern_id, version)`. Appended once per changed save, and once for
 the pre-upgrade working copy immediately before an upgrade save. An unchanged
-save appends nothing, so history stays meaningful without pruning. The next
-version is `max(version) + 1`, computed under a row lock.
+save appends nothing.
+
+`origin` separates deliberate checkpoints from background writes. Explicit saves
+and upgrade archives write `manual`; a client that opts into autosave sends
+`origin: "autosave"` and the server keeps only the newest autosave row per
+pattern, pruning earlier autosave rows in the same transaction. Manual rows are
+never pruned, so history keeps every deliberate save while a drafting session
+cannot grow it without bound. This supersedes the earlier "no pruning" promise.
+Pruning leaves gaps in version numbers: the next version is `max(version) + 1`,
+computed under a row lock, and a version is a token rather than a count.
 
 ### `exports`
 
@@ -140,6 +149,7 @@ can be written when it changes.
       "radius": 8,
       "arc": "r1:arc",
       "controls": ["r1:c1", "r1:c2"],
+      "center": "r1:center",
       "cornerConstruction": false,
     },
   ],
@@ -157,9 +167,12 @@ stays `sewcraft.pattern/0.2`.
 `cornerRounds` is optional, so documents written before the feature load
 unchanged. A round is a live feature: it stores the sharp corner, both line
 anchors and the radius, while its derived entities (tangent points `r1:a`,
-`r1:b`, controls `r1:c1`, `r1:c2`, and the cubic arc `r1:arc`) live in
-`entities` and are omitted from the snippet. `l1` and `l2` are trimmed to the
-tangent points, and `p2` stays as a construction point.
+`r1:b`, controls `r1:c1`, `r1:c2`, the cubic arc `r1:arc` and the radius centre
+`r1:center`) live in `entities` and are omitted from the snippet. `l1` and `l2`
+are trimmed to the tangent points, and `p2` stays as a construction point.
+`center` is optional and additive — it points at a fixed construction point, is
+minted once on load for rounds written before feature points, and never joins a
+piece loop or the SVG export. The schema string stays `sewcraft.pattern/0.2`.
 
 An `arc` entity is a true circular arc referencing three ordinary points: `start`
 and `end` bound it and `through` lies on it between them, fixing both the bulge

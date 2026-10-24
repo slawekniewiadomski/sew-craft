@@ -461,6 +461,21 @@ const roundableCornerPoints = computed(() => {
   return visiblePoints.value.filter((point) => ids.has(point.id));
 });
 
+/**
+ * Every round's derived feature points — the radius centre and both tangency
+ * points — as always-visible construction marks. They are ordinary point
+ * entities, so hit testing, selection, snapping and dimension picks apply.
+ */
+const cornerRoundFeaturePoints = computed<PointEntity[]>(() =>
+  cornerRounds(props.document).flatMap((round) =>
+    [round.center, round.ends[0].tangent, round.ends[1].tangent].flatMap((id) => {
+      if (id === undefined) return [];
+      const point = pointById.value.get(id);
+      return point === undefined ? [] : [point];
+    }),
+  ),
+);
+
 /** Rounds whose handles and label are visible: selected, hovered or dragging. */
 const activeRounds = computed<CornerRound[]>(() => {
   const rounds: CornerRound[] = [];
@@ -482,6 +497,15 @@ const activeRounds = computed<CornerRound[]>(() => {
 
   return rounds;
 });
+
+/** A selected round promotes its three feature dots to the primary colour. */
+function featurePointClass(point: PointEntity): string {
+  const selected = activeRounds.value.some(
+    (round) => round.center === point.id || round.ends.some((end) => end.tangent === point.id),
+  );
+
+  return selected ? 'fill-primary stroke-primary' : 'fill-background stroke-muted-foreground';
+}
 
 /** The radius a round shows: the dragged value while the handle is moving. */
 function radiusOf(round: CornerRound): number {
@@ -1741,9 +1765,9 @@ function onPointerDown(event: PointerEvent): void {
 
       selectEntity(hit.id, mode);
       if (mode !== 'replace') break;
-      if (hit.kind === 'point') {
+      if (hit.kind === 'point' && !isCornerRoundDerived(props.document, hit.id)) {
         beginDrag(hit.id, pointById.value.get(hit.id)!);
-      } else {
+      } else if (hit.kind !== 'point') {
         beginPan(screen);
       }
       break;
@@ -2708,6 +2732,21 @@ watch(
             class="fill-accent stroke-accent-foreground"
             stroke-width="1"
             :data-testid="`rectangle-pending-corner-${index}`"
+          />
+        </g>
+
+        <g data-testid="corner-round-feature-layer" aria-hidden="true">
+          <circle
+            v-for="point in cornerRoundFeaturePoints"
+            :key="`feature-${point.id}`"
+            :cx="point.x"
+            :cy="point.y"
+            r="3"
+            stroke-width="1"
+            :class="featurePointClass(point)"
+            :data-entity-id="point.id"
+            data-kind="point"
+            :data-testid="`corner-round-feature-${point.id}`"
           />
         </g>
 

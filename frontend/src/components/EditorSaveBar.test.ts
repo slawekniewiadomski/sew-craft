@@ -62,10 +62,56 @@ describe('EditorSaveBar', () => {
   it('shows a retryable failure assertively', () => {
     const wrapper = mountBar({ state: 'failed' });
 
-    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed — retry');
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed — retrying');
     expect(wrapper.find('[data-testid="save-status"]').attributes('aria-live')).toBe('assertive');
     expect(wrapper.find('[data-testid="save-status"]').classes()).toContain('text-destructive');
     expect(wrapper.find('[data-testid="save-project"]').attributes('disabled')).toBeUndefined();
+  });
+
+  it('shows a terminal failure without offering an immediate retry', () => {
+    const wrapper = mountBar({ state: 'error' });
+
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed');
+    expect(wrapper.find('[data-testid="save-status"]').attributes('aria-live')).toBe('assertive');
+    expect(wrapper.find('[data-testid="save-status"]').classes()).toContain('text-destructive');
+    expect(wrapper.find('[data-testid="save-dirty-dot"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="save-project"]').attributes('disabled')).toBeUndefined();
+  });
+
+  it('shows a paused autosave and keeps Save available for the conflict dialog', () => {
+    const wrapper = mountBar({ state: 'paused' });
+
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe(
+      'Save paused — changed elsewhere',
+    );
+    expect(wrapper.find('[data-testid="save-status"]').attributes('aria-live')).toBe('assertive');
+    expect(wrapper.find('[data-testid="save-status"]').classes()).toContain('text-destructive');
+    expect(wrapper.find('[data-testid="save-dirty-dot"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="save-project"]').attributes('disabled')).toBeUndefined();
+  });
+
+  it('words the saved state by the writer that produced it', () => {
+    const automatic = mountBar({ state: 'saved', savedAt, origin: 'autosave' });
+
+    expect(automatic.find('[data-testid="save-status"]').text()).toBe(
+      `Autosaved ${formatSavedTime()}`,
+    );
+
+    const manual = mountBar({ state: 'saved', savedAt, origin: 'manual' });
+
+    expect(manual.find('[data-testid="save-status"]').text()).toBe(`Saved ${formatSavedTime()}`);
+  });
+
+  it('shows a plain autosaved state without a checkpoint timestamp', () => {
+    const wrapper = mountBar({ state: 'saved', savedAt: null, origin: 'autosave' });
+
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Autosaved');
+  });
+
+  it('disables Save when the document is clean', () => {
+    const wrapper = mountBar({ state: 'saved', savedAt });
+
+    expect(wrapper.find('[data-testid="save-project"]').attributes('disabled')).toBeDefined();
   });
 
   it('blocks saving and shows the read-only pill for a read-only document', () => {
