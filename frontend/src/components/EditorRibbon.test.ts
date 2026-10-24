@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { mount, type VueWrapper } from '@vue/test-utils';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+
+import type { EditorTool } from '@/lib/editor-tools';
 
 import EditorRibbon from './EditorRibbon.vue';
 
 function mountRibbon(
   overrides: Partial<{
-    activeTool: 'select' | 'add_point' | 'add_line' | 'add_curve' | 'add_arc' | 'round_corner';
+    activeTool: EditorTool;
     activeConstraint: 'horizontal' | null;
     canUndo: boolean;
     canRedo: boolean;
@@ -39,8 +41,7 @@ const RIBBON_LABELS = [
   'Arc',
   'Circle',
   'Rectangle',
-  'Centre rectangle',
-  '3-point rectangle',
+  'Rectangle modes',
   'Dimension',
   'Cut dimension',
   'Coincident',
@@ -58,7 +59,7 @@ describe('EditorRibbon', () => {
     const wrapper = mountRibbon();
 
     const buttons = wrapper.findAll('button');
-    expect(buttons).toHaveLength(25);
+    expect(buttons).toHaveLength(24);
     expect(buttons.every((button) => button.find('svg').exists())).toBe(true);
     expect(buttons.map((button) => button.attributes('aria-label'))).toEqual(RIBBON_LABELS);
 
@@ -134,6 +135,45 @@ describe('EditorRibbon', () => {
     expect(wrapper.emitted('select-tool')).toEqual([['add_point']]);
   });
 
+  it('forwards a mode picked from the rectangle menu', async () => {
+    const wrapper = mountRibbon();
+
+    await wrapper.find('[data-testid="tool-rectangle-modes"]').trigger('click');
+    await flushPromises();
+
+    const items = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')];
+    expect(items).toHaveLength(3);
+    items[2]!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flushPromises();
+
+    expect(wrapper.emitted('select-tool')).toEqual([['add_3point_rectangle']]);
+
+    wrapper.unmount();
+    document.body.innerHTML = '';
+  });
+
+  it('treats the rectangle group as active while a member is the tool and no constraint is armed', () => {
+    const active = mountRibbon({ activeTool: 'add_center_rectangle' });
+
+    expect(active.find('[data-testid="tool-rectangle"]').classes()).toContain('bg-primary');
+    expect(active.find('[data-testid="tool-rectangle"]').attributes('aria-pressed')).toBe('true');
+    expect(active.find('[data-testid="tool-rectangle"]').attributes('data-mode')).toBe(
+      'add_center_rectangle',
+    );
+
+    const constrained = mountRibbon({
+      activeTool: 'add_center_rectangle',
+      activeConstraint: 'horizontal',
+    });
+
+    expect(constrained.find('[data-testid="tool-rectangle"]').classes()).not.toContain(
+      'bg-primary',
+    );
+    expect(
+      constrained.find('[data-testid="tool-rectangle"]').attributes('aria-pressed'),
+    ).toBeUndefined();
+  });
+
   it('marks the active constraint pressed and emits select-constraint on click', async () => {
     const wrapper = mountRibbon({ activeConstraint: 'horizontal' });
 
@@ -155,6 +195,10 @@ describe('EditorRibbon', () => {
     const wrapper = mountRibbon({ readOnly: true, canUndo: true, canRedo: true });
 
     expect(wrapper.find('[data-testid="tool-add_point"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.find('[data-testid="tool-rectangle"]').attributes('disabled')).toBeDefined();
+    expect(
+      wrapper.find('[data-testid="tool-rectangle-modes"]').attributes('disabled'),
+    ).toBeDefined();
     expect(wrapper.find('[data-testid="undo"]').attributes('disabled')).toBeDefined();
     expect(wrapper.find('[data-testid="delete"]').attributes('disabled')).toBeDefined();
     expect(wrapper.find('[data-testid="fit"]').attributes('disabled')).toBeUndefined();

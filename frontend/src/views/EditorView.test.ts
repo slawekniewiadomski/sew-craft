@@ -189,6 +189,19 @@ function pointDown(wrapper: VueWrapper, id: EntityId): void {
   entityDown(wrapper, 'point', id);
 }
 
+/** Arm one of the grouped rectangle modes through the ribbon's split control. */
+async function selectRectangleMode(
+  wrapper: VueWrapper,
+  mode: 'add_rectangle' | 'add_center_rectangle' | 'add_3point_rectangle',
+): Promise<void> {
+  await wrapper.find('[data-testid="tool-rectangle-modes"]').trigger('click');
+  await flushPromises();
+  document
+    .querySelector<HTMLElement>(`[data-testid="tool-${mode}"]`)!
+    .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await flushPromises();
+}
+
 function keydown(key: string, init: KeyboardEventInit = {}): void {
   window.dispatchEvent(new KeyboardEvent('keydown', { key, cancelable: true, ...init }));
 }
@@ -584,7 +597,7 @@ describe('EditorView', () => {
     const { wrapper, store } = await mountLoaded(simpleDoc);
     const before = store.document.entities.length;
 
-    await wrapper.find('[data-testid="tool-add_rectangle"]').trigger('click');
+    await selectRectangleMode(wrapper, 'add_rectangle');
     pointDown(wrapper, 'p');
     pointDown(wrapper, 'r');
     await flushPromises();
@@ -605,7 +618,7 @@ describe('EditorView', () => {
     const { wrapper, store } = await mountLoaded(simpleDoc);
     const before = store.document.entities.length;
 
-    await wrapper.find('[data-testid="tool-add_center_rectangle"]').trigger('click');
+    await selectRectangleMode(wrapper, 'add_center_rectangle');
     canvasDown(wrapper, 700, 200);
     await nextTick();
     expect(wrapper.findAll('[data-testid^="rectangle-pending-corner-"]')).toHaveLength(1);
@@ -627,7 +640,7 @@ describe('EditorView', () => {
   it('constrains a fresh rectangle and leaves a reused-corner one alone', async () => {
     const { wrapper, store } = await mountLoaded(simpleDoc);
 
-    await wrapper.find('[data-testid="tool-add_rectangle"]').trigger('click');
+    await selectRectangleMode(wrapper, 'add_rectangle');
     canvasDown(wrapper, 700, 500);
     canvasDown(wrapper, 300, 200);
     await flushPromises();
@@ -642,7 +655,7 @@ describe('EditorView', () => {
     expect(store.document.constraints).toHaveLength(0);
 
     const lateral = await mountLoaded(simpleDoc);
-    await lateral.wrapper.find('[data-testid="tool-add_rectangle"]').trigger('click');
+    await selectRectangleMode(lateral.wrapper, 'add_rectangle');
     pointDown(lateral.wrapper, 'p');
     pointDown(lateral.wrapper, 'r');
     await flushPromises();
@@ -656,7 +669,7 @@ describe('EditorView', () => {
   it('constrains a rotated rectangle with three right angles', async () => {
     const { wrapper, store } = await mountLoaded(simpleDoc);
 
-    await wrapper.find('[data-testid="tool-add_3point_rectangle"]').trigger('click');
+    await selectRectangleMode(wrapper, 'add_3point_rectangle');
     canvasDown(wrapper, 300, 500);
     canvasDown(wrapper, 300, 300);
     canvasDown(wrapper, 500, 400);
@@ -676,7 +689,7 @@ describe('EditorView', () => {
     };
     const { wrapper, store } = await mountLoaded(constrained);
 
-    await wrapper.find('[data-testid="tool-add_rectangle"]').trigger('click');
+    await selectRectangleMode(wrapper, 'add_rectangle');
     pointDown(wrapper, 'p');
     pointDown(wrapper, 'r');
     await flushPromises();

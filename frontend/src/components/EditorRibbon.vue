@@ -4,10 +4,18 @@ import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { ConstraintType } from '@sewcraft/geometry';
 
-import { RIBBON_GROUPS, type RibbonAction, type RibbonItem } from '@/lib/editor-ribbon';
+import {
+  RIBBON_GROUPS,
+  type RibbonAction,
+  type RibbonItem,
+  type RibbonToolGroupItem,
+} from '@/lib/editor-ribbon';
 import type { EditorTool } from '@/lib/editor-tools';
 import { ribbonIcon } from '@/lib/ribbon-icons';
 import RibbonIcon from './RibbonIcon.vue';
+import RibbonToolGroup from './RibbonToolGroup.vue';
+
+type RibbonButtonItem = Exclude<RibbonItem, RibbonToolGroupItem>;
 
 const props = defineProps<{
   activeTool: EditorTool;
@@ -33,15 +41,21 @@ function isActive(item: RibbonItem): boolean {
   if (item.kind === 'constraint') {
     return props.activeConstraint === item.constraint;
   }
+  if (item.kind === 'tool-group') {
+    return (
+      props.activeConstraint == null &&
+      item.items.some((member) => member.tool === props.activeTool)
+    );
+  }
   return false;
 }
 
-function variantFor(item: RibbonItem): ButtonVariant {
+function variantFor(item: RibbonButtonItem): ButtonVariant {
   if (item.kind === 'action') return 'outline';
   return isActive(item) ? 'default' : 'ghost';
 }
 
-function isDisabled(item: RibbonItem): boolean {
+function isDisabled(item: RibbonButtonItem): boolean {
   if (props.readOnly) {
     // Read-only keeps the view actions that do not mutate: fit and export.
     return item.kind !== 'action' || (item.action !== 'fit' && item.action !== 'download_svg');
@@ -61,11 +75,11 @@ function isDisabled(item: RibbonItem): boolean {
   }
 }
 
-function pressed(item: RibbonItem): true | undefined {
+function pressed(item: RibbonButtonItem): true | undefined {
   return isActive(item) ? true : undefined;
 }
 
-function activate(item: RibbonItem): void {
+function activate(item: RibbonButtonItem): void {
   if (item.kind === 'tool') {
     emit('select-tool', item.tool);
   } else if (item.kind === 'constraint') {
@@ -95,22 +109,32 @@ function activate(item: RibbonItem): void {
             {{ group.label }}
           </span>
           <div class="flex items-center gap-1">
-            <Tooltip v-for="item in group.items" :key="item.id">
-              <TooltipTrigger as-child>
-                <Button
-                  :variant="variantFor(item)"
-                  size="icon"
-                  :data-testid="item.id"
-                  :disabled="isDisabled(item)"
-                  :aria-label="item.label"
-                  :aria-pressed="pressed(item)"
-                  @click="activate(item)"
-                >
-                  <RibbonIcon :icon="ribbonIcon(item.icon)" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{{ item.label }}</TooltipContent>
-            </Tooltip>
+            <template v-for="item in group.items" :key="item.id">
+              <RibbonToolGroup
+                v-if="item.kind === 'tool-group'"
+                :item="item"
+                :active-tool="activeTool"
+                :active="isActive(item)"
+                :read-only="readOnly"
+                @select-tool="emit('select-tool', $event)"
+              />
+              <Tooltip v-else>
+                <TooltipTrigger as-child>
+                  <Button
+                    :variant="variantFor(item)"
+                    size="icon"
+                    :data-testid="item.id"
+                    :disabled="isDisabled(item)"
+                    :aria-label="item.label"
+                    :aria-pressed="pressed(item)"
+                    @click="activate(item)"
+                  >
+                    <RibbonIcon :icon="ribbonIcon(item.icon)" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{{ item.label }}</TooltipContent>
+              </Tooltip>
+            </template>
           </div>
         </div>
       </template>
