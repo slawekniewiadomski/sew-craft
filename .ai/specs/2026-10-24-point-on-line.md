@@ -1,6 +1,7 @@
 # Point on line — create a constrained point in one gesture
 
-Status: draft — Q1 (where constrained point creation lives) is unanswered
+Status: implemented — Q1 answered with the recommended option A (the Point tool
+infers the relation); the spec and the implementation ship on PR #87
 Refs #85
 Related: `.ai/specs/2026-10-19-constraint-tools-ribbon.md` (the existing
 Point-on-line constraint tool), `.ai/specs/2026-10-20-line-tool-point-creation.md`
@@ -34,6 +35,9 @@ between.
     its first pick is a line, instead of waiting for an existing point.
   - **D** — snap-only: place the point on the line but leave it unconstrained.
   - **E** — do nothing: keep the current two-step path.
+
+  **Answered:** A — the Point tool infers the relation. `spec-ready` on PR #87
+  confirmed the recommended answer, and the implementation below follows it.
 
   The rest of this spec assumes **A**; choosing B changes the UI/UX and
   implementation sections, and choosing C changes the constraint-tool contract.
@@ -326,24 +330,24 @@ open and gates implementation.
 
 ## ✅ Acceptance criteria
 
-- [ ] With the Point tool active, hovering a resolvable straight line (and no
+- [x] With the Point tool active, hovering a resolvable straight line (and no
       point within the 6 mm snap tolerance) highlights the line in the accent
       colour, shows the projected ghost and displays
       `Click to create a point constrained to this line.`
-- [ ] Clicking that line creates a point at the projection and a
+- [x] Clicking that line creates a point at the projection and a
       `point_on_line` constraint referencing that point and the line's two
       endpoints, as one journal entry.
-- [ ] One undo removes both additions; redo restores both.
-- [ ] Clicking bare canvas, an existing point, a curve, an arc, a circle or a
+- [x] One undo removes both additions; redo restores both.
+- [x] Clicking bare canvas, an existing point, a curve, an arc, a circle or a
       degenerate line keeps today's free-point behaviour.
-- [ ] A point within the 6 mm snap tolerance wins over line inference, so no
+- [x] A point within the 6 mm snap tolerance wins over line inference, so no
       near-duplicate is projected onto a nearby line.
-- [ ] Pointer leave, tool change, Escape and a document change clear the hover
+- [x] Pointer leave, tool change, Escape and a document change clear the hover
       highlight, ghost and hint.
-- [ ] Read-only mode shows no signal and dispatches nothing.
-- [ ] The geometry projection, the pure builder and every new canvas branch keep
+- [x] Read-only mode shows no signal and dispatches nothing.
+- [x] The geometry projection, the pure builder and every new canvas branch keep
       statements, branches, functions and lines at 100 % coverage.
-- [ ] `npm run format`, `typecheck`, `lint`, `format:check`, `test:coverage` and
+- [x] `npm run format`, `typecheck`, `lint`, `format:check`, `test:coverage` and
       `build` pass.
 
 ## Out of scope
