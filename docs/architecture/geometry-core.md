@@ -112,6 +112,9 @@ piece instead of breaking the canvas or export:
 - `pieceCutVertex(document, piece, anchor)` — the resolved cut-loop point at one
   end of a loop edge, used by cut dimensions. Returns `null` for an `at: 'edge'`
   anchor, which has no single vertex.
+- `pieceLoopVertex(document, piece, anchor)` — the same vertex on the **stitch**
+  loop, index for index, including the trimmed tangent points a corner-round
+  bridge contributes and a reversed edge. Returns `null` for `at: 'edge'`.
 - `pieceCutEdge(document, piece, edge)` — the edge's **own** cut segment, from
   the outgoing offset point at its natural start to the incoming offset point at
   its natural end. At a bevel join these differ from `pieceCutVertex`'s point,
@@ -120,6 +123,9 @@ piece instead of breaking the canvas or export:
   adjacent allowance and a corner round. `null` for a missing edge, a non-line
   source or an unresolvable loop (a compacted cut loop has no addressable
   per-edge span).
+- `resolvePieceAnchor(document, piece, anchor)` — the single dispatch every
+  reader uses: an anchor with `loop: 'stitch'` resolves through
+  `pieceLoopVertex`, anything else through `resolveCutAnchor`.
 - `resolveCutAnchor(document, piece, anchor)` — a vertex point or an edge cut
   segment, or `null`.
 - `pieceCutBounds` / `pieceMetrics` — cut bounding box, finished and cut sizes,
@@ -226,11 +232,14 @@ constraint)` — the resolved state without overloading "driven".
 
 ### Cut dimensions (`derived_distance`)
 
-A cut dimension is a read-only `derived_distance` constraint over a piece's cut
-loop; it adds no solver equation. `resolveCutSpan(document, constraint)` resolves
-both anchors and returns the measured span:
+A cut dimension is a read-only `derived_distance` constraint over a piece's loop;
+it adds no solver equation. `resolveCutSpan(document, constraint)` resolves both
+anchors, each against the loop it names (`loop: 'stitch'` reads the seamline,
+omitted or `cut` reads the allowance boundary), and returns the measured span:
 
-- **vertex → vertex** — the two cut points, as stored.
+- **vertex → vertex** — the two loop points, as stored. A stitch and a cut anchor
+  may be mixed in one dimension; their positions differ wherever an allowance
+  offsets the edge.
 - **vertex → edge / edge → vertex** — the vertex and its perpendicular foot on
   the edge's infinite cut line, normalized vertex-first so the pick order does
   not flip the dimension line.

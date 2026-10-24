@@ -364,11 +364,15 @@ Add a read-only **cut dimension** between two anchors of one piece.
 
 - params: `piece: entity_id`, `a: cut_anchor`, `b: cut_anchor`,
   `orientation?: aligned|horizontal|vertical`, `offset?: number`
-- A `cut_anchor` is `{ edge: entity_id, at: 'start' | 'end' | 'edge' }`:
-  `start`/`end` address a loop vertex by an edge of the piece, because the cut
-  loop has no entities of its own; `edge` addresses the whole straight cut
-  edge's own offset segment (its cut line, the source line plus the edge's
-  cut-distance offset).
+- A `cut_anchor` is `{ edge: entity_id, at: 'start' | 'end' | 'edge', loop?: 'stitch' | 'cut' }`:
+  `start`/`end` address a loop vertex by an edge of the piece, because the loops
+  have no entities of their own; `edge` addresses the whole straight cut edge's
+  own offset segment (its cut line, the source line plus the edge's cut-distance
+  offset). `loop` picks the loop an anchor resolves against: omitted or `cut`
+  means the allowance boundary (today's meaning), `stitch` means the seamline
+  itself, including the trimmed ends a corner-round bridge contributes.
+- `loop: 'stitch'` with `at: 'edge'` is rejected: a stitch edge anchor has no
+  stitch equivalent in v1 and would duplicate the cut edge anchor.
 - Both anchors must name edges in that piece and must be different. Rejecting
   the same edge twice, and an edge paired with its own `start`/`end` vertex, is
   by **anchor identity** (a bevel join makes their cut points differ). The two

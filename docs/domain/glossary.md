@@ -18,6 +18,7 @@ UI copy and specs.
 | **Finished width**              | The visible width of a seam or hem. The cut distance is derived: `width`, or `2 × width` for a double fold.                                                                 |
 | **Fold line**                   | The turn line a double fold needs, at the finished width inside the cut line.                                                                                               |
 | **Cut dimension**               | A read-only dimension measuring a piece's cut loop; derived from the stitch loop plus allowances.                                                                           |
+| **Seamline point**              | A derived, non-editable corner of a piece loop used as a dimension anchor; it is resolved from the loop on every read, never stored as an entity or solver variable.        |
 | **Point-to-edge cut dimension** | A cut dimension from a corner to its perpendicular foot on a straight edge's cut line.                                                                                      |
 | **Seam allowance**              | Extra material beyond the stitch line added to edges before cutting (commonly 1–1.5 cm). Legacy per-edge allowances live on `seams`; piece allowances are the current path. |
 | **Stitch line**                 | The line the seam is actually sewn along, inside the seam allowance.                                                                                                        |

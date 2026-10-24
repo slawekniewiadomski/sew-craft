@@ -234,13 +234,20 @@ present. A pre-feature build accepts the document but reports a line anchor as a
 unknown point when it solves, so a line-anchored document is not downgradeable.
 
 A `derived_distance` constraint is a **cut dimension**. It addresses two anchors
-of one piece by `{ edge, at: 'start' | 'end' | 'edge' }` rather than by point id,
-because the cut loop has no entities of its own. `start`/`end` address a loop
-vertex; `edge` addresses the whole straight cut edge's **own** cut segment, the
-source line plus the edge's cut-distance offset (its cut line). An edge anchor
+of one piece by `{ edge, at: 'start' | 'end' | 'edge', loop?: 'stitch' | 'cut' }`
+rather than by point id, because the loops have no entities of their own.
+`start`/`end` address a loop vertex; `edge` addresses the whole straight cut
+edge's **own** cut segment, the source line plus the edge's cut-distance offset
+(its cut line). `loop` picks the loop the anchor resolves against: omitted means
+`cut`, the allowance boundary and the meaning every stored anchor has always had;
+`stitch` addresses the seamline itself, including the trimmed tangent points of a
+corner-round bridge. `loop: 'stitch'` never combines with `at: 'edge'`. A stitch
+anchor is an ordinary optional field, so a `0.2` document without it loads and
+measures exactly as before; an older build ignores `loop` and reads the cut
+position, a wrong number rather than a crash. An edge anchor
 resolves from the edge's own outgoing/incoming cut points, not from two
 `pieceCutVertex` calls, because a bevel join's two points differ. Its value is
-measured from the resolved cut loop on every read: two vertices as stored, a
+measured from the resolved loop on every read: two vertices as stored, a
 vertex and its perpendicular foot on the other edge's cut line (normalized
 vertex-first), or two edges' canonical first midpoint and its foot on the second
 cut line. Edge-to-edge pairs must be parallel within 0.5° when placed; a later

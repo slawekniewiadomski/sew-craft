@@ -1,6 +1,7 @@
 # Seamline points as dimension anchors
 
-Status: draft — design review; Q1–Q2 on #78 are blocking
+Status: implemented — Q1 (the stitch loop) and Q2 (optional `loop` on `CutAnchor`)
+resolved under the recommended answers
 Refs: [#78 — Seamline points](https://github.com/slawekniewiadomski/sew-craft/issues/78)
 Builds on: `.ai/specs/2026-10-23-cut-dimension-tool.md`,
 `.ai/specs/2026-10-22-pieces-and-allowance.md`,
@@ -26,8 +27,9 @@ Proposed future behaviour: a **derived, read-only loop point** that a dimension
 can address by `{ piece, edge, at }`, resolved from the piece's loop on every
 read and never stored as an entity or a solver variable. Which loop those points
 belong to — the stitch loop (the seamline proper) or the allowance boundary —
-is **Q1 and blocking**; the spec presents the options and the design that follows
-from each. It stays a draft PR until a human answers.
+is **Q1** and blocking; the spec presents the options and the design that follows
+from each, and the recommended reading (the stitch loop) is the one implemented
+here.
 
 ## 📝 Problem Statement
 
@@ -365,12 +367,9 @@ implementation PR once Q1 is answered.
 ## 📝 Risks & Impact Review
 
 - **Two anchor proposals, one of them not code yet (high, sequencing).** Draft
-  PRs #76 and #77 are **spec-only**: `CutAnchor` is still `at: 'start' | 'end'`
-  (`types.ts:176`) and `requireCutAnchor` still rejects anything else
-  (`commands.ts:1724`). This spec gates on the **implementation** PR for #77,
-  not on its spec merge, or three uncoordinated steps would add `at: 'edge'`,
-  `loop` and a schema decision to one type. Until that code lands, this is a
-  design only.
+  PRs #76 and #77 were **spec-only** at review time; both implementations have
+  since landed (#76 and #77 merged), so `at: 'edge'` and this spec's `loop` add to
+  one type in coordinated steps rather than colliding.
 - **The wrong loop (high, product).** If Q1's answer is the allowance boundary
   rather than the stitch loop, the resolver, the handles and the anchor label
   change; the stored shape survives, which is why the spec does not pick the
@@ -396,13 +395,14 @@ implementation PR once Q1 is answered.
   two `at` values, the reversed-edge case, an unresolvable loop — and each
   branch is a test, so the 100 % gate needs no ignore comment.
 
-## ❓ Open Questions
+## ❓ Open Questions (resolved)
 
-Asked on issue #78; this PR stays a draft until they are answered. The
-recommendation column is a recommendation for a human to accept, not a default
-applied by this run.
+`spec-ready` was applied on this PR with no different answer posted on #78, so the
+implementation follows the recommended answers below — the same rule the previous
+spec in this chain (#77) shipped under. Q1 resolved to **A** and Q2 to **A after
+#77's implementation**, which has landed.
 
-| # | Question | Why it matters | Recommendation |
+| # | Question | Why it matters | Resolved answer |
 | - | -------- | -------------- | -------------- |
 | Q1 | **Which geometry are "seamline points"?** A: the stitch loop (the seamline proper, what the pattern sews along). B: the allowance's cut loop joins. C: both. D: seam junctions between two pieces (needs a seams-between-pieces feature first). | It decides the resolver, the handles, the anchor label and whether this lands before or after a seams feature. #77 already covers part of B; C doubles the pick surface; D is a different product. | **A**, with B's remaining gap (the bevel's second point) left to a follow-up. Reading A is the glossary's seamline and needs nothing before it |
 | Q2 | **One anchor shape or two, and which schema route?** A: an optional `loop` on `CutAnchor` (one shape; older builds read the cut position). B: a separate stitch anchor type (explicit; two stored shapes and two resolver families). C: wait for #77's schema decision and land with it. | This is the stored contract. It also decides whether older builds silently measure the cut corner, and whether the command spec changes at all. | **A after #77's implementation lands**, taking #77's schema decision with it. Landing first would make the anchor shape collide with #77's `at: 'edge'` work |
