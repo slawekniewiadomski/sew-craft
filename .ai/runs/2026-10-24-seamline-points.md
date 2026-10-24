@@ -63,5 +63,5 @@ Non-blocking defaults R1–R11 are adopted unchanged.
 ### Phase 4: Verification
 
 - [x] 4.1 Run the full validation gate and record results — gate green: format, typecheck, lint, format:check, build, Vitest 100% coverage, Pest 52 passed at 100%, Pint
-- [ ] 4.2 Run `om-auto-review-pr --autofix` and apply its findings — _pending_
-- [ ] 4.3 Finalize the PR: retitle, labels, draft→ready, `Closes #78` — _pending_
+- [x] 4.2 Run `om-auto-review-pr --autofix` and apply its findings — APPROVE, no findings
+- [x] 4.3 Finalize the PR: retitle, labels, draft→ready, `Closes #78` — 3c56afa
