@@ -85,6 +85,7 @@ describe('RibbonToolGroup', () => {
     expect(iconHalf(wrapper).attributes('aria-pressed')).toBeUndefined();
     expect(caret(wrapper).attributes()).toMatchObject({
       'aria-label': 'Rectangle modes',
+      title: 'Rectangle modes',
       'aria-haspopup': 'menu',
       'aria-expanded': 'false',
     });

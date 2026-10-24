@@ -24,6 +24,17 @@ import EditorView from './EditorView.vue';
 
 vi.mock('@/lib/download', () => ({ downloadSvgFile: vi.fn() }));
 
+// floating-ui's auto-update watches an anchored menu through an
+// IntersectionObserver, which jsdom does not implement.
+vi.stubGlobal(
+  'IntersectionObserver',
+  class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  },
+);
+
 vi.mock('@/api/projects', () => {
   class ApiError extends Error {
     constructor(

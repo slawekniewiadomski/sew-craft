@@ -98,23 +98,19 @@ function closeOnEscape(): void {
           </TooltipTrigger>
           <TooltipContent>{{ displayed.label }}</TooltipContent>
         </Tooltip>
-        <Tooltip>
-          <TooltipTrigger as-child>
-            <DropdownMenuTrigger as-child>
-              <button
-                ref="caret"
-                type="button"
-                class="inline-flex h-9 w-5 items-center justify-center rounded-r-md border-l border-input text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-accent"
-                :data-testid="`${item.id}-modes`"
-                :disabled="props.readOnly"
-                :aria-label="`${item.label} modes`"
-              >
-                <RibbonIcon :icon="ribbonIcon('chevron-down')" />
-              </button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent>{{ item.label }} modes</TooltipContent>
-        </Tooltip>
+        <DropdownMenuTrigger as-child>
+          <button
+            ref="caret"
+            type="button"
+            class="inline-flex h-9 w-5 items-center justify-center rounded-r-md border-l border-input text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-accent"
+            :data-testid="`${item.id}-modes`"
+            :disabled="props.readOnly"
+            :title="`${item.label} modes`"
+            :aria-label="`${item.label} modes`"
+          >
+            <RibbonIcon :icon="ribbonIcon('chevron-down')" />
+          </button>
+        </DropdownMenuTrigger>
       </div>
       <DropdownMenuContent
         align="start"

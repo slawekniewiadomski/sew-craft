@@ -54,6 +54,12 @@ const RIBBON_LABELS = [
   'Download SVG',
 ];
 
+/**
+ * The caret names itself with a native `title` instead of the ribbon tooltip:
+ * wrapping the menu trigger in a TooltipTrigger breaks the menu's anchor.
+ */
+const RIBBON_TOOLTIPS = RIBBON_LABELS.filter((label) => label !== 'Rectangle modes');
+
 describe('EditorRibbon', () => {
   it('renders every control as an icon button with an accessible name', () => {
     const wrapper = mountRibbon();
@@ -112,7 +118,7 @@ describe('EditorRibbon', () => {
     });
 
     expect(wrapper.findAll('.ribbon-tooltip').map((tooltip) => tooltip.text())).toEqual(
-      RIBBON_LABELS,
+      RIBBON_TOOLTIPS,
     );
   });
 
