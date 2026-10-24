@@ -1,6 +1,7 @@
 # Marquee selection includes dimensions
 
-Status: draft — design proposal for review; Q1 is the blocking selection-model call
+Status: implemented — Q1 answered with the recommended option B (mixed, marquee-only);
+the spec and the implementation ship on PR #86
 Refs: [#84 — drag selection should also select dimensions](https://github.com/slawekniewiadomski/sew-craft/issues/84)
 Builds on: `.ai/specs/2026-10-20-multi-entity-selection.md`,
 `.ai/specs/2026-10-24-selectable-dimensions.md`,
@@ -32,8 +33,8 @@ API or export change.
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Q1  | Does the marquee mixing entities and dimensions **supersede the mutual-exclusion rule** agreed for #82, or should the marquee keep that rule by selecting dimensions **only when the rectangle hits no entities**, or should the two selections first be **consolidated into one typed selection**? | The spec for #82 (`2026-10-24-selectable-dimensions`, its Q1) deliberately made entity and dimension selection separate and mutually exclusive, and its R4 deferred the marquee. Allowing a mixed marquee narrows that reviewed decision, decides whether the two watchers stay, and decides whether Delete must compose `delete_entity` and `remove_constraint`. Reversing it later rewrites the same selection state and tests. | **Yes — mixed, marquee-only (Option B).** The issue itself asks a drag to select dimensions, and dimensions sit next to the geometry they measure, so a dimension-only fallback would miss the common drag. B needs no selection-model rewrite: the two arrays and both prop/emit contracts stay, the mutual-exclusion watchers move into the click/drawer paths, and Delete gains one mixed branch. Option C stays the documented consolidation path. |
 
-The design below is written under Option B. The PR is a draft until a human
-answers Q1; a reviewer applies `spec-ready` only after that.
+**Answered:** B — mixed, marquee-only. `spec-ready` on PR #86 confirmed the
+recommended answer, and the implementation below follows it.
 
 ## 📝 Problem Statement
 
@@ -430,29 +431,29 @@ cannot handle.
 
 ## ✅ Acceptance criteria
 
-- [ ] A left-to-right marquee over a dimension line and the geometry it measures
+- [x] A left-to-right marquee over a dimension line and the geometry it measures
       selects both the entities and the dimension.
-- [ ] A right-to-left marquee selects a dimension only when both of its
+- [x] A right-to-left marquee selects a dimension only when both of its
       dimension-line endpoints are fully inside.
-- [ ] A rectangle that covers only an extension line, a chevron or the value label
+- [x] A rectangle that covers only an extension line, a chevron or the value label
       does not select the dimension; a click on the label still selects it.
-- [ ] Replace/add/subtract modifiers apply to both kinds; a cancelled marquee and
+- [x] Replace/add/subtract modifiers apply to both kinds; a cancelled marquee and
       an additive/subtractive marquee with no hits leave both selections intact;
       a replace marquee with no hits clears both.
-- [ ] A click on an entity clears the dimension selection and a click on a
+- [x] A click on an entity clears the dimension selection and a click on a
       dimension clears the entity selection, whatever the modifier.
-- [ ] Delete removes a mixed selection as one undo entry; a non-empty orphan list
+- [x] Delete removes a mixed selection as one undo entry; a non-empty orphan list
       refuses the whole delete and removes nothing, and the summary Delete is
       disabled with the hint.
-- [ ] An entity delete still cascades its anchored dimensions, and undo restores
+- [x] An entity delete still cascades its anchored dimensions, and undo restores
       them from the journal snapshot.
-- [ ] Hidden dimensions are not selected; derived cut dimensions are; broken
+- [x] Hidden dimensions are not selected; derived cut dimensions are; broken
       dimensions are skipped.
-- [ ] The latched marquee previews dimension hits with the same set it commits.
-- [ ] The live region and summary name both counts; Create piece is disabled while
+- [x] The latched marquee previews dimension hits with the same set it commits.
+- [x] The live region and summary name both counts; Create piece is disabled while
       a dimension is selected.
-- [ ] Undo, redo, load and external deletion prune both selections.
-- [ ] `@sewcraft/geometry` moves to `0.13.0` for the one additive export; no
+- [x] Undo, redo, load and external deletion prune both selections.
+- [x] `@sewcraft/geometry` moves to `0.13.0` for the one additive export; no
       command, schema, API, export or document change ships; the full validation
       gate passes with 100 % statements, branches, functions and lines.
 
