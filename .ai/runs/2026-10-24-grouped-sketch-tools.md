@@ -110,4 +110,4 @@ to start implementation, so the spec's recommended answers are taken as accepted
 
 - [x] 4.1 Update `.ai/specs/2026-10-23-rectangle-tool.md` to record the grouped ribbon surface — 54dce17
 - [x] 4.2 Run the full validation gate and record the result on the PR
-- [ ] 4.3 Verify the grouped control in the running app — all three modes, toggle, Escape, keyboard, read-only and narrow width — and record the result on the PR
+- [x] 4.3 Verify the grouped control in the running app — all three modes, toggle, Escape, keyboard, read-only and narrow width — and record the result on the PR
