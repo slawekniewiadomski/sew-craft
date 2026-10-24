@@ -25,6 +25,7 @@ import {
   distanceAnchorIssue,
   dimensionOffsetFromSpan,
   lineEndpoints,
+  projectPointOnLine,
   resolveAnchor,
   resolveAnchorSpan,
   resolveDistanceSpan,
@@ -624,6 +625,30 @@ describe('line anchors', () => {
     expect(lineEndpoints(document, 'missing')).toBeNull();
     expect(lineEndpoints(document, 'broken')).toBeNull();
     expect(lineEndpoints(document, 'cv')).toBeNull();
+  });
+
+  it('projects a point onto the infinite supporting line', () => {
+    const horizontal = { start: { x: 0, y: 0 }, end: { x: 100, y: 0 } };
+    expect(projectPointOnLine({ x: 30, y: 10 }, horizontal)).toEqual({ x: 30, y: 0 });
+    expect(projectPointOnLine({ x: 30, y: 0 }, horizontal)).toEqual({ x: 30, y: 0 });
+
+    // The projection follows the segment's direction, whichever way it points.
+    const reversed = { start: { x: 100, y: 0 }, end: { x: 0, y: 0 } };
+    expect(projectPointOnLine({ x: 30, y: 10 }, reversed)).toEqual({ x: 30, y: 0 });
+
+    const diagonal = { start: { x: 0, y: 0 }, end: { x: 10, y: 10 } };
+    const foot = projectPointOnLine({ x: 10, y: 0 }, diagonal)!;
+    expect(foot.x).toBeCloseTo(5, 10);
+    expect(foot.y).toBeCloseTo(5, 10);
+
+    // Beyond an endpoint the foot lies on the supporting line, not the segment.
+    expect(projectPointOnLine({ x: 140, y: 20 }, horizontal)).toEqual({ x: 140, y: 0 });
+  });
+
+  it('returns null when the segment is degenerate', () => {
+    expect(
+      projectPointOnLine({ x: 5, y: 5 }, { start: { x: 3, y: 3 }, end: { x: 3, y: 3 } }),
+    ).toBeNull();
   });
 
   it('resolves a point or a line anchor and marks line ids', () => {
