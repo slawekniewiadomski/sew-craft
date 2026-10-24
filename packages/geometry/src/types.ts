@@ -172,11 +172,14 @@ export interface Piece {
   quantity?: number;
 }
 
-/** One end of a cut dimension, addressed by loop vertex rather than by point id. */
+/** One end of a cut dimension, addressed by loop vertex or whole edge, not by point id. */
 export interface CutAnchor {
   edge: EntityId;
-  /** The loop vertex at this edge's natural start or end. */
-  at: 'start' | 'end';
+  /**
+   * `start`/`end` address a cut-loop vertex; `edge` addresses the whole
+   * straight cut edge's own offset segment (its cut line).
+   */
+  at: 'start' | 'end' | 'edge';
 }
 
 /**
