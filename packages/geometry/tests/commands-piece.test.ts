@@ -994,6 +994,35 @@ describe('add_derived_dimension', () => {
     ).toThrowError(/cannot resolve these anchors/);
   });
 
+  it('keeps a cut dimension broken when a loop point is deleted', () => {
+    const document = applyCommand(withPiece(), addDerived()).document;
+    const deleted = applyCommand(document, {
+      id: 'delete-b',
+      type: 'delete_entity',
+      params: { id: 'b' },
+    }).document;
+
+    // Deleting a loop point leaves the piece and the dimension in place.
+    expect(pieceById(deleted, 'piece-1')).toBeDefined();
+    const constraint = derivedOf(deleted, 'cut-width');
+    expect(constraint).toMatchObject({ a: { edge: 'bottom', at: 'start' } });
+    expect(derivedDimensionState(deleted, constraint)).toBe('broken');
+    expect(derivedDimensionValue(deleted, constraint)).toBeNull();
+  });
+
+  it('removes the cut dimension with its piece when an anchored edge is deleted', () => {
+    const document = applyCommand(withPiece(), addDerived()).document;
+    const deleted = applyCommand(document, {
+      id: 'delete-bottom',
+      type: 'delete_entity',
+      params: { id: 'bottom' },
+    }).document;
+
+    // Deleting an anchored edge deletes its piece, so the dimension goes too.
+    expect(pieceById(deleted, 'piece-1')).toBeUndefined();
+    expect(getConstraint(deleted, 'cut-width')).toBeUndefined();
+  });
+
   it('adds a corner-to-edge cut dimension in either order', () => {
     const vertexFirst = applyCommand(withPiece(), {
       id: 'corner-edge',
