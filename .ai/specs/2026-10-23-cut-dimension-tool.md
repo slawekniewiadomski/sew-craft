@@ -1,6 +1,17 @@
 # Cut dimension tool
 
-Status: implemented
+Status: implemented — **amended** by
+`.ai/specs/2026-10-23-cut-dimension-point-and-edge-anchors.md` (spec 0.12)
+
+> **Amendment.** The one-click edge shortcut, the hints below and the matching
+> acceptance criteria are **superseded** by
+> `2026-10-23-cut-dimension-point-and-edge-anchors.md`. The cut tool now takes
+> **two anchors**, each a corner or a whole straight edge (all four
+> combinations); an edge's own length is measured by its two corners. The hint
+> table, the "one piece edge click → edge cut span" flow and the
+> `{ edge, at: 'start' | 'end' }`-only anchor shape below describe the earlier
+> behaviour and are kept for history. Everything else (ribbon entry, corner
+> highlight, dedupe, drag, regression) still holds.
 Builds on: 2026-10-22-pieces-and-allowance (pieces, allowance kinds, cut dimensions)
 Supersedes: the Dimension tool's implicit cut-dimension behaviour on piece corners
 
@@ -105,6 +116,12 @@ Icon: new `cut-dimension` glyph (12×12 box, similar weight to `dimension`, visu
 
 ### Canvas hints
 
+> **Superseded by spec 0.12** (`2026-10-23-cut-dimension-point-and-edge-anchors.md`):
+> the tool now prompts with "Pick a corner or a straight edge of one piece.",
+> then "Pick the second anchor on the same piece.", and derives every rejection
+> from the shared `cutAnchorIssue` reasons. The table below is the historical
+> one-pick-hint behaviour.
+
 | Situation | Text |
 |-----------|------|
 | Tool active, no pick | (none) |
@@ -179,11 +196,14 @@ Icon: new `cut-dimension` glyph (12×12 box, similar weight to `dimension`, visu
 
 ## ✅ Acceptance Criteria
 
+> Superseded items are marked **amended**; the current criteria live in
+> `2026-10-23-cut-dimension-point-and-edge-anchors.md`.
+
 - [x] Cut dimension tool appears in Sketching ribbon group after Dimension
 - [x] Selecting Cut dimension tool highlights piece corners (`cut-vertex-handle`)
 - [x] Two same-piece corners → `add_derived_dimension` with correct anchors, cut-span preview while placing
-- [x] One piece edge click → `add_derived_dimension` for that edge's cut span
-- [x] Non-piece point / cross-piece / same corner / non-piece edge → no command, hint shown
+- [x] ~~One piece edge click → `add_derived_dimension` for that edge's cut span~~ **amended**: every dimension is two picks; a straight edge is one anchor, and its own length is measured by its two corners
+- [x] ~~Non-piece point / cross-piece / same corner / non-piece edge → no command, hint shown~~ **amended**: the reasons now come from `cutAnchorIssue` (`missing`, `not-straight`, `different-piece`, `same-anchor`, `not-parallel`, `zero-span`)
 - [x] Dedupe: second placement on same piece + anchors updates orientation/offset, no duplicate constraint
 - [x] **Regression**: Dimension tool on `pieceDoc` corners `a→c` creates `distance` constraint (not `derived_distance`)
 - [x] Derived dimensions draggable with Select, Dimension **and** Cut dimension tools

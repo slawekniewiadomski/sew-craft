@@ -44,6 +44,8 @@ export interface PieceLoop {
   points: Vec2[];
   /** One signed outward distance per boundary segment. */
   distances: number[];
+  /** Boundary vertex index where each edge's span starts in walk order. */
+  starts: number[];
   /** Boundary vertex index of each edge's natural start. */
   naturalStart: number[];
   /** Segment count contributed by each edge. */
@@ -437,7 +439,7 @@ function loopFromSegments(
     return end;
   });
 
-  return { points: boundary, distances, naturalStart, spans };
+  return { points: boundary, distances, starts, naturalStart, spans };
 }
 
 /** The cut loop: the stitch boundary offset per edge and joined at every vertex. */
@@ -482,13 +484,16 @@ export function pieceFoldLines(document: PatternDocument, piece: Piece): Vec2[][
 
 /**
  * The resolved cut-loop point at one end of a loop edge, or `null` when the
- * piece or its cut loop no longer resolves.
+ * anchor addresses a whole edge or the piece or its cut loop no longer resolves.
  */
 export function pieceCutVertex(
   document: PatternDocument,
   piece: Piece,
   anchor: CutAnchor,
 ): Vec2 | null {
+  // An edge anchor has no single vertex; only `start`/`end` address a cut vertex.
+  if (anchor.at === 'edge') return null;
+
   const edgeIndex = piece.edges.indexOf(anchor.edge);
   if (edgeIndex < 0) return null;
 
@@ -502,6 +507,60 @@ export function pieceCutVertex(
   // The closed cut loop has one vertex entry per source point.
   const vertex = cut.vertices[vertexIndex]!;
   return cut.points[vertex.start]!;
+}
+
+/**
+ * The edge's **own** cut segment: from the outgoing offset point at the edge's
+ * natural start to the incoming offset point at its natural end. This is the
+ * source line offset by the edge's allowance, independent of the adjacent
+ * allowance, the join style and a corner round, so a bevel join cannot tilt it.
+ * `null` for a missing edge, a non-line source or a cut loop that no longer
+ * resolves.
+ */
+export function pieceCutEdge(
+  document: PatternDocument,
+  piece: Piece,
+  edge: EntityId,
+): { a: Vec2; b: Vec2 } | null {
+  const edgeIndex = piece.edges.indexOf(edge);
+  if (edgeIndex < 0) return null;
+
+  // A curve's or arc's cut segment is a chord, not the curve, so it is never a
+  // straight edge anchor.
+  if (getEntity(document, edge)?.kind !== 'line') return null;
+
+  const loop = pieceLoop(document, piece);
+  const cut = pieceCutLoop(document, piece);
+  if (loop === null || cut === null) return null;
+
+  // A compacted cut loop no longer has one vertex entry per source point, so an
+  // edge's own span cannot be addressed; report the piece as unresolvable.
+  if (cut.vertices.length !== loop.points.length) return null;
+
+  const start = loop.starts[edgeIndex]!;
+  const end = (start + loop.spans[edgeIndex]!) % cut.vertices.length;
+  const a = cut.points[cut.vertices[start]!.end - 1]!;
+  const b = cut.points[cut.vertices[end]!.start]!;
+  return { a, b };
+}
+
+/** A resolved cut anchor: a loop vertex point or a whole edge's cut segment. */
+export type CutAnchorResolution =
+  { kind: 'vertex'; point: Vec2 } | { kind: 'edge'; segment: { a: Vec2; b: Vec2 } };
+
+/** Resolve one cut anchor against the piece's cut loop, or `null` when it cannot. */
+export function resolveCutAnchor(
+  document: PatternDocument,
+  piece: Piece,
+  anchor: CutAnchor,
+): CutAnchorResolution | null {
+  if (anchor.at === 'edge') {
+    const segment = pieceCutEdge(document, piece, anchor.edge);
+    return segment === null ? null : { kind: 'edge', segment };
+  }
+
+  const point = pieceCutVertex(document, piece, anchor);
+  return point === null ? null : { kind: 'vertex', point };
 }
 
 /** Axis-aligned bounds of a closed loop, or `null` for an empty loop. */

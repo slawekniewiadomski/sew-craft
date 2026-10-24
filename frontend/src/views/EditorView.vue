@@ -21,6 +21,7 @@ import {
   PATTERN_SCHEMA,
   seamForEdge,
   toSvg,
+  usesCutEdgeAnchor,
 } from '@sewcraft/geometry';
 import type {
   AddConstraintParams,
@@ -114,6 +115,7 @@ import { buildLineCommands, type LineEndpoint } from '@/lib/line-tool';
 import { buildRectangleCommands, type RectangleMode } from '@/lib/rectangle-tool';
 import {
   edgeLabel,
+  canonicalCutAnchors,
   findDerivedDimension,
   pieceCreationFromSelection,
   pieceLabel,
@@ -316,8 +318,8 @@ interface DimensionRow {
   stateLabel: string;
   sourceId: EntityId | null;
   orientation: DimensionOrientation;
-  /** A line anchor forces aligned, so the drawer hides the axis control. */
-  hasLineAnchor: boolean;
+  /** Edge- or line-anchored dimensions are always aligned; the axis control is hidden. */
+  orientationLocked: boolean;
   offset: string;
 }
 
@@ -342,7 +344,7 @@ const dimensions = computed<DimensionRow[]>(() =>
           stateLabel: dimensionStateLabel(state),
           sourceId: null,
           orientation: constraintOrientation(constraint),
-          hasLineAnchor: false,
+          orientationLocked: usesCutEdgeAnchor(constraint),
           offset: formatDimensionValue(constraintOffset(constraint)),
         },
       ];
@@ -368,7 +370,7 @@ const dimensions = computed<DimensionRow[]>(() =>
         stateLabel: dimensionStateLabel(state),
         sourceId: constraint.reference ?? null,
         orientation: constraintOrientation(constraint),
-        hasLineAnchor:
+        orientationLocked:
           isLineAnchor(pattern.value, constraint.a) || isLineAnchor(pattern.value, constraint.b),
         offset: formatDimensionValue(constraintOffset(constraint)),
       },
@@ -807,13 +809,18 @@ function onAddDimension(placement: DimensionPlacement): void {
 
 /** Place a read-only cut dimension, updating the existing one on the same span. */
 function onAddCutDimension(placement: CutDimensionPlacement): void {
-  const existing = findDerivedDimension(pattern.value, placement.piece, placement.a, placement.b);
+  // The canvas only starts a placement for a piece that exists in this document.
+  const piece = pattern.value.pieces.find((candidate) => candidate.id === placement.piece)!;
+
+  const [a, b] = canonicalCutAnchors(piece, placement.a, placement.b);
+  const orientation = usesCutEdgeAnchor({ a, b }) ? 'aligned' : placement.orientation;
+  const existing = findDerivedDimension(pattern.value, placement.piece, a, b);
   if (existing !== undefined) {
     run(() =>
       dispatch({
         id: nextCommandId('cut-dimension'),
         type: 'update_constraint',
-        params: { id: existing.id, orientation: placement.orientation, offset: placement.offset },
+        params: { id: existing.id, orientation, offset: placement.offset },
       }),
     );
     return;
@@ -825,9 +832,9 @@ function onAddCutDimension(placement: CutDimensionPlacement): void {
       type: 'add_derived_dimension',
       params: {
         piece: placement.piece,
-        a: placement.a,
-        b: placement.b,
-        orientation: placement.orientation,
+        a,
+        b,
+        orientation,
         offset: placement.offset,
       },
     }),
@@ -1878,8 +1885,15 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div class="flex flex-wrap items-center gap-1.5">
+                  <span
+                    v-if="dimension.orientationLocked"
+                    class="h-7 rounded-sm border px-1.5 text-2xs leading-7"
+                    :data-testid="`dimension-orientation-locked-${dimension.id}`"
+                  >
+                    Aligned
+                  </span>
                   <select
-                    v-if="!dimension.hasLineAnchor"
+                    v-else
                     class="h-7 rounded-sm border px-1.5 text-2xs"
                     :value="dimension.orientation"
                     :aria-label="`Orientation for ${dimension.id}`"
@@ -1894,13 +1908,6 @@ onBeforeUnmount(() => {
                       {{ option.label }}
                     </option>
                   </select>
-                  <span
-                    v-else
-                    class="text-2xs text-muted-foreground"
-                    :data-testid="`dimension-aligned-locked-${dimension.id}`"
-                  >
-                    Aligned (line anchor)
-                  </span>
                   <input
                     type="number"
                     step="1"

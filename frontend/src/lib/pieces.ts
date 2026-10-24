@@ -230,6 +230,38 @@ export function anchorForPoint(
   return null;
 }
 
+/**
+ * The cut anchor a piece's whole straight edge contributes. `null` for an edge
+ * outside the piece or an edge that is not a cut line: a curve's or arc's cut
+ * segment is a chord, so it is never a straight edge anchor.
+ */
+export function anchorForEdge(
+  document: PatternDocument,
+  piece: Piece,
+  edgeId: EntityId,
+): CutAnchor | null {
+  if (!piece.edges.includes(edgeId)) return null;
+  const entity = getEntity(document, edgeId);
+  return entity?.kind === 'line' && !entity.construction ? { edge: edgeId, at: 'edge' } : null;
+}
+
+/**
+ * Order two anchors canonically: edge-to-edge by the piece's edge order, a
+ * vertex and an edge vertex-first, and two vertices as picked. Storing the
+ * canonical order keeps a reversed re-placement idempotent.
+ */
+export function canonicalCutAnchors(
+  piece: Piece,
+  a: CutAnchor,
+  b: CutAnchor,
+): [CutAnchor, CutAnchor] {
+  if (a.at === 'edge' && b.at === 'edge') {
+    return piece.edges.indexOf(a.edge) <= piece.edges.indexOf(b.edge) ? [a, b] : [b, a];
+  }
+  if (a.at === 'edge') return [b, a];
+  return [a, b];
+}
+
 /** Every piece that has this point on its loop, in document order. */
 export function piecesAtPoint(document: PatternDocument, pointId: EntityId): Piece[] {
   return document.pieces.filter((piece) => anchorForPoint(document, piece, pointId) !== null);
