@@ -144,6 +144,7 @@ function mountCanvas(
       | 'dimension'
       | 'cut_dimension';
     selectedEntityIds: EntityId[];
+    selectedDimensionIds: EntityId[];
     selectedPieceId: EntityId | null;
     fitToken: number;
     showAllowances: boolean;
@@ -162,6 +163,7 @@ function mountCanvas(
       document: baseDoc,
       tool: 'select',
       selectedEntityIds: [],
+      selectedDimensionIds: [],
       fitToken: 0,
       ...overrides,
     },
@@ -2294,7 +2296,7 @@ describe('PatternCanvas', () => {
   it('explains drag and edit in the label tooltip', async () => {
     const draggable = mountCanvas({ document: dimensionDoc });
     expect(draggable.find('[data-testid="dimension-label-w"] title').text()).toBe(
-      'Drag to reposition, double-click to edit',
+      'Click to select, drag to reposition, double-click to edit',
     );
 
     const editable = mountCanvas({ document: dimensionDoc, tool: 'add_line' });
@@ -2825,9 +2827,7 @@ describe('PatternCanvas', () => {
     expect(label.find('text').attributes('data-dimension-state')).toBe('derived');
     expect(label.find('text').text()).toMatch(/ cut$/);
     expect(label.attributes('aria-label')).toContain('Cut dimension');
-    expect(label.find('title').text()).toBe(
-      'Cut dimension: drag to reposition; the value follows the cut loop',
-    );
+    expect(label.find('title').text()).toBe('Click to select, drag to reposition');
     expect(label.classes()).toContain('cursor-move');
 
     const hidden = mountCanvas({ document: derivedPieceDoc, showDimensions: false });
@@ -3328,6 +3328,223 @@ describe('PatternCanvas', () => {
     up();
 
     expect(wrapper.emitted('update-dimension')).toHaveLength(1);
+  });
+
+  describe('dimension selection', () => {
+    it('selects a dimension on a plain press and still drags it', async () => {
+      const wrapper = mountCanvas({ document: dimensionDoc });
+      const target = worldToScreen(fittedViewport(dimensionDoc), { x: 50, y: 40 });
+
+      down(wrapper.find('[data-testid="dimension-drag-w"]').element, 300, 200);
+      move(target.x, target.y);
+      await nextTick();
+      up();
+
+      expect(wrapper.emitted('update:selectedDimensionIds')).toEqual([[['w']]]);
+      expect(wrapper.emitted('update-dimension')).toEqual([['w', { offset: 40 }]]);
+    });
+
+    it('selects from the label without moving and emits no drag update', () => {
+      const wrapper = mountCanvas({ document: dimensionDoc });
+
+      down(wrapper.find('[data-testid="dimension-label-w"]').element, 300, 200);
+      up();
+
+      expect(wrapper.emitted('update:selectedDimensionIds')).toEqual([[['w']]]);
+      expect(wrapper.emitted('update-dimension')).toBeUndefined();
+    });
+
+    it('replaces, adds, toggles off and subtracts without dragging', () => {
+      const replace = mountCanvas({ document: dimensionDoc });
+      down(replace.find('[data-testid="dimension-drag-w"]').element, 300, 200, 0, {
+        ctrlKey: false,
+      });
+      expect(replace.emitted('update:selectedDimensionIds')).toEqual([[['w']]]);
+
+      const add = mountCanvas({ document: dimensionDoc, selectedDimensionIds: ['h'] });
+      down(add.find('[data-testid="dimension-drag-w"]').element, 300, 200, 0, { ctrlKey: true });
+      expect(add.emitted('update:selectedDimensionIds')).toEqual([[['h', 'w']]]);
+      expect(add.emitted('update-dimension')).toBeUndefined();
+
+      const toggleOff = mountCanvas({ document: dimensionDoc, selectedDimensionIds: ['h', 'w'] });
+      down(toggleOff.find('[data-testid="dimension-drag-w"]').element, 300, 200, 0, {
+        metaKey: true,
+      });
+      expect(toggleOff.emitted('update:selectedDimensionIds')).toEqual([[['h']]]);
+      expect(toggleOff.emitted('update-dimension')).toBeUndefined();
+
+      const subtract = mountCanvas({ document: dimensionDoc, selectedDimensionIds: ['h', 'w'] });
+      down(subtract.find('[data-testid="dimension-drag-w"]').element, 300, 200, 0, {
+        ctrlKey: true,
+        altKey: true,
+      });
+      expect(subtract.emitted('update:selectedDimensionIds')).toEqual([[['h']]]);
+      expect(subtract.emitted('update-dimension')).toBeUndefined();
+    });
+
+    it('never changes the selection with the dimension or cut dimension tool', () => {
+      const dimension = mountCanvas({ document: dimensionDoc, tool: 'dimension' });
+      down(dimension.find('[data-testid="dimension-drag-w"]').element, 300, 200);
+      up();
+      expect(dimension.emitted('update:selectedDimensionIds')).toBeUndefined();
+
+      const cut = mountCanvas({ document: derivedPieceDoc, tool: 'cut_dimension' });
+      down(cut.find('[data-testid="dimension-drag-cut"]').element, 300, 200);
+      up();
+      expect(cut.emitted('update:selectedDimensionIds')).toBeUndefined();
+    });
+
+    it('selects nothing on a read-only canvas', () => {
+      const wrapper = mountCanvas({ document: dimensionDoc, readOnly: true });
+
+      down(wrapper.find('[data-testid="dimension-drag-w"]').element, 300, 200);
+      up();
+
+      expect(wrapper.emitted('update:selectedDimensionIds')).toBeUndefined();
+      expect(wrapper.emitted('update-dimension')).toBeUndefined();
+    });
+
+    it('renders the halo and label outline only for selected dimensions', () => {
+      const wrapper = mountCanvas({ document: dimensionDoc, selectedDimensionIds: ['w'] });
+
+      const selected = wrapper.find('[data-testid="dimension-lines-w"]');
+      expect(selected.attributes('data-selected')).toBe('true');
+      expect(selected.findAll('[data-testid="dimension-selection-halo"]')).toHaveLength(1);
+
+      const unselected = wrapper.find('[data-testid="dimension-lines-h"]');
+      expect(unselected.attributes('data-selected')).toBe('false');
+      expect(unselected.findAll('[data-testid="dimension-selection-halo"]')).toHaveLength(0);
+
+      const label = wrapper.find('[data-testid="dimension-label-w"]');
+      expect(label.attributes('data-selected')).toBe('true');
+      expect(label.find('rect').attributes('stroke-width')).toBe('2');
+      expect(label.find('rect').classes()).toContain('stroke-primary');
+
+      const otherLabel = wrapper.find('[data-testid="dimension-label-h"]');
+      expect(otherLabel.attributes('data-selected')).toBe('false');
+      expect(otherLabel.find('rect').attributes('stroke-width')).toBe('0');
+      expect(otherLabel.find('rect').classes()).not.toContain('stroke-primary');
+    });
+
+    it('renders the selected treatment on a cut dimension and keeps its value read-only', () => {
+      const wrapper = mountCanvas({ document: derivedPieceDoc, selectedDimensionIds: ['cut'] });
+
+      const lines = wrapper.find('[data-testid="dimension-lines-cut"]');
+      expect(lines.attributes('data-selected')).toBe('true');
+      expect(lines.findAll('[data-testid="dimension-selection-halo"]')).toHaveLength(1);
+
+      const label = wrapper.find('[data-testid="dimension-label-cut"]');
+      expect(label.attributes('data-selected')).toBe('true');
+      expect(label.find('rect').attributes('stroke-width')).toBe('2');
+      expect(label.find('text').text()).toMatch(/ cut$/);
+    });
+
+    it('clears the dimension selection on a plain entity click', () => {
+      const wrapper = mountCanvas({ document: dimensionDoc, selectedDimensionIds: ['w'] });
+
+      down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200);
+      up();
+
+      expect(wrapper.emitted('update:selectedDimensionIds')).toEqual([[[]]]);
+    });
+
+    it('leaves the dimension selection alone on a modified entity click', () => {
+      const wrapper = mountCanvas({ document: dimensionDoc, selectedDimensionIds: ['w'] });
+
+      down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200, 0, {
+        ctrlKey: true,
+      });
+      up();
+
+      expect(wrapper.emitted('update:selectedDimensionIds')).toBeUndefined();
+    });
+
+    it('clears both selections on a bare-canvas click', () => {
+      const wrapper = mountCanvas({
+        document: dimensionDoc,
+        selectedDimensionIds: ['w'],
+        selectedEntityIds: ['a'],
+      });
+
+      down(wrapper.find('[data-testid="grid"]').element, 500, 300);
+      up();
+
+      expect(wrapper.emitted('update:selectedEntityIds')).toEqual([[[]]]);
+      expect(wrapper.emitted('update:selectedDimensionIds')).toEqual([[[]]]);
+    });
+
+    it('clears the dimension selection on a touch tap and keeps it with a modifier', () => {
+      const wrapper = mountCanvas({ document: dimensionDoc, selectedDimensionIds: ['w'] });
+      const grid = wrapper.find('[data-testid="grid"]').element;
+      const tap = (init: MouseEventInit): void => {
+        const event = new MouseEvent('pointerdown', {
+          bubbles: true,
+          clientX: 500,
+          clientY: 300,
+          button: 0,
+          ...init,
+        });
+        Object.defineProperty(event, 'pointerType', { value: 'touch' });
+        grid.dispatchEvent(event);
+      };
+
+      tap({});
+      expect(wrapper.emitted('update:selectedDimensionIds')).toEqual([[[]]]);
+      up();
+
+      tap({ ctrlKey: true });
+      expect(wrapper.emitted('update:selectedDimensionIds')).toEqual([[[]]]);
+      up();
+    });
+
+    it('clears the dimension selection when a marquee commits', () => {
+      const wrapper = mountCanvas({ document: dimensionDoc, selectedDimensionIds: ['w'] });
+      const vp = fittedViewport(dimensionDoc);
+      const start = worldToScreen(vp, { x: -5, y: -5 });
+      const end = worldToScreen(vp, { x: 105, y: 5 });
+
+      down(wrapper.find('[data-testid="grid"]').element, start.x, start.y);
+      move(end.x, end.y);
+      up();
+
+      expect(wrapper.emitted('update:selectedDimensionIds')).toEqual([[[]]]);
+    });
+
+    it('clears on a modified marquee with hits and keeps it without hits', () => {
+      const vp = fittedViewport(dimensionDoc);
+      const start = worldToScreen(vp, { x: -5, y: -5 });
+      const end = worldToScreen(vp, { x: 105, y: 5 });
+
+      const hits = mountCanvas({ document: dimensionDoc, selectedDimensionIds: ['w'] });
+      down(hits.find('[data-testid="grid"]').element, start.x, start.y, 0, { ctrlKey: true });
+      move(end.x, end.y);
+      up();
+      expect(hits.emitted('update:selectedDimensionIds')).toEqual([[[]]]);
+
+      const empty = mountCanvas({ document: dimensionDoc, selectedDimensionIds: ['w'] });
+      const emptyStart = worldToScreen(vp, { x: 200, y: 200 });
+      const emptyEnd = worldToScreen(vp, { x: 300, y: 300 });
+      down(empty.find('[data-testid="grid"]').element, emptyStart.x, emptyStart.y, 0, {
+        ctrlKey: true,
+      });
+      move(emptyEnd.x, emptyEnd.y);
+      up();
+      expect(empty.emitted('update:selectedDimensionIds')).toBeUndefined();
+    });
+
+    it('leaves the dimension selection untouched when a marquee is cancelled', async () => {
+      const wrapper = mountCanvas({ document: dimensionDoc, selectedDimensionIds: ['w'] });
+      const vp = fittedViewport(dimensionDoc);
+      const start = worldToScreen(vp, { x: -5, y: -5 });
+
+      down(wrapper.find('[data-testid="grid"]').element, start.x, start.y);
+      move(start.x + 40, start.y + 40);
+      await nextTick();
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+      await nextTick();
+
+      expect(wrapper.emitted('update:selectedDimensionIds')).toBeUndefined();
+    });
   });
 });
 

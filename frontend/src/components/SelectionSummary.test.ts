@@ -109,4 +109,23 @@ describe('SelectionSummary', () => {
 
     expect(wrapper.find('[data-testid="selection-breakdown"]').text()).toBe('2 arcs');
   });
+
+  it('shows a singular dimension count with the dimension note and no breakdown', async () => {
+    const wrapper = mount(SelectionSummary, { props: { dimensions: 1 } });
+
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
+    expect(wrapper.find('[data-testid="selection-breakdown"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="selection-pointer-note"]').text()).toBe(
+      'Ctrl/Cmd-click adds or removes a dimension.',
+    );
+
+    await wrapper.find('[data-testid="selection-delete"]').trigger('click');
+    expect(wrapper.emitted('delete')).toEqual([[]]);
+  });
+
+  it('pluralizes the dimension count', () => {
+    const wrapper = mount(SelectionSummary, { props: { dimensions: 3 } });
+
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('3 dimensions selected');
+  });
 });

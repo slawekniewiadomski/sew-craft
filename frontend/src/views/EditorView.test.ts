@@ -423,7 +423,7 @@ describe('EditorView', () => {
     expect(wrapper.find('[data-testid="selection-breakdown"]').text()).toBe('2 points');
     expect(wrapper.find('[data-testid="selection-status"]').text()).toBe('2 entities selected');
     expect(wrapper.text()).not.toContain(
-      'Select a point, line, curve, arc or circle on the canvas.',
+      'Select a point, line, curve, arc, circle or dimension on the canvas or in a drawer.',
     );
 
     const journal = store.journal.length;
@@ -519,7 +519,9 @@ describe('EditorView', () => {
 
     expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('Select a point, line, curve, arc or circle on the canvas.');
+    expect(wrapper.text()).toContain(
+      'Select a point, line, curve, arc, circle or dimension on the canvas or in a drawer.',
+    );
   });
 
   it('skips an id that no longer resolves when summarising a selection', async () => {
@@ -1780,7 +1782,9 @@ describe('EditorView', () => {
 
     expect(wrapper.find('[data-testid="active-tool"]').text()).toBe('Select');
     expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('Select a point, line, curve, arc or circle on the canvas.');
+    expect(wrapper.text()).toContain(
+      'Select a point, line, curve, arc, circle or dimension on the canvas or in a drawer.',
+    );
 
     pointDown(wrapper, 'a');
     await nextTick();
@@ -3052,6 +3056,223 @@ describe('EditorView Outline selection', () => {
     expect(wrapper.find('[data-testid="seam-label-da"]').text()).toBe('Allowance 10 mm');
     expect(wrapper.find('[data-testid="edge-piece-ab"]').text()).toContain('In piece p1');
     expect(wrapper.find(`[data-testid="seam-width-da"]`).exists()).toBe(false);
+  });
+});
+
+describe('EditorView dimension selection', () => {
+  async function openDimensions(wrapper: VueWrapper): Promise<void> {
+    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await nextTick();
+  }
+
+  it('selects from the canvas and deletes the whole selection as one undo entry', async () => {
+    const { wrapper, store } = await mountLoaded(seededDocument);
+    const canvas = wrapper.findComponent(PatternCanvas);
+
+    canvas.vm.$emit('update:selectedDimensionIds', ['width']);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
+    expect(wrapper.find('[data-testid="selection-breakdown"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="selection-pointer-note"]').text()).toBe(
+      'Ctrl/Cmd-click adds or removes a dimension.',
+    );
+    expect(wrapper.find('[data-testid="selection-status"]').text()).toBe('1 dimension selected');
+    expect(
+      wrapper.find('[data-testid="drawer-toggle-properties"] [data-testid="drawer-count"]').text(),
+    ).toBe('1');
+
+    canvas.vm.$emit('update:selectedDimensionIds', ['width', 'height']);
+    await nextTick();
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('2 dimensions selected');
+    expect(wrapper.find('[data-testid="selection-status"]').text()).toBe('2 dimensions selected');
+
+    const journal = store.journal.length;
+    keydown('Delete');
+    await nextTick();
+
+    expect(store.document.constraints.some((constraint) => constraint.id === 'width')).toBe(false);
+    expect(store.document.constraints.some((constraint) => constraint.id === 'height')).toBe(false);
+    expect(store.journal).toHaveLength(journal + 1);
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
+    expect(
+      wrapper
+        .find('[data-testid="drawer-toggle-properties"] [data-testid="drawer-count"]')
+        .exists(),
+    ).toBe(false);
+
+    store.undo();
+    await nextTick();
+
+    expect(store.document.constraints.some((constraint) => constraint.id === 'width')).toBe(true);
+    expect(store.document.constraints.some((constraint) => constraint.id === 'height')).toBe(true);
+  });
+
+  it('deletes the selection from the ribbon and the summary', async () => {
+    const { wrapper, store } = await mountLoaded(seededDocument);
+    const canvas = wrapper.findComponent(PatternCanvas);
+
+    canvas.vm.$emit('update:selectedDimensionIds', ['width']);
+    await nextTick();
+    await wrapper.find('[data-testid="delete"]').trigger('click');
+    await nextTick();
+    expect(store.document.constraints.some((constraint) => constraint.id === 'width')).toBe(false);
+
+    canvas.vm.$emit('update:selectedDimensionIds', ['height']);
+    await nextTick();
+    await wrapper.find('[data-testid="selection-delete"]').trigger('click');
+    await nextTick();
+    expect(store.document.constraints.some((constraint) => constraint.id === 'height')).toBe(false);
+  });
+
+  it('keeps entity, dimension and piece selection mutually exclusive', async () => {
+    const { wrapper } = await mountLoaded({
+      ...pieceDoc,
+      constraints: [{ id: 'w', type: 'distance', a: 'a', b: 'b', value: 100 }],
+    });
+    const canvas = wrapper.findComponent(PatternCanvas);
+
+    pointDown(wrapper, 'a');
+    await nextTick();
+    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(true);
+
+    canvas.vm.$emit('update:selectedDimensionIds', ['w']);
+    await nextTick();
+    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
+
+    canvas.vm.$emit('update:selectedEntityIds', ['b']);
+    await nextTick();
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(true);
+
+    canvas.vm.$emit('update:selectedDimensionIds', ['w']);
+    await nextTick();
+    await wrapper.find('[data-testid="piece-row-p1"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
+  });
+
+  it('selects dimensions from the drawer with the canvas modifier rules', async () => {
+    const { wrapper } = await mountLoaded(seededDocument);
+    await openDimensions(wrapper);
+
+    await wrapper.find('[data-testid="select-dimension-width"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
+    expect(wrapper.find('[data-testid="dimension-width"]').classes()).toContain('bg-primary/10');
+    expect(wrapper.find('[data-testid="select-dimension-width"]').attributes('aria-current')).toBe(
+      'true',
+    );
+
+    await wrapper.find('[data-testid="select-dimension-height"]').trigger('click', {
+      ctrlKey: true,
+    });
+    await nextTick();
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('2 dimensions selected');
+
+    await wrapper.find('[data-testid="select-dimension-height"]').trigger('click', {
+      metaKey: true,
+    });
+    await nextTick();
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
+
+    await wrapper.find('[data-testid="select-dimension-width"]').trigger('click', {
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    await nextTick();
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-width"]').classes()).not.toContain(
+      'bg-primary/10',
+    );
+  });
+
+  it('selects a drawer row with Enter and Space', async () => {
+    const { wrapper } = await mountLoaded(seededDocument);
+    await openDimensions(wrapper);
+
+    await wrapper
+      .find('[data-testid="select-dimension-width"]')
+      .trigger('keydown', { key: 'Enter' });
+    await nextTick();
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
+
+    await wrapper.find('[data-testid="select-dimension-height"]').trigger('keydown', { key: ' ' });
+    await nextTick();
+    expect(wrapper.find('[data-testid="select-dimension-height"]').attributes('aria-current')).toBe(
+      'true',
+    );
+    expect(
+      wrapper.find('[data-testid="select-dimension-width"]').attributes('aria-current'),
+    ).toBeUndefined();
+  });
+
+  it('keeps the per-row Remove independent and prunes a removed selection', async () => {
+    const { wrapper, store } = await mountLoaded(seededDocument);
+    await openDimensions(wrapper);
+
+    await wrapper.find('[data-testid="select-dimension-width"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="remove-dimension-width"]').trigger('click');
+    await nextTick();
+
+    expect(store.document.constraints.some((constraint) => constraint.id === 'width')).toBe(false);
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
+    expect(wrapper.findAll('[aria-label="Dimensions"] li')).toHaveLength(1);
+  });
+
+  it('prunes a dimension id removed underneath the selection', async () => {
+    const { wrapper, store } = await mountLoaded(seededDocument);
+    wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedDimensionIds', ['width']);
+    await nextTick();
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(true);
+
+    store.dispatch({ id: 'external', type: 'remove_constraint', params: { id: 'width' } });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
+  });
+
+  it('keeps a hidden dimension selected and deletable from the drawer', async () => {
+    const { wrapper, store } = await mountLoaded(seededDocument);
+    await openDimensions(wrapper);
+    await wrapper.find('[data-testid="select-dimension-width"]').trigger('click');
+    await nextTick();
+
+    await openViewDrawer(wrapper);
+    await wrapper.find('[data-testid="show-dimensions"]').setValue(false);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
+    expect(wrapper.find('[data-testid="select-dimension-width"]').attributes('aria-current')).toBe(
+      'true',
+    );
+
+    keydown('Delete');
+    await nextTick();
+    expect(store.document.constraints.some((constraint) => constraint.id === 'width')).toBe(false);
+  });
+
+  it('allows drawer selection but refuses the delete on a read-only document', async () => {
+    const { wrapper, store } = await mountLoaded(seededDocument);
+    store.setReadOnly(true);
+    await nextTick();
+    await openDimensions(wrapper);
+
+    await wrapper.find('[data-testid="select-dimension-width"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
+
+    keydown('Delete');
+    await nextTick();
+
+    expect(store.document.constraints.some((constraint) => constraint.id === 'width')).toBe(true);
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
   });
 });
 
