@@ -25,7 +25,6 @@ import {
   dimensionOffsetForPointer,
   dimensionOffsetFromSpan,
   distanceAnchorIssue,
-  type DimensionAnchor,
   type DistanceAnchorReason,
   type DimensionLayout,
   dimensionState,
@@ -92,6 +91,21 @@ import {
   type DimensionSegment,
   type CutDimensionPlacement,
 } from '@/lib/dimensions';
+import {
+  cutAnchorPreviewPosition,
+  cutEdgeCandidateFor,
+  cutGhostFor,
+  cutLoopCandidateFor,
+  cutPointCandidateFor,
+  dimensionCandidateFor,
+  dimensionGhostFor,
+  dimensionPickFor,
+  pickPreviewPosition,
+  pickPreviewTick,
+  type CutPick,
+  type DimensionPick,
+  type FeedbackHit,
+} from '@/lib/dimension-feedback';
 import {
   endpointMissing,
   endpointPosition,
@@ -360,9 +374,6 @@ const rectangleClicks = ref<DraftingEndpoint[]>([]);
 const rectanglePointer = ref<Vec2 | null>(null);
 const spaceHeld = ref(false);
 
-/** One pick of the Dimension tool: a point or a whole straight line. */
-type DimensionPick = { id: EntityId; kind: DimensionAnchor['kind'] };
-
 /** Anchors picked for a dimension that has not yet been placed. */
 const dimensionPending = ref<DimensionPick[]>([]);
 /** Why the last dimension pick was rejected; cleared by a valid pick. */
@@ -370,11 +381,17 @@ const dimensionHint = ref<string | null>(null);
 /** The dimension being placed; its orientation/offset follow the pointer. */
 const dimensionPlacement = ref<DimensionPlacement | null>(null);
 /** The first corner picked for a cut dimension, with its owning piece. */
-const cutDimensionPending = ref<{ piece: Piece; anchor: CutAnchor } | null>(null);
+const cutDimensionPending = ref<CutPick | null>(null);
 /** The cut dimension being placed; it always measures the piece's cut loop. */
 const cutDimensionPlacement = ref<CutDimensionPlacement | null>(null);
 /** Why the last cut-dimension pick was rejected; cleared by a valid pick. */
 const cutDimensionHint = ref<string | null>(null);
+/** The entity under the pointer while a dimension tool is armed. */
+const hoveredPick = ref<FeedbackHit | null>(null);
+/** The derived loop corner nearest the pointer while the cut tool is armed. */
+const hoveredLoopHandle = ref<LoopHandle | null>(null);
+/** The pointer in world space, for the ghost's unsnapped end. */
+const pointerWorld = ref<Vec2 | null>(null);
 /** Live drag of an existing dimension line, in world space. */
 const dimensionDrag = ref<{
   id: EntityId;
@@ -526,7 +543,7 @@ const cutEdgeHandles = computed<LineView[]>(() => {
   return lines.value.filter((entry) => ids.has(entry.line.id));
 });
 
-/** The cut tool's status message: a rejection, or the prompt for a second pick. */
+/** The cut tool's status message: a rejection, a next-pick prompt, or the idle cue. */
 const cutDimensionHintText = computed<string | null>(() => {
   if (cutDimensionHint.value !== null) return cutDimensionHint.value;
   if (props.tool !== 'cut_dimension' || cutDimensionPlacement.value !== null) return null;
@@ -540,6 +557,193 @@ const dimensionHintText = computed<string | null>(() => {
   if (dimensionPlacement.value !== null) return null;
   if (dimensionPending.value.length > 0) return 'Pick the second anchor.';
   return props.tool === 'dimension' ? 'Pick a point or a line.' : null;
+});
+
+/** Whether a dimension tool owns the pointer feedback. */
+const dimensionToolArmed = computed(
+  () => props.tool === 'dimension' || props.tool === 'cut_dimension',
+);
+
+/** The first anchor of the gesture, pending or already being placed. */
+const dimensionFirstPick = computed<DimensionPick | null>(() => {
+  const pendingPick = dimensionPending.value[0];
+  if (pendingPick !== undefined) return pendingPick;
+  const placement = dimensionPlacement.value;
+  return placement === null
+    ? null
+    : dimensionPickFor(props.document, { id: placement.a, kind: '' });
+});
+
+/** The second anchor of a dimension already being placed. */
+const dimensionSecondPick = computed<DimensionPick | null>(() => {
+  const placement = dimensionPlacement.value;
+  return placement === null
+    ? null
+    : dimensionPickFor(props.document, { id: placement.b, kind: '' });
+});
+
+/** The eligible anchor under the pointer, validated against a pending first pick. */
+const dimensionCandidate = computed<DimensionPick | null>(() => {
+  if (props.tool !== 'dimension' || props.readOnly || dimensionPlacement.value !== null)
+    return null;
+  return dimensionCandidateFor(props.document, hoveredPick.value, dimensionFirstPick.value);
+});
+
+/** The cut corner under the pointer, same-piece only after the first corner. */
+const cutPointCandidate = computed(() => {
+  if (props.tool !== 'cut_dimension' || props.readOnly || cutDimensionPlacement.value !== null) {
+    return null;
+  }
+  const loopHandle = hoveredLoopHandle.value;
+  if (loopHandle !== null) {
+    return cutLoopCandidateFor(props.document, loopHandle, cutDimensionPending.value);
+  }
+  return cutPointCandidateFor(props.document, hoveredPick.value, cutDimensionPending.value);
+});
+
+/** A whole piece edge under the pointer; it skips the ghost stage. */
+const cutEdgeCandidate = computed(() => {
+  if (
+    props.tool !== 'cut_dimension' ||
+    props.readOnly ||
+    cutDimensionPending.value !== null ||
+    cutDimensionPlacement.value !== null ||
+    hoveredLoopHandle.value !== null
+  ) {
+    return null;
+  }
+  return cutEdgeCandidateFor(props.document, hoveredPick.value);
+});
+
+/** The dashed guide from the first Dimension pick, snapped when a candidate is valid. */
+const dimensionGhost = computed(() => {
+  if (props.tool !== 'dimension' || props.readOnly || dimensionPlacement.value !== null)
+    return null;
+  return dimensionGhostFor(
+    props.document,
+    dimensionPending.value[0] ?? null,
+    dimensionCandidate.value,
+    pointerWorld.value,
+  );
+});
+
+/** The dashed guide from the first cut corner to the pointer or a same-piece corner. */
+const cutDimensionGhost = computed(() => {
+  if (props.tool !== 'cut_dimension' || props.readOnly || cutDimensionPlacement.value !== null) {
+    return null;
+  }
+  return cutGhostFor(
+    props.document,
+    cutDimensionPending.value,
+    cutPointCandidate.value,
+    pointerWorld.value,
+  );
+});
+
+function idSet(id: EntityId | null): Set<EntityId> {
+  return new Set(id === null ? [] : [id]);
+}
+
+const dimensionFirstPickPointIds = computed(() => {
+  const pick = dimensionFirstPick.value;
+  return idSet(pick !== null && pick.kind === 'point' ? pick.id : null);
+});
+
+const dimensionFirstPickLineIds = computed(() => {
+  const pick = dimensionFirstPick.value;
+  return idSet(pick !== null && pick.kind === 'line' ? pick.id : null);
+});
+
+const dimensionSecondPickPointIds = computed(() => {
+  const pick = dimensionSecondPick.value;
+  return idSet(pick !== null && pick.kind === 'point' ? pick.id : null);
+});
+
+const dimensionSecondPickLineIds = computed(() => {
+  const pick = dimensionSecondPick.value;
+  return idSet(pick !== null && pick.kind === 'line' ? pick.id : null);
+});
+
+const dimensionPickPointIds = computed(() => {
+  const ids = new Set(dimensionFirstPickPointIds.value);
+  for (const id of dimensionSecondPickPointIds.value) ids.add(id);
+  return ids;
+});
+
+const dimensionPickLineIds = computed(() => {
+  const ids = new Set(dimensionFirstPickLineIds.value);
+  for (const id of dimensionSecondPickLineIds.value) ids.add(id);
+  return ids;
+});
+
+const dimensionCandidatePointIds = computed(() => {
+  const pick = dimensionCandidate.value;
+  return idSet(pick !== null && pick.kind === 'point' ? pick.id : null);
+});
+
+const dimensionCandidateLineIds = computed(() => {
+  const pick = dimensionCandidate.value;
+  return idSet(pick !== null && pick.kind === 'line' ? pick.id : null);
+});
+
+const cutCandidatePointIds = computed(() => idSet(cutPointCandidate.value?.pointId ?? null));
+const cutEdgeCandidateIds = computed(() => idSet(cutEdgeCandidate.value?.edge ?? null));
+const cutCandidateKeys = computed(() => {
+  const key = cutPointCandidate.value?.key;
+  return new Set(key === undefined ? [] : [key]);
+});
+
+const dimensionFirstPickPoint = computed<Vec2 | null>(() => {
+  const pick = dimensionFirstPick.value;
+  return pick !== null && pick.kind === 'point' ? pickPreviewPosition(props.document, pick) : null;
+});
+
+const dimensionFirstPickTick = computed(() => {
+  const pick = dimensionFirstPick.value;
+  return pick !== null && pick.kind === 'line' ? pickPreviewTick(props.document, pick) : null;
+});
+
+const dimensionSecondPickPoint = computed<Vec2 | null>(() => {
+  const pick = dimensionSecondPick.value;
+  return pick !== null && pick.kind === 'point' ? pickPreviewPosition(props.document, pick) : null;
+});
+
+const dimensionSecondPickTick = computed(() => {
+  const pick = dimensionSecondPick.value;
+  return pick !== null && pick.kind === 'line' ? pickPreviewTick(props.document, pick) : null;
+});
+
+const dimensionCandidatePoint = computed<Vec2 | null>(() => {
+  const pick = dimensionCandidate.value;
+  return pick !== null && pick.kind === 'point' ? pickPreviewPosition(props.document, pick) : null;
+});
+
+const cutPlacementPiece = computed<Piece | null>(() => {
+  const placement = cutDimensionPlacement.value;
+  // The document watcher clears a placement whose piece disappears.
+  return placement === null
+    ? null
+    : props.document.pieces.find((piece) => piece.id === placement.piece)!;
+});
+
+const cutFirstPickPosition = computed<Vec2 | null>(() => {
+  const pendingPick = cutDimensionPending.value;
+  if (pendingPick !== null) {
+    return cutAnchorPreviewPosition(props.document, pendingPick.piece, pendingPick.anchor);
+  }
+  const placement = cutDimensionPlacement.value;
+  const piece = cutPlacementPiece.value;
+  return placement === null || piece === null
+    ? null
+    : cutAnchorPreviewPosition(props.document, piece, placement.a);
+});
+
+const cutSecondPickPosition = computed<Vec2 | null>(() => {
+  const placement = cutDimensionPlacement.value;
+  const piece = cutPlacementPiece.value;
+  return placement === null || piece === null
+    ? null
+    : cutAnchorPreviewPosition(props.document, piece, placement.b);
 });
 
 const roundPickedLineIds = computed(() => {
@@ -1338,6 +1542,13 @@ function yTickPosition(value: number): number {
 }
 
 function pointClass(point: PointEntity): string {
+  if (
+    dimensionPickPointIds.value.has(point.id) ||
+    dimensionCandidatePointIds.value.has(point.id) ||
+    cutCandidatePointIds.value.has(point.id)
+  ) {
+    return 'fill-primary stroke-primary-foreground';
+  }
   if (pickedPointIds.value.has(point.id)) return 'fill-primary stroke-primary-foreground';
   if (selectedIds.value.has(point.id)) return 'fill-primary stroke-primary-foreground';
   if (marqueeCandidates.value.has(point.id)) {
@@ -1355,6 +1566,13 @@ function pointClass(point: PointEntity): string {
 
 function entityClass(entity: { id: EntityId; construction: boolean }): string {
   if (
+    dimensionPickLineIds.value.has(entity.id) ||
+    dimensionCandidateLineIds.value.has(entity.id) ||
+    cutEdgeCandidateIds.value.has(entity.id)
+  ) {
+    return 'text-primary';
+  }
+  if (
     pickedLineIds.value.has(entity.id) ||
     roundPickedLineIds.value.has(entity.id) ||
     selectedIds.value.has(entity.id)
@@ -1366,7 +1584,10 @@ function entityClass(entity: { id: EntityId; construction: boolean }): string {
 }
 
 function lineWidth(id: EntityId): number {
-  return pickedLineIds.value.has(id) ||
+  return dimensionPickLineIds.value.has(id) ||
+    dimensionCandidateLineIds.value.has(id) ||
+    cutEdgeCandidateIds.value.has(id) ||
+    pickedLineIds.value.has(id) ||
     roundPickedLineIds.value.has(id) ||
     selectedIds.value.has(id) ||
     marqueeCandidates.value.has(id)
@@ -2009,20 +2230,28 @@ function onPointerMove(event: PointerEvent): void {
 
 /** Live dimension preview while placing; the canvas-level pointer move. */
 function onCanvasPointerMove(event: PointerEvent): void {
+  const screen = screenPoint(event);
+
+  if (dimensionToolArmed.value && !props.readOnly) {
+    hoveredPick.value = hitEntity(event);
+    hoveredLoopHandle.value = props.tool === 'cut_dimension' ? pickLoopHandle(screen) : null;
+    pointerWorld.value = screenToWorld(viewport.value, screen);
+  }
+
   if (dimensionPlacement.value !== null && dimensionDrag.value === null) {
-    updateDimensionPlacement(screenPoint(event));
+    updateDimensionPlacement(screen);
   }
 
   if (cutDimensionPlacement.value !== null) {
-    updateCutDimensionPlacement(screenPoint(event));
+    updateCutDimensionPlacement(screen);
   }
 
   if (props.tool === 'add_line' && lineStart.value !== null) {
-    linePreview.value = snappedPoint(screenToWorld(viewport.value, screenPoint(event)));
+    linePreview.value = snappedPoint(screenToWorld(viewport.value, screen));
   }
 
   if (props.tool === 'add_arc' && arcStart.value !== null) {
-    const world = snappedPoint(screenToWorld(viewport.value, screenPoint(event)));
+    const world = snappedPoint(screenToWorld(viewport.value, screen));
     arcPointer.value = world;
 
     // The hint clears as soon as the pointer leaves the chord into a valid bulge.
@@ -2039,12 +2268,19 @@ function onCanvasPointerMove(event: PointerEvent): void {
   }
 
   if (props.tool === 'add_circle' && circleCenter.value !== null) {
-    circlePreview.value = snappedPoint(screenToWorld(viewport.value, screenPoint(event)));
+    circlePreview.value = snappedPoint(screenToWorld(viewport.value, screen));
   }
 
   if (rectangleMode.value !== null && rectangleClicks.value.length > 0) {
-    rectanglePointer.value = snappedPoint(screenToWorld(viewport.value, screenPoint(event)));
+    rectanglePointer.value = snappedPoint(screenToWorld(viewport.value, screen));
   }
+}
+
+/** The pointer left the canvas: end the hover and ghost, keep a pending pick. */
+function onCanvasPointerLeave(): void {
+  hoveredPick.value = null;
+  hoveredLoopHandle.value = null;
+  pointerWorld.value = null;
 }
 
 /** Drop every in-flight pointer interaction without emitting a command. */
@@ -2447,6 +2683,9 @@ watch(
     dimensionPending.value = [];
     dimensionPlacement.value = null;
     dimensionHint.value = null;
+    hoveredPick.value = null;
+    hoveredLoopHandle.value = null;
+    pointerWorld.value = null;
     clearCutDimensionGesture();
     editingDimension.value = null;
     cancelPointerInteraction();
@@ -2512,6 +2751,7 @@ watch(
       aria-label="Pattern canvas"
       @pointerdown="onPointerDown"
       @pointermove="onCanvasPointerMove"
+      @pointerleave="onCanvasPointerLeave"
       @wheel.prevent="onWheel"
     >
       <defs>
@@ -2584,6 +2824,17 @@ watch(
               vector-effect="non-scaling-stroke"
               :data-entity-id="entry.line.id"
               data-kind="line"
+              :data-dimension-candidate="
+                dimensionCandidateLineIds.has(entry.line.id) ? 'true' : undefined
+              "
+              :data-cut-dimension-candidate="
+                cutEdgeCandidateIds.has(entry.line.id) ? 'true' : undefined
+              "
+              :data-dimension-first-pick="
+                dimensionFirstPick?.kind === 'line' && dimensionFirstPick.id === entry.line.id
+                  ? 'true'
+                  : undefined
+              "
               @pointerenter="onEntityHover(entry.line.id)"
               @pointerleave="onEntityLeave"
             />
@@ -2614,6 +2865,9 @@ watch(
             vector-effect="non-scaling-stroke"
             :data-entity-id="entry.curve.id"
             data-kind="curve"
+            :data-cut-dimension-candidate="
+              cutEdgeCandidateIds.has(entry.curve.id) ? 'true' : undefined
+            "
             @pointerenter="onEntityHover(entry.curve.id)"
             @pointerleave="onEntityLeave"
             @dblclick.stop.prevent="onCurveDoubleClick(entry.curve.id, $event)"
@@ -2631,6 +2885,9 @@ watch(
             vector-effect="non-scaling-stroke"
             :data-entity-id="entry.arc.id"
             data-kind="arc"
+            :data-cut-dimension-candidate="
+              cutEdgeCandidateIds.has(entry.arc.id) ? 'true' : undefined
+            "
             @pointerenter="onEntityHover(entry.arc.id)"
             @pointerleave="onEntityLeave"
           />
@@ -2930,6 +3187,25 @@ watch(
             :class="pointClass(point)"
             :data-entity-id="point.id"
             data-kind="point"
+            :data-dimension-candidate="
+              dimensionCandidatePointIds.has(point.id) ? 'true' : undefined
+            "
+            :data-cut-dimension-candidate="cutCandidatePointIds.has(point.id) ? 'true' : undefined"
+            :data-dimension-first-pick="
+              dimensionFirstPick?.kind === 'point' && dimensionFirstPick.id === point.id
+                ? 'true'
+                : undefined
+            "
+          />
+          <circle
+            v-if="dimensionToolArmed"
+            :cx="point.x"
+            :cy="point.y"
+            :r="6 / viewport.scale"
+            fill="transparent"
+            :data-entity-id="point.id"
+            data-kind="point"
+            data-testid="dimension-hit-target"
           />
           <circle
             v-if="props.roundCornerActive"
@@ -2974,7 +3250,9 @@ watch(
             :cx="handle.point.x"
             :cy="handle.point.y"
             :r="handle.anchor.loop === 'stitch' ? 6 : 7"
-            :stroke-width="handle.anchor.loop === 'stitch' ? 1 : 1.5"
+            :stroke-width="
+              cutCandidateKeys.has(handle.key) ? 2 : handle.anchor.loop === 'stitch' ? 1 : 1.5
+            "
             :stroke-dasharray="handle.anchor.loop === 'stitch' ? '2 2' : undefined"
             :class="
               handle.anchor.loop === 'stitch'
@@ -2986,7 +3264,143 @@ watch(
             :data-loop-piece="handle.piece.id"
             :data-loop-edge="handle.anchor.edge"
             :data-loop-at="handle.anchor.at"
+            :data-cut-dimension-candidate="cutCandidateKeys.has(handle.key) ? 'true' : undefined"
           />
+        </g>
+
+        <g v-if="!readOnly" class="pointer-events-none" aria-hidden="true">
+          <template v-if="dimensionFirstPickPoint !== null">
+            <circle
+              :cx="dimensionFirstPickPoint.x"
+              :cy="dimensionFirstPickPoint.y"
+              r="9"
+              class="fill-primary/15"
+            />
+            <circle
+              :cx="dimensionFirstPickPoint.x"
+              :cy="dimensionFirstPickPoint.y"
+              r="7"
+              fill="none"
+              class="stroke-primary"
+              stroke-width="2.5"
+              data-testid="dimension-pick-first"
+            />
+          </template>
+          <line
+            v-if="dimensionFirstPickTick !== null"
+            :x1="dimensionFirstPickTick.start.x"
+            :y1="dimensionFirstPickTick.start.y"
+            :x2="dimensionFirstPickTick.end.x"
+            :y2="dimensionFirstPickTick.end.y"
+            class="stroke-primary"
+            stroke-width="3"
+            stroke-linecap="round"
+            data-testid="dimension-pick-first"
+          />
+          <template v-if="dimensionSecondPickPoint !== null">
+            <circle
+              :cx="dimensionSecondPickPoint.x"
+              :cy="dimensionSecondPickPoint.y"
+              r="6"
+              fill="none"
+              class="stroke-primary"
+              stroke-width="2"
+              data-testid="dimension-pick-second"
+            />
+          </template>
+          <line
+            v-if="dimensionSecondPickTick !== null"
+            :x1="dimensionSecondPickTick.start.x"
+            :y1="dimensionSecondPickTick.start.y"
+            :x2="dimensionSecondPickTick.end.x"
+            :y2="dimensionSecondPickTick.end.y"
+            class="stroke-primary"
+            stroke-width="3"
+            stroke-linecap="round"
+            data-testid="dimension-pick-second"
+          />
+          <circle
+            v-if="dimensionCandidatePoint !== null"
+            :cx="dimensionCandidatePoint.x"
+            :cy="dimensionCandidatePoint.y"
+            r="6"
+            fill="none"
+            class="stroke-primary"
+            stroke-width="1.5"
+            data-testid="dimension-candidate-ring"
+          />
+          <template v-if="dimensionGhost !== null">
+            <line
+              :x1="dimensionGhost.from.x"
+              :y1="dimensionGhost.from.y"
+              :x2="dimensionGhost.to.x"
+              :y2="dimensionGhost.to.y"
+              class="stroke-primary"
+              stroke-width="1"
+              stroke-dasharray="4 3"
+              vector-effect="non-scaling-stroke"
+              data-testid="dimension-rubber-band"
+            />
+            <circle
+              :cx="dimensionGhost.to.x"
+              :cy="dimensionGhost.to.y"
+              r="3"
+              class="fill-background stroke-primary"
+              stroke-width="1.5"
+              data-testid="dimension-rubber-band-end"
+            />
+          </template>
+        </g>
+
+        <g v-if="!readOnly" class="pointer-events-none" aria-hidden="true">
+          <template v-if="cutFirstPickPosition !== null">
+            <circle
+              :cx="cutFirstPickPosition.x"
+              :cy="cutFirstPickPosition.y"
+              r="10"
+              class="fill-primary/15"
+            />
+            <circle
+              :cx="cutFirstPickPosition.x"
+              :cy="cutFirstPickPosition.y"
+              r="8"
+              fill="none"
+              class="stroke-primary"
+              stroke-width="2.5"
+              data-testid="cut-dimension-pick-first"
+            />
+          </template>
+          <circle
+            v-if="cutSecondPickPosition !== null"
+            :cx="cutSecondPickPosition.x"
+            :cy="cutSecondPickPosition.y"
+            r="6"
+            fill="none"
+            class="stroke-primary"
+            stroke-width="2"
+            data-testid="cut-dimension-pick-second"
+          />
+          <template v-if="cutDimensionGhost !== null">
+            <line
+              :x1="cutDimensionGhost.from.x"
+              :y1="cutDimensionGhost.from.y"
+              :x2="cutDimensionGhost.to.x"
+              :y2="cutDimensionGhost.to.y"
+              class="stroke-primary"
+              stroke-width="1"
+              stroke-dasharray="4 3"
+              vector-effect="non-scaling-stroke"
+              data-testid="cut-dimension-rubber-band"
+            />
+            <circle
+              :cx="cutDimensionGhost.to.x"
+              :cy="cutDimensionGhost.to.y"
+              r="3"
+              class="fill-background stroke-primary"
+              stroke-width="1.5"
+              data-testid="cut-dimension-rubber-band-end"
+            />
+          </template>
         </g>
 
         <g

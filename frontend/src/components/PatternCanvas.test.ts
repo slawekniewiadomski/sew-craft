@@ -154,6 +154,7 @@ function mountCanvas(
     roundCornerActive: boolean;
     roundCornerPicks: CornerRoundPicks;
     cornerRoundPreviewRadius: number | null;
+    readOnly: boolean;
   }> = {},
 ): VueWrapper {
   return mount(PatternCanvas, {
@@ -206,6 +207,11 @@ function pointerMove(wrapper: VueWrapper, x: number, y: number): void {
     .element.dispatchEvent(
       new MouseEvent('pointermove', { bubbles: true, clientX: x, clientY: y }),
     );
+}
+
+/** A pointer move whose target is a specific entity, so hover sees it. */
+function hover(el: Element, x = 300, y = 200): void {
+  el.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: x, clientY: y }));
 }
 
 /** The snapped world position a bare-canvas click at these screen coords resolves to. */
@@ -3408,5 +3414,306 @@ describe('corner round feature points', () => {
       a: 'r1:center',
       b: 'a',
     });
+  });
+});
+
+describe('dimension pick feedback', () => {
+  const pieceDoc: PatternDocument = {
+    ...doc([
+      pt('a', 0, 0),
+      pt('b', 100, 0),
+      pt('c', 100, 100),
+      pt('d', 0, 100),
+      ln('ab', 'a', 'b'),
+      ln('bc', 'b', 'c'),
+      ln('cd', 'c', 'd'),
+      ln('da', 'd', 'a'),
+    ]),
+    pieces: [{ id: 'p1', edges: ['ab', 'bc', 'cd', 'da'], allowances: [] }],
+  };
+
+  it('pre-highlights eligible dimension anchors and the 12 px point target', async () => {
+    const wrapper = mountCanvas({ tool: 'dimension' });
+
+    const point = pointCircle(wrapper, 'a');
+    hover(point.element);
+    await nextTick();
+    expect(point.attributes('data-dimension-candidate')).toBe('true');
+    expect(point.classes()).toContain('fill-primary');
+    expect(wrapper.find('[data-testid="dimension-candidate-ring"]').attributes('cx')).toBe('0');
+
+    const line = wrapper.find('[data-kind="line"][data-entity-id="ab"]');
+    hover(line.element);
+    await nextTick();
+    expect(line.attributes('data-dimension-candidate')).toBe('true');
+    expect(line.attributes('stroke-width')).toBe('3');
+    expect(line.classes()).toContain('text-primary');
+    expect(pointCircle(wrapper, 'a').attributes('data-dimension-candidate')).toBeUndefined();
+
+    const curve = wrapper.find('[data-kind="curve"]');
+    hover(curve.element);
+    await nextTick();
+    expect(curve.attributes('data-dimension-candidate')).toBeUndefined();
+
+    const target = wrapper.findAll('[data-testid="dimension-hit-target"]')[0]!;
+    expect(target.attributes('fill')).toBe('transparent');
+    expect(target.attributes('data-kind')).toBe('point');
+    expect(Number(target.attributes('r'))).toBeCloseTo(6 / fittedViewport(baseDoc).scale);
+    expect(wrapper.findAll('[data-testid="dimension-hit-target"]')).toHaveLength(4);
+
+    const select = mountCanvas();
+    hover(pointCircle(select, 'a').element);
+    await nextTick();
+    expect(pointCircle(select, 'a').attributes('data-dimension-candidate')).toBeUndefined();
+    expect(select.find('[data-testid="dimension-hit-target"]').exists()).toBe(false);
+
+    const readOnly = mountCanvas({ tool: 'dimension', readOnly: true });
+    hover(pointCircle(readOnly, 'a').element);
+    await nextTick();
+    expect(pointCircle(readOnly, 'a').attributes('data-dimension-candidate')).toBeUndefined();
+    expect(readOnly.find('[data-testid="dimension-pick-first"]').exists()).toBe(false);
+  });
+
+  it('picks a point from the enlarged target and keeps its first-pick mark', async () => {
+    const wrapper = mountCanvas({ tool: 'dimension' });
+    const target = wrapper.findAll('[data-testid="dimension-hit-target"]')[0]!;
+
+    down(target.element, 300, 200);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="dimension-hint"]').text()).toBe('Pick the second anchor.');
+    expect(wrapper.find('[data-testid="dimension-pick-first"]').exists()).toBe(true);
+    expect(pointCircle(wrapper, 'a').attributes('data-dimension-first-pick')).toBe('true');
+    expect(pointCircle(wrapper, 'a').classes()).toContain('fill-primary');
+
+    // Repeating the same anchor keeps the mark and asks again.
+    down(target.element, 300, 200);
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-pick-first"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="dimension-hint"]').text()).toBe('Pick the second anchor.');
+
+    // An invalid second pick keeps the mark and shows the existing hint.
+    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200);
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-hint"]').text()).toBe(
+      'The point lies on the line.',
+    );
+    expect(wrapper.find('[data-testid="dimension-pick-first"]').exists()).toBe(true);
+  });
+
+  it('marks a line first pick with a midpoint tick and clears it on Escape', async () => {
+    const wrapper = mountCanvas({ tool: 'dimension' });
+    const line = wrapper.find('[data-kind="line"][data-entity-id="ab"]');
+
+    hover(line.element);
+    down(line.element, 300, 200);
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-pick-first"]').attributes('x1')).toBe('50');
+    expect(line.attributes('data-dimension-first-pick')).toBe('true');
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-pick-first"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-rubber-band"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-hint"]').text()).toBe('Pick a point or a line.');
+  });
+
+  it('clears the first-pick mark on an empty click and on a tool change', async () => {
+    const wrapper = mountCanvas({ tool: 'dimension' });
+    down(pointCircle(wrapper, 'a').element, 300, 200);
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-pick-first"]').exists()).toBe(true);
+
+    down(wrapper.find('[data-testid="grid"]').element, 400, 300);
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-pick-first"]').exists()).toBe(false);
+
+    down(pointCircle(wrapper, 'a').element, 300, 200);
+    await wrapper.setProps({ tool: 'select' });
+    expect(wrapper.find('[data-testid="dimension-pick-first"]').exists()).toBe(false);
+  });
+
+  it('draws the dimension ghost, follows the raw pointer, and snaps to a candidate', async () => {
+    const wrapper = mountCanvas({ tool: 'dimension' });
+    const viewport = fittedViewport(baseDoc);
+
+    down(pointCircle(wrapper, 'a').element, 300, 200);
+    const free = worldToScreen(viewport, { x: 50, y: 50 });
+    hover(wrapper.find('[data-testid="grid"]').element, free.x, free.y);
+    await nextTick();
+    const ghost = wrapper.find('[data-testid="dimension-rubber-band"]');
+    expect(ghost.exists()).toBe(true);
+    expect(Number(ghost.attributes('x1'))).toBeCloseTo(0);
+    expect(Number(ghost.attributes('y1'))).toBeCloseTo(0);
+    expect(Number(ghost.attributes('x2'))).toBeCloseTo(50);
+    expect(Number(ghost.attributes('y2'))).toBeCloseTo(50);
+    expect(wrapper.find('[data-testid="dimension-rubber-band-end"]').attributes('cx')).toBe(
+      String(50),
+    );
+
+    hover(pointCircle(wrapper, 'c').element, 300, 200);
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-rubber-band"]').attributes('x2')).toBe('100');
+    expect(wrapper.find('[data-testid="dimension-rubber-band"]').attributes('y2')).toBe('100');
+    expect(pointCircle(wrapper, 'c').attributes('data-dimension-candidate')).toBe('true');
+
+    // An invalid target does not highlight or snap; the ghost uses the pointer.
+    const invalid = worldToScreen(viewport, { x: 30, y: 30 });
+    hover(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, invalid.x, invalid.y);
+    await nextTick();
+    expect(
+      wrapper
+        .find('[data-kind="line"][data-entity-id="ab"]')
+        .attributes('data-dimension-candidate'),
+    ).toBeUndefined();
+    expect(
+      Number(wrapper.find('[data-testid="dimension-rubber-band"]').attributes('x2')),
+    ).toBeCloseTo(30);
+
+    // The second pick ends the ghost and starts the existing placement preview.
+    down(pointCircle(wrapper, 'c').element, 300, 200);
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-rubber-band"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="dimension-pick-first"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="dimension-pick-second"]').exists()).toBe(true);
+  });
+
+  it('starts the ghost at a line midpoint and drops it when the anchor disappears', async () => {
+    const wrapper = mountCanvas({ tool: 'dimension' });
+    const viewport = fittedViewport(baseDoc);
+
+    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200);
+    const target = worldToScreen(viewport, { x: 50, y: 40 });
+    hover(wrapper.find('[data-testid="grid"]').element, target.x, target.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-rubber-band"]').attributes('x1')).toBe('50');
+    expect(wrapper.find('[data-testid="dimension-rubber-band"]').attributes('y1')).toBe('0');
+
+    await wrapper.setProps({
+      document: { ...baseDoc, entities: baseDoc.entities.filter((entity) => entity.id !== 'ab') },
+    });
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-rubber-band"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-pick-first"]').exists()).toBe(false);
+  });
+
+  it('clears the hover and ghost on pointer leave but keeps the pending pick', async () => {
+    const wrapper = mountCanvas({ tool: 'dimension' });
+    const viewport = fittedViewport(baseDoc);
+
+    down(pointCircle(wrapper, 'a').element, 300, 200);
+    const target = worldToScreen(viewport, { x: 50, y: 50 });
+    hover(wrapper.find('[data-testid="grid"]').element, target.x, target.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-rubber-band"]').exists()).toBe(true);
+
+    wrapper.find('svg').element.dispatchEvent(new MouseEvent('pointerleave'));
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-rubber-band"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-pick-first"]').exists()).toBe(true);
+
+    hover(wrapper.find('[data-testid="grid"]').element, target.x, target.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-rubber-band"]').exists()).toBe(true);
+  });
+
+  it('shows the cut idle cue and highlights corners and piece edges only', async () => {
+    const wrapper = mountCanvas({ document: pieceDoc, tool: 'cut_dimension' });
+    const viewport = fittedViewport(pieceDoc);
+
+    expect(wrapper.find('[data-testid="cut-dimension-hint"]').text()).toBe(
+      'Pick a seamline or cut corner, or a straight edge, of one piece.',
+    );
+
+    const corner = wrapper.find('[data-testid="loop-point-handle"]');
+    const cornerScreen = worldToScreen(viewport, {
+      x: Number(corner.attributes('cx')),
+      y: Number(corner.attributes('cy')),
+    });
+    hover(wrapper.find('[data-testid="grid"]').element, cornerScreen.x, cornerScreen.y);
+    await nextTick();
+    expect(corner.attributes('data-cut-dimension-candidate')).toBe('true');
+    expect(corner.attributes('stroke-width')).toBe('2');
+
+    const edge = wrapper.find('[data-kind="line"][data-entity-id="ab"]');
+    hover(
+      edge.element,
+      worldToScreen(viewport, { x: 50, y: 0 }).x,
+      worldToScreen(viewport, { x: 50, y: 0 }).y,
+    );
+    await nextTick();
+    expect(edge.attributes('data-cut-dimension-candidate')).toBe('true');
+    expect(edge.attributes('stroke-width')).toBe('3');
+    expect(corner.attributes('data-cut-dimension-candidate')).toBeUndefined();
+
+    const nonPiece = mountCanvas({ tool: 'cut_dimension' });
+    const line = nonPiece.find('[data-kind="line"][data-entity-id="ab"]');
+    hover(line.element);
+    await nextTick();
+    expect(line.attributes('data-cut-dimension-candidate')).toBeUndefined();
+  });
+
+  it('marks a cut first corner, draws its ghost and snaps only to the same piece', async () => {
+    const twoPieceDoc: PatternDocument = {
+      ...doc([
+        ...pieceDoc.entities,
+        pt('e', 200, 0),
+        pt('f', 300, 0),
+        pt('g', 300, 100),
+        pt('h', 200, 100),
+        ln('ef', 'e', 'f'),
+        ln('fg', 'f', 'g'),
+        ln('gh', 'g', 'h'),
+        ln('he', 'h', 'e'),
+      ]),
+      pieces: [
+        { id: 'p1', edges: ['ab', 'bc', 'cd', 'da'], allowances: [] },
+        { id: 'p2', edges: ['ef', 'fg', 'gh', 'he'], allowances: [] },
+      ],
+    };
+    const wrapper = mountCanvas({ document: twoPieceDoc, tool: 'cut_dimension' });
+    const viewport = fittedViewport(twoPieceDoc);
+
+    down(pointCircle(wrapper, 'a').element, 300, 200);
+    await nextTick();
+    expect(wrapper.find('[data-testid="cut-dimension-pick-first"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="cut-dimension-hint"]').text()).toBe(
+      'Pick the second anchor on the same piece.',
+    );
+
+    const target = worldToScreen(viewport, { x: 50, y: 50 });
+    hover(wrapper.find('[data-testid="grid"]').element, target.x, target.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="cut-dimension-rubber-band"]').attributes('x1')).toBe('0');
+    expect(wrapper.find('[data-testid="cut-dimension-rubber-band"]').attributes('y1')).toBe('0');
+
+    hover(pointCircle(wrapper, 'e').element, 300, 200);
+    await nextTick();
+    expect(wrapper.find('[data-testid="cut-dimension-rubber-band"]').attributes('x2')).not.toBe(
+      '200',
+    );
+    expect(pointCircle(wrapper, 'e').attributes('data-cut-dimension-candidate')).toBeUndefined();
+
+    hover(pointCircle(wrapper, 'c').element, 300, 200);
+    await nextTick();
+    expect(wrapper.find('[data-testid="cut-dimension-rubber-band"]').attributes('x2')).toBe('100');
+    expect(wrapper.find('[data-testid="cut-dimension-rubber-band"]').attributes('y2')).toBe('100');
+    expect(pointCircle(wrapper, 'c').attributes('data-cut-dimension-candidate')).toBe('true');
+
+    down(pointCircle(wrapper, 'c').element, 300, 200);
+    await nextTick();
+    expect(wrapper.find('[data-testid="cut-dimension-rubber-band"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="cut-dimension-pick-second"]').exists()).toBe(true);
+  });
+
+  it('does not draw cut feedback on a read-only canvas', async () => {
+    const wrapper = mountCanvas({ document: pieceDoc, tool: 'cut_dimension', readOnly: true });
+
+    hover(pointCircle(wrapper, 'a').element);
+    await nextTick();
+    expect(pointCircle(wrapper, 'a').attributes('data-cut-dimension-candidate')).toBeUndefined();
+    expect(wrapper.find('[data-testid="cut-dimension-pick-first"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="cut-dimension-rubber-band"]').exists()).toBe(false);
   });
 });
