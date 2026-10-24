@@ -150,8 +150,11 @@ function segmentMidpoint(segment: LineEndpoints): Vec2 {
   return { x: (segment.start.x + segment.end.x) / 2, y: (segment.start.y + segment.end.y) / 2 };
 }
 
-/** The perpendicular foot of a point on a line's infinite supporting line. */
-function footOnLine(point: Vec2, segment: LineEndpoints): Vec2 | null {
+/**
+ * The perpendicular foot of a point on a line's infinite supporting line, or
+ * `null` when the segment is degenerate and has no direction.
+ */
+export function projectPointOnLine(point: Vec2, segment: LineEndpoints): Vec2 | null {
   const unit = unitDirection(segment);
   if (unit === null) return null;
   return add(segment.start, scale(unit, dot(sub(point, segment.start), unit)));
@@ -189,14 +192,14 @@ function spanForAnchors(
     // Canonical order by entity id: the lower id is the measurement origin.
     const [first, second] = aId <= bId ? [a, b] : [b, a];
     const origin = segmentMidpoint(first.segment);
-    const foot = footOnLine(origin, second.segment);
+    const foot = projectPointOnLine(origin, second.segment);
     return foot === null ? null : { a: origin, b: foot, kinds: ['line', 'line'] };
   }
 
   // After the both-line case, exactly one anchor is a point.
   const pointAnchor = (a.kind === 'point' ? a : b) as { kind: 'point'; point: Vec2 };
   const lineAnchor = (a.kind === 'line' ? a : b) as { kind: 'line'; segment: LineEndpoints };
-  const foot = footOnLine(pointAnchor.point, lineAnchor.segment);
+  const foot = projectPointOnLine(pointAnchor.point, lineAnchor.segment);
   return foot === null ? null : { a: pointAnchor.point, b: foot, kinds: ['point', 'line'] };
 }
 

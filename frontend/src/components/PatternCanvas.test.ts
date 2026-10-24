@@ -827,6 +827,129 @@ describe('PatternCanvas', () => {
     expect(wrapper.emitted('add-point')).toEqual([[expected.x, expected.y]]);
   });
 
+  it('highlights the hovered line and previews the projected point', async () => {
+    const wrapper = mountCanvas({ tool: 'add_point' });
+    const at = screenAt({ x: 50, y: 20 });
+
+    hover(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, at.x, at.y);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="point-on-line-hint"]').text()).toBe(
+      'Click to create a point constrained to this line.',
+    );
+    const ghost = wrapper.find('[data-testid="point-on-line-ghost"]');
+    expect(ghost.attributes('cx')).toBe('50');
+    expect(ghost.attributes('cy')).toBe('0');
+
+    const line = wrapper.find('[data-kind="line"][data-entity-id="ab"]');
+    expect(line.classes()).toContain('text-primary');
+    expect(line.attributes('stroke-width')).toBe('3');
+  });
+
+  it('emits add-point-on-line with the raw pointer for a line click', () => {
+    const wrapper = mountCanvas({ tool: 'add_point' });
+    const at = screenAt({ x: 50, y: 20 });
+
+    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, at.x, at.y);
+
+    const [emitted] = wrapper.emitted('add-point-on-line')!;
+    expect(emitted![0]).toBe('ab');
+    expect(emitted![1]).toBeCloseTo(50, 6);
+    expect(emitted![2]).toBeCloseTo(20, 6);
+    expect(wrapper.emitted('add-point')).toBeUndefined();
+  });
+
+  it('keeps a point snap ahead of the line inference', async () => {
+    const wrapper = mountCanvas({ tool: 'add_point' });
+    const at = screenAt({ x: 3, y: 2 });
+
+    hover(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, at.x, at.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="point-on-line-hint"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="point-on-line-ghost"]').exists()).toBe(false);
+
+    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, at.x, at.y);
+
+    expect(wrapper.emitted('add-point-on-line')).toBeUndefined();
+    expect(wrapper.emitted('add-point')).toEqual([[0, 0]]);
+  });
+
+  it('falls back to a free point on a degenerate line', () => {
+    const degenerate = doc([pt('a', 0, 0), pt('z', 0, 0), ln('zero', 'a', 'z')]);
+    const wrapper = mountCanvas({ tool: 'add_point', document: degenerate });
+    const at = worldToScreen(fittedViewport(degenerate), { x: 0, y: 0 });
+
+    down(wrapper.find('[data-kind="line"][data-entity-id="zero"]').element, at.x, at.y);
+
+    expect(wrapper.emitted('add-point-on-line')).toBeUndefined();
+    expect(wrapper.emitted('add-point')).toHaveLength(1);
+  });
+
+  it('clears the line inference on pointer leave, tool change and Escape', async () => {
+    const wrapper = mountCanvas({ tool: 'add_point' });
+    const line = () => wrapper.find('[data-kind="line"][data-entity-id="ab"]');
+    const at = screenAt({ x: 50, y: 20 });
+
+    hover(line().element, at.x, at.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="point-on-line-hint"]').exists()).toBe(true);
+
+    // Moving off every entity drops the signal.
+    const empty = screenAt({ x: 50, y: 60 });
+    pointerMove(wrapper, empty.x, empty.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="point-on-line-hint"]').exists()).toBe(false);
+
+    hover(line().element, at.x, at.y);
+    await nextTick();
+    wrapper.find('svg').element.dispatchEvent(new MouseEvent('pointerleave', { bubbles: true }));
+    await nextTick();
+    expect(wrapper.find('[data-testid="point-on-line-hint"]').exists()).toBe(false);
+
+    hover(line().element, at.x, at.y);
+    await nextTick();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+    expect(wrapper.find('[data-testid="point-on-line-hint"]').exists()).toBe(false);
+
+    hover(line().element, at.x, at.y);
+    await nextTick();
+    await wrapper.setProps({ tool: 'select' });
+    expect(wrapper.find('[data-testid="point-on-line-hint"]').exists()).toBe(false);
+  });
+
+  it('recomputes the line inference when the document changes', async () => {
+    const wrapper = mountCanvas({ tool: 'add_point' });
+    const at = screenAt({ x: 50, y: 20 });
+
+    hover(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, at.x, at.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="point-on-line-hint"]').exists()).toBe(true);
+
+    // The line survives an unrelated document change: the signal stays.
+    const withExtra = doc([...baseDoc.entities, pt('extra', 300, 300)]);
+    await wrapper.setProps({ document: withExtra });
+    expect(wrapper.find('[data-testid="point-on-line-hint"]').exists()).toBe(true);
+
+    const withoutLine = doc(baseDoc.entities.filter((entity) => entity.id !== 'ab'));
+    await wrapper.setProps({ document: withoutLine });
+
+    expect(wrapper.find('[data-testid="point-on-line-hint"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="point-on-line-ghost"]').exists()).toBe(false);
+  });
+
+  it('shows no line inference on a read-only document', async () => {
+    const wrapper = mountCanvas({ tool: 'add_point', readOnly: true });
+    const at = screenAt({ x: 50, y: 20 });
+
+    hover(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, at.x, at.y);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="point-on-line-hint"]').exists()).toBe(false);
+    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, at.x, at.y);
+    expect(wrapper.emitted('add-point-on-line')).toBeUndefined();
+  });
+
   it('commits a line between two existing points as endpoints', async () => {
     const wrapper = mountCanvas({ tool: 'add_line' });
 
