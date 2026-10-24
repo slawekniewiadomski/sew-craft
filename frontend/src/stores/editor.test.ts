@@ -5,7 +5,6 @@ import {
   executeCommand,
   getEntity,
   type Command,
-  type LegacyPatternDocument,
   type PatternDocument,
   type PointEntity,
 } from '@sewcraft/geometry';
@@ -253,38 +252,17 @@ describe('editor store', () => {
     expect(store.canRedo).toBe(false);
   });
 
-  it('load upgrades a 0.1 seam chain into one piece', () => {
+  it('refuses a 0.1 seam chain instead of migrating it', () => {
     const store = useEditorStore();
-    const legacy: LegacyPatternDocument = {
+    const legacy = {
       schema: 'sewcraft.pattern/0.1',
       units: 'mm',
-      entities: [
-        point('a', 0, 0),
-        point('b', 100, 0),
-        point('c', 100, 100),
-        point('d', 0, 100),
-        { id: 'bottom', kind: 'line', start: 'a', end: 'b', construction: false },
-        { id: 'right', kind: 'line', start: 'b', end: 'c', construction: false },
-        { id: 'top', kind: 'line', start: 'c', end: 'd', construction: false },
-        { id: 'left', kind: 'line', start: 'd', end: 'a', construction: false },
-      ],
+      entities: [],
       constraints: [],
-      seams: [
-        { id: 's1', edge: 'bottom', width: 10 },
-        { id: 's2', edge: 'right', width: 10 },
-        { id: 's3', edge: 'top', width: 10 },
-        { id: 's4', edge: 'left', width: 10, side: 'right' },
-      ],
+      pieces: [],
     };
 
-    store.load(legacy as PatternDocument);
-
-    expect(store.document.schema).toBe('sewcraft.pattern/0.2');
-    expect(store.document.pieces).toHaveLength(1);
-    expect(store.document.pieces[0]!.allowances).toHaveLength(4);
-    expect(store.document.pieces[0]!.allowances.every((entry) => entry.kind === 'seam')).toBe(true);
-    expect(store.document.seams).toEqual([]);
-    expect(store.journal).toEqual([]);
+    expect(() => store.load(legacy as PatternDocument)).toThrow('Unsupported pattern schema');
   });
 
   it('undo is a no-op with no history', () => {

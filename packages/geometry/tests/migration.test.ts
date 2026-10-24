@@ -5,191 +5,91 @@ import {
   isKnownPatternSchema,
   KNOWN_PATTERN_SCHEMAS,
   normalizeDocument,
-  type Entity,
-  type EntityId,
+  UnsupportedPatternSchemaError,
   type LegacyPatternDocument,
-  type LineEntity,
   type Piece,
-  type PointEntity,
-  type Seam,
 } from '../src/index.js';
 
-const point = (id: string, x: number, y: number): PointEntity => ({
-  id,
-  kind: 'point',
-  x,
-  y,
-  construction: false,
-  fixed: false,
-});
-
-const line = (id: string, start: string, end: string): LineEntity => ({
-  id,
-  kind: 'line',
-  start,
-  end,
-  construction: false,
-});
-
-const square = (prefix: string): Entity[] => [
-  point(`${prefix}-a`, 0, 0),
-  point(`${prefix}-b`, 100, 0),
-  point(`${prefix}-c`, 100, 100),
-  point(`${prefix}-d`, 0, 100),
-  line(`${prefix}-bottom`, `${prefix}-a`, `${prefix}-b`),
-  line(`${prefix}-right`, `${prefix}-b`, `${prefix}-c`),
-  line(`${prefix}-top`, `${prefix}-c`, `${prefix}-d`),
-  line(`${prefix}-left`, `${prefix}-d`, `${prefix}-a`),
-];
-
-const seamsFor = (prefix: string, width = 10): Seam[] => [
-  { id: `${prefix}-s1`, edge: `${prefix}-bottom`, width },
-  { id: `${prefix}-s2`, edge: `${prefix}-right`, width },
-  { id: `${prefix}-s3`, edge: `${prefix}-top`, width },
-  { id: `${prefix}-s4`, edge: `${prefix}-left`, width, side: 'right' },
-];
-
-const legacy = (entities: Entity[], seams: Seam[], pieces?: Piece[]): LegacyPatternDocument => {
-  const document: LegacyPatternDocument = {
-    schema: 'sewcraft.pattern/0.1',
-    units: 'mm',
-    entities,
-    constraints: [],
-    seams,
-  };
-  if (pieces !== undefined) document.pieces = pieces;
-  return document;
-};
-
-const edgeIds = (piece: Piece): EntityId[] => piece.edges;
+const builtIn = { allowance: { width: 10, kind: 'seam' as const } };
 
 describe('normalizeDocument', () => {
-  it('adopts a closed seam chain as one piece with seam allowances', () => {
-    const entities = square('a');
-    const migrated = normalizeDocument(legacy(entities, seamsFor('a')));
-
-    expect(migrated.schema).toBe('sewcraft.pattern/0.2');
-    expect(migrated.pieces).toHaveLength(1);
-
-    const piece = migrated.pieces[0]!;
-    expect(piece.id).toBe('piece-1');
-    expect(new Set(edgeIds(piece))).toEqual(new Set(['a-bottom', 'a-right', 'a-top', 'a-left']));
-    expect(piece.allowances).toHaveLength(4);
-    expect(piece.allowances.every((allowance) => allowance.kind === 'seam')).toBe(true);
-    expect(piece.allowances.every((allowance) => allowance.width === 10)).toBe(true);
-    // The side is discarded.
-    expect('side' in piece.allowances[0]!).toBe(false);
-
-    // Every adopted seam leaves the legacy field, so nothing renders twice.
-    expect(migrated.seams).toEqual([]);
-  });
-
-  it('keeps seams on an open chain on the legacy path', () => {
-    const entities: Entity[] = [point('a', 0, 0), point('b', 100, 0), line('ab', 'a', 'b')];
-    const seams: Seam[] = [{ id: 's1', edge: 'ab', width: 10 }];
-    const migrated = normalizeDocument(legacy(entities, seams));
-
-    expect(migrated.pieces).toEqual([]);
-    expect(migrated.seams).toEqual(seams);
-  });
-
-  it('keeps a closed chain that is only partly seamed on the legacy path', () => {
-    const entities = square('a');
-    const seams = seamsFor('a').slice(0, 3);
-    const migrated = normalizeDocument(legacy(entities, seams));
-
-    expect(migrated.pieces).toEqual([]);
-    expect(migrated.seams).toEqual(seams);
-  });
-
-  it('adopts each closed chain separately', () => {
-    const entities = [...square('a'), ...square('b')];
-    const seams = [...seamsFor('a'), ...seamsFor('b', 5)];
-    const migrated = normalizeDocument(legacy(entities, seams));
-
-    expect(migrated.pieces.map((piece) => piece.id)).toEqual(['piece-1', 'piece-2']);
-    expect(migrated.pieces.map((piece) => piece.allowances[0]!.width)).toEqual([10, 5]);
-    expect(migrated.seams).toEqual([]);
-  });
-
-  it('keeps pieces a document already has and avoids their ids', () => {
-    const existing: Piece = { id: 'piece-1', edges: ['other'], allowances: [] };
-    const migrated = normalizeDocument(legacy(square('a'), seamsFor('a'), [existing]));
-
-    expect(migrated.pieces[0]).toBe(existing);
-    expect(migrated.pieces[1]!.id).toBe('piece-2');
-  });
-
-  it('adds an empty piece list and a 0.2 schema to a document without seams', () => {
-    const migrated = normalizeDocument(legacy(square('a'), []));
-
-    expect(migrated.pieces).toEqual([]);
-    expect(migrated.schema).toBe('sewcraft.pattern/0.2');
-  });
-
-  it('treats a document without a seams field as having none', () => {
-    const source = legacy(square('a'), []);
-    delete source.seams;
-    const migrated = normalizeDocument(source);
-
-    expect(migrated.pieces).toEqual([]);
-    expect(migrated.seams).toEqual([]);
-  });
-
-  it('is idempotent', () => {
-    const once = normalizeDocument(legacy(square('a'), seamsFor('a')));
-    const twice = normalizeDocument(once);
-
-    expect(twice).toEqual(once);
-  });
-
-  it('returns a 0.2 document untouched apart from its schema', () => {
+  it('returns a current document untouched', () => {
     const piece: Piece = { id: 'p', edges: ['a'], allowances: [] };
     const current = { ...createEmptyDocument(), pieces: [piece] };
 
     expect(normalizeDocument(current)).toBe(current);
   });
 
-  it('adds a piece list to a 0.2 document written without one', () => {
+  it('adds a piece list to a current document written without one', () => {
     const current = { ...createEmptyDocument() } as LegacyPatternDocument;
     delete current.pieces;
 
     const migrated = normalizeDocument(current);
 
-    expect(migrated.schema).toBe('sewcraft.pattern/0.2');
+    expect(migrated.schema).toBe('sewcraft.pattern/0.3');
     expect(migrated.pieces).toEqual([]);
   });
 
-  it('drops the seams field only for adopted edges', () => {
-    const entities = [...square('a'), ...square('b')];
-    const seams = [...seamsFor('a'), ...seamsFor('b').slice(0, 3)];
-    const migrated = normalizeDocument(legacy(entities, seams));
+  it('refuses a 0.2 document instead of migrating it', () => {
+    const legacy = {
+      ...createEmptyDocument(),
+      schema: 'sewcraft.pattern/0.2',
+    } as LegacyPatternDocument;
 
-    expect(migrated.pieces).toHaveLength(1);
-    expect(migrated.seams).toHaveLength(3);
-    expect(migrated.seams.every((seam) => seam.edge.startsWith('b-'))).toBe(true);
+    expect(() => normalizeDocument(legacy)).toThrow(UnsupportedPatternSchemaError);
+  });
+
+  it('refuses a 0.1 document instead of migrating it', () => {
+    const legacy = {
+      ...createEmptyDocument(),
+      schema: 'sewcraft.pattern/0.1',
+    } as LegacyPatternDocument;
+
+    expect(() => normalizeDocument(legacy)).toThrow(UnsupportedPatternSchemaError);
+  });
+
+  it('names the refused schema on the error', () => {
+    const legacy = {
+      ...createEmptyDocument(),
+      schema: 'sewcraft.pattern/0.2',
+    } as LegacyPatternDocument;
+
+    try {
+      normalizeDocument(legacy);
+      expect.unreachable('normalizeDocument should have thrown');
+    } catch (error) {
+      expect(error).toBeInstanceOf(UnsupportedPatternSchemaError);
+      expect((error as UnsupportedPatternSchemaError).schema).toBe('sewcraft.pattern/0.2');
+      expect((error as Error).name).toBe('UnsupportedPatternSchemaError');
+    }
+  });
+
+  it('is idempotent', () => {
+    const once = normalizeDocument(createEmptyDocument());
+    const twice = normalizeDocument(once);
+
+    expect(twice).toBe(once);
   });
 });
 
 describe('known pattern schemas', () => {
-  it('lists the legacy and current schemas', () => {
-    expect(KNOWN_PATTERN_SCHEMAS).toEqual(['sewcraft.pattern/0.1', 'sewcraft.pattern/0.2']);
+  it('lists only the current schema', () => {
+    expect(KNOWN_PATTERN_SCHEMAS).toEqual(['sewcraft.pattern/0.3']);
   });
 
-  it('accepts both schemas this build understands', () => {
-    expect(isKnownPatternSchema('sewcraft.pattern/0.1')).toBe(true);
-    expect(isKnownPatternSchema('sewcraft.pattern/0.2')).toBe(true);
+  it('accepts the schema this build understands', () => {
+    expect(isKnownPatternSchema('sewcraft.pattern/0.3')).toBe(true);
   });
 
-  it('refuses a newer or hand-edited schema', () => {
-    expect(isKnownPatternSchema('sewcraft.pattern/0.3')).toBe(false);
+  it('refuses a legacy, newer or hand-edited schema', () => {
+    expect(isKnownPatternSchema('sewcraft.pattern/0.1')).toBe(false);
+    expect(isKnownPatternSchema('sewcraft.pattern/0.2')).toBe(false);
+    expect(isKnownPatternSchema('sewcraft.pattern/0.4')).toBe(false);
     expect(isKnownPatternSchema('')).toBe(false);
   });
 });
 
 describe('default allowance normalisation', () => {
-  const builtIn = { allowance: { width: 10, kind: 'seam' } };
-
   it('adds the built-in default to a current document without one', () => {
     const piece: Piece = {
       id: 'p',
@@ -205,13 +105,6 @@ describe('default allowance normalisation', () => {
     expect(migrated.defaults).toEqual(builtIn);
     expect(migrated.pieces).toEqual([piece]);
     expect(migrated.pieces[0]!.allowances).toEqual([{ edge: 'a', width: 15 }]);
-  });
-
-  it('adds the built-in default on the 0.1 path without touching adopted allowances', () => {
-    const migrated = normalizeDocument(legacy(square('a'), seamsFor('a')));
-
-    expect(migrated.defaults).toEqual(builtIn);
-    expect(migrated.pieces[0]!.allowances).toHaveLength(4);
   });
 
   it('keeps an explicit null default', () => {

@@ -2,6 +2,7 @@ import { arcExtents, arcPoints, arcThroughPoints } from './arc.js';
 import { MIN_RADIUS } from './circle.js';
 import { derivedDimensionGeometry, dimensionGeometry } from './dimension.js';
 import { allPoints } from './document.js';
+import { textLayout } from './text.js';
 import type { EntityId, PatternDocument, PointEntity } from './types.js';
 
 /** An axis-aligned rectangle in world coordinates, with `min` <= `max`. */
@@ -201,6 +202,18 @@ export function entitiesInRect(document: PatternDocument, rect: Rect, mode: Rect
             box.maxX >= rect.minX &&
             box.minY <= rect.maxY &&
             box.maxY >= rect.minY;
+      if (hit) hits.push(entity.id);
+      continue;
+    }
+
+    if (entity.kind === 'text') {
+      const anchor = points.get(entity.anchor);
+      const layout = textLayout(entity, anchor === undefined ? null : { x: anchor.x, y: anchor.y });
+      if (layout === null) continue;
+      const hit =
+        mode === 'window'
+          ? layout.corners.every((point) => pointInRect(point, rect))
+          : convexOverlap(layout.corners, corners);
       if (hit) hits.push(entity.id);
       continue;
     }

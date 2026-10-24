@@ -168,6 +168,7 @@ const KIND_LABELS: Record<Entity['kind'], string> = {
   curve: 'Curve',
   arc: 'Arc',
   circle: 'Circle',
+  text: 'Text',
 };
 
 const KIND_NOUNS: Record<Entity['kind'], string> = {
@@ -176,6 +177,7 @@ const KIND_NOUNS: Record<Entity['kind'], string> = {
   curve: 'curve',
   arc: 'arc',
   circle: 'circle',
+  text: 'text',
 };
 
 const KIND_ICONS: Record<Entity['kind'], RibbonIconName> = {
@@ -184,6 +186,7 @@ const KIND_ICONS: Record<Entity['kind'], RibbonIconName> = {
   curve: 'curve',
   arc: 'arc',
   circle: 'circle',
+  text: 'text',
 };
 
 const kindNoun = computed(() => KIND_NOUNS[props.entity.kind]);
@@ -402,7 +405,7 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
           </SidebarField>
         </template>
 
-        <template v-else>
+        <template v-else-if="props.entity.geometry.kind === 'circle'">
           <SidebarField label="Centre" mono data-testid="entity-circle-center">
             {{ props.entity.geometry.center }}
           </SidebarField>

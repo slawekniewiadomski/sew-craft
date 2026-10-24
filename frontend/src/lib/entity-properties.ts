@@ -8,6 +8,7 @@ import {
   dimensionState,
   dimensionValue,
   getEntity,
+  isConstruction,
   measureLinearDimension,
   type CircleEntity,
   type Constraint,
@@ -51,8 +52,11 @@ export type ArcGeometry = {
 /** Geometry a circle contributes to the inspector. */
 export type CircleGeometry = { kind: 'circle'; center: EntityId; rim: EntityId };
 
+/** A label's anchor and content, shown as read-only metadata. */
+export type TextGeometry = { kind: 'text'; anchor: EntityId; content: string };
+
 export type EntityGeometry =
-  PointGeometry | LineGeometry | CurveGeometry | CircleGeometry | ArcGeometry;
+  PointGeometry | LineGeometry | CurveGeometry | CircleGeometry | ArcGeometry | TextGeometry;
 
 /**
  * The derived circle measurements of an arc, all recomputed from its three
@@ -158,6 +162,8 @@ function geometryOf(entity: Entity): EntityGeometry {
       return { kind: 'arc', start: entity.start, end: entity.end, through: entity.through };
     case 'circle':
       return { kind: 'circle', center: entity.center, rim: entity.rim };
+    case 'text':
+      return { kind: 'text', anchor: entity.anchor, content: entity.content };
   }
 }
 
@@ -228,6 +234,8 @@ function constraintActsOnEntity(
     const referencePoints = [entity.center, entity.rim];
     return constraintEntityIds(constraint).some((id) => referencePoints.includes(id));
   }
+
+  if (entity.kind === 'text') return false;
 
   switch (constraint.type) {
     case 'distance':
@@ -345,7 +353,7 @@ export function entityProperties(
   return {
     id: entity.id,
     kind: entity.kind,
-    construction: entity.construction,
+    construction: isConstruction(entity),
     fixed: entity.kind === 'point' ? entity.fixed : null,
     geometry: geometryOf(entity),
     length:

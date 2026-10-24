@@ -5,82 +5,43 @@ import UpgradeDocumentDialog from './UpgradeDocumentDialog.vue';
 
 enableAutoUnmount(afterEach);
 
-describe('UpgradeDocumentDialog', () => {
-  it('names both schemas for an older document and focuses Cancel', () => {
-    const wrapper = mount(UpgradeDocumentDialog, {
-      props: { savedSchema: 'sewcraft.pattern/0.1', editorSchema: 'sewcraft.pattern/0.2' },
-      attachTo: document.body,
-    });
+const props = {
+  savedSchema: 'sewcraft.pattern/0.2',
+  editorSchema: 'sewcraft.pattern/0.3',
+};
 
-    expect(wrapper.find('[data-testid="upgrade-dialog-title"]').text()).toBe('Save format upgrade');
-    expect(wrapper.find('[data-testid="saved-schema"]').text()).toBe('sewcraft.pattern/0.1');
-    expect(wrapper.find('[data-testid="editor-schema"]').text()).toBe('sewcraft.pattern/0.2');
-    expect(wrapper.find('[data-testid="upgrade-update"]').text()).toBe('Update and open');
-    expect(wrapper.find('[data-testid="upgrade-readonly"]').text()).toBe('Read-only');
+describe('UpgradeDocumentDialog', () => {
+  it('explains the supported schema and focuses Cancel', () => {
+    const wrapper = mount(UpgradeDocumentDialog, { props, attachTo: document.body });
+
+    expect(wrapper.find('[data-testid="upgrade-dialog-title"]').text()).toBe(
+      'Unsupported project format',
+    );
+    expect(wrapper.find('[data-testid="saved-schema"]').text()).toBe(props.savedSchema);
+    expect(wrapper.find('[data-testid="editor-schema"]').text()).toBe(props.editorSchema);
+    expect(wrapper.text()).toContain('never migrated or replaced silently');
+    expect(wrapper.find('[data-testid="upgrade-update"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="upgrade-readonly"]').text()).toBe('Open read-only');
     expect(document.activeElement).toBe(wrapper.find('[data-testid="upgrade-cancel"]').element);
   });
 
-  it('describes an unknown newer schema without an update action', () => {
-    const wrapper = mount(UpgradeDocumentDialog, {
-      props: {
-        savedSchema: 'sewcraft.pattern/0.3',
-        editorSchema: 'sewcraft.pattern/0.2',
-        unknown: true,
-      },
-    });
-
-    expect(wrapper.find('[data-testid="upgrade-dialog-title"]').text()).toBe(
-      'Project saved by a newer version',
-    );
-    expect(wrapper.text()).toContain('newer version of SewCraft');
-    expect(wrapper.find('[data-testid="unknown-schema"]').text()).toBe('sewcraft.pattern/0.3');
-    expect(wrapper.find('[data-testid="upgrade-update"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="upgrade-readonly"]').text()).toBe('Open read-only');
-  });
-
-  it('traps Tab across the three actions and handles other keys', async () => {
-    const wrapper = mount(UpgradeDocumentDialog, {
-      props: { savedSchema: 'sewcraft.pattern/0.1', editorSchema: 'sewcraft.pattern/0.2' },
-      attachTo: document.body,
-    });
+  it('traps Tab across the two actions and leaves other keys alone', async () => {
+    const wrapper = mount(UpgradeDocumentDialog, { props, attachTo: document.body });
     const overlay = wrapper.find('[data-testid="upgrade-dialog"]');
     const cancel = wrapper.find('[data-testid="upgrade-cancel"]').element;
-    const update = wrapper.find('[data-testid="upgrade-update"]').element;
+    const readOnly = wrapper.find('[data-testid="upgrade-readonly"]').element;
 
     expect(document.activeElement).toBe(cancel);
 
     await overlay.trigger('keydown', { key: 'Tab', shiftKey: true });
-    expect(document.activeElement).toBe(update);
+    expect(document.activeElement).toBe(readOnly);
 
     await overlay.trigger('keydown', { key: 'Tab' });
     expect(document.activeElement).toBe(cancel);
-
-    const middle = new KeyboardEvent('keydown', { key: 'Tab', cancelable: true });
-    (wrapper.find('[data-testid="upgrade-readonly"]').element as HTMLElement).focus();
-    overlay.element.dispatchEvent(middle);
-    expect(middle.defaultPrevented).toBe(false);
 
     const other = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
     overlay.element.dispatchEvent(other);
     expect(other.defaultPrevented).toBe(false);
-  });
-
-  it('traps Tab on the read-only action for an unknown schema', async () => {
-    const wrapper = mount(UpgradeDocumentDialog, {
-      props: {
-        savedSchema: 'sewcraft.pattern/0.3',
-        editorSchema: 'sewcraft.pattern/0.2',
-        unknown: true,
-      },
-      attachTo: document.body,
-    });
-    const overlay = wrapper.find('[data-testid="upgrade-dialog"]');
-    const readOnly = wrapper.find('[data-testid="upgrade-readonly"]').element;
-    const cancel = wrapper.find('[data-testid="upgrade-cancel"]').element;
-
-    (readOnly as HTMLElement).focus();
-    await overlay.trigger('keydown', { key: 'Tab' });
-    expect(document.activeElement).toBe(cancel);
   });
 
   it('restores the focus that was active before it opened', () => {
@@ -88,10 +49,7 @@ describe('UpgradeDocumentDialog', () => {
     document.body.append(trigger);
     trigger.focus();
 
-    const wrapper = mount(UpgradeDocumentDialog, {
-      props: { savedSchema: 'sewcraft.pattern/0.1', editorSchema: 'sewcraft.pattern/0.2' },
-      attachTo: document.body,
-    });
+    const wrapper = mount(UpgradeDocumentDialog, { props, attachTo: document.body });
     expect(document.activeElement).not.toBe(trigger);
 
     wrapper.unmount();
@@ -99,16 +57,12 @@ describe('UpgradeDocumentDialog', () => {
     trigger.remove();
   });
 
-  it('emits update, readonly and cancel', async () => {
-    const wrapper = mount(UpgradeDocumentDialog, {
-      props: { savedSchema: 'sewcraft.pattern/0.1', editorSchema: 'sewcraft.pattern/0.2' },
-    });
+  it('emits readonly and cancel', async () => {
+    const wrapper = mount(UpgradeDocumentDialog, { props });
 
-    await wrapper.find('[data-testid="upgrade-update"]').trigger('click');
     await wrapper.find('[data-testid="upgrade-readonly"]').trigger('click');
     await wrapper.find('[data-testid="upgrade-cancel"]').trigger('click');
 
-    expect(wrapper.emitted('update')).toHaveLength(1);
     expect(wrapper.emitted('readonly')).toHaveLength(1);
     expect(wrapper.emitted('cancel')).toHaveLength(1);
   });

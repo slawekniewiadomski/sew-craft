@@ -74,12 +74,11 @@ describe('createEmptyDocument', () => {
     const document = createEmptyDocument();
 
     expect(document.schema).toBe(PATTERN_SCHEMA);
-    expect(document.schema).toBe('sewcraft.pattern/0.2');
+    expect(document.schema).toBe('sewcraft.pattern/0.3');
     expect(document.units).toBe('mm');
     expect(document.entities).toEqual([]);
     expect(document.constraints).toEqual([]);
     expect(document.pieces).toEqual([]);
-    expect(document.seams).toEqual([]);
   });
 });
 
@@ -369,5 +368,34 @@ describe('bounds', () => {
     expect(bounds(missing)).toEqual({ min: { x: 0, y: 0 }, max: { x: 0, y: 0 } });
     expect(bounds(notFinite)).toEqual({ min: { x: 0, y: 0 }, max: { x: 0, y: 0 } });
     expect(bounds(nonPoint)).toEqual({ min: { x: 0, y: 0 }, max: { x: 0, y: 0 } });
+  });
+});
+
+describe('entityPoints text', () => {
+  it('resolves a label to its anchor point', () => {
+    const anchor = point('a', 1, 2);
+    const document = { ...createEmptyDocument(), entities: [anchor] };
+    const text = {
+      id: 't',
+      kind: 'text' as const,
+      piece: 'p',
+      anchor: 'a',
+      content: 'x',
+    };
+
+    expect(entityPoints(document, text)).toEqual([anchor]);
+  });
+
+  it('throws when the anchor is missing', () => {
+    const document = createEmptyDocument();
+    const text = {
+      id: 't',
+      kind: 'text' as const,
+      piece: 'p',
+      anchor: 'missing',
+      content: 'x',
+    };
+
+    expect(() => entityPoints(document, text)).toThrow('references unknown point: missing');
   });
 });

@@ -1,29 +1,21 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button';
 import { useDialogFocus } from '@/composables/use-dialog-focus';
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
 
-const props = withDefaults(
-  defineProps<{
-    /** The schema the stored document was written with. */
-    savedSchema: string;
-    /** The schema this editor writes. */
-    editorSchema: string;
-    /** True when the stored schema is newer than this build understands. */
-    unknown?: boolean;
-  }>(),
-  { unknown: false },
-);
+defineProps<{
+  /** The schema the stored document was written with. */
+  savedSchema: string;
+  /** The schema this editor writes. */
+  editorSchema: string;
+}>();
 
-const emit = defineEmits<{ update: []; readonly: []; cancel: [] }>();
+const emit = defineEmits<{ readonly: []; cancel: [] }>();
 
 const cancelButton = ref<{ $el: HTMLButtonElement } | null>(null);
 const readOnlyButton = ref<{ $el: HTMLButtonElement } | null>(null);
-const updateButton = ref<{ $el: HTMLButtonElement } | null>(null);
 
-const lastButton = computed(() => (props.unknown ? readOnlyButton.value : updateButton.value));
-
-const { trapTab } = useDialogFocus(cancelButton, cancelButton, lastButton);
+const { trapTab } = useDialogFocus(cancelButton, cancelButton, readOnlyButton);
 </script>
 
 <template>
@@ -44,29 +36,20 @@ const { trapTab } = useDialogFocus(cancelButton, cancelButton, lastButton);
         class="text-sm font-semibold"
         data-testid="upgrade-dialog-title"
       >
-        {{ unknown ? 'Project saved by a newer version' : 'Save format upgrade' }}
+        Unsupported project format
       </h2>
 
-      <template v-if="unknown">
-        <p id="upgrade-dialog-body" class="text-[13px] text-muted-foreground">
-          This project was saved by a newer version of SewCraft. It is never migrated or replaced
-          silently. You can open it read-only, or cancel and go back to Projects.
-        </p>
-        <p class="text-2xs text-muted-foreground" data-testid="unknown-schema">{{ savedSchema }}</p>
-      </template>
-
-      <template v-else>
-        <p id="upgrade-dialog-body" class="text-[13px] text-muted-foreground">
-          This project was saved in an older format. Updating rewrites the project and keeps the old
-          version as a checkpoint.
-        </p>
-        <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-2xs">
-          <dt class="text-muted-foreground">saved</dt>
-          <dd class="font-mono" data-testid="saved-schema">{{ savedSchema }}</dd>
-          <dt class="text-muted-foreground">editor</dt>
-          <dd class="font-mono" data-testid="editor-schema">{{ editorSchema }}</dd>
-        </dl>
-      </template>
+      <p id="upgrade-dialog-body" class="text-[13px] text-muted-foreground">
+        This build reads <span class="font-mono">{{ editorSchema }}</span> only. The stored project
+        was saved as <span class="font-mono">{{ savedSchema }}</span> and is never migrated or
+        replaced silently. Open it read-only, or cancel and go back to Projects.
+      </p>
+      <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-2xs">
+        <dt class="text-muted-foreground">saved</dt>
+        <dd class="font-mono" data-testid="saved-schema">{{ savedSchema }}</dd>
+        <dt class="text-muted-foreground">editor</dt>
+        <dd class="font-mono" data-testid="editor-schema">{{ editorSchema }}</dd>
+      </dl>
 
       <div class="flex flex-wrap justify-end gap-2">
         <Button
@@ -85,16 +68,7 @@ const { trapTab } = useDialogFocus(cancelButton, cancelButton, lastButton);
           data-testid="upgrade-readonly"
           @click="emit('readonly')"
         >
-          {{ unknown ? 'Open read-only' : 'Read-only' }}
-        </Button>
-        <Button
-          v-if="!unknown"
-          ref="updateButton"
-          size="sm"
-          data-testid="upgrade-update"
-          @click="emit('update')"
-        >
-          Update and open
+          Open read-only
         </Button>
       </div>
     </div>

@@ -112,6 +112,7 @@ function endpointIds(entity: Entity): [EntityId, EntityId] | null {
       return [entity.start, entity.end];
     case 'point':
     case 'circle':
+    case 'text':
       return null;
   }
 }

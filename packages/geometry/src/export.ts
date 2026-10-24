@@ -2,6 +2,7 @@ import { arcGeometry, svgArcCommand } from './arc.js';
 import { circleGeometry } from './circle.js';
 import { bounds, getEntity } from './document.js';
 import { formatSvgNumber as formatNumber } from './number.js';
+import { isCut } from './roles.js';
 import { pieceCutBounds, pieceCutLoop, pieceFoldLines, pieceLoop, pieceMetrics } from './piece.js';
 import {
   PATTERN_SCHEMA,
@@ -132,7 +133,7 @@ function renderEntities(document: PatternDocument): { cut: string[]; constructio
   const construction: string[] = [];
 
   for (const entity of document.entities) {
-    if (entity.kind === 'point') continue;
+    if (entity.kind === 'point' || entity.kind === 'text') continue;
 
     const element =
       entity.kind === 'line'
@@ -144,7 +145,7 @@ function renderEntities(document: PatternDocument): { cut: string[]; constructio
             : curveElement(document, entity);
     if (element === null) continue;
 
-    (entity.construction ? construction : cut).push(element);
+    (isCut(entity) ? cut : construction).push(element);
   }
 
   return { cut, construction };

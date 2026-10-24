@@ -36,6 +36,7 @@ import {
   type EntityId,
   inferDimensionOrientation,
   inferOrientationFromSpan,
+  isConstruction,
   isCornerRoundDerived,
   lineEndpoints,
   type LineEntity,
@@ -1598,10 +1599,10 @@ function pointClass(point: PointEntity): string {
   ) {
     return 'fill-accent stroke-accent-foreground';
   }
-  return point.construction ? 'fill-muted-foreground' : 'fill-foreground';
+  return isConstruction(point) ? 'fill-muted-foreground' : 'fill-foreground';
 }
 
-function entityClass(entity: { id: EntityId; construction: boolean }): string {
+function entityClass(entity: { id: EntityId; construction?: boolean; role?: 'construction' | 'annotation' }): string {
   if (pointOnLineHover.value?.lineId === entity.id) return 'text-primary';
   if (
     dimensionPickLineIds.value.has(entity.id) ||
@@ -1618,7 +1619,7 @@ function entityClass(entity: { id: EntityId; construction: boolean }): string {
     return 'text-primary';
   }
   if (marqueeCandidates.value.has(entity.id)) return 'text-primary opacity-60';
-  return entity.construction ? 'text-muted-foreground' : 'text-foreground';
+  return isConstruction(entity) ? 'text-muted-foreground' : 'text-foreground';
 }
 
 function lineWidth(id: EntityId): number {

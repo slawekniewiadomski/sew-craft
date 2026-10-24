@@ -221,7 +221,7 @@ describe('add_corner_round', () => {
       line('l2', 'c', 'b', true),
     );
     expect(() => applyCommand(mixed, addRound())).toThrow(
-      'Both lines must be cut edges or both construction.',
+      'Both lines must share a role.',
     );
 
     const third = documentOf(

@@ -11,12 +11,11 @@ import {
   dimensionValue,
   findDistanceConstraint,
   getEntity,
+  isConstruction,
   isDrivenDimension,
-  isKnownPatternSchema,
   isLineAnchor,
   measureDistanceDimension,
   measureLinearDimension,
-  normalizeDocument,
   ALLOWANCE_KIND_LABELS,
   PATTERN_SCHEMA,
   seamForEdge,
@@ -196,14 +195,14 @@ const visibleDocument = computed(() =>
     ? pattern.value
     : {
         ...pattern.value,
-        entities: pattern.value.entities.filter((entity) => !entity.construction),
+        entities: pattern.value.entities.filter((entity) => !isConstruction(entity)),
       },
 );
 
 /** Every line, curve, arc and circle, so any edge can be converted between guide and cut. */
 const edges = computed(() =>
   pattern.value.entities
-    .filter((entity) => entity.kind !== 'point')
+    .filter((entity) => entity.kind !== 'point' && entity.kind !== 'text')
     .map((entity) => {
       const seam = seamForEdge(pattern.value, entity.id);
       const piece = pattern.value.pieces.find((candidate) => candidate.edges.includes(entity.id));
@@ -212,7 +211,7 @@ const edges = computed(() =>
         id: entity.id,
         kind: entity.kind,
         label: edgeLabel(pattern.value, entity.id),
-        construction: entity.construction,
+        construction: isConstruction(entity),
         seamWidth: seam?.width ?? null,
         pieceId: piece?.id ?? null,
         allowanceKind: allowance === undefined ? null : (allowance.kind ?? 'seam'),
@@ -1264,8 +1263,6 @@ type SaveOutcome = 'saved' | 'retry' | 'stop';
 
 interface SaveOptions {
   origin?: SaveOrigin;
-  /** The schema the stored document had, so the server archives it first. */
-  expectedSchema?: string;
   /** Keep the request alive when the page is hidden or unloading. */
   keepalive?: boolean;
 }
@@ -1343,8 +1340,8 @@ async function loadPattern(): Promise<void> {
 }
 
 /**
- * Adopt a stored pattern. An older known schema is migrated only through the
- * upgrade modal; an unknown schema is rendered read-only and never normalised.
+ * Adopt a stored pattern. This build reads schema 0.3 only; anything else is
+ * rendered read-only and never migrated, copied or rewritten.
  */
 function applySnapshot(snapshot: Pattern): void {
   patternName.value = snapshot.name;
@@ -1358,24 +1355,6 @@ function applySnapshot(snapshot: Pattern): void {
   if (stored.schema === PATTERN_SCHEMA) {
     if (!isRenderableDocument(stored)) throw new Error(unreadableMessage(snapshot.name));
     editor.markLoaded(stored, snapshot.version, snapshot.saved_at);
-    return;
-  }
-
-  if (isKnownPatternSchema(stored.schema)) {
-    if (!Array.isArray(stored.entities) || !Array.isArray(stored.constraints)) {
-      throw new Error(unreadableMessage(snapshot.name));
-    }
-    const migrated = normalizeDocument(stored);
-    editor.markLoaded(migrated, snapshot.version, snapshot.saved_at);
-    editor.setReadOnly(true);
-    pendingUpgrade.value = {
-      stored,
-      document: migrated,
-      schema: stored.schema,
-      version: snapshot.version,
-      savedAt: snapshot.saved_at,
-      unknown: false,
-    };
     return;
   }
 
@@ -1398,7 +1377,7 @@ function applySnapshot(snapshot: Pattern): void {
  */
 async function persist(
   expectedVersion: number | null,
-  { origin = 'manual', expectedSchema, keepalive = false }: SaveOptions = {},
+  { origin = 'manual', keepalive = false }: SaveOptions = {},
 ): Promise<SaveOutcome> {
   const snapshot = pattern.value;
   editor.markSaving();
@@ -1407,7 +1386,6 @@ async function persist(
     const payload = {
       document: snapshot,
       expected_version: expectedVersion,
-      ...(expectedSchema === undefined ? {} : { expected_schema: expectedSchema }),
       ...(origin === 'autosave' ? { origin } : {}),
     };
 
@@ -1479,40 +1457,11 @@ function overwrite(): void {
   });
 }
 
-async function updateDocument(): Promise<void> {
-  const pending = pendingUpgrade.value;
-  if (pending === null || editor.saveState === 'saving') return;
-
-  if ((await persist(pending.version, { expectedSchema: pending.schema })) !== 'saved') {
-    // A stale version during an upgrade must reload, not run the generic
-    // overwrite path: that path would write the migrated document without
-    // archiving the stored one.
-    if (conflict.value !== null) {
-      conflict.value = null;
-      editor.markSaveFailed();
-      error.value = 'The project changed elsewhere. Reload the project to upgrade it.';
-      return;
-    }
-
-    editor.loadRaw(pending.stored);
-    editor.setReadOnly(true);
-  } else {
-    editor.setReadOnly(false);
-  }
-
-  pendingUpgrade.value = null;
-}
-
 function openReadOnlyDocument(): void {
   const pending = pendingUpgrade.value;
   if (pending === null) return;
 
-  if (pending.unknown) {
-    editor.markReadOnlyLoaded(pending.stored, pending.version, pending.savedAt);
-  } else {
-    editor.markLoaded(pending.document, pending.version, pending.savedAt);
-  }
-
+  editor.markReadOnlyLoaded(pending.stored, pending.version, pending.savedAt);
   editor.setReadOnly(true);
   pendingUpgrade.value = null;
 }
@@ -2165,8 +2114,6 @@ onBeforeUnmount(() => {
         v-if="pendingUpgrade"
         :saved-schema="pendingUpgrade.schema"
         :editor-schema="PATTERN_SCHEMA"
-        :unknown="pendingUpgrade.unknown"
-        @update="updateDocument"
         @readonly="openReadOnlyDocument"
         @cancel="cancelUpgrade"
       />

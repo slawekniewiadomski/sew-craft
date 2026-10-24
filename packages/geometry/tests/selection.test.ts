@@ -340,3 +340,34 @@ describe('dimensionsInRect', () => {
     expect(dimensionsInRect(withoutPiece, rect(-100, -100, 200, 200), 'crossing')).toEqual([]);
   });
 });
+
+describe('entitiesInRect text', () => {
+  const text = {
+    id: 't',
+    kind: 'text' as const,
+    piece: 'p',
+    anchor: 'a',
+    content: 'hello',
+  };
+
+  it('hits a label box in crossing and window modes', () => {
+    const document = documentOf([point('a', 10, 10), text]);
+
+    expect(
+      entitiesInRect(document, { minX: 20, minY: 5, maxX: 30, maxY: 9 }, 'crossing'),
+    ).toContain('t');
+    expect(
+      entitiesInRect(document, { minX: 0, minY: 0, maxX: 40, maxY: 20 }, 'window'),
+    ).toContain('t');
+    expect(
+      entitiesInRect(document, { minX: 0, minY: 0, maxX: 12, maxY: 5 }, 'window'),
+    ).not.toContain('t');
+  });
+
+  it('skips a label whose anchor is missing', () => {
+    const document = documentOf([text]);
+    expect(
+      entitiesInRect(document, { minX: -100, minY: -100, maxX: 100, maxY: 100 }, 'crossing'),
+    ).not.toContain('t');
+  });
+});

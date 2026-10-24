@@ -3723,57 +3723,37 @@ describe('EditorView persistence', () => {
     expect(wrapper.find('[data-testid="save-status"]').text()).toContain('Saved');
   });
 
-  it('upgrades an older document through the modal and archives it on save', async () => {
+  it('opens a 0.2 document read-only with the unsupported-format dialog', async () => {
     loadedDocument = {
       ...createEmptyDocument(),
-      schema: 'sewcraft.pattern/0.1',
+      schema: 'sewcraft.pattern/0.2',
     } as unknown as PatternDocument;
     const pinia = createPinia();
     const wrapper = await mountEditor(pinia);
     const store = useEditorStore(pinia);
 
     expect(wrapper.find('[data-testid="upgrade-dialog"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="saved-schema"]').text()).toBe('sewcraft.pattern/0.1');
-    expect(wrapper.find('[data-testid="editor-schema"]').text()).toBe('sewcraft.pattern/0.2');
+    expect(wrapper.find('[data-testid="upgrade-dialog-title"]').text()).toBe(
+      'Unsupported project format',
+    );
+    expect(wrapper.find('[data-testid="saved-schema"]').text()).toBe('sewcraft.pattern/0.2');
+    expect(wrapper.find('[data-testid="editor-schema"]').text()).toBe('sewcraft.pattern/0.3');
     expect(wrapper.find('[data-testid="read-only-pill"]').exists()).toBe(true);
     expect(store.readOnly).toBe(true);
 
-    await wrapper.find('[data-testid="upgrade-update"]').trigger('click');
-    await flushPromises();
-
-    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledWith(1, {
-      document: store.document,
-      expected_version: 1,
-      expected_schema: 'sewcraft.pattern/0.1',
-    });
-    expect(store.readOnly).toBe(false);
-    expect(store.saveState).toBe('saved');
-    expect(wrapper.find('[data-testid="upgrade-dialog"]').exists()).toBe(false);
-  });
-
-  it('stays read-only on the unmigrated document when the upgrade save fails', async () => {
-    loadedDocument = {
-      ...createEmptyDocument(),
-      schema: 'sewcraft.pattern/0.1',
-    } as unknown as PatternDocument;
-    vi.mocked(projectsApi.savePattern).mockRejectedValueOnce(new Error('Upgrade refused'));
-    const pinia = createPinia();
-    const wrapper = await mountEditor(pinia);
-    const store = useEditorStore(pinia);
-
-    await wrapper.find('[data-testid="upgrade-update"]').trigger('click');
+    await wrapper.find('[data-testid="upgrade-readonly"]').trigger('click');
     await flushPromises();
 
     expect(store.readOnly).toBe(true);
-    expect(store.document.schema).toBe('sewcraft.pattern/0.1');
+    expect(store.document.schema).toBe('sewcraft.pattern/0.2');
+    expect(vi.mocked(projectsApi.savePattern)).not.toHaveBeenCalled();
     expect(wrapper.find('[data-testid="upgrade-dialog"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed — retrying');
   });
 
   it('opens an older document read-only without saving and keeps export', async () => {
     const readOnlyDoc: PatternDocument = {
       ...cutDimensionDoc,
-      schema: 'sewcraft.pattern/0.1',
+      schema: 'sewcraft.pattern/0.2',
       constraints: [
         {
           id: 'w',
@@ -3839,17 +3819,17 @@ describe('EditorView persistence', () => {
     expect(store.document.constraints.some((entry) => entry.id === 'cut')).toBe(true);
   });
 
-  it('never migrates an unknown schema and offers read-only or cancel', async () => {
+  it('never migrates a newer schema and offers read-only or cancel', async () => {
     loadedDocument = {
       ...createEmptyDocument(),
-      schema: 'sewcraft.pattern/0.3',
+      schema: 'sewcraft.pattern/0.4',
     } as unknown as PatternDocument;
     const pinia = createPinia();
     const wrapper = await mountEditor(pinia);
     const store = useEditorStore(pinia);
 
     expect(wrapper.find('[data-testid="upgrade-dialog"]').text()).toContain(
-      'newer version of SewCraft',
+      'Unsupported project format',
     );
     expect(wrapper.find('[data-testid="upgrade-update"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="save-status"]').text()).toContain('Saved');
@@ -3866,35 +3846,14 @@ describe('EditorView persistence', () => {
     await flushPromises();
 
     expect(store.readOnly).toBe(true);
-    expect(store.document.schema).toBe('sewcraft.pattern/0.3');
+    expect(store.document.schema).toBe('sewcraft.pattern/0.4');
     expect(vi.mocked(projectsApi.savePattern)).not.toHaveBeenCalled();
   });
 
-  it('keeps the upgrade modal when the version conflict blocks it', async () => {
+  it('returns to Projects when the unsupported-format dialog is cancelled', async () => {
     loadedDocument = {
       ...createEmptyDocument(),
-      schema: 'sewcraft.pattern/0.1',
-    } as unknown as PatternDocument;
-    vi.mocked(projectsApi.savePattern).mockRejectedValueOnce(
-      new ApiError(409, { current_version: 4, saved_at: null }),
-    );
-    const pinia = createPinia();
-    const wrapper = await mountEditor(pinia);
-    const store = useEditorStore(pinia);
-
-    await wrapper.find('[data-testid="upgrade-update"]').trigger('click');
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="upgrade-dialog"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="conflict-dialog"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('Reload the project to upgrade it.');
-    expect(store.readOnly).toBe(true);
-  });
-
-  it('returns to Projects when the upgrade is cancelled', async () => {
-    loadedDocument = {
-      ...createEmptyDocument(),
-      schema: 'sewcraft.pattern/0.1',
+      schema: 'sewcraft.pattern/0.2',
     } as unknown as PatternDocument;
     const wrapper = await mountEditor(createPinia());
 
@@ -3966,38 +3925,10 @@ describe('EditorView persistence', () => {
     expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed — retrying');
   });
 
-  it('ignores a repeated upgrade action while the save is in flight', async () => {
-    loadedDocument = {
-      ...createEmptyDocument(),
-      schema: 'sewcraft.pattern/0.1',
-    } as unknown as PatternDocument;
-    let resolveSave: (value: unknown) => void = () => {};
-    vi.mocked(projectsApi.savePattern).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveSave = resolve as (value: unknown) => void;
-        }),
-    );
-    const wrapper = await mountEditor(createPinia());
-    const dialog = wrapper.findComponent({ name: 'UpgradeDocumentDialog' });
-
-    dialog.vm.$emit('update');
-    dialog.vm.$emit('update');
-    await nextTick();
-
-    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
-
-    resolveSave({
-      data: { id: 1, version: 2, saved_at: '2026-10-23T16:00:00.000Z', created: false },
-    });
-    await flushPromises();
-    expect(wrapper.find('[data-testid="upgrade-dialog"]').exists()).toBe(false);
-  });
-
   it('ignores a stale read-only choice once the dialog is closed', async () => {
     loadedDocument = {
       ...createEmptyDocument(),
-      schema: 'sewcraft.pattern/0.1',
+      schema: 'sewcraft.pattern/0.2',
     } as unknown as PatternDocument;
     const wrapper = await mountEditor(createPinia());
     const dialog = wrapper.findComponent({ name: 'UpgradeDocumentDialog' });
