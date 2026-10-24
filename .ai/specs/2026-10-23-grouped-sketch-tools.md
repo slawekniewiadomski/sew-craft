@@ -1,8 +1,10 @@
 # Grouped sketch tools — one rectangle control with a mode menu
 
-Status: **proposed (draft design)** — Q1 and Q2 are open on #68; implementation
-waits on both.
-Refs #68
+Status: **implemented** — Q1 = A (split control) and Q2 = A (no persistence) were
+accepted with `spec-ready`; implementation continued on PR #70. The shadcn-vue
+`dropdown-menu` wrappers are authored in the registry style over the already
+installed `reka-ui`, because the CLI's dependency install is blocked in this
+environment. Refs #68
 Related: `.ai/specs/2026-10-23-rectangle-tool.md` (the three gestures this groups;
 its Q3 chose three buttons "for v1"), `.ai/specs/2026-10-19-ribbon-icon-groups.md`
 (the icon-only, named-group ribbon), PR #66 (draft: moves Round corner into a new
@@ -392,15 +394,15 @@ for the pair, Phase 3 proves nothing else moved.
 
 ## ✅ Acceptance Criteria
 
-- [ ] Sketching shows one rectangle control (icon half + caret) instead of three
+- [x] Sketching shows one rectangle control (icon half + caret) instead of three
       buttons, and the ribbon tests reflect 24 top-level controls.
-- [ ] The icon half arms the displayed mode, and shows the active mode's glyph
+- [x] The icon half arms the displayed mode, and shows the active mode's glyph
       while any rectangle mode is armed.
-- [ ] The caret opens a menu listing Rectangle, Centre rectangle and 3-point
+- [x] The caret opens a menu listing Rectangle, Centre rectangle and 3-point
       rectangle with the displayed one checked; choosing one arms it and closes.
-- [ ] `Escape`, outside click, `Tab` and tool changes close the menu without
+- [x] `Escape`, outside click, `Tab` and tool changes close the menu without
       changing the armed tool; `Escape` returns focus to the caret.
-- [ ] Read-only disables both halves; keyboard-only users can reach and operate
+- [x] Read-only disables both halves; keyboard-only users can reach and operate
       every mode.
-- [ ] All three gestures, their commands and previews are unchanged; 100 %
+- [x] All three gestures, their commands and previews are unchanged; 100 %
       coverage, lint, format, typecheck and build pass.
