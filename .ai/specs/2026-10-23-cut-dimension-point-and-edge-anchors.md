@@ -1,13 +1,15 @@
 # Cut dimensions between points and edges
 
-Status: draft — design review; Q1–Q4 on #72 are blocking
+Status: approved (`spec-ready`) — implementing on this branch; Q1–Q4 resolved
 Refs: [#72 — cut dimensions from line to line and point - line](https://github.com/slawekniewiadomski/sew-craft/issues/72)
 Builds on: `.ai/specs/2026-10-23-cut-dimension-tool.md` (amended by this spec),
 `.ai/specs/2026-10-22-pieces-and-allowance.md` and
 `.ai/specs/2026-10-23-default-piece-seam-allowance.md`
-Command spec: `0.11.0` today; this proposal moves to the next minor (`0.12.0`)
-Pattern schema: Q4 — keep `0.2`, or take the next version after the reserved
-`0.3` seam removal
+Command spec: `0.11.0` today; this feature moves to the next minor (`0.12.0`)
+Pattern schema: **keep `sewcraft.pattern/0.2`** (Q4). `0.3` stays reserved for the
+legacy-seam removal, so the deferred-schema route is unavailable; an older build
+reads `at: 'edge'` as `end` and can save that misread. The accepted shipping-now
+trade-off is recorded in `BACKWARD_COMPATIBILITY.md`.
 
 ## 📝 TLDR
 
@@ -22,8 +24,7 @@ the perpendicular distance from the cut corner to the cut edge's supporting line
 an edge-to-edge dimension measures the perpendicular from the first cut
 segment's midpoint to the second cut line. The constraint stays read-only and
 derived: its number is recomputed from the cut loop and never reaches the solver.
-This PR is the spec-only stage of the feature branch; after `spec-ready`,
-implementation continues here, per `AGENTS.md`.
+This PR implements the feature on the approved branch, per `AGENTS.md`.
 
 ## 📝 Problem Statement
 
@@ -137,8 +138,10 @@ the command, the canvas and the inspector.
   `DerivedDistanceConstraint` are unchanged.
 - `piece.ts` —
   - `pieceCutEdge(document, piece, edge)` returns the edge's **own** cut
-    segment, or `null` for a missing piece/edge, a non-`line` source, a
-    degenerate segment or a non-resolving cut loop. It must not reuse
+    segment, or `null` for a missing piece/edge, a non-`line` source or a cut
+    loop that no longer resolves (a compacted loop has no addressable per-edge
+    span). A zero-length source edge compacts the loop, so it is unresolvable
+    rather than a degenerate segment. It must not reuse
     `pieceCutVertex` for both ends: at a bevel join that returns the previous
     edge's offset point. With
     `s = loop.naturalStart[edgeIndex]` and
@@ -429,18 +432,18 @@ The live region announces each rejection without moving focus.
   `agent-browser` provider is not installed and no shared test-env descriptor is
   present, so a visual would be an illustration, not evidence.
 
-## ❓ Open Questions
+## ❓ Open Questions (resolved)
 
-These are blocking product/UX/architecture decisions, asked on #72. The draft PR
-stays draft until they are answered; the rest of the design is written under the
-recommended answers so it can be reviewed as a coherent whole.
+These blocking decisions were answered on #72; the design below follows the
+recommended answers. Q1–Q3 are as recommended and Q4 resolved to **keep the
+pattern schema at 0.2** (see the status line and `BACKWARD_COMPATIBILITY.md`).
 
 | # | Question | Why it blocks | Recommended answer |
 | - | -------- | ------------- | ------------------ |
 | Q1 | Should an **edge-to-edge** cut dimension measure the **cut loop** (allowance offset, `2 × width` for a double fold) or the **stitch loop**? | The two numbers differ by the allowances and answer different questions; the resolver, the label and the acceptance tests depend on it. | **Cut loop**, consistent with the tool's name and the existing corner-to-corner dimension. A stitch measurement belongs to the regular Dimension tool (#71). |
 | Q2 | How does the tool take a **whole edge as an anchor** without losing today's one-click edge length? | Today a click on a piece edge immediately measures that edge; if an edge can also be an anchor, the same click means two things. The answer changes the canvas state machine, its tests and the already-implemented spec. | **Unified two-pick gesture**: every cut dimension picks two anchors, then places. An edge's own length is measured by its two corners. One rule for all combinations; the cost is one extra click. Alternatives: `Shift`-click for an edge anchor (hidden gesture), or a Corner/Edge mode in the ribbon (more UI). |
 | Q3 | May a cut dimension span **two pieces**? | The current model stores one `piece` and both anchors must be on its loop; cross-piece support would need a different identity, validation and broken-state story. | **Same piece only** for this slice. Cross-piece cut dimensions are a separate feature; the existing `piece` field keeps the model honest. |
-| Q4 | How should the document version advertise `at: 'edge'`, given `0.3` is reserved for the legacy-seam removal? | A 0.2 document lets an older build misread `edge` as `end` and **edit/save** that misread. A later schema opens it read-only with an upgrade notice, but the older build still **renders** the wrong vertex; it is not a clean refusal. A separate collection would be ignored (no misread) but older saves would drop it. | **Take the next schema after the reserved 0.3 (e.g. 0.4) and sequence behind the seam removal**, so a downgrade blocks edits/saves. If shipping now matters more than downgrade safety, keep 0.2 and accept the editable misread. Do not consume 0.3 alone. |
+| Q4 | How should the document version advertise `at: 'edge'`, given `0.3` is reserved for the legacy-seam removal? | A 0.2 document lets an older build misread `edge` as `end` and **edit/save** that misread. A later schema opens it read-only with an upgrade notice, but the older build still **renders** the wrong vertex; it is not a clean refusal. A separate collection would be ignored (no misread) but older saves would drop it. | **Resolved: keep 0.2** and accept the editable misread — the reserved `0.3` seam removal has not landed, so the next schema after it is unavailable now. Recorded in `BACKWARD_COMPATIBILITY.md`; revisit once `0.3` ships. |
 
 ## ✅ Resolved assumptions (autonomous defaults)
 

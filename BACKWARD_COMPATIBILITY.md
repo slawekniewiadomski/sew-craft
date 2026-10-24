@@ -85,6 +85,18 @@ or the geometry package depend on.
   document without it resolves the built-in 10 mm seam on load, no existing field
   changes meaning, and no piece's allowances are rewritten. The schema string
   stays `sewcraft.pattern/0.2`.
+- Since spec 0.12 a cut anchor's `at` may be `edge` as well as `start`/`end`
+  (`add_derived_dimension` with a whole straight edge). It is additive to the
+  command spec and leaves the pattern schema at `sewcraft.pattern/0.2`: `0.3` is
+  reserved for removing the legacy `seams` field, so this feature must not
+  consume it. **Downgrade trade-off:** an older build's `pieceCutVertex` ternary
+  reads `at: 'edge'` as `end`, so it renders the wrong vertex and, because the
+  document is still an editable 0.2 document, can edit and save that misread.
+  The project accepts that risk to ship now; once the reserved 0.3 seam removal
+  lands, a later schema can open the document read-only with an upgrade notice.
+  Deleting a loop **point** leaves the piece and a cut dimension in place, so the
+  dimension renders broken; deleting an anchored edge deletes its piece and
+  removes the dimension with it.
 
 ## Not (yet) protected
 

@@ -110,7 +110,18 @@ piece instead of breaking the canvas or export:
   edge is a double fold; for a uniformly doubled piece it is exactly the
   single-fold cut outline.
 - `pieceCutVertex(document, piece, anchor)` — the resolved cut-loop point at one
-  end of a loop edge, used by cut dimensions.
+  end of a loop edge, used by cut dimensions. Returns `null` for an `at: 'edge'`
+  anchor, which has no single vertex.
+- `pieceCutEdge(document, piece, edge)` — the edge's **own** cut segment, from
+  the outgoing offset point at its natural start to the incoming offset point at
+  its natural end. At a bevel join these differ from `pieceCutVertex`'s point,
+  so an edge anchor never uses the vertex resolver for both ends; this is exactly
+  the source line plus the edge's cut-distance offset, independent of the
+  adjacent allowance and a corner round. `null` for a missing edge, a non-line
+  source or an unresolvable loop (a compacted cut loop has no addressable
+  per-edge span).
+- `resolveCutAnchor(document, piece, anchor)` — a vertex point or an edge cut
+  segment, or `null`.
 - `pieceCutBounds` / `pieceMetrics` — cut bounding box, finished and cut sizes,
   cut area, allowance area and quantity.
 - `basicPieceForLoops(document)` — every simple closed chain of cut edges, used
@@ -197,6 +208,32 @@ constraint)` — the resolved state without overloading "driven".
   points (unordered), so the UI can reuse rather than duplicate it.
 - `constraintOrientation(constraint)` / `constraintOffset(constraint)` — the
   effective presentation values, applying the defaults.
+
+### Cut dimensions (`derived_distance`)
+
+A cut dimension is a read-only `derived_distance` constraint over a piece's cut
+loop; it adds no solver equation. `resolveCutSpan(document, constraint)` resolves
+both anchors and returns the measured span:
+
+- **vertex → vertex** — the two cut points, as stored.
+- **vertex → edge / edge → vertex** — the vertex and its perpendicular foot on
+  the edge's infinite cut line, normalized vertex-first so the pick order does
+  not flip the dimension line.
+- **edge → edge** — canonicalized by piece edge order: the earlier edge's cut
+  segment midpoint and its foot on the later edge's cut line. The 0.5°
+  `|cross(unitA, unitB)|` parallel rule is a pick-time guard only; a pair that
+  later rotates out of parallel still resolves as midpoint → line.
+
+`resolveCutSpan` returns `null` for a span of at most `1e-9` mm, so a dynamic
+zero gap reports broken instead of `0`. `measureCutDimension` and
+`derivedDimensionGeometry` force `aligned` when either anchor is an edge.
+
+`cutAnchorIssue(document, piece, a, b)` is the single predicate shared by the
+command and the canvas. It returns `{ reason, span }` with one of `missing`,
+`not-straight`, `different-piece`, `same-anchor`, `not-parallel` or `zero-span`
+(a span of at most `1e-6` mm), or a `null` reason and the span. The command maps
+reasons to validation errors; the canvas maps the same reasons to hints, so the
+two cannot drift.
 
 ## Circular arcs (`arc.ts`)
 
