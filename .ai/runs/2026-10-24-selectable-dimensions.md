@@ -56,20 +56,20 @@ Let a maker select one or many dimensions on the canvas and in the Dimensions dr
 
 ### Phase 2: Single-dimension selection
 
-- [ ] 2.1 Add `selectedDimensionIds` to EditorView with status, badge, pruning, and piece-selection clearing
-- [ ] 2.2 Add the PatternCanvas prop/emit and the selection-first dimension press wrapper
-- [ ] 2.3 Render the selected dimension halo and label outline
-- [ ] 2.4 Clear dimensions on the entity and marquee gestures the spec names
+- [x] 2.1 Add `selectedDimensionIds` to EditorView with status, badge, pruning, and piece-selection clearing — e418a5f
+- [x] 2.2 Add the PatternCanvas prop/emit and the selection-first dimension press wrapper — e418a5f
+- [x] 2.3 Render the selected dimension halo and label outline — e418a5f
+- [x] 2.4 Clear dimensions on the entity and marquee gestures the spec names — e418a5f
 
 ### Phase 3: Multiple dimensions, drawer and delete
 
-- [ ] 3.1 Apply the selection helpers in the canvas wrapper and the drawer row handler
-- [ ] 3.2 Add the grouped dimension branch to `deleteSelected` with ribbon and live-region wiring
-- [ ] 3.3 Extend SelectionSummary and branch the Properties drawer, hint and badge
-- [ ] 3.4 Turn the Dimensions drawer row header into a selection button
-- [ ] 3.5 Update the dimension title copy for select, drag and edit
+- [x] 3.1 Apply the selection helpers in the canvas wrapper and the drawer row handler — e418a5f
+- [x] 3.2 Add the grouped dimension branch to `deleteSelected` with ribbon and live-region wiring — e418a5f
+- [x] 3.3 Extend SelectionSummary and branch the Properties drawer, hint and badge — e418a5f
+- [x] 3.4 Turn the Dimensions drawer row header into a selection button — e418a5f
+- [x] 3.5 Update the dimension title copy for select, drag and edit — e418a5f
 
 ### Phase 4: Hardening and verification
 
-- [ ] 4.1 Cover the edge cases and add the 005 interaction line
+- [x] 4.1 Cover the edge cases and add the 005 interaction line — e418a5f
 - [ ] 4.2 Run the full validation gate and the authoritative review pass
