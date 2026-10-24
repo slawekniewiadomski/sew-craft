@@ -1,8 +1,7 @@
 # Visual feedback while picking dimensions
 
-Status: draft — design review; Q2 (resting canvas appearance) and R5 (point click
-tolerance) need a human answer; the reviewed design runs on their recommended
-answers
+Status: accepted — Q2 (hover-only Dimension emphasis) and R5 (12 px point
+tolerance) were confirmed by `spec-ready`; implementation lands on this PR
 Refs: [#80 — Visual feedback when adding dimensions](https://github.com/slawekniewiadomski/sew-craft/issues/80)
 Builds on: `.ai/specs/2026-10-20-driven-and-set-dimensions.md`,
 `.ai/specs/2026-10-19-movable-linear-dimensions.md`,
@@ -338,7 +337,7 @@ accepts the default, then a reviewer applies `spec-ready`.
 | R2 | Dimension candidates are hover-only; Cut keeps its resting corner rings | Contingent on Q2's recommended answer; the cut corners are derived geometry that needs the resting affordance, points and lines do not | Reversible, pending Q2 |
 | R3 | The ghost starts at a line anchor's midpoint and never shows a value | A line has no single anchor position; the midpoint is unambiguous as a cursor guide and cannot be mistaken for the measured span. A live value is deferred, not rejected forever | Reversible |
 | R4 | The ghost snaps only to targets the existing pick rules accept, and stays on the raw pointer otherwise | Reuses `distanceAnchorIssue()` and the cut same-piece checks rather than inventing a second validity model | Reversible |
-| R5 | Point hit targets grow to 12 screen px only while a dimension tool is armed | `r = 4` world units is hard to hover at low zoom; the 12 px line hit stroke is the existing precedent | ⚠ NEEDS HUMAN CONFIRMATION — changes click tolerance |
+| R5 | Point hit targets grow to 12 screen px only while a dimension tool is armed | `r = 4` world units is hard to hover at low zoom; the 12 px line hit stroke is the existing precedent | Accepted with `spec-ready` — changes click tolerance |
 | R6 | First pick is shown by a soft halo plus a heavier mark, not by a new colour | Keeps the existing primary/muted token set and does not rely on hue alone | Reversible |
 | R7 | The ghost is view-only; nothing is emitted before the existing commit | Preserves “commands are the only mutation path” and keeps undo/redo untouched | Reversible |
 | R8 | Read-only mode and non-dimension tools show no feedback | No pick can be made, so highlighting would promise an action that cannot happen | Reversible |
@@ -412,30 +411,30 @@ hover stays on the existing 4-unit point dot; nothing else depends on it.
 
 ## ✅ Acceptance criteria
 
-- [ ] Hovering an eligible point or straight line with the Dimension tool armed
+- [x] Hovering an eligible point or straight line with the Dimension tool armed
       highlights it before any click; curves, arcs and circles do not highlight.
-- [ ] After the first pick, that anchor stays visibly marked (halo plus heavier
+- [x] After the first pick, that anchor stays visibly marked (halo plus heavier
       ring on a point, tick on a line) until the gesture ends, and the hint
       reads `Pick the second anchor.`
-- [ ] A dashed ghost runs from the first anchor to the pointer and snaps to a
+- [x] A dashed ghost runs from the first anchor to the pointer and snaps to a
       valid second anchor; it never commits a dimension and shows no numeric
       value.
-- [ ] The Cut dimension tool shows its idle hint
+- [x] The Cut dimension tool shows its idle hint
       `Pick two corners of one piece, or a piece edge.`, marks its first corner,
       and only offers same-piece corners as snapped candidates; an edge pick
       still places immediately.
-- [ ] While a dimension tool is armed, a click inside the 12 px point target but
+- [x] While a dimension tool is armed, a click inside the 12 px point target but
       outside the visible dot (r = 4 world units at scale 1) picks that point;
       the target does not exist under any other tool.
-- [ ] Invalid second picks (same anchor, non-parallel lines, point on line,
+- [x] Invalid second picks (same anchor, non-parallel lines, point on line,
       coincident lines) never highlight, snap or commit, and each keeps its
       existing hint text.
-- [ ] Pointer leave clears the hover and ghost end while keeping the pending
+- [x] Pointer leave clears the hover and ghost end while keeping the pending
       pick and its mark; Escape, tool change and empty-canvas clicks clear all
       feedback.
-- [ ] Read-only mode shows no feedback, and no command, API, schema or
+- [x] Read-only mode shows no feedback, and no command, API, schema or
       data-model change ships.
-- [ ] New helpers and canvas branches keep statements, branches, functions and
+- [x] New helpers and canvas branches keep statements, branches, functions and
       lines at 100 % coverage; the full validation gate passes.
 
 ## Out of scope
