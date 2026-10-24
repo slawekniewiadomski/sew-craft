@@ -39,13 +39,22 @@ first save creates it lazily with the project's name.
 | `id`         | bigint PK               |                          |
 | `pattern_id` | FK → patterns (cascade) |                          |
 | `version`    | unsigned int            | monotonic per pattern    |
+| `origin`     | string(16)              | `manual` \| `autosave`   |
 | `geometry`   | json                    | frozen `PatternDocument` |
 | `created_at` | timestamp               |                          |
 
 Unique on `(pattern_id, version)`. Appended once per changed save, and once for
 the pre-upgrade working copy immediately before an upgrade save. An unchanged
-save appends nothing, so history stays meaningful without pruning. The next
-version is `max(version) + 1`, computed under a row lock.
+save appends nothing.
+
+`origin` separates deliberate checkpoints from background writes. Explicit saves
+and upgrade archives write `manual`; a client that opts into autosave sends
+`origin: "autosave"` and the server keeps only the newest autosave row per
+pattern, pruning earlier autosave rows in the same transaction. Manual rows are
+never pruned, so history keeps every deliberate save while a drafting session
+cannot grow it without bound. This supersedes the earlier "no pruning" promise.
+Pruning leaves gaps in version numbers: the next version is `max(version) + 1`,
+computed under a row lock, and a version is a token rather than a count.
 
 ### `exports`
 

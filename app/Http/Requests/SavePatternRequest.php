@@ -31,6 +31,9 @@ class SavePatternRequest extends FormRequest
             'document.units' => ['required', 'in:mm'],
             'expected_version' => ['nullable', 'integer', 'min:0'],
             'expected_schema' => ['nullable', 'string'],
+            // Optional so every existing client keeps the manual checkpoint
+            // semantics: omitted means an explicit save.
+            'origin' => ['nullable', 'in:manual,autosave'],
         ];
     }
 }
