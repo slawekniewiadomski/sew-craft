@@ -72,4 +72,4 @@ Let a maker select one or many dimensions on the canvas and in the Dimensions dr
 ### Phase 4: Hardening and verification
 
 - [x] 4.1 Cover the edge cases and add the 005 interaction line — e418a5f
-- [ ] 4.2 Run the full validation gate and the authoritative review pass
+- [x] 4.2 Run the full validation gate and the authoritative review pass — e8f65ba
