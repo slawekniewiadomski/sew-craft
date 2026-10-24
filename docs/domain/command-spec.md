@@ -15,7 +15,7 @@ runtime source of truth is `config/geometry.php`, exposed at `GET /api/commands`
 }
 ```
 
-## Commands (v0.11)
+## Commands (v0.12)
 
 ### `add_point`
 
@@ -121,6 +121,14 @@ removes its cut dimensions.
 - `orientation` and `offset` apply only to `distance`; they are presentation for
   the linear dimension that renders the constraint. `orientation` defaults to
   `aligned`, `offset` to `20` mm (signed, measured from the span).
+- For `distance`, each entry of `entities` is an **anchor**: a point id or a
+  straight `line` id. A point → line anchor measures the perpendicular from the
+  point to the line's infinite supporting line. Two lines must be parallel within
+  0.5° at creation (anti-parallel accepted) and measure from the canonical first
+  line's midpoint (lower id) to the second line. Curves, arcs and circles are not
+  anchors in this slice. A line-anchored dimension is always `aligned`: an
+  explicit `horizontal` or `vertical` is rejected. The resolved span must be
+  greater than `1e-6` mm; a smaller span is rejected.
 - inverse: `remove_constraint`
 
 Constraint param mapping:
@@ -369,6 +377,14 @@ Add a read-only **cut dimension** between two loop vertices of one piece.
   anchors resolve again, exactly like a dangling reference.
 - Re-applying a command whose dimension id already exists is a no-op.
 - inverse: `remove_constraint`
+
+### Migration from spec 0.11.0
+
+`add_constraint` accepts a straight line as either `distance` anchor, so point →
+line and line → line dimensions use the existing command and shape. The change is
+additive: every 0.11.0 payload still applies. A line-anchored dimension is always
+`aligned`, and the document schema stays `sewcraft.pattern/0.2`; an older build
+accepts the document but reports the line id as an unknown point when it solves.
 
 ### Migration from spec 0.10.0
 

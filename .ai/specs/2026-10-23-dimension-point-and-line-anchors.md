@@ -1,6 +1,6 @@
 # Dimensions between points and lines
 
-Status: draft — design review; Q1–Q4 on #71 are blocking
+Status: implemented — Q1–Q4 resolved under the recommended answers; schema stays 0.2
 Refs: [#71 — Dimensions - line to line line to point](https://github.com/slawekniewiadomski/sew-craft/issues/71)
 Builds on: `.ai/specs/2026-10-20-driven-and-set-dimensions.md`,
 `.ai/specs/2026-10-20-referenced-dimensions.md` and
@@ -560,28 +560,28 @@ recommended answers so it can be reviewed as a coherent whole.
 
 ## ✅ Acceptance criteria
 
-- [ ] A dimension can join a point and a straight line, in either order, and
+- [x] A dimension can join a point and a straight line, in either order, and
       reports the perpendicular distance to the infinite line.
-- [ ] A dimension can join two parallel straight lines and reports the
+- [x] A dimension can join two parallel straight lines and reports the
       perpendicular from the first midpoint to the second line.
-- [ ] Non-parallel lines, curves/arcs/circles, zero spans and axis orientations
+- [x] Non-parallel lines, curves/arcs/circles, zero spans and axis orientations
       on line anchors are rejected with a specific message and no document
       change.
-- [ ] A set dimension drives the sketch to the perpendicular value; a driven one
+- [x] A set dimension drives the sketch to the perpendicular value; a driven one
       adds no equation; both follow point moves and line translations.
-- [ ] Reference linking, the `#` picker, dragging, double-click editing and
+- [x] Reference linking, the `#` picker, dragging, double-click editing and
       deletion work for the new anchor kinds.
-- [ ] A reversed re-placement is idempotent (canonical A/B), and a dynamic zero
+- [x] A reversed re-placement is idempotent (canonical A/B), and a dynamic zero
       span is unresolved rather than `0`.
-- [ ] Selecting a line lists the dimensions that anchor to it; the drawer hides
+- [x] Selecting a line lists the dimensions that anchor to it; the drawer hides
       the axis for a line anchor.
-- [ ] Deleting an anchor line cascades the dimension after any corner round is
+- [x] Deleting an anchor line cascades the dimension after any corner round is
       removed; deleting a source leaves dependents broken as today.
-- [ ] A 0.2 document without line anchors loads unchanged; a document with a
+- [x] A 0.2 document without line anchors loads unchanged; a document with a
       line anchor is documented as not downgradeable (Q4).
-- [ ] The command spec is synced at the next minor; existing point-only payloads
+- [x] The command spec is synced at the next minor; existing point-only payloads
       still apply.
-- [ ] The full validation gate passes and coverage stays at 100 %.
+- [x] The full validation gate passes and coverage stays at 100 %.
 
 ## Out of scope
 
