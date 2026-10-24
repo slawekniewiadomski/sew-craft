@@ -97,8 +97,8 @@ to start implementation, so the spec's recommended answers are taken as accepted
 
 ### Phase 2: Ribbon data
 
-- [ ] 2.1 Add `RibbonToolGroupItem`, the `toolGroup()` helper and the grouped Sketching entry, with ribbon-data tests
-- [ ] 2.2 Add the `chevron-down` glyph to the icon registry, with its icon test updated
+- [x] 2.1 Add `RibbonToolGroupItem`, the `toolGroup()` helper and the grouped Sketching entry, with ribbon-data tests — 470a5c3
+- [x] 2.2 Add the `chevron-down` glyph to the icon registry, with its icon test updated — 470a5c3
 
 ### Phase 3: Control
 
