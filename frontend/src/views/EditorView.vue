@@ -112,6 +112,7 @@ import type { DrawerId } from '@/lib/editor-drawers';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 import { entityProperties } from '@/lib/entity-properties';
 import { buildLineCommands, type LineEndpoint } from '@/lib/line-tool';
+import { buildPointOnLineCommands } from '@/lib/point-on-line';
 import { buildRectangleCommands, type RectangleMode } from '@/lib/rectangle-tool';
 import {
   edgeLabel,
@@ -784,6 +785,17 @@ function onMovePoint(id: EntityId, x: number, y: number): void {
 
 function onAddPoint(x: number, y: number): void {
   run(() => dispatch({ id: nextCommandId('point'), type: 'add_point', params: { x, y } }));
+}
+
+/**
+ * One gesture: the point at the projection and its `point_on_line` constraint,
+ * as a single journal entry. `null` means the line no longer resolves, so
+ * nothing is dispatched.
+ */
+function onAddPointOnLine(lineId: EntityId, x: number, y: number): void {
+  const commands = buildPointOnLineCommands(pattern.value, lineId, { x, y }, nextCommandId);
+  if (commands === null) return;
+  run(() => dispatchGroup(commands));
 }
 
 /** One gesture: new endpoints become points, then the line, as a single entry. */
@@ -1641,6 +1653,7 @@ onBeforeUnmount(() => {
             :read-only="editor.readOnly"
             @move-point="onMovePoint"
             @add-point="onAddPoint"
+            @add-point-on-line="onAddPointOnLine"
             @add-line="onAddLine"
             @add-curve="onAddCurve"
             @add-arc="onAddArc"

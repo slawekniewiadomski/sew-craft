@@ -373,6 +373,38 @@ describe('EditorView', () => {
     expect(points(wrapper)).toHaveLength(5);
   });
 
+  it('creates a point on a line as one undoable gesture', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('add-point-on-line', 'ab', 30, 12);
+    await flushPromises();
+
+    const created = store.document.entities.find(
+      (entity) => entity.kind === 'point' && entity.x === 30 && entity.y === 0,
+    );
+    expect(created).toBeDefined();
+    expect(store.document.constraints).toEqual([
+      { id: expect.any(String), type: 'point_on_line', point: created!.id, a: 'a', b: 'b' },
+    ]);
+    expect(store.journal).toHaveLength(1);
+    expect(wrapper.text()).toContain('1 command(s)');
+
+    await wrapper.find('[data-testid="undo"]').trigger('click');
+    expect(store.document.entities.some((entity) => entity.id === created!.id)).toBe(false);
+    expect(store.document.constraints).toEqual([]);
+  });
+
+  it('dispatches nothing when the point-on-line line no longer resolves', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+    const before = store.document;
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('add-point-on-line', 'missing', 30, 12);
+    await flushPromises();
+
+    expect(store.document).toBe(before);
+    expect(store.journal).toHaveLength(0);
+  });
+
   it('enables delete only with a selection and removes the point on Delete', async () => {
     const { wrapper } = await mountLoaded(simpleDoc);
 

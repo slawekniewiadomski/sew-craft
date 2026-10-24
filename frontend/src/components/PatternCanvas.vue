@@ -36,6 +36,7 @@ import {
   inferDimensionOrientation,
   inferOrientationFromSpan,
   isCornerRoundDerived,
+  lineEndpoints,
   type LineEntity,
   measureDistanceDimension,
   measureLinearDimension,
@@ -48,6 +49,7 @@ import {
   pieceLoop,
   pieceLoopVertex,
   type PointEntity,
+  projectPointOnLine,
   type Rect,
   resolveCutSpan,
   seamAllowancePaths,
@@ -135,7 +137,7 @@ import {
   toggleSelection,
   type SelectionMode,
 } from '@/lib/selection';
-import { snapPoint, snapToGrid } from '@/lib/snap';
+import { nearestPoint, POINT_SNAP_TOLERANCE, snapPoint, snapToGrid } from '@/lib/snap';
 import {
   fitToBounds,
   niceStep,
@@ -340,6 +342,7 @@ const emit = defineEmits<{
   'marquee-change': [active: boolean];
   'move-point': [id: EntityId, x: number, y: number];
   'add-point': [x: number, y: number];
+  'add-point-on-line': [lineId: EntityId, x: number, y: number];
   'add-line': [start: DraftingEndpoint, end: DraftingEndpoint];
   'add-arc': [start: DraftingEndpoint, end: DraftingEndpoint, through: DraftingEndpoint];
   'add-curve': [points: [EntityId, EntityId, EntityId, EntityId]];
@@ -422,6 +425,11 @@ const editingDimension = ref<{ id: EntityId; value: string } | null>(null);
 const dimensionInput = ref<HTMLInputElement | null>(null);
 /** The round whose tangent handles and label are shown because it is hovered. */
 const hoveredRoundId = ref<EntityId | null>(null);
+/**
+ * The straight line the Point tool would constrain a click to, with the raw
+ * pointer and the projection that click would use.
+ */
+const pointOnLineHover = ref<{ lineId: EntityId; pointer: Vec2; point: Vec2 } | null>(null);
 /** Live tangent-handle drag; the radius changes on release. */
 const tangentDrag = ref<{
   id: EntityId;
@@ -1580,6 +1588,7 @@ function pointClass(point: PointEntity): string {
 }
 
 function entityClass(entity: { id: EntityId; construction: boolean }): string {
+  if (pointOnLineHover.value?.lineId === entity.id) return 'text-primary';
   if (
     dimensionPickLineIds.value.has(entity.id) ||
     dimensionCandidateLineIds.value.has(entity.id) ||
@@ -1599,7 +1608,8 @@ function entityClass(entity: { id: EntityId; construction: boolean }): string {
 }
 
 function lineWidth(id: EntityId): number {
-  return dimensionPickLineIds.value.has(id) ||
+  return pointOnLineHover.value?.lineId === id ||
+    dimensionPickLineIds.value.has(id) ||
     dimensionCandidateLineIds.value.has(id) ||
     cutEdgeCandidateIds.value.has(id) ||
     pickedLineIds.value.has(id) ||
@@ -2205,7 +2215,7 @@ function onPointerDown(event: PointerEvent): void {
       break;
     }
     case 'add_point':
-      emitAddPoint(screen);
+      onAddPointPointer(hit, screen);
       break;
     case 'add_line':
       onLinePointer(hit, screen);
@@ -2321,6 +2331,10 @@ function onCanvasPointerMove(event: PointerEvent): void {
     }
   }
 
+  if (props.tool === 'add_point' && !props.readOnly) {
+    updatePointOnLineHover(event, screen);
+  }
+
   if (props.tool === 'add_circle' && circleCenter.value !== null) {
     circlePreview.value = snappedPoint(screenToWorld(viewport.value, screen));
   }
@@ -2335,6 +2349,7 @@ function onCanvasPointerLeave(): void {
   hoveredPick.value = null;
   hoveredLoopHandle.value = null;
   pointerWorld.value = null;
+  pointOnLineHover.value = null;
 }
 
 /** Drop every in-flight pointer interaction without emitting a command. */
@@ -2411,6 +2426,12 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
+  if (event.key === 'Escape' && pointOnLineHover.value !== null) {
+    event.preventDefault();
+    pointOnLineHover.value = null;
+    return;
+  }
+
   if (
     event.key === 'Escape' &&
     (dimensionPending.value.length > 0 ||
@@ -2450,6 +2471,47 @@ function onKeyUp(event: KeyboardEvent): void {
 function emitAddPoint(screen: Vec2): void {
   const world = snappedPoint(screenToWorld(viewport.value, screen));
   emit('add-point', world.x, world.y);
+}
+
+/**
+ * Where a Point-tool click on `lineId` would land, or `null` when the click is
+ * not a line inference: a point within the snap tolerance wins, and only a
+ * resolvable, non-degenerate straight line projects.
+ */
+function pointOnLineTarget(lineId: EntityId, world: Vec2): Vec2 | null {
+  if (nearestPoint(world, points.value, POINT_SNAP_TOLERANCE) !== null) return null;
+  const segment = lineEndpoints(props.document, lineId);
+  return segment === null ? null : projectPointOnLine(world, segment);
+}
+
+/** Track the line the Point tool would infer, so the click is never a surprise. */
+function updatePointOnLineHover(event: Event, screen: Vec2): void {
+  const hit = hitEntity(event);
+  if (hit === null || hit.kind !== 'line') {
+    pointOnLineHover.value = null;
+    return;
+  }
+
+  const pointer = screenToWorld(viewport.value, screen);
+  const point = pointOnLineTarget(hit.id, pointer);
+  pointOnLineHover.value = point === null ? null : { lineId: hit.id, pointer, point };
+}
+
+/**
+ * The Point tool: a click on a straight line creates a point constrained to it,
+ * as one undoable gesture; every other click keeps today's free-point behaviour.
+ */
+function onAddPointPointer(hit: Hit | null, screen: Vec2): void {
+  if (hit !== null && hit.kind === 'line') {
+    const world = screenToWorld(viewport.value, screen);
+    if (pointOnLineTarget(hit.id, world) !== null) {
+      pointOnLineHover.value = null;
+      emit('add-point-on-line', hit.id, world.x, world.y);
+      return;
+    }
+  }
+
+  emitAddPoint(screen);
 }
 
 function selectPendingPoint(hit: Hit | null, required: number): void {
@@ -2752,6 +2814,7 @@ watch(
     dimensionDrag.value = null;
     hoveredRoundId.value = null;
     editingCornerRound.value = null;
+    pointOnLineHover.value = null;
   },
 );
 
@@ -2763,6 +2826,14 @@ watch(
   () => {
     editingDimension.value = null;
     editingCornerRound.value = null;
+
+    // Recompute the Point tool's inferred line against the new document so a
+    // removed or degenerate line clears the hover signal.
+    const pointOnLine = pointOnLineHover.value;
+    if (pointOnLine !== null) {
+      const point = pointOnLineTarget(pointOnLine.lineId, pointOnLine.pointer);
+      pointOnLineHover.value = point === null ? null : { ...pointOnLine, point };
+    }
     if (pendingLineStartId.value !== null && !pointById.value.has(pendingLineStartId.value)) {
       lineStart.value = null;
       linePreview.value = null;
@@ -3081,6 +3152,17 @@ watch(
             :cy="tangent.y"
             r="2.5"
             class="fill-primary"
+          />
+        </g>
+
+        <g v-if="pointOnLineHover !== null" class="pointer-events-none" aria-hidden="true">
+          <circle
+            :cx="pointOnLineHover.point.x"
+            :cy="pointOnLineHover.point.y"
+            r="4"
+            class="fill-primary stroke-primary-foreground"
+            stroke-width="1"
+            data-testid="point-on-line-ghost"
           />
         </g>
 
@@ -3817,6 +3899,15 @@ watch(
       data-testid="arc-hint"
     >
       pick a point off the line
+    </p>
+
+    <p
+      v-if="pointOnLineHover !== null"
+      class="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground shadow-sm"
+      role="status"
+      data-testid="point-on-line-hint"
+    >
+      Click to create a point constrained to this line.
     </p>
 
     <p
