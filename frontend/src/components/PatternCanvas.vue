@@ -44,8 +44,10 @@ import {
   type PatternDocument,
   type Piece,
   pieceCutLoop,
+  pieceCutVertex,
   pieceFoldLines,
   pieceLoop,
+  pieceLoopVertex,
   type PointEntity,
   type Rect,
   resolveCutSpan,
@@ -102,6 +104,7 @@ import {
   anchorForEdge,
   anchorForPoint,
   edgeEndpoints,
+  nearestLoopHandle,
   pieceOwningEdge,
   piecesAtPoint,
 } from '@/lib/pieces';
@@ -429,22 +432,85 @@ const visiblePoints = computed(() =>
   points.value.filter((point) => !isCornerRoundDerived(props.document, point.id)),
 );
 
+/** One derived loop corner the armed cut tool offers as a pick target. */
+interface LoopHandle {
+  key: string;
+  piece: Piece;
+  anchor: CutAnchor;
+  point: Vec2;
+}
+
+/** Screen pixels within which a derived loop point wins a pick. */
+const LOOP_PICK_RADIUS = 8;
+/** Loop points closer than this are the same corner. */
+const LOOP_POINT_EPSILON = 1e-6;
+
+function sameLoopPoint(a: Vec2, b: Vec2): boolean {
+  return Math.hypot(a.x - b.x, a.y - b.y) <= LOOP_POINT_EPSILON;
+}
+
 /**
- * Loop vertices of every piece, highlighted while the Cut dimension tool is
- * active so the eligible pick targets are visible.
+ * Derived loop corners of every piece, highlighted while the Cut dimension tool
+ * is active. A stitch corner stands alone where an edge carries no allowance, so
+ * one corner never offers two anchors that measure the identical span.
  */
-const cutVertexHandles = computed<PointEntity[]>(() => {
-  const ids = new Set<EntityId>();
+const loopHandles = computed<LoopHandle[]>(() => {
+  const stitch: LoopHandle[] = [];
+  const cut: LoopHandle[] = [];
+
   for (const piece of props.document.pieces) {
     for (const edge of piece.edges) {
-      const ends = edgeEndpoints(props.document, edge);
-      if (ends === null) continue;
-      ids.add(ends[0]);
-      ids.add(ends[1]);
+      for (const at of ['start', 'end'] as const) {
+        const point = pieceLoopVertex(props.document, piece, { edge, at });
+        if (point === null) continue;
+        stitch.push({
+          key: `stitch-${piece.id}-${edge}-${at}`,
+          piece,
+          anchor: { edge, at, loop: 'stitch' },
+          point,
+        });
+
+        // The stitch loop resolved, so the cut loop resolves from it as well.
+        cut.push({
+          key: `cut-${piece.id}-${edge}-${at}`,
+          piece,
+          anchor: { edge, at },
+          point: pieceCutVertex(props.document, piece, { edge, at })!,
+        });
+      }
     }
   }
-  return visiblePoints.value.filter((point) => ids.has(point.id));
+
+  // Two edges meet at one corner, so keep the first handle in edge order.
+  const unique = (handles: LoopHandle[]): LoopHandle[] => {
+    const kept: LoopHandle[] = [];
+    for (const handle of handles) {
+      const duplicate = kept.some(
+        (other) => other.piece.id === handle.piece.id && sameLoopPoint(other.point, handle.point),
+      );
+      if (!duplicate) kept.push(handle);
+    }
+    return kept;
+  };
+
+  const stitchHandles = unique(stitch);
+  const cutHandles = unique(cut).filter(
+    (handle) =>
+      !stitchHandles.some(
+        (other) => other.piece.id === handle.piece.id && sameLoopPoint(other.point, handle.point),
+      ),
+  );
+  return [...stitchHandles, ...cutHandles];
 });
+
+/** The derived loop corner under the pointer, if any. */
+function pickLoopHandle(screen: Vec2): LoopHandle | null {
+  const candidates = loopHandles.value.map((handle) => ({
+    handle,
+    point: worldToScreen(viewport.value, handle.point),
+  }));
+  return nearestLoopHandle(candidates, screen, LOOP_PICK_RADIUS)?.handle ?? null;
+}
 
 /**
  * Straight piece edges, highlighted while the Cut dimension tool is active so a
@@ -465,7 +531,7 @@ const cutDimensionHintText = computed<string | null>(() => {
   if (cutDimensionHint.value !== null) return cutDimensionHint.value;
   if (props.tool !== 'cut_dimension' || cutDimensionPlacement.value !== null) return null;
   if (cutDimensionPending.value !== null) return 'Pick the second anchor on the same piece.';
-  return 'Pick a corner or a straight edge of one piece.';
+  return 'Pick a seamline or cut corner, or a straight edge, of one piece.';
 });
 
 /** The Dimension tool's status message: a rejection, or the next pick prompt. */
@@ -1430,30 +1496,36 @@ function clearCutDimensionGesture(): void {
 
 /**
  * The cut tool's pick rules: two anchors of one piece, where each anchor is a
- * piece corner or a whole straight edge. A rejected pick leaves a hint instead
- * of emitting a command; the shared `cutAnchorIssue` decides the rejection.
+ * piece corner (seamline or cut) or a whole straight edge. A derived loop corner
+ * picked near the pointer wins over the entity under it, so a corner with an
+ * allowance offers both its stitch and its cut anchor. A rejected pick leaves a
+ * hint instead of emitting a command; the shared `cutAnchorIssue` decides.
  */
-function onCutDimensionPointer(hit: Hit | null): void {
+function onCutDimensionPointer(hit: Hit | null, loopHandle: LoopHandle | null): void {
   if (cutDimensionPlacement.value !== null) {
     commitCutDimensionPlacement();
     return;
   }
 
-  if (hit === null) {
+  const pending = cutDimensionPending.value;
+
+  if (hit === null && loopHandle === null) {
     cutDimensionPending.value = null;
     cutDimensionHint.value = null;
     return;
   }
 
-  const pending = cutDimensionPending.value;
-  const candidate = cutAnchorCandidate(hit, pending?.piece ?? null);
+  const candidate =
+    loopHandle === null
+      ? cutAnchorCandidate(hit!, pending?.piece ?? null)
+      : { piece: loopHandle.piece, anchor: loopHandle.anchor };
 
   if (candidate === null) {
     cutDimensionPending.value = null;
     cutDimensionHint.value =
-      hit.kind === 'curve' || hit.kind === 'arc'
+      hit !== null && (hit.kind === 'curve' || hit.kind === 'arc')
         ? 'Pick a straight edge.'
-        : 'Pick a corner or a straight edge of a piece.';
+        : 'Pick a seamline or cut corner, or a straight edge, of a piece.';
     return;
   }
 
@@ -1477,7 +1549,7 @@ function onCutDimensionPointer(hit: Hit | null): void {
 
 /** The hint shown for each shared cut-anchor rejection. */
 const CUT_ANCHOR_HINTS: Record<CutAnchorIssueReason, string> = {
-  missing: 'Pick a corner or a straight edge of a piece.',
+  missing: 'Pick a seamline or cut corner, or a straight edge, of a piece.',
   'not-straight': 'Pick a straight edge.',
   'different-piece': 'Both anchors must belong to the same piece.',
   'same-anchor': 'The anchors must be different.',
@@ -1881,7 +1953,7 @@ function onPointerDown(event: PointerEvent): void {
       onDimensionPointer(hit);
       break;
     case 'cut_dimension':
-      onCutDimensionPointer(hit);
+      onCutDimensionPointer(hit, pickLoopHandle(screen));
       break;
   }
 }
@@ -2897,15 +2969,23 @@ watch(
             :data-cut-edge="entry.line.id"
           />
           <circle
-            v-for="point in cutVertexHandles"
-            :key="`cut-vertex-${point.id}`"
-            :cx="point.x"
-            :cy="point.y"
-            r="7"
-            class="cut-vertex-handle fill-none stroke-primary"
-            stroke-width="1.5"
-            data-testid="cut-vertex-handle"
-            :data-cut-vertex="point.id"
+            v-for="handle in loopHandles"
+            :key="handle.key"
+            :cx="handle.point.x"
+            :cy="handle.point.y"
+            :r="handle.anchor.loop === 'stitch' ? 6 : 7"
+            :stroke-width="handle.anchor.loop === 'stitch' ? 1 : 1.5"
+            :stroke-dasharray="handle.anchor.loop === 'stitch' ? '2 2' : undefined"
+            :class="
+              handle.anchor.loop === 'stitch'
+                ? 'seamline-point-handle fill-none stroke-primary'
+                : 'cut-vertex-handle fill-none stroke-primary'
+            "
+            data-testid="loop-point-handle"
+            :data-loop="handle.anchor.loop ?? 'cut'"
+            :data-loop-piece="handle.piece.id"
+            :data-loop-edge="handle.anchor.edge"
+            :data-loop-at="handle.anchor.at"
           />
         </g>
 

@@ -275,6 +275,24 @@ describe('entityProperties', () => {
     expect(entityProperties(document, 'cd')!.cutDimensions).toEqual([]);
   });
 
+  it('labels a stitch anchor with its loop and a cut anchor as before', () => {
+    const document = rectangle([
+      {
+        id: 'stitch-cut',
+        type: 'derived_distance',
+        piece: 'p1',
+        a: { edge: 'ab', at: 'start', loop: 'stitch' },
+        b: { edge: 'bc', at: 'end' },
+      },
+    ]);
+    document.pieces = [
+      { id: 'p1', name: 'Front', edges: ['ab', 'bc', 'cd', 'da'], allowances: [] },
+    ];
+
+    const row = entityProperties(document, 'ab')!.cutDimensions[0]!;
+    expect(row.anchors).toEqual(['stitch:ab:start', 'bc:end']);
+  });
+
   it('labels an edge anchor and keeps a point-deleted dimension broken', () => {
     const document = rectangle([
       {

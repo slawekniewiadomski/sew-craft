@@ -12,6 +12,7 @@ import {
   type PatternDocument,
   type Piece,
   type PieceMetrics,
+  type Vec2,
 } from '@sewcraft/geometry';
 
 import { uniformAllowance, type AllowanceChoice } from './allowance-defaults';
@@ -283,7 +284,30 @@ export function edgeLabel(document: PatternDocument, edgeId: EntityId): string {
 }
 
 function sameAnchor(a: CutAnchor, b: CutAnchor): boolean {
-  return a.edge === b.edge && a.at === b.at;
+  return a.edge === b.edge && a.at === b.at && (a.loop ?? 'cut') === (b.loop ?? 'cut');
+}
+
+/**
+ * The nearest candidate whose screen point lies within `radius` pixels of the
+ * pointer, or `null`. Ties keep the first candidate, so a caller that orders its
+ * candidates by piece and then edge order gets a stable pick.
+ */
+export function nearestLoopHandle<T extends { point: Vec2 }>(
+  candidates: readonly T[],
+  pointer: Vec2,
+  radius: number,
+): T | null {
+  let best: T | null = null;
+  let bestDistance = 0;
+  for (const candidate of candidates) {
+    const distance = Math.hypot(candidate.point.x - pointer.x, candidate.point.y - pointer.y);
+    if (distance > radius) continue;
+    if (best === null || distance < bestDistance) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  }
+  return best;
 }
 
 /** A cut dimension already measuring this piece span, in either direction. */

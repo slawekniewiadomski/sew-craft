@@ -2627,7 +2627,7 @@ describe('EditorView', () => {
     await nextTick();
 
     expect(wrapper.find('[data-testid="cut-dimension-hint"]').text()).toBe(
-      'Pick a corner or a straight edge of a piece.',
+      'Pick a seamline or cut corner, or a straight edge, of a piece.',
     );
     expect(store.document.constraints).toHaveLength(0);
     expect(store.journal).toHaveLength(0);
