@@ -30,7 +30,10 @@ import {
   constraintOffset,
   constraintOrientation,
   createsReferenceCycle,
+  distanceAnchorIssue,
+  isLineAnchor,
   resolveSetValue,
+  type DistanceAnchorReason,
 } from './dimension.js';
 import { CommandValidationError } from './errors.js';
 import { solve } from './solver.js';
@@ -429,7 +432,7 @@ export function solveDocument(
   const constraints = document.constraints.filter(
     (constraint) => constraint.type !== 'derived_distance',
   );
-  const result = solve(allPoints(document), constraints, options);
+  const result = solve(allPoints(document), constraints, options, document.entities);
   if (!result.converged) {
     return { document, result };
   }
@@ -848,6 +851,24 @@ function validateReference(
   return value;
 }
 
+/** The command message for one shared pick-time anchor reason. */
+function distanceIssueMessage(reason: DistanceAnchorReason): string {
+  switch (reason) {
+    case 'missing':
+      return 'distance: an anchor does not resolve';
+    case 'not-a-line':
+      return 'distance: curves, arcs and circles are not line anchors';
+    case 'not-parallel':
+      return 'distance: lines must be parallel';
+    case 'point-on-line':
+      return 'distance: the point lies on the line';
+    case 'coincident':
+      return 'distance: the lines are coincident';
+    case 'zero-length':
+      return 'distance: a line anchor has zero length';
+  }
+}
+
 function applyAddConstraint(
   document: PatternDocument,
   command: CommandOf<'add_constraint'>,
@@ -866,9 +887,14 @@ function applyAddConstraint(
   }
   // A driven distance measurement anchors on whatever points it measures, so a
   // fixed corner-round feature point is a legitimate anchor. A constraint that
-  // drives a value still needs draggable points.
+  // drives a value still needs draggable points. A distance may also anchor to a
+  // whole straight line, validated by the shared pick-time issue check below.
   const drivenMeasurement = type === 'distance' && value === undefined;
   for (const id of entities) {
+    const entity = getEntity(document, id);
+    // A distance line anchor, missing id or unsupported kind is classified by
+    // the shared issue helper below; only point anchors need the drafting rule.
+    if (type === 'distance' && (entity === undefined || entity.kind !== 'point')) continue;
     if (drivenMeasurement) requirePoint(document, id, 'add_constraint');
     else requireDraftingPoint(document, id, 'add_constraint');
   }
@@ -915,6 +941,24 @@ function applyAddConstraint(
   }
   if (offset !== undefined && !Number.isFinite(offset)) {
     throw new CommandValidationError('add_constraint', 'offset must be a finite number');
+  }
+
+  if (type === 'distance') {
+    const [a, b] = entities as [EntityId, EntityId];
+    const issue = distanceAnchorIssue(document, a, b);
+    if (issue.reason !== null) {
+      throw new CommandValidationError('add_constraint', distanceIssueMessage(issue.reason));
+    }
+    if (
+      orientation !== undefined &&
+      orientation !== 'aligned' &&
+      (isLineAnchor(document, a) || isLineAnchor(document, b))
+    ) {
+      throw new CommandValidationError(
+        'add_constraint',
+        'distance: a line anchor is always aligned',
+      );
+    }
   }
 
   if (getConstraint(document, command.id) !== undefined) {
@@ -1014,6 +1058,15 @@ function applyUpdateConstraint(
       throw new CommandValidationError(
         'update_constraint',
         `unknown dimension orientation: ${String(orientation)}`,
+      );
+    }
+    if (
+      orientation !== 'aligned' &&
+      (isLineAnchor(document, constraint.a) || isLineAnchor(document, constraint.b))
+    ) {
+      throw new CommandValidationError(
+        'update_constraint',
+        'distance: a line anchor is always aligned',
       );
     }
   }

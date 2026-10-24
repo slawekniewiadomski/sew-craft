@@ -213,12 +213,18 @@ are edited per piece, through the Pieces drawer or the entity inspector. Documen
 already-current document is returned unchanged.
 
 A `distance` constraint without `value` or `reference` is a **driven** dimension:
-it reports the live measurement and adds no solver equation. A `reference` links
+it reports the live measurement and adds no solver equation. Its `a`/`b` fields
+name a point **or a straight line**; the entity kind selects the anchor. A point
+and a line measure the perpendicular to the line's infinite supporting line; two
+parallel lines measure from the canonical first midpoint (lower id) to the second
+line. A line-anchored dimension is always aligned and carries no extra stored
+field, so the schema string stays `sewcraft.pattern/0.2`. A `reference` links
 one dimension to another; the effective value is derived, so the constraint
 stores no duplicate `value`. When the source disappears, the dependent keeps its
 `reference`, stores the last resolved number in `lastKnownValue` and renders as
 **broken** until the user re-links it. At most one of `value` and `reference` is
-present.
+present. A pre-feature build accepts the document but reports a line anchor as an
+unknown point when it solves, so a line-anchored document is not downgradeable.
 
 A `derived_distance` constraint is a **cut dimension**. It addresses two loop
 vertices of one piece by `{ edge, at }` anchors rather than by point id, because

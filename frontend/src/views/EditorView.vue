@@ -13,6 +13,8 @@ import {
   getEntity,
   isDrivenDimension,
   isKnownPatternSchema,
+  isLineAnchor,
+  measureDistanceDimension,
   measureLinearDimension,
   normalizeDocument,
   ALLOWANCE_KIND_LABELS,
@@ -83,6 +85,7 @@ import {
 } from '@/lib/corner-round';
 import {
   DIMENSION_ORIENTATION_OPTIONS,
+  anchorLabel,
   dimensionPatchForEdit,
   dimensionStateLabel,
   dimensionTone,
@@ -313,6 +316,8 @@ interface DimensionRow {
   stateLabel: string;
   sourceId: EntityId | null;
   orientation: DimensionOrientation;
+  /** A line anchor forces aligned, so the drawer hides the axis control. */
+  hasLineAnchor: boolean;
   offset: string;
 }
 
@@ -337,6 +342,7 @@ const dimensions = computed<DimensionRow[]>(() =>
           stateLabel: dimensionStateLabel(state),
           sourceId: null,
           orientation: constraintOrientation(constraint),
+          hasLineAnchor: false,
           offset: formatDimensionValue(constraintOffset(constraint)),
         },
       ];
@@ -352,13 +358,18 @@ const dimensions = computed<DimensionRow[]>(() =>
         constraint,
         kind: 'distance',
         readOnly: false,
-        entities: [constraint.a, constraint.b],
+        entities: [
+          anchorLabel(pattern.value, constraint.a),
+          anchorLabel(pattern.value, constraint.b),
+        ],
         value: formatDimensionValue(measured ?? 0),
         field: formatDimensionField(constraint, measured, state),
         state,
         stateLabel: dimensionStateLabel(state),
         sourceId: constraint.reference ?? null,
         orientation: constraintOrientation(constraint),
+        hasLineAnchor:
+          isLineAnchor(pattern.value, constraint.a) || isLineAnchor(pattern.value, constraint.b),
         offset: formatDimensionValue(constraintOffset(constraint)),
       },
     ];
@@ -755,25 +766,30 @@ function onAddCurve(points: [EntityId, EntityId, EntityId, EntityId]): void {
  * then only updates its presentation.
  */
 function onAddDimension(placement: DimensionPlacement): void {
+  const orientation =
+    isLineAnchor(pattern.value, placement.a) || isLineAnchor(pattern.value, placement.b)
+      ? 'aligned'
+      : placement.orientation;
   const existing = findDistanceConstraint(pattern.value, placement.a, placement.b);
   if (existing !== undefined) {
     run(() =>
       dispatch({
         id: nextCommandId('dimension'),
         type: 'update_constraint',
-        params: { id: existing.id, orientation: placement.orientation, offset: placement.offset },
+        params: { id: existing.id, orientation, offset: placement.offset },
       }),
     );
     return;
   }
 
-  const measured = measureLinearDimension(
-    pattern.value,
-    placement.a,
-    placement.b,
-    placement.orientation,
-  )!;
-  if (measured <= 0) return;
+  const measured = measureDistanceDimension(pattern.value, {
+    id: placement.a,
+    type: 'distance',
+    a: placement.a,
+    b: placement.b,
+    orientation,
+  });
+  if (measured === null || measured <= 0) return;
 
   run(() =>
     dispatch({
@@ -782,7 +798,7 @@ function onAddDimension(placement: DimensionPlacement): void {
       params: {
         type: 'distance',
         entities: [placement.a, placement.b],
-        orientation: placement.orientation,
+        orientation,
         offset: placement.offset,
       },
     }),
@@ -1863,6 +1879,7 @@ onBeforeUnmount(() => {
 
                 <div class="flex flex-wrap items-center gap-1.5">
                   <select
+                    v-if="!dimension.hasLineAnchor"
                     class="h-7 rounded-sm border px-1.5 text-2xs"
                     :value="dimension.orientation"
                     :aria-label="`Orientation for ${dimension.id}`"
@@ -1877,6 +1894,13 @@ onBeforeUnmount(() => {
                       {{ option.label }}
                     </option>
                   </select>
+                  <span
+                    v-else
+                    class="text-2xs text-muted-foreground"
+                    :data-testid="`dimension-aligned-locked-${dimension.id}`"
+                  >
+                    Aligned (line anchor)
+                  </span>
                   <input
                     type="number"
                     step="1"

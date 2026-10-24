@@ -173,10 +173,25 @@ The pure helpers in `dimension.ts` compute state and rendering for the frontend:
 
 - `dimensionGeometry(document, constraint)` — extension lines, dimension line,
   end chevrons and a rotated value label for a `distance` constraint, or `null`
-  when its points are missing. Honors `orientation` and `offset`
-  (`DEFAULT_DIMENSION_OFFSET` is `20` mm).
-- `measureLinearDimension(document, a, b, orientation)` — the span the constraint
-  would drive, or `null` when a point is missing.
+  when its anchors are missing or the span is degenerate. Honors `orientation`
+  and `offset` (`DEFAULT_DIMENSION_OFFSET` is `20` mm); a line anchor forces
+  aligned.
+- `lineEndpoints(document, id)` / `resolveAnchor(document, id)` — a straight
+  line's endpoints, or one anchor as a point or a line segment (`null` for a
+  curve, arc, circle or missing reference).
+- `resolveAnchorSpan(document, a, b)` / `resolveDistanceSpan(document,
+constraint)` — the resolved span and anchor kinds for point → point, point ↔
+  line (perpendicular foot on the infinite supporting line, normalized
+  point-first) and line ↔ line (canonical by entity id, first midpoint → second
+  line). `null` when the span is at or below `1e-9` mm.
+- `distanceAnchorIssue(document, a, b)` — the shared pick-time verdict the
+  command and canvas both map (`missing`, `not-a-line`, `not-parallel`,
+  `point-on-line`, `coincident`, `zero-length`), plus the span.
+- `measureDistanceDimension(document, constraint)` — absolute span length when a
+  line is an anchor, otherwise the stored-axis measurement.
+- `measureLinearDimension(document, a, b, orientation)` — the point-to-point span
+  the constraint would drive, or `null` when a point is missing; kept for entity
+  lengths and other point-only callers.
 - `dimensionState(document, constraint)` — one of `set`, `driven`, `referenced`
   or `broken`.
 - `isDrivenDimension(constraint)` — true only when the constraint has neither a

@@ -102,6 +102,19 @@ export function constraintEntityIds(constraint: Constraint): EntityId[] {
 }
 
 /**
+ * The ids a constraint references that must be solver points. A distance anchor
+ * may name a straight line instead, so the solver validates those against the
+ * line map rather than reporting them as unknown points.
+ */
+export function constraintPointIds(
+  constraint: Constraint,
+  isLineAnchor: (id: EntityId) => boolean,
+): EntityId[] {
+  const ids = constraintEntityIds(constraint);
+  return constraint.type === 'distance' ? ids.filter((id) => !isLineAnchor(id)) : ids;
+}
+
+/**
  * Resolve every point referenced by an entity, in reference order. Throws when a
  * reference is missing or does not point at a point entity.
  */

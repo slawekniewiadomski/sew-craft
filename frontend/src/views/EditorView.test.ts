@@ -1309,6 +1309,20 @@ describe('EditorView', () => {
     expect(wrapper.findAll('[aria-label="Dimensions"] li')).toHaveLength(1);
   });
 
+  it('hides the axis control for a line-anchored dimension', async () => {
+    const { wrapper } = await mountLoaded({
+      ...lineDoc,
+      constraints: [{ id: 'gap', type: 'distance', a: 'ab', b: 'c' }],
+    });
+
+    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="dimension-orientation-gap"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-aligned-locked-gap"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="dimension-offset-gap"]').exists()).toBe(true);
+  });
+
   it('clears a set dimension to driven from the sidebar and undoes it', async () => {
     const { wrapper, store } = await mountLoaded({
       ...lineDoc,
@@ -1900,6 +1914,7 @@ describe('EditorView', () => {
 
     await wrapper.find('[data-testid="tool-dimension"]').trigger('click');
     entityDown(wrapper, 'line', 'ab');
+    pointDown(wrapper, 'c');
     await nextTick();
 
     expect(store.document.constraints).toHaveLength(0);
@@ -1918,8 +1933,8 @@ describe('EditorView', () => {
     const constraint = store.document.constraints[0]!;
     expect(constraint).toMatchObject({
       type: 'distance',
-      a: 'a',
-      b: 'b',
+      a: 'ab',
+      b: 'c',
       orientation: 'aligned',
       offset: 20,
     });
@@ -1956,7 +1971,8 @@ describe('EditorView', () => {
     });
 
     await wrapper.find('[data-testid="tool-dimension"]').trigger('click');
-    entityDown(wrapper, 'line', 'ab');
+    pointDown(wrapper, 'a');
+    pointDown(wrapper, 'b');
     canvasDown(wrapper, 400, 300);
     await flushPromises();
 
@@ -2028,7 +2044,8 @@ describe('EditorView', () => {
     });
 
     await wrapper.find('[data-testid="tool-dimension"]').trigger('click');
-    entityDown(wrapper, 'line', 'ab');
+    pointDown(wrapper, 'a');
+    pointDown(wrapper, 'b');
     canvasDown(wrapper, 400, 300);
     await flushPromises();
 
