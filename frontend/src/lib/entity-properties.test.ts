@@ -332,6 +332,21 @@ describe('entityProperties', () => {
     ]);
   });
 
+  it('lists a dimension that anchors to the selected line itself', () => {
+    const document = rectangle([
+      ...rectangleConstraints,
+      { id: 'gap', type: 'distance', a: 'ab', b: 'd' },
+    ]);
+
+    expect(entityProperties(document, 'ab')?.dimensions.map((dimension) => dimension.id)).toEqual([
+      'width',
+      'gap',
+    ]);
+    expect(entityProperties(document, 'bc')?.dimensions.map((dimension) => dimension.id)).toEqual([
+      'height',
+    ]);
+  });
+
   it('lists angle, equal and point_on_line on every segment they reference', () => {
     const document = rectangle([
       { id: 'angle', type: 'angle', a: 'a', b: 'b', c: 'c', value: Math.PI / 2 },

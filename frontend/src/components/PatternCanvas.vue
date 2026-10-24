@@ -22,6 +22,9 @@ import {
   dimensionGeometry,
   dimensionOffsetForPointer,
   dimensionOffsetFromSpan,
+  distanceAnchorIssue,
+  type DimensionAnchor,
+  type DistanceAnchorReason,
   type DimensionLayout,
   dimensionState,
   dimensionValue,
@@ -33,6 +36,7 @@ import {
   inferOrientationFromSpan,
   isCornerRoundDerived,
   type LineEntity,
+  measureDistanceDimension,
   measureLinearDimension,
   MIN_RADIUS,
   type PatternDocument,
@@ -344,8 +348,13 @@ const rectangleClicks = ref<DraftingEndpoint[]>([]);
 const rectanglePointer = ref<Vec2 | null>(null);
 const spaceHeld = ref(false);
 
-/** Points picked for a dimension that has not yet been placed. */
-const dimensionPending = ref<EntityId[]>([]);
+/** One pick of the Dimension tool: a point or a whole straight line. */
+type DimensionPick = { id: EntityId; kind: DimensionAnchor['kind'] };
+
+/** Anchors picked for a dimension that has not yet been placed. */
+const dimensionPending = ref<DimensionPick[]>([]);
+/** Why the last dimension pick was rejected; cleared by a valid pick. */
+const dimensionHint = ref<string | null>(null);
 /** The dimension being placed; its orientation/offset follow the pointer. */
 const dimensionPlacement = ref<DimensionPlacement | null>(null);
 /** The first corner picked for a cut dimension, with its owning piece. */
@@ -435,6 +444,14 @@ const cutDimensionHintText = computed<string | null>(() => {
     return 'Pick second corner of the same piece';
   }
   return null;
+});
+
+/** The Dimension tool's status message: a rejection, or the next pick prompt. */
+const dimensionHintText = computed<string | null>(() => {
+  if (dimensionHint.value !== null) return dimensionHint.value;
+  if (dimensionPlacement.value !== null) return null;
+  if (dimensionPending.value.length > 0) return 'Pick the second anchor.';
+  return props.tool === 'dimension' ? 'Pick a point or a line.' : null;
 });
 
 const roundPickedLineIds = computed(() => {
@@ -1002,13 +1019,14 @@ const dimensionPreviewConstraint = computed<DistanceConstraint | null>(() => {
   const placement = dimensionPlacement.value;
   if (placement === null) return null;
 
-  const measured = measureLinearDimension(
-    props.document,
-    placement.a,
-    placement.b,
-    placement.orientation,
-  )!;
-  if (measured <= 0) return null;
+  const measured = measureDistanceDimension(props.document, {
+    id: 'dimension-preview',
+    type: 'distance',
+    a: placement.a,
+    b: placement.b,
+    orientation: placement.orientation,
+  });
+  if (measured === null || measured <= 0) return null;
 
   // A dimension being placed is a driven preview: it measures without a value.
   return {
@@ -1297,8 +1315,8 @@ function snappedPoint(world: Vec2): Vec2 {
 }
 
 /**
- * Dimension placement: a line picks its own endpoints, points are collected in
- * pairs, and the next click after a complete pair drops the dimension line.
+ * Dimension placement: every dimension picks two anchors, each a point or a
+ * whole straight line; the next click after the second pick drops the line.
  */
 function onDimensionPointer(hit: Hit | null): void {
   if (dimensionPlacement.value !== null) {
@@ -1306,31 +1324,48 @@ function onDimensionPointer(hit: Hit | null): void {
     return;
   }
 
-  if (hit === null || (hit.kind !== 'point' && hit.kind !== 'line')) {
+  if (hit === null) {
     dimensionPending.value = [];
+    dimensionHint.value = null;
     return;
   }
 
-  if (hit.kind === 'line') {
-    const line = props.document.entities.find(
-      (entity): entity is LineEntity => entity.id === hit.id && entity.kind === 'line',
-    )!;
-    dimensionPending.value = [];
-    startDimensionPlacement(line.start, line.end);
+  if (hit.kind !== 'point' && hit.kind !== 'line') {
+    dimensionHint.value = 'Pick a point or a straight line.';
     return;
   }
 
-  const ids = dimensionPending.value.includes(hit.id)
-    ? dimensionPending.value
-    : [...dimensionPending.value, hit.id];
-  if (ids.length < 2) {
-    dimensionPending.value = ids;
+  const pick: DimensionPick = { id: hit.id, kind: hit.kind };
+  const pending = dimensionPending.value;
+  if (pending.length === 0) {
+    dimensionPending.value = [pick];
+    dimensionHint.value = null;
+    return;
+  }
+
+  // Clicking the same anchor twice is a no-op, not a zero-length dimension.
+  if (pending[0]!.id === pick.id) return;
+
+  const issue = distanceAnchorIssue(props.document, pending[0]!.id, pick.id);
+  if (issue.reason !== null) {
+    dimensionHint.value = DIMENSION_ANCHOR_HINTS[issue.reason];
     return;
   }
 
   dimensionPending.value = [];
-  startDimensionPlacement(ids[0]!, ids[1]!);
+  dimensionHint.value = null;
+  startDimensionPlacement(pending[0]!.id, pick.id);
 }
+
+/** The canvas hint for each shared pick-time anchor rejection. */
+const DIMENSION_ANCHOR_HINTS: Record<DistanceAnchorReason, string> = {
+  missing: 'Pick a point or a straight line.',
+  'not-a-line': 'Pick a point or a straight line.',
+  'not-parallel': 'Pick two parallel lines — use Angle for a corner.',
+  'point-on-line': 'The point lies on the line.',
+  coincident: 'The lines are coincident.',
+  'zero-length': 'Pick a point or a straight line.',
+};
 
 function startDimensionPlacement(a: EntityId, b: EntityId): void {
   dimensionPlacement.value = {
@@ -1966,6 +2001,19 @@ function onKeyDown(event: KeyboardEvent): void {
 
   if (
     event.key === 'Escape' &&
+    (dimensionPending.value.length > 0 ||
+      dimensionPlacement.value !== null ||
+      dimensionHint.value !== null)
+  ) {
+    event.preventDefault();
+    dimensionPending.value = [];
+    dimensionPlacement.value = null;
+    dimensionHint.value = null;
+    return;
+  }
+
+  if (
+    event.key === 'Escape' &&
     (cutDimensionPending.value !== null ||
       cutDimensionPlacement.value !== null ||
       cutDimensionHint.value !== null)
@@ -2276,6 +2324,7 @@ watch(
     clearRectangleGesture();
     dimensionPending.value = [];
     dimensionPlacement.value = null;
+    dimensionHint.value = null;
     clearCutDimensionGesture();
     editingDimension.value = null;
     cancelPointerInteraction();
@@ -3123,6 +3172,15 @@ watch(
       data-testid="arc-hint"
     >
       pick a point off the line
+    </p>
+
+    <p
+      v-if="dimensionHintText !== null"
+      class="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground shadow-sm"
+      role="status"
+      data-testid="dimension-hint"
+    >
+      {{ dimensionHintText }}
     </p>
 
     <p

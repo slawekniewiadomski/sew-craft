@@ -131,6 +131,20 @@ describe('constraintMarkers', () => {
     expect(constraintMarkers(doc([dangling]))).toEqual([]);
   });
 
+  it('skips a line-anchored distance, which the dimension layer draws', () => {
+    const base = doc([]);
+    const document: PatternDocument = {
+      ...base,
+      entities: [
+        ...base.entities,
+        { id: 'L', kind: 'line', start: 'a', end: 'b', construction: false },
+      ],
+      constraints: [{ id: 'gap', type: 'distance', a: 'L', b: 'c' }],
+    };
+
+    expect(constraintMarkers(document)).toEqual([]);
+  });
+
   it('returns no markers for a document without constraints', () => {
     expect(constraintMarkers(doc([]))).toEqual([]);
   });

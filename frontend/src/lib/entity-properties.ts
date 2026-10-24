@@ -219,10 +219,16 @@ function constraintActsOnEntity(
   }
 
   switch (constraint.type) {
+    case 'distance':
+      // A line matches its endpoint pair or is itself an anchor of the dimension.
+      return (
+        samePair(constraint.a, constraint.b, entity.start, entity.end) ||
+        constraint.a === entity.id ||
+        constraint.b === entity.id
+      );
     case 'coincident':
     case 'horizontal':
     case 'vertical':
-    case 'distance':
     case 'point_on_line':
       return samePair(constraint.a, constraint.b, entity.start, entity.end);
     case 'angle':
