@@ -243,8 +243,9 @@ sketch.
   least `0.001` mm of each line outside the tangent point. The corner angle must
   be strictly between `0°` and `180°` with a `1°` guard at each end.
 - Derived ids are deterministic: `<id>:a` and `<id>:b` (tangent points),
-  `<id>:c1`/`<id>:c2` (controls) and `<id>:arc`. Re-applying a command whose
-  feature exists is a no-op.
+  `<id>:c1`/`<id>:c2` (controls), `<id>:arc` and `<id>:center` (the radius
+  centre, a fixed construction point). Re-applying a command whose feature
+  exists is a no-op.
 - inverse: `remove_corner_round` with the feature id.
 
 ### `set_corner_round_radius`
@@ -265,8 +266,9 @@ Restore a rounded corner.
 
 - params: `id: entity_id` (the feature id)
 - Restores both line endpoints to the sharp corner, restores the corner's
-  previous construction flag, deletes the tangent points, control points and arc,
-  and removes the feature. A line with a round at its other end keeps that round.
+  previous construction flag, deletes the tangent points, control points, radius
+  centre and arc, and removes the feature. A line with a round at its other end
+  keeps that round.
 - inverse: `add_corner_round` with the original lines and radius.
 
 ### `create_piece`

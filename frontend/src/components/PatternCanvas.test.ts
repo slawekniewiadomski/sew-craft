@@ -9,6 +9,7 @@ import {
   type EntityId,
   entitiesInRect,
   executeCommand,
+  getEntity,
   type LineEntity,
   type PatternDocument,
   type PointEntity,
@@ -2332,11 +2333,12 @@ describe('PatternCanvas', () => {
     expect(wrapper.find('[data-testid="corner-round-preview"]').exists()).toBe(false);
   });
 
-  it('hides derived points and shows handles and the label for a selected round', () => {
+  it('shows feature dots without control points and handles for a selected round', () => {
     const document = roundedSquare();
     const wrapper = mountCanvas({ document, selectedEntityIds: ['ab'] });
 
-    expect(pointCircle(wrapper, 'r1:a').exists()).toBe(false);
+    // Tangents and the centre are feature points now; Bézier controls stay hidden.
+    expect(pointCircle(wrapper, 'r1:a').exists()).toBe(true);
     expect(pointCircle(wrapper, 'r1:c1').exists()).toBe(false);
     expect(pointCircle(wrapper, 'b').exists()).toBe(true);
 
@@ -2964,5 +2966,91 @@ describe('PatternCanvas', () => {
     up();
 
     expect(wrapper.emitted('update-dimension')).toHaveLength(1);
+  });
+});
+
+describe('corner round feature points', () => {
+  const featureIds = (wrapper: VueWrapper): (string | undefined)[] =>
+    wrapper
+      .find('[data-testid="corner-round-feature-layer"]')
+      .findAll('[data-kind="point"]')
+      .map((dot) => dot.attributes('data-entity-id'));
+
+  it('renders the radius centre and both tangents as always-visible dots', () => {
+    const wrapper = mountCanvas({ document: roundedSquare() });
+
+    const layer = wrapper.find('[data-testid="corner-round-feature-layer"]');
+    expect(layer.attributes('aria-hidden')).toBe('true');
+    expect(featureIds(wrapper)).toEqual(['r1:center', 'r1:a', 'r1:b']);
+
+    const centre = wrapper.find('[data-testid="corner-round-feature-r1:center"]');
+    expect(centre.attributes('r')).toBe('3');
+    expect(centre.attributes('cx')).toBe('90');
+    expect(centre.attributes('cy')).toBe('10');
+    expect(centre.classes()).toContain('fill-background');
+    expect(centre.classes()).toContain('stroke-muted-foreground');
+
+    // A drawing without rounds shows no feature dots.
+    expect(featureIds(mountCanvas())).toEqual([]);
+  });
+
+  it('promotes the three dots of the selected round', () => {
+    const wrapper = mountCanvas({ document: roundedSquare(), selectedEntityIds: ['r1:center'] });
+
+    for (const dot of wrapper.findAll('[data-testid^="corner-round-feature-r1:"]')) {
+      expect(dot.classes()).toContain('fill-primary');
+    }
+  });
+
+  it('skips a round written before feature points and a dot whose point is gone', () => {
+    const document = roundedSquare();
+    const legacy: PatternDocument = {
+      ...document,
+      cornerRounds: [{ ...document.cornerRounds![0]!, center: undefined }],
+    };
+    expect(featureIds(mountCanvas({ document: legacy }))).toEqual(['r1:a', 'r1:b']);
+
+    const missingTangent: PatternDocument = {
+      ...document,
+      entities: document.entities.filter((entity) => entity.id !== 'r1:a'),
+    };
+    expect(featureIds(mountCanvas({ document: missingTangent }))).toEqual(['r1:center', 'r1:b']);
+  });
+
+  it('selects a feature point without starting a drag', () => {
+    const wrapper = mountCanvas({ document: roundedSquare() });
+
+    down(wrapper.find('[data-testid="corner-round-feature-r1:center"]').element, 300, 200);
+    move(320, 220);
+    up();
+
+    expect(wrapper.emitted('update:selectedEntityIds')).toEqual([[['r1:center']]]);
+    expect(wrapper.emitted('move-point')).toBeUndefined();
+  });
+
+  it('snaps a new point to the radius centre', () => {
+    const document = roundedSquare();
+    const wrapper = mountCanvas({ document, tool: 'add_point' });
+    const centre = getEntity(document, 'r1:center') as PointEntity;
+
+    const screen = worldToScreen(fitToBounds(bounds(document)!, SIZE), centre);
+    down(wrapper.find('svg').element, screen.x + 2, screen.y + 2);
+
+    expect(wrapper.emitted('add-point')).toEqual([[centre.x, centre.y]]);
+  });
+
+  it('measures from the radius centre to another point', async () => {
+    const wrapper = mountCanvas({ document: roundedSquare(), tool: 'dimension' });
+
+    down(pointCircle(wrapper, 'r1:center').element, 300, 200);
+    await nextTick();
+    down(pointCircle(wrapper, 'a').element, 300, 200);
+    await nextTick();
+    down(wrapper.find('[data-testid="grid"]').element, 400, 300);
+
+    expect(wrapper.emitted('add-dimension')![0]![0]).toMatchObject({
+      a: 'r1:center',
+      b: 'a',
+    });
   });
 });

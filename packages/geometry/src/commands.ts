@@ -864,8 +864,13 @@ function applyAddConstraint(
       `${type} needs ${arity} entities, got ${entities.length}`,
     );
   }
+  // A driven distance measurement anchors on whatever points it measures, so a
+  // fixed corner-round feature point is a legitimate anchor. A constraint that
+  // drives a value still needs draggable points.
+  const drivenMeasurement = type === 'distance' && value === undefined;
   for (const id of entities) {
-    requireDraftingPoint(document, id, 'add_constraint');
+    if (drivenMeasurement) requirePoint(document, id, 'add_constraint');
+    else requireDraftingPoint(document, id, 'add_constraint');
   }
 
   if (
@@ -1450,6 +1455,7 @@ function applyAddCornerRound(
     radius,
     arc: `${command.id}:arc`,
     controls: [`${command.id}:c1`, `${command.id}:c2`],
+    center: `${command.id}:center`,
     cornerConstruction: false,
   };
   const maximum = maxCornerRadius(document, tentative);
@@ -1469,6 +1475,7 @@ function applyAddCornerRound(
     tentative.controls[0],
     tentative.controls[1],
     tentative.arc,
+    tentative.center!,
   ];
   for (const id of derivedIds) {
     if (getEntity(document, id) !== undefined) {
@@ -1496,6 +1503,14 @@ function applyAddCornerRound(
   });
 
   entities.push(
+    {
+      id: tentative.center!,
+      kind: 'point',
+      x: geometry.geometry.center.x,
+      y: geometry.geometry.center.y,
+      construction: true,
+      fixed: true,
+    },
     {
       id: tentative.ends[0].tangent,
       kind: 'point',
@@ -1637,6 +1652,7 @@ function applyRemoveCornerRound(
     ...round.controls,
     ...round.ends.map((end) => end.tangent),
   ]);
+  if (round.center !== undefined) removed.add(round.center);
 
   const entities = document.entities
     .filter((entity) => !removed.has(entity.id))

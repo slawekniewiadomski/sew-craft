@@ -4,6 +4,7 @@ import {
   applyCommand,
   CommandValidationError,
   cornerRoundGeometry,
+  distance,
   cornerRounds,
   cornerRoundsForEntity,
   createEmptyDocument,
@@ -105,6 +106,24 @@ describe('cornerRoundGeometry', () => {
     expect(result.geometry!.control2.y).toBeCloseTo(10 - 5.5228, 3);
   });
 
+  it('places the radius centre one radius from both tangents', () => {
+    const right = cornerRoundGeometry(rightAngle(), 'c', 'a', 'b', 10).geometry!;
+    expect(right.center.x).toBeCloseTo(10);
+    expect(right.center.y).toBeCloseTo(10);
+
+    const acute = documentOf(point('c', 0, 0), point('a', 100, 0), point('b', 50, 86.602540378));
+    const obtuse = documentOf(point('c', 0, 0), point('a', 100, 0), point('b', -50, 86.602540378));
+
+    for (const probe of [
+      right,
+      cornerRoundGeometry(acute, 'c', 'a', 'b', 10).geometry!,
+      cornerRoundGeometry(obtuse, 'c', 'a', 'b', 10).geometry!,
+    ]) {
+      expect(distance(probe.center, probe.tangentA)).toBeCloseTo(10, 6);
+      expect(distance(probe.center, probe.tangentB)).toBeCloseTo(10, 6);
+    }
+  });
+
   it('uses the interior angle for acute and obtuse corners', () => {
     const acute = documentOf(point('c', 0, 0), point('a', 100, 0), point('b', 50, 86.602540378));
     const obtuse = documentOf(point('c', 0, 0), point('a', 100, 0), point('b', -50, 86.602540378));
@@ -171,6 +190,169 @@ describe('cornerRoundsForEntity and isCornerRoundDerived', () => {
     for (const id of [round.corner, round.ends[0].line, round.ends[0].anchor]) {
       expect(isCornerRoundDerived(document, id)).toBe(false);
     }
+  });
+});
+
+describe('corner round feature points', () => {
+  it('derives and persists the radius centre with the round', () => {
+    const document = rounded();
+    const round = roundOf(document);
+    const centre = getEntity(document, round.center!);
+
+    expect(round.center).toBe('r1:center');
+    expect(centre).toMatchObject({ kind: 'point', x: 10, y: 10, construction: true, fixed: true });
+    expect(isCornerRoundDerived(document, 'r1:center')).toBe(true);
+    expect(cornerRoundsForEntity(document, 'r1:center')).toHaveLength(1);
+  });
+
+  it('moves the centre when the radius changes', () => {
+    const document = rounded(10);
+    const grown = regenerateCornerRounds({
+      ...document,
+      cornerRounds: [{ ...roundOf(document), radius: 20 }],
+    });
+
+    expect(getEntity(grown, 'r1:center')).toMatchObject({ x: 20, y: 20, fixed: true });
+  });
+
+  it('leaves a round written before feature points without a centre', () => {
+    const document = rounded();
+    const legacy: PatternDocument = {
+      ...document,
+      cornerRounds: [{ ...roundOf(document), center: undefined }],
+    };
+
+    const regenerated = regenerateCornerRounds(legacy);
+
+    expect(cornerRounds(regenerated)[0]!.center).toBeUndefined();
+  });
+
+  it('does not use the centre as a piece loop vertex', () => {
+    const base = documentOf(
+      point('c1', 0, 0),
+      point('c2', 100, 0),
+      point('c3', 100, 100),
+      point('c4', 0, 100),
+      line('bottom', 'c1', 'c2'),
+      line('right', 'c2', 'c3'),
+      line('top', 'c3', 'c4'),
+      line('left', 'c4', 'c1'),
+    );
+    const roundedBase = applyCommand(base, {
+      id: 'r1',
+      type: 'add_corner_round',
+      params: { first: 'bottom', second: 'right', radius: 10 },
+    }).document;
+    expect(cornerRounds(roundedBase)[0]!.center).toBe('r1:center');
+    const withPiece = applyCommand(roundedBase, {
+      id: 'piece',
+      type: 'create_piece',
+      params: { edges: ['bottom', 'right', 'top', 'left'] },
+    }).document;
+
+    expect(withPiece.pieces).toHaveLength(1);
+    expect(withPiece.pieces[0]!.edges).toEqual(['bottom', 'right', 'top', 'left']);
+  });
+});
+
+describe('normalizeCornerRounds feature points', () => {
+  const legacy = (): PatternDocument => {
+    const document = rounded();
+    return {
+      ...removeEntity(document, 'r1:center'),
+      cornerRounds: [{ ...roundOf(document), center: undefined }],
+    };
+  };
+
+  it('mints the centre once for a round written before the field existed', () => {
+    const document = normalizeCornerRounds(legacy());
+    const centre = getEntity(document, 'r1:center');
+
+    expect(cornerRounds(document)[0]!.center).toBe('r1:center');
+    expect(centre).toMatchObject({ kind: 'point', x: 10, y: 10, construction: true, fixed: true });
+    // A second load is a no-op: nothing is missing and no coordinate moves.
+    expect(normalizeCornerRounds(document)).toBe(document);
+  });
+
+  it('never rewrites a stored centre coordinate on load', () => {
+    const document = rounded();
+    const moved = mapEntity(document, 'r1:center', (entity) =>
+      entity.kind === 'point' ? { ...entity, x: 99, y: 99 } : entity,
+    );
+
+    expect(normalizeCornerRounds(moved)).toBe(moved);
+  });
+
+  it('reuses an existing entity with the deterministic id', () => {
+    const document = rounded();
+    const orphaned: PatternDocument = {
+      ...document,
+      cornerRounds: [{ ...roundOf(document), center: undefined }],
+    };
+    const withEntity = mapEntity(orphaned, 'r1:center', (entity) =>
+      entity.kind === 'point' ? { ...entity, x: 42, y: 42 } : entity,
+    );
+
+    const normalized = normalizeCornerRounds(withEntity);
+
+    expect(cornerRounds(normalized)[0]!.center).toBe('r1:center');
+    expect(getEntity(normalized, 'r1:center')).toMatchObject({ x: 42, y: 42 });
+  });
+
+  it('mints only the missing centre when one round already carries it', () => {
+    const base = documentOf(
+      point('c1', 0, 0),
+      point('c2', 100, 0),
+      point('c3', 100, 100),
+      point('c4', 0, 100),
+      line('bottom', 'c1', 'c2'),
+      line('right', 'c2', 'c3'),
+      line('top', 'c3', 'c4'),
+      line('left', 'c4', 'c1'),
+    );
+    const first = applyCommand(base, {
+      id: 'r1',
+      type: 'add_corner_round',
+      params: { first: 'bottom', second: 'right', radius: 10 },
+    }).document;
+    const both = applyCommand(first, {
+      id: 'r2',
+      type: 'add_corner_round',
+      params: { first: 'top', second: 'left', radius: 10 },
+    }).document;
+    const mixed: PatternDocument = {
+      ...removeEntity(both, 'r2:center'),
+      cornerRounds: cornerRounds(both).map((round) =>
+        round.id === 'r2' ? { ...round, center: undefined } : round,
+      ),
+    };
+
+    const normalized = normalizeCornerRounds(mixed);
+
+    expect(cornerRounds(normalized).map((round) => round.center)).toEqual([
+      'r1:center',
+      'r2:center',
+    ]);
+    expect(getEntity(normalized, 'r2:center')).toMatchObject({ kind: 'point', fixed: true });
+  });
+
+  it('mints nothing for a round that normalisation drops', () => {
+    const document = removeEntity(legacy(), 'r1:arc');
+
+    const normalized = normalizeCornerRounds(document);
+
+    expect(cornerRounds(normalized)).toHaveLength(0);
+    expect(getEntity(normalized, 'r1:center')).toBeUndefined();
+  });
+
+  it('drops a round whose persisted centre is not a fixed construction point', () => {
+    const missing = removeEntity(normalizeCornerRounds(legacy()), 'r1:center');
+    expect(cornerRounds(normalizeCornerRounds(missing))).toHaveLength(0);
+
+    const loose = mapEntity(normalizeCornerRounds(legacy()), 'r1:center', (entity) =>
+      entity.kind === 'point' ? { ...entity, fixed: false } : entity,
+    );
+    expect(cornerRounds(normalizeCornerRounds(loose))).toHaveLength(0);
   });
 });
 

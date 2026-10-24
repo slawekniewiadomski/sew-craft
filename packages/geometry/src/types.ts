@@ -246,6 +246,12 @@ export interface CornerRound {
   arc: EntityId;
   /** Derived Bézier control points p1 and p2. */
   controls: [EntityId, EntityId];
+  /**
+   * Derived point at the centre of the radius. Optional so documents written
+   * before feature points load unchanged; every new round sets it and the load
+   * path mints it for older documents.
+   */
+  center?: EntityId;
   /** The sharp corner's construction flag before the round. */
   cornerConstruction: boolean;
 }
