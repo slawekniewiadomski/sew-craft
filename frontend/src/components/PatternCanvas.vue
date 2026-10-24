@@ -30,6 +30,7 @@ import {
   dimensionState,
   dimensionValue,
   type DimensionState,
+  dimensionsInRect,
   type DistanceConstraint,
   entitiesInRect,
   type EntityId,
@@ -942,6 +943,19 @@ const marqueeCandidates = computed(() => {
   const rect = marqueeWorldRect.value;
   if (state === null || rect === null || !state.latched) return new Set<EntityId>();
   return new Set(entitiesInRect(props.document, rect, rectMode(state.start.x, state.current.x)));
+});
+
+/**
+ * Dimensions the latched marquee would select, using the same predicate as the
+ * commit. Hidden dimensions are never offered, since they are not rendered.
+ */
+const marqueeDimensionCandidates = computed(() => {
+  const state = marqueeState.value;
+  const rect = marqueeWorldRect.value;
+  if (state === null || rect === null || !state.latched || !props.showDimensions) {
+    return new Set<EntityId>();
+  }
+  return new Set(dimensionsInRect(props.document, rect, rectMode(state.start.x, state.current.x)));
 });
 
 const lines = computed(() =>
@@ -1891,8 +1905,11 @@ function onDimensionPointerDown(
       // A modified press selects only; it never starts a drag.
       event.stopPropagation();
       event.preventDefault();
+      emit('update:selectedEntityIds', []);
       return;
     }
+    // Clicks are exclusive: a dimension click clears the entity selection.
+    emit('update:selectedEntityIds', []);
   }
 
   if (constraint.type === 'distance') {
@@ -2194,8 +2211,8 @@ function onPointerDown(event: PointerEvent): void {
       }
 
       selectEntity(hit.id, mode);
-      // A plain entity click replaces the dimension selection; modifiers keep it.
-      if (mode === 'replace') emit('update:selectedDimensionIds', []);
+      // Clicks are exclusive: an entity click clears the dimension selection.
+      emit('update:selectedDimensionIds', []);
       if (mode !== 'replace') break;
       if (hit.kind === 'point' && !isCornerRoundDerived(props.document, hit.id)) {
         beginDrag(hit.id, pointById.value.get(hit.id)!);
@@ -2641,14 +2658,15 @@ function updateMarquee(screen: Vec2): void {
 function finishMarquee(): void {
   const state = marqueeState.value!;
   const rect = marqueeWorldRect.value!;
-  const hits = state.latched
-    ? entitiesInRect(props.document, rect, rectMode(state.start.x, state.current.x))
-    : [];
+  const mode = rectMode(state.start.x, state.current.x);
+  const hits = state.latched ? entitiesInRect(props.document, rect, mode) : [];
+  const dimensionHits =
+    state.latched && props.showDimensions ? dimensionsInRect(props.document, rect, mode) : [];
   marqueeState.value = null;
   emit('marquee-change', false);
 
   if (!state.latched) {
-    // A bare-canvas click clears both selections; dimension modifiers keep theirs.
+    // A bare-canvas click clears both selections; modified clicks keep theirs.
     if (state.mode === 'replace') {
       emit('update:selectedEntityIds', []);
       emit('update:selectedDimensionIds', []);
@@ -2656,9 +2674,13 @@ function finishMarquee(): void {
     return;
   }
 
+  // The marquee is the one gesture that may leave both selections non-empty:
+  // replace with no hits clears its kind, additive/subtractive with no hits keeps it.
   emit('update:selectedEntityIds', applySelection(props.selectedEntityIds, hits, state.mode));
-  // A committed marquee is an entity gesture; an additive one with no hits is not.
-  if (state.mode === 'replace' || hits.length > 0) emit('update:selectedDimensionIds', []);
+  emit(
+    'update:selectedDimensionIds',
+    applySelection(props.selectedDimensionIds, dimensionHits, state.mode),
+  );
 }
 
 /** Discard the rectangle and leave the previous selection untouched. */
@@ -3473,15 +3495,19 @@ watch(
         >
           <template v-for="segment in drawing.segments" :key="segment.key">
             <line
-              v-if="segment.main && drawing.selected"
+              v-if="
+                segment.main && (drawing.selected || marqueeDimensionCandidates.has(drawing.id))
+              "
               :x1="segment.x1"
               :y1="segment.y1"
               :x2="segment.x2"
               :y2="segment.y2"
-              class="stroke-primary opacity-30"
+              :class="drawing.selected ? 'stroke-primary opacity-30' : 'stroke-primary opacity-20'"
               stroke-width="4"
               vector-effect="non-scaling-stroke"
-              data-testid="dimension-selection-halo"
+              :data-testid="
+                drawing.selected ? 'dimension-selection-halo' : 'dimension-marquee-preview'
+              "
             />
             <line
               :x1="segment.x1"
@@ -3525,15 +3551,19 @@ watch(
         >
           <template v-for="segment in drawing.segments" :key="segment.key">
             <line
-              v-if="segment.main && drawing.selected"
+              v-if="
+                segment.main && (drawing.selected || marqueeDimensionCandidates.has(drawing.id))
+              "
               :x1="segment.x1"
               :y1="segment.y1"
               :x2="segment.x2"
               :y2="segment.y2"
-              class="stroke-primary opacity-30"
+              :class="drawing.selected ? 'stroke-primary opacity-30' : 'stroke-primary opacity-20'"
               stroke-width="4"
               vector-effect="non-scaling-stroke"
-              data-testid="dimension-selection-halo"
+              :data-testid="
+                drawing.selected ? 'dimension-selection-halo' : 'dimension-marquee-preview'
+              "
             />
             <line
               :x1="segment.x1"

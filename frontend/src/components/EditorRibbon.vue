@@ -24,6 +24,8 @@ const props = defineProps<{
   canRedo: boolean;
   canDelete: boolean;
   canCreatePiece?: boolean;
+  /** Explains a refused Create piece, shown in its tooltip. */
+  createPieceHint?: string;
   /** A read-only document disables every tool and action. */
   readOnly?: boolean;
 }>();
@@ -79,6 +81,13 @@ function pressed(item: RibbonButtonItem): true | undefined {
   return isActive(item) ? true : undefined;
 }
 
+/** The tooltip text: an action's own label, or the reason it is refused. */
+function hintFor(item: RibbonButtonItem): string {
+  return item.kind === 'action' && item.action === 'create_piece' && props.createPieceHint
+    ? props.createPieceHint
+    : item.label;
+}
+
 function activate(item: RibbonButtonItem): void {
   if (item.kind === 'tool') {
     emit('select-tool', item.tool);
@@ -132,7 +141,7 @@ function activate(item: RibbonButtonItem): void {
                     <RibbonIcon :icon="ribbonIcon(item.icon)" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>{{ item.label }}</TooltipContent>
+                <TooltipContent>{{ hintFor(item) }}</TooltipContent>
               </Tooltip>
             </template>
           </div>
