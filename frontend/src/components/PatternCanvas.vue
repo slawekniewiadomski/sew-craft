@@ -607,7 +607,8 @@ const cutEdgeCandidate = computed(() => {
     props.tool !== 'cut_dimension' ||
     props.readOnly ||
     cutDimensionPending.value !== null ||
-    cutDimensionPlacement.value !== null
+    cutDimensionPlacement.value !== null ||
+    hoveredLoopHandle.value !== null
   ) {
     return null;
   }
