@@ -1,6 +1,6 @@
 # Cut dimensions between points and edges
 
-Status: approved (`spec-ready`) — implementing on this branch; Q1–Q4 resolved
+Status: implemented — Q1–Q4 resolved under the recommended answers; schema stays 0.2
 Refs: [#72 — cut dimensions from line to line and point - line](https://github.com/slawekniewiadomski/sew-craft/issues/72)
 Builds on: `.ai/specs/2026-10-23-cut-dimension-tool.md` (amended by this spec),
 `.ai/specs/2026-10-22-pieces-and-allowance.md` and
@@ -544,28 +544,28 @@ pattern schema at 0.2** (see the status line and `BACKWARD_COMPATIBILITY.md`).
 
 ## ✅ Acceptance criteria
 
-- [ ] A cut dimension can measure a corner against a straight edge, in either
+- [x] A cut dimension can measure a corner against a straight edge, in either
       order, and reports the perpendicular distance to the edge's own cut line.
-- [ ] A cut dimension can measure two parallel straight edges and reports the
+- [x] A cut dimension can measure two parallel straight edges and reports the
       perpendicular from the canonical first midpoint to the second cut line.
-- [ ] Bevel joins, collinear 180° splits, corner rounds and reversed loop edges
+- [x] Bevel joins, collinear 180° splits, corner rounds and reversed loop edges
       resolve the edge's own cut segment; tests pin each.
-- [ ] Curves/arcs, non-parallel edges, zero spans, different pieces, a vertex on
+- [x] Curves/arcs, non-parallel edges, zero spans, different pieces, a vertex on
       its own edge and axis orientations on edge anchors are rejected with a
       specific message and no document change.
-- [ ] The value follows allowance, geometry and corner-round changes because it
+- [x] The value follows allowance, geometry and corner-round changes because it
       is recomputed from the cut loop; no solver equation is added.
-- [ ] Dragging, removal, canonical dedupe and the selected-edge inspector row
+- [x] Dragging, removal, canonical dedupe and the selected-edge inspector row
       work for the new anchors; a reversed re-placement is idempotent.
-- [ ] Deleting the piece/edge removes the dimension; deleting a loop point
+- [x] Deleting the piece/edge removes the dimension; deleting a loop point
       leaves it broken; a dynamic zero span reports broken, not `0`.
-- [ ] The one-click edge shortcut removal is its own commit and the implemented
+- [x] The one-click edge shortcut removal is its own commit and the implemented
       cut-dimension spec is marked amended.
-- [ ] The command spec is synced at the next minor and exposes
+- [x] The command spec is synced at the next minor and exposes
       `at: start|end|edge`; existing payloads still apply.
-- [ ] The Q4 schema choice is recorded and the downgrade behaviour is documented
+- [x] The Q4 schema choice is recorded and the downgrade behaviour is documented
       honestly (read-only misrender or editable misread).
-- [ ] The full validation gate passes and coverage stays at 100 %.
+- [x] The full validation gate passes and coverage stays at 100 %.
 
 ## Out of scope
 
