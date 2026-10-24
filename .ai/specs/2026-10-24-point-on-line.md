@@ -32,8 +32,8 @@ between.
     tool free-only and makes the relation explicit.
   - **C** — the existing **Point-on-line constraint tool** creates the point when
     its first pick is a line, instead of waiting for an existing point.
-  - **D** — snap-only (place the point on the line but leave it unconstrained) or
-    do nothing (keep the current two-step path).
+  - **D** — snap-only: place the point on the line but leave it unconstrained.
+  - **E** — do nothing: keep the current two-step path.
 
   The rest of this spec assumes **A**; choosing B changes the UI/UX and
   implementation sections, and choosing C changes the constraint-tool contract.
