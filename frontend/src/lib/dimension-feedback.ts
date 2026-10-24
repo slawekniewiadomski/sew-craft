@@ -236,6 +236,8 @@ export function cutAnchorPreviewPosition(
   piece: Piece,
   anchor: CutAnchor,
 ): Vec2 | null {
+  // A whole-edge anchor has no single cursor position; its marks stay hidden.
+  if (anchor.at === 'edge') return null;
   return (anchor.loop ?? 'cut') === 'stitch'
     ? pieceLoopVertex(document, piece, anchor)
     : pieceCutVertex(document, piece, anchor);

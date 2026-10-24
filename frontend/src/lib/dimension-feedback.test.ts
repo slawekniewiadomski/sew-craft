@@ -280,6 +280,7 @@ describe('cutAnchorPreviewPosition', () => {
         loop: 'stitch',
       }),
     ).toEqual({ x: 0, y: 0 });
+    expect(cutAnchorPreviewPosition(squareDoc, squarePiece, { edge: 'ab', at: 'edge' })).toBeNull();
     expect(
       cutAnchorPreviewPosition(squareDoc, squarePiece, { edge: 'missing', at: 'start' }),
     ).toBeNull();
