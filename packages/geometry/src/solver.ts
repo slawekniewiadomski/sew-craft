@@ -1,6 +1,6 @@
 import { resolveSetValue } from './dimension.js';
-import { constraintEntityIds } from './document.js';
-import type { Constraint, EntityId, PointEntity } from './types.js';
+import { constraintEntityIds, constraintPointIds } from './document.js';
+import type { Constraint, Entity, EntityId, LineEntity, PointEntity } from './types.js';
 import { cross, dot, sub, type Vec2 } from './vector.js';
 
 export interface SolveOptions {
@@ -31,17 +31,30 @@ const MAX_DAMPING = 1e12;
  *
  * Fixed points are held constant; all other points move to satisfy the
  * constraints, staying as close as possible to their starting positions.
+ *
+ * `entities` is optional and only needed when a distance anchors to a straight
+ * line instead of a point: the residual reads that line's two endpoints. Legacy
+ * point-only call sites stay valid.
  */
 export function solve(
   points: PointEntity[],
   constraints: Constraint[],
   options: SolveOptions = {},
+  entities: readonly Entity[] = [],
 ): SolveResult {
   const maxIterations = options.maxIterations ?? DEFAULT_MAX_ITERATIONS;
   const tolerance = options.tolerance ?? DEFAULT_TOLERANCE;
   let damping = options.initialDamping ?? DEFAULT_DAMPING;
 
   const pointById = new Map<EntityId, PointEntity>(points.map((p) => [p.id, p]));
+  const pointIds = new Set<EntityId>(pointById.keys());
+  const entityById = new Map<EntityId, Entity>(entities.map((entity) => [entity.id, entity]));
+  const lineById = new Map<EntityId, LineEntity>(
+    entities
+      .filter((entity): entity is LineEntity => entity.kind === 'line')
+      .map((line) => [line.id, line]),
+  );
+  const isLineAnchor = (id: EntityId): boolean => lineById.has(id);
   const variableIds: EntityId[] = [];
 
   for (const point of points) {
@@ -49,8 +62,36 @@ export function solve(
   }
 
   for (const constraint of constraints) {
-    for (const id of constraintEntityIds(constraint)) {
-      if (!pointById.has(id)) {
+    // Cut dimensions measure derived geometry and never reference solver points.
+    if (constraint.type === 'derived_distance') continue;
+
+    if (constraint.type === 'distance') {
+      // A curve, arc or circle is not a valid anchor; say so instead of
+      // reporting it as an unknown point.
+      for (const id of constraintEntityIds(constraint)) {
+        const entity = entityById.get(id);
+        if (entity !== undefined && entity.kind !== 'point' && entity.kind !== 'line') {
+          throw new Error(
+            `Constraint "${constraint.id}" anchor ${id} is a ${entity.kind}, expected a point or line`,
+          );
+        }
+      }
+      // Line anchors reference solver points through their two endpoints.
+      for (const id of constraintEntityIds(constraint).filter(isLineAnchor)) {
+        const line = lineById.get(id)!;
+        for (const endpoint of [line.start, line.end]) {
+          if (!pointIds.has(endpoint)) {
+            throw new Error(
+              `Constraint "${constraint.id}" line anchor ${id} references unknown point: ${endpoint}`,
+            );
+          }
+        }
+      }
+    }
+
+    // Every non-line reference must be a known point.
+    for (const id of constraintPointIds(constraint, isLineAnchor)) {
+      if (!pointIds.has(id)) {
         throw new Error(`Constraint "${constraint.id}" references unknown point: ${id}`);
       }
     }
@@ -73,12 +114,20 @@ export function solve(
 
   const residualVector = (x: Float64Array): Float64Array => {
     const state = readState(x);
-    return residuals(constraints, drivingValues, (id) => {
+    const readPoint = (id: EntityId): Vec2 => {
       // Unreachable: every referenced id is validated and seeded in `state`.
       /* v8 ignore next */
       if (!state.has(id)) throw new Error(`Unknown point referenced by constraint: ${id}`);
       return state.get(id)!;
-    });
+    };
+    const readAnchor = (
+      id: EntityId,
+    ): { kind: 'point'; point: Vec2 } | { kind: 'line'; start: Vec2; end: Vec2 } => {
+      const line = lineById.get(id);
+      if (line === undefined) return { kind: 'point', point: readPoint(id) };
+      return { kind: 'line', start: readPoint(line.start), end: readPoint(line.end) };
+    };
+    return residuals(constraints, drivingValues, readPoint, readAnchor);
   };
 
   const dimensions = variableIds.length * 2;
@@ -166,6 +215,9 @@ function residuals(
   constraints: Constraint[],
   drivingValues: Map<EntityId, number>,
   point: (id: EntityId) => Vec2,
+  anchor: (
+    id: EntityId,
+  ) => { kind: 'point'; point: Vec2 } | { kind: 'line'; start: Vec2; end: Vec2 },
 ): Float64Array {
   const values: number[] = [];
 
@@ -202,21 +254,55 @@ function residuals(
         // Driven and broken dimensions add no equation.
         const value = drivingValues.get(constraint.id);
         if (value === undefined) break;
-        const a = point(constraint.a);
-        const b = point(constraint.b);
-        // A dimension measures along `orientation`; the default preserves the
-        // original Euclidean distance constraint exactly.
-        switch (constraint.orientation ?? 'aligned') {
-          case 'horizontal':
-            values.push(Math.abs(b.x - a.x) - value);
-            break;
-          case 'vertical':
-            values.push(Math.abs(b.y - a.y) - value);
-            break;
-          case 'aligned':
-            values.push(Math.hypot(b.x - a.x, b.y - a.y) - value);
-            break;
+        const a = anchor(constraint.a);
+        const b = anchor(constraint.b);
+
+        // Point ↔ point keeps the original orientation-aware residual.
+        if (a.kind === 'point' && b.kind === 'point') {
+          switch (constraint.orientation ?? 'aligned') {
+            case 'horizontal':
+              values.push(Math.abs(b.point.x - a.point.x) - value);
+              break;
+            case 'vertical':
+              values.push(Math.abs(b.point.y - a.point.y) - value);
+              break;
+            case 'aligned':
+              values.push(Math.hypot(b.point.x - a.point.x, b.point.y - a.point.y) - value);
+              break;
+          }
+          break;
         }
+
+        // A line anchor is always aligned: the perpendicular from the origin to
+        // the other line's infinite supporting line.
+        let origin: Vec2;
+        let line: { start: Vec2; end: Vec2 };
+        if (a.kind === 'line' && b.kind === 'line') {
+          // Canonical by entity id, matching the span resolver.
+          const first = constraint.a <= constraint.b ? a : b;
+          const second = constraint.a <= constraint.b ? b : a;
+          origin = {
+            x: (first.start.x + first.end.x) / 2,
+            y: (first.start.y + first.end.y) / 2,
+          };
+          line = second;
+        } else {
+          // After the both-line case, exactly one anchor is a point.
+          const originAnchor = (a.kind === 'point' ? a : b) as { kind: 'point'; point: Vec2 };
+          const lineAnchor = (a.kind === 'line' ? a : b) as {
+            kind: 'line';
+            start: Vec2;
+            end: Vec2;
+          };
+          origin = originAnchor.point;
+          line = lineAnchor;
+        }
+
+        const direction = sub(line.end, line.start);
+        const length = Math.hypot(direction.x, direction.y);
+        // A zero-length line cannot define a perpendicular; skip rather than NaN.
+        if (length === 0) break;
+        values.push(Math.abs(cross(direction, sub(origin, line.start))) / length - value);
         break;
       }
       case 'angle': {

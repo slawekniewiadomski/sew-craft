@@ -21,6 +21,15 @@ import {
   isDrivenDimension,
   isReferencedDimension,
   measureLinearDimension,
+  measureDistanceDimension,
+  distanceAnchorIssue,
+  dimensionOffsetFromSpan,
+  lineEndpoints,
+  resolveAnchor,
+  resolveAnchorSpan,
+  resolveDistanceSpan,
+  isLineAnchor,
+  linesAreParallel,
   referenceCandidates,
   resolveDimensionValue,
   resolveSetValue,
@@ -30,6 +39,8 @@ import {
   type EntityId,
   type PatternDocument,
   type PointEntity,
+  type LineEntity,
+  type CurveEntity,
 } from '../src/index.js';
 
 const point = (id: string, x: number, y: number): PointEntity => ({
@@ -551,5 +562,185 @@ describe('dimension references', () => {
       'same-pair',
       'other',
     ]);
+  });
+});
+
+describe('line anchors', () => {
+  const line = (id: string, start: string, end: string): LineEntity => ({
+    id,
+    kind: 'line',
+    start,
+    end,
+    construction: false,
+  });
+  const curve = (id: string, p0: string, p1: string, p2: string, p3: string): CurveEntity => ({
+    id,
+    kind: 'curve',
+    p0,
+    p1,
+    p2,
+    p3,
+    construction: false,
+  });
+
+  const document: PatternDocument = {
+    ...createEmptyDocument(),
+    entities: [
+      point('a', 0, 0),
+      point('b', 100, 0),
+      point('c', 0, 50),
+      point('d', 100, 50),
+      point('e', 0, 0),
+      point('f', 100, 0),
+      point('g', 0, 100),
+      point('p', 30, 10),
+      point('on', 50, 0),
+      point('z1', 10, 10),
+      point('z2', 10, 10),
+      point('far', 200, 40),
+      line('L', 'a', 'b'),
+      line('M', 'c', 'd'),
+      line('N', 'e', 'f'),
+      line('V', 'c', 'g'),
+      line('Z', 'z1', 'z2'),
+      line('broken', 'a', 'missing'),
+      curve('cv', 'a', 'b', 'c', 'd'),
+    ],
+  };
+
+  const distance = (
+    id: string,
+    a: EntityId,
+    b: EntityId,
+    extra: Partial<DistanceConstraint> = {},
+  ): DistanceConstraint => ({ id, type: 'distance', a, b, ...extra });
+
+  it('resolves line endpoints and rejects non-line ids', () => {
+    expect(lineEndpoints(document, 'L')).toEqual({
+      start: { x: 0, y: 0 },
+      end: { x: 100, y: 0 },
+    });
+    expect(lineEndpoints(document, 'a')).toBeNull();
+    expect(lineEndpoints(document, 'missing')).toBeNull();
+    expect(lineEndpoints(document, 'broken')).toBeNull();
+    expect(lineEndpoints(document, 'cv')).toBeNull();
+  });
+
+  it('resolves a point or a line anchor and marks line ids', () => {
+    expect(resolveAnchor(document, 'p')).toEqual({ kind: 'point', point: { x: 30, y: 10 } });
+    expect(resolveAnchor(document, 'L')).toEqual({
+      kind: 'line',
+      segment: { start: { x: 0, y: 0 }, end: { x: 100, y: 0 } },
+    });
+    expect(resolveAnchor(document, 'cv')).toBeNull();
+    expect(resolveAnchor(document, 'missing')).toBeNull();
+    expect(isLineAnchor(document, 'L')).toBe(true);
+    expect(isLineAnchor(document, 'p')).toBe(false);
+  });
+
+  it('measures a point against the infinite supporting line in either order', () => {
+    const forward = resolveAnchorSpan(document, 'p', 'L')!;
+    const reversed = resolveAnchorSpan(document, 'L', 'p')!;
+
+    expect(forward).toEqual({ a: { x: 30, y: 10 }, b: { x: 30, y: 0 }, kinds: ['point', 'line'] });
+    expect(reversed).toEqual(forward);
+    expect(measureDistanceDimension(document, distance('d', 'p', 'L'))).toBe(10);
+    expect(
+      measureDistanceDimension(document, distance('d', 'p', 'L', { orientation: 'horizontal' })),
+    ).toBe(10);
+  });
+
+  it('measures a point beyond the drawn segment against the infinite line', () => {
+    expect(resolveAnchorSpan(document, 'far', 'L')!.b).toEqual({ x: 200, y: 0 });
+  });
+
+  it('canonicalizes line to line by entity id', () => {
+    const forward = resolveAnchorSpan(document, 'L', 'M')!;
+    const reversed = resolveAnchorSpan(document, 'M', 'L')!;
+
+    expect(forward).toEqual({ a: { x: 50, y: 0 }, b: { x: 50, y: 50 }, kinds: ['line', 'line'] });
+    expect(reversed).toEqual(forward);
+    expect(
+      measureDistanceDimension(document, distance('d', 'M', 'L', { orientation: 'vertical' })),
+    ).toBe(50);
+    expect(linesAreParallel(lineEndpoints(document, 'L')!, lineEndpoints(document, 'M')!)).toBe(
+      true,
+    );
+    expect(linesAreParallel(lineEndpoints(document, 'L')!, lineEndpoints(document, 'V')!)).toBe(
+      false,
+    );
+  });
+
+  it('returns null for a zero span, a degenerate line and a missing endpoint', () => {
+    expect(resolveAnchorSpan(document, 'p', 'p')).toBeNull();
+    expect(resolveAnchorSpan(document, 'on', 'L')).toBeNull();
+    expect(resolveAnchorSpan(document, 'z1', 'Z')).toBeNull();
+    expect(resolveAnchorSpan(document, 'Z', 'L')).toBeNull();
+    expect(resolveAnchorSpan(document, 'p', 'broken')).toBeNull();
+    expect(resolveAnchorSpan(document, 'p', 'missing')).toBeNull();
+    expect(measureDistanceDimension(document, distance('d', 'on', 'L'))).toBeNull();
+  });
+
+  it('treats a degenerate direction as non-parallel', () => {
+    expect(linesAreParallel(lineEndpoints(document, 'Z')!, lineEndpoints(document, 'L')!)).toBe(
+      false,
+    );
+    expect(linesAreParallel(lineEndpoints(document, 'L')!, lineEndpoints(document, 'Z')!)).toBe(
+      false,
+    );
+  });
+
+  it('falls back to the default offset for a degenerate span', () => {
+    expect(
+      dimensionOffsetFromSpan({ a: { x: 5, y: 5 }, b: { x: 5, y: 5 } }, 'aligned', {
+        x: 10,
+        y: 10,
+      }),
+    ).toBe(DEFAULT_DIMENSION_OFFSET);
+  });
+
+  it('forces an aligned layout and preview for a line anchor', () => {
+    // A horizontal stored axis is meaningless here; the line anchor still renders.
+    const layout = dimensionGeometry(
+      document,
+      distance('d', 'p', 'L', { orientation: 'horizontal', offset: 4 }),
+    )!;
+
+    expect(layout.a).toEqual({ x: 30, y: 10 });
+    expect(layout.b).toEqual({ x: 30, y: 0 });
+    expect(inferDimensionOrientation(document, 'p', 'L', { x: 100, y: 10 })).toBe('aligned');
+    expect(dimensionOffsetForPointer(document, 'p', 'L', 'vertical', { x: 50, y: 10 })).toBe(20);
+  });
+
+  it('reports a resolved value for a driven line-anchored dimension', () => {
+    expect(dimensionValue(document, distance('d', 'p', 'L'))).toBe(10);
+    expect(dimensionValue(document, distance('d', 'L', 'M'))).toBe(50);
+    expect(resolveDistanceSpan(document, distance('d', 'p', 'L'))?.kinds).toEqual([
+      'point',
+      'line',
+    ]);
+    expect(resolveDistanceSpan(document, distance('d', 'L', 'L'))).toBeNull();
+  });
+
+  it('classifies every shared pick-time reason', () => {
+    expect(distanceAnchorIssue(document, 'p', 'missing').reason).toBe('missing');
+    expect(distanceAnchorIssue(document, 'p', 'cv').reason).toBe('not-a-line');
+    expect(distanceAnchorIssue(document, 'L', 'V').reason).toBe('not-parallel');
+    expect(distanceAnchorIssue(document, 'on', 'L').reason).toBe('point-on-line');
+    expect(distanceAnchorIssue(document, 'L', 'N').reason).toBe('coincident');
+    expect(distanceAnchorIssue(document, 'p', 'Z').reason).toBe('zero-length');
+    expect(distanceAnchorIssue(document, 'Z', 'p').reason).toBe('zero-length');
+
+    const valid = distanceAnchorIssue(document, 'p', 'L');
+    expect(valid.reason).toBeNull();
+    expect(valid.span?.kinds).toEqual(['point', 'line']);
+  });
+
+  it('offers a line-anchored source to the reference picker', () => {
+    const source = distance('source', 'p', 'L', { value: 10 });
+    const dependent = distance('dependent', 'a', 'c');
+    const withSource = { ...document, constraints: [source, dependent] };
+
+    expect(referenceCandidates(withSource, dependent).map((entry) => entry.id)).toEqual(['source']);
   });
 });
