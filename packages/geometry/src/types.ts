@@ -176,11 +176,20 @@ export interface Piece {
 export interface CutAnchor {
   edge: EntityId;
   /**
-   * `start`/`end` address a cut-loop vertex; `edge` addresses the whole
-   * straight cut edge's own offset segment (its cut line).
+   * `start`/`end` address a loop vertex; `edge` addresses the whole straight
+   * cut edge's own offset segment (its cut line).
    */
   at: 'start' | 'end' | 'edge';
+  /**
+   * Which loop the anchor resolves against. Omitted means `cut`, the meaning an
+   * anchor has always had. `stitch` addresses the seamline itself, so it can
+   * never take `at: 'edge'` (a stitch edge has no defined cut equivalent).
+   */
+  loop?: LoopKind;
 }
+
+/** A piece loop an anchor can resolve against. */
+export type LoopKind = 'stitch' | 'cut';
 
 /**
  * A read-only dimension measuring a piece's cut loop. It adds no solver

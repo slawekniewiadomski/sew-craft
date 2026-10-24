@@ -483,6 +483,19 @@ export function pieceFoldLines(document: PatternDocument, piece: Piece): Vec2[][
 }
 
 /**
+ * The boundary vertex of an edge's natural start and end. `naturalStart` already
+ * points at the far end of a reversed edge's span, so its own end is the walk
+ * start rather than one span further on.
+ */
+function edgeVertexIndex(loop: PieceLoop, edgeIndex: number, at: 'start' | 'end'): number {
+  const start = loop.naturalStart[edgeIndex]!;
+  if (at === 'start') return start;
+  const walkStart = loop.starts[edgeIndex]!;
+  // Equal starts mean the edge runs with the walk.
+  return walkStart === start ? (start + loop.spans[edgeIndex]!) % loop.points.length : walkStart;
+}
+
+/**
  * The resolved cut-loop point at one end of a loop edge, or `null` when the
  * anchor addresses a whole edge or the piece or its cut loop no longer resolves.
  */
@@ -501,9 +514,7 @@ export function pieceCutVertex(
   const cut = pieceCutLoop(document, piece);
   if (loop === null || cut === null) return null;
 
-  const start = loop.naturalStart[edgeIndex]!;
-  const vertexIndex =
-    anchor.at === 'start' ? start : (start + loop.spans[edgeIndex]!) % loop.points.length;
+  const vertexIndex = edgeVertexIndex(loop, edgeIndex, anchor.at);
   // The closed cut loop has one vertex entry per source point.
   const vertex = cut.vertices[vertexIndex]!;
   return cut.points[vertex.start]!;
@@ -561,6 +572,41 @@ export function resolveCutAnchor(
 
   const point = pieceCutVertex(document, piece, anchor);
   return point === null ? null : { kind: 'vertex', point };
+}
+
+/**
+ * The resolved stitch-loop point at one end of a loop edge, or `null` when the
+ * piece, the edge or its stitch loop does not resolve. Mirrors `pieceCutVertex`
+ * index for index, so both loops agree vertex for vertex; a whole-edge anchor
+ * has no stitch equivalent and returns `null`.
+ */
+export function pieceLoopVertex(
+  document: PatternDocument,
+  piece: Piece,
+  anchor: CutAnchor,
+): Vec2 | null {
+  if (anchor.at === 'edge') return null;
+
+  const edgeIndex = piece.edges.indexOf(anchor.edge);
+  if (edgeIndex < 0) return null;
+
+  const loop = pieceLoop(document, piece);
+  if (loop === null) return null;
+
+  return loop.points[edgeVertexIndex(loop, edgeIndex, anchor.at)]!;
+}
+
+/** Resolve one anchor against the loop it names, or `null` when it cannot. */
+export function resolvePieceAnchor(
+  document: PatternDocument,
+  piece: Piece,
+  anchor: CutAnchor,
+): CutAnchorResolution | null {
+  if ((anchor.loop ?? 'cut') === 'stitch') {
+    const point = pieceLoopVertex(document, piece, anchor);
+    return point === null ? null : { kind: 'vertex', point };
+  }
+  return resolveCutAnchor(document, piece, anchor);
 }
 
 /** Axis-aligned bounds of a closed loop, or `null` for an empty loop. */
