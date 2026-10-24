@@ -77,6 +77,24 @@ the vertex where the previous edge ended and the last closes back to the first.
 A star selection that only shares one common vertex is rejected. Circles are not
 supported as piece edges in v0.2.
 
+### Rounded piece corners
+
+A corner round trims both of its lines away from the sharp corner, so a loop
+walking those edges finds a gap where the arc belongs. The walk fills it with a
+**bridge**: the round's derived arc polyline, inserted between the two trimmed
+edges on every read. The piece stores no round and keeps its `edges` and
+`allowances`; removing the round restores the sharp corner and closes the loop
+directly again. `validatePiece` and `pieceLoop` share one assembly routine, so
+both accept and reject exactly the same gaps.
+
+The bridge carries the allowance of the two edges it joins. Both must agree —
+both absent, or the same `width` and effective `kind` (an omitted kind means
+`seam`) — because a single tangent offset exists only for one distance. A
+disagreeing pair is rejected by `add_corner_round` and `set_piece_allowance`;
+a hand-edited document that contains one cannot resolve its loop. The cut loop
+offsets the arc outward like any other segment, and `pieceFoldLines` draws the
+double-fold fold line around it too.
+
 Derived functions in `piece.ts` return `null` or `[]` rather than throwing when
 a reference goes stale, so a deleted point degrades every consumer to an absent
 piece instead of breaking the canvas or export:
@@ -313,6 +331,14 @@ opposite anchors, `θ` the interior angle, and `r` the radius:
   geometry; a feature whose invariants no longer hold is dropped and its
   persisted entities stay as static geometry. Never throws. The frontend load
   path calls it once.
+- `roundBetween(document, first, second)` — the committed round whose two ends
+  are exactly these lines, in either order.
+- `roundBridge(document, first, second)` — that round's arc as a polyline
+  oriented from `first`'s tangent to `second`'s tangent, or `null` when there is
+  no round or its arc cannot be resolved. Used by the piece walk.
+- `incidentLines(document, pointId)` — every line whose start or end is the
+  point, the one rule both the piece walk and the corner-point pick use to decide
+  what a corner is.
 
 ### Commands
 

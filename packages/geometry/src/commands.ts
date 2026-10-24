@@ -12,6 +12,7 @@ import {
 import {
   allowanceForEdge,
   pieceById,
+  pieceCutLoop,
   pieceCutVertex,
   pieceForEdge,
   validatePiece,
@@ -24,6 +25,7 @@ import {
   regenerateCornerRounds,
 } from './corner-round.js';
 import { MIN_RADIUS } from './circle.js';
+import { effectiveDefaultAllowance } from './defaults.js';
 import {
   constraintOffset,
   constraintOrientation,
@@ -41,6 +43,7 @@ import {
   seamSide,
   type Allowance,
   type AllowanceKind,
+  type AllowancePreset,
   type ArcEntity,
   type Constraint,
   type ConstraintType,
@@ -179,6 +182,12 @@ export interface CreatePieceParams {
   edges: EntityId[];
   name?: string;
   quantity?: number;
+  /**
+   * The allowance copied onto every loop edge: `'default'` reads the document
+   * default, `'none'` or an absent value starts with none, and an explicit
+   * preset copies that preset.
+   */
+  allowance?: 'default' | 'none' | AllowancePreset;
 }
 
 export interface UpdatePieceParams {
@@ -191,6 +200,15 @@ export interface UpdatePieceParams {
 
 export interface DeletePieceParams {
   id: EntityId;
+}
+
+export interface SetDefaultAllowanceParams {
+  /** Finished width in millimetres; required unless `remove` is true. */
+  width?: number;
+  /** Omitted means `seam`. */
+  kind?: AllowanceKind;
+  /** Clear the default so new pieces start with no allowance. */
+  remove?: boolean;
 }
 
 export interface SetPieceAllowanceParams {
@@ -274,6 +292,12 @@ export type Command =
       id: EntityId;
       type: 'set_piece_allowance';
       params: SetPieceAllowanceParams;
+      issuedAt?: string;
+    }
+  | {
+      id: EntityId;
+      type: 'set_default_allowance';
+      params: SetDefaultAllowanceParams;
       issuedAt?: string;
     }
   | {
@@ -384,6 +408,8 @@ export function applyCommand(document: PatternDocument, command: Command): Comma
       return applyDeletePiece(document, command);
     case 'set_piece_allowance':
       return applySetPieceAllowance(document, command);
+    case 'set_default_allowance':
+      return applySetDefaultAllowance(document, command);
     case 'add_derived_dimension':
       return applyAddDerivedDimension(document, command);
     case 'solve':
@@ -1375,8 +1401,19 @@ function applyAddCornerRound(
   if (seamForEdge(document, first) !== undefined || seamForEdge(document, second) !== undefined) {
     throw new CommandValidationError('add_corner_round', 'Remove the seam allowance first.');
   }
-  if (pieceForEdge(document, first) !== undefined || pieceForEdge(document, second) !== undefined) {
-    throw new CommandValidationError('add_corner_round', 'Remove the piece first.');
+
+  // A round inside a piece keeps the piece and its allowances. The cut loop
+  // offsets the bridge by one distance, so both adjacent allowances must agree.
+  const pieces = document.pieces.filter(
+    (piece) => piece.edges.includes(first) && piece.edges.includes(second),
+  );
+  for (const piece of pieces) {
+    if (!allowancesAgree(allowanceForEdge(piece, first), allowanceForEdge(piece, second))) {
+      throw new CommandValidationError(
+        'add_corner_round',
+        'Both edges need the same allowance to round this corner.',
+      );
+    }
   }
 
   const meeting = document.entities.filter(
@@ -1503,13 +1540,27 @@ function applyAddCornerRound(
   );
 
   const round: CornerRound = { ...tentative, cornerConstruction: cornerEntity.construction };
+  const next: PatternDocument = {
+    ...document,
+    entities,
+    cornerRounds: [...cornerRounds(document), round],
+  };
+
+  // A radius that folds a piece's cut line is not a usable round: compare the
+  // affected loops so an unrelated pre-existing fold does not block the edit.
+  for (const piece of pieces) {
+    const before = pieceCutLoop(document, piece)?.selfIntersections.length ?? 0;
+    const after = pieceCutLoop(next, piece)?.selfIntersections.length ?? 0;
+    if (after > before) {
+      throw new CommandValidationError(
+        'add_corner_round',
+        'This radius with the current allowance folds the cut line.',
+      );
+    }
+  }
 
   return {
-    document: {
-      ...document,
-      entities,
-      cornerRounds: [...cornerRounds(document), round],
-    },
+    document: next,
     inverse: {
       id: `${command.id}:remove`,
       type: 'remove_corner_round',
@@ -1682,6 +1733,45 @@ function effectiveKind(allowance: Allowance): AllowanceKind {
   return allowance.kind ?? 'seam';
 }
 
+/** The preset `create_piece` copies onto a new piece, or `null` for none. */
+function resolveCreateAllowance(
+  document: PatternDocument,
+  allowance: CreatePieceParams['allowance'],
+): AllowancePreset | null {
+  if (allowance === undefined || allowance === 'none') return null;
+  if (allowance === 'default') return effectiveDefaultAllowance(document);
+
+  if (typeof allowance !== 'object' || allowance === null) {
+    throw new CommandValidationError(
+      'create_piece',
+      'allowance must be "default", "none" or a preset',
+    );
+  }
+  if (!Number.isFinite(allowance.width) || allowance.width <= 0) {
+    throw new CommandValidationError(
+      'create_piece',
+      'allowance width must be a finite number greater than 0',
+    );
+  }
+  if (allowance.kind !== undefined && !ALLOWANCE_KINDS.includes(allowance.kind)) {
+    throw new CommandValidationError(
+      'create_piece',
+      `unknown allowance kind: ${String(allowance.kind)}`,
+    );
+  }
+
+  return {
+    width: allowance.width,
+    ...(allowance.kind === undefined ? {} : { kind: allowance.kind }),
+  };
+}
+
+/** Whether two loop-edge allowances carry the same width and effective kind. */
+function allowancesAgree(a: Allowance | undefined, b: Allowance | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.width === b.width && effectiveKind(a) === effectiveKind(b);
+}
+
 /** A command that restores an allowance to its previous width and kind. */
 function restoreAllowance(id: EntityId, piece: EntityId, allowance: Allowance): Command {
   return {
@@ -1714,10 +1804,14 @@ function applyCreatePiece(
     throw new CommandValidationError('create_piece', validation.message);
   }
 
+  const preset = resolveCreateAllowance(document, command.params.allowance);
   const piece: Piece = {
     id: command.id,
     edges: [...edges],
-    allowances: [],
+    allowances:
+      preset === null
+        ? []
+        : edges.map((edge) => ({ edge, width: preset.width, kind: preset.kind ?? 'seam' })),
   };
   if (name !== undefined) piece.name = name.trim();
   if (quantity !== undefined) piece.quantity = quantity;
@@ -1795,6 +1889,103 @@ function applyDeletePiece(
   };
 }
 
+/** Set, change or clear the allowance copied onto newly created pieces. */
+function applySetDefaultAllowance(
+  document: PatternDocument,
+  command: CommandOf<'set_default_allowance'>,
+): CommandApplication {
+  const { width, kind, remove } = command.params;
+  const current = effectiveDefaultAllowance(document);
+
+  if (remove === true) {
+    if (width !== undefined || kind !== undefined) {
+      throw new CommandValidationError('set_default_allowance', 'remove takes no width or kind');
+    }
+    if (current === null) {
+      return noOp(document);
+    }
+
+    return {
+      document: { ...document, defaults: { allowance: null } },
+      inverse: restoreDefaultAllowance(command.id, current),
+    };
+  }
+
+  if (width === undefined || !Number.isFinite(width) || width <= 0) {
+    throw new CommandValidationError(
+      'set_default_allowance',
+      'width must be a finite number greater than 0',
+    );
+  }
+  if (kind !== undefined && !ALLOWANCE_KINDS.includes(kind)) {
+    throw new CommandValidationError(
+      'set_default_allowance',
+      `unknown allowance kind: ${String(kind)}`,
+    );
+  }
+
+  const nextKind = kind ?? 'seam';
+  if (current !== null && current.width === width && (current.kind ?? 'seam') === nextKind) {
+    return noOp(document);
+  }
+
+  return {
+    document: { ...document, defaults: { allowance: { width, kind: nextKind } } },
+    inverse:
+      current === null
+        ? {
+            id: `${command.id}:remove`,
+            type: 'set_default_allowance',
+            params: { remove: true },
+          }
+        : restoreDefaultAllowance(command.id, current),
+  };
+}
+
+/** A command that restores the document's previous default allowance preset. */
+function restoreDefaultAllowance(id: EntityId, preset: AllowancePreset): Command {
+  return {
+    id: `${id}:restore`,
+    type: 'set_default_allowance',
+    params: {
+      width: preset.width,
+      ...(preset.kind === undefined ? {} : { kind: preset.kind }),
+    },
+  };
+}
+
+/** The edges joined to `edge` by a committed round inside this piece. */
+function roundedNeighbours(document: PatternDocument, piece: Piece, edge: EntityId): EntityId[] {
+  const neighbours: EntityId[] = [];
+  for (const round of cornerRounds(document)) {
+    const index = round.ends.findIndex((end) => end.line === edge);
+    if (index < 0) continue;
+    const other = round.ends[1 - index]!.line;
+    if (piece.edges.includes(other)) neighbours.push(other);
+  }
+  return neighbours;
+}
+
+/**
+ * Reject an allowance change that would leave a rounded corner's two edges with
+ * different allowances: its bridge can offset by only one distance.
+ */
+function requireRoundedAllowancesMatch(
+  document: PatternDocument,
+  piece: Piece,
+  edge: EntityId,
+  proposed: Allowance | undefined,
+): void {
+  for (const other of roundedNeighbours(document, piece, edge)) {
+    if (!allowancesAgree(proposed, allowanceForEdge(piece, other))) {
+      throw new CommandValidationError(
+        'set_piece_allowance',
+        'Remove the corner round before changing one side of a rounded corner.',
+      );
+    }
+  }
+}
+
 /** Set, change or remove the allowance of one loop edge. */
 function applySetPieceAllowance(
   document: PatternDocument,
@@ -1821,6 +2012,7 @@ function applySetPieceAllowance(
     if (existing === undefined) {
       return noOp(document);
     }
+    requireRoundedAllowancesMatch(document, piece, edge, undefined);
     return {
       document: replacePiece(document, {
         ...piece,
@@ -1851,6 +2043,8 @@ function applySetPieceAllowance(
   ) {
     return noOp(document);
   }
+
+  requireRoundedAllowancesMatch(document, piece, edge, next);
 
   const allowances =
     existing === undefined

@@ -186,3 +186,41 @@ describe('known pattern schemas', () => {
     expect(isKnownPatternSchema('')).toBe(false);
   });
 });
+
+describe('default allowance normalisation', () => {
+  const builtIn = { allowance: { width: 10, kind: 'seam' } };
+
+  it('adds the built-in default to a current document without one', () => {
+    const piece: Piece = {
+      id: 'p',
+      edges: ['a'],
+      allowances: [{ edge: 'a', width: 15 }],
+    };
+    const current = { ...createEmptyDocument(), pieces: [piece] };
+    delete current.defaults;
+
+    const migrated = normalizeDocument(current);
+
+    expect(migrated).not.toBe(current);
+    expect(migrated.defaults).toEqual(builtIn);
+    expect(migrated.pieces).toEqual([piece]);
+    expect(migrated.pieces[0]!.allowances).toEqual([{ edge: 'a', width: 15 }]);
+  });
+
+  it('adds the built-in default on the 0.1 path without touching adopted allowances', () => {
+    const migrated = normalizeDocument(legacy(square('a'), seamsFor('a')));
+
+    expect(migrated.defaults).toEqual(builtIn);
+    expect(migrated.pieces[0]!.allowances).toHaveLength(4);
+  });
+
+  it('keeps an explicit null default', () => {
+    const current = { ...createEmptyDocument(), defaults: { allowance: null } };
+    expect(normalizeDocument(current)).toBe(current);
+  });
+
+  it('repairs an invalid stored preset', () => {
+    const current = { ...createEmptyDocument(), defaults: { allowance: { width: 0 } } };
+    expect(normalizeDocument(current).defaults).toEqual(builtIn);
+  });
+});

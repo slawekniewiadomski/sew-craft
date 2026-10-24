@@ -2272,6 +2272,41 @@ describe('PatternCanvas', () => {
     expect(wrapper.find('div').classes()).toContain('cursor-crosshair');
   });
 
+  it('rings roundable corners and grows the point target only while the tool is active', async () => {
+    const square = doc([
+      pt('a', 0, 0),
+      pt('b', 100, 0),
+      pt('c', 100, 100),
+      pt('d', 0, 100),
+      ln('ab', 'a', 'b'),
+      ln('bc', 'b', 'c'),
+      ln('cd', 'c', 'd'),
+      ln('da', 'd', 'a'),
+    ]);
+    const wrapper = mountCanvas({ document: square, roundCornerActive: true });
+
+    expect(
+      wrapper
+        .findAll('[data-testid="roundable-corner"]')
+        .map((ring) => ring.attributes('data-roundable-corner')),
+    ).toEqual(['a', 'b', 'c', 'd']);
+    expect(wrapper.findAll('[data-testid="round-corner-point-target"]')).toHaveLength(4);
+
+    await wrapper.setProps({ roundCornerActive: false });
+    expect(wrapper.find('[data-testid="roundable-corner"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="round-corner-point-target"]').exists()).toBe(false);
+  });
+
+  it('does not ring a corner that is already rounded', () => {
+    const wrapper = mountCanvas({ document: roundedSquare(), roundCornerActive: true });
+
+    expect(
+      wrapper
+        .findAll('[data-testid="roundable-corner"]')
+        .map((ring) => ring.attributes('data-roundable-corner')),
+    ).toEqual(['a', 'c', 'd']);
+  });
+
   it('renders a live round preview from the pending radius', async () => {
     const square = doc([
       pt('a', 0, 0),

@@ -4,16 +4,20 @@ import {
   applyCommand,
   createEmptyDocument,
   derivedDimensionGeometry,
+  effectiveDefaultAllowance,
   derivedDimensionState,
   derivedDimensionValue,
   getConstraint,
   measureCutDimension,
   pieceById,
+  pieceCutLoop,
+  pieceLoop,
   solveDocument,
   type Command,
   type Entity,
   type LineEntity,
   type PatternDocument,
+  type Piece,
   type PointEntity,
 } from '../src/index.js';
 
@@ -51,7 +55,13 @@ const documentOf = (extra: Entity[] = []): PatternDocument => ({
 });
 
 const createPiece = (
-  overrides: Partial<{ id: string; edges: string[]; name: string; quantity: number }> = {},
+  overrides: Partial<{
+    id: string;
+    edges: string[];
+    name: string;
+    quantity: number;
+    allowance: 'default' | 'none' | { width: number; kind?: 'seam' | 'single' | 'double' };
+  }> = {},
 ): Command => ({
   id: overrides.id ?? 'piece-1',
   type: 'create_piece',
@@ -59,8 +69,16 @@ const createPiece = (
     edges: overrides.edges ?? ['bottom', 'right', 'top', 'left'],
     ...(overrides.name === undefined ? {} : { name: overrides.name }),
     ...(overrides.quantity === undefined ? {} : { quantity: overrides.quantity }),
+    ...(overrides.allowance === undefined ? {} : { allowance: overrides.allowance }),
   },
 });
+
+/** A document with no stored default, so the built-in 10 mm seam applies. */
+const bareDocument = (): PatternDocument => {
+  const document = documentOf();
+  delete document.defaults;
+  return document;
+};
 
 /** A document with one piece and the standard three-edge allowance set. */
 function withPiece(): PatternDocument {
@@ -181,6 +199,216 @@ describe('create_piece', () => {
     expect(() => applyCommand(documentOf(), createPiece({ name: '   ' }))).toThrowError(
       /name must be a non-empty string/,
     );
+  });
+
+  it('copies the document default onto every edge', () => {
+    const piece = pieceById(
+      applyCommand(documentOf(), createPiece({ allowance: 'default' })).document,
+      'piece-1',
+    )!;
+
+    expect(piece.allowances).toEqual([
+      { edge: 'bottom', width: 10, kind: 'seam' },
+      { edge: 'right', width: 10, kind: 'seam' },
+      { edge: 'top', width: 10, kind: 'seam' },
+      { edge: 'left', width: 10, kind: 'seam' },
+    ]);
+  });
+
+  it('copies a changed document default, including its kind', () => {
+    const base = applyCommand(documentOf(), {
+      id: 'default',
+      type: 'set_default_allowance',
+      params: { width: 15, kind: 'double' },
+    }).document;
+
+    const piece = pieceById(
+      applyCommand(base, createPiece({ allowance: 'default' })).document,
+      'piece-1',
+    )!;
+
+    expect(piece.allowances).toHaveLength(4);
+    expect(piece.allowances.every((row) => row.width === 15 && row.kind === 'double')).toBe(true);
+  });
+
+  it('starts with no allowances for "none" or an explicit absence', () => {
+    expect(
+      pieceById(applyCommand(documentOf(), createPiece({ allowance: 'none' })).document, 'piece-1')!
+        .allowances,
+    ).toEqual([]);
+  });
+
+  it('copies an explicit preset onto every edge', () => {
+    const piece = pieceById(
+      applyCommand(documentOf(), createPiece({ allowance: { width: 7, kind: 'single' } })).document,
+      'piece-1',
+    )!;
+
+    expect(piece.allowances).toHaveLength(4);
+    expect(piece.allowances.every((row) => row.width === 7 && row.kind === 'single')).toBe(true);
+  });
+
+  it('defaults an omitted preset kind to seam', () => {
+    const piece = pieceById(
+      applyCommand(documentOf(), createPiece({ allowance: { width: 8 } })).document,
+      'piece-1',
+    )!;
+
+    expect(piece.allowances[0]).toEqual({ edge: 'bottom', width: 8, kind: 'seam' });
+  });
+
+  it('starts with no allowances when the document default is off', () => {
+    const base = applyCommand(documentOf(), {
+      id: 'default',
+      type: 'set_default_allowance',
+      params: { remove: true },
+    }).document;
+
+    expect(
+      pieceById(applyCommand(base, createPiece({ allowance: 'default' })).document, 'piece-1')!
+        .allowances,
+    ).toEqual([]);
+  });
+
+  it('rejects an invalid explicit preset', () => {
+    for (const width of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => applyCommand(documentOf(), createPiece({ allowance: { width } }))).toThrowError(
+        /allowance width must be a finite number greater than 0/,
+      );
+    }
+
+    expect(() =>
+      applyCommand(
+        documentOf(),
+        createPiece({ allowance: { width: 10, kind: 'welded' as unknown as 'seam' } }),
+      ),
+    ).toThrowError(/unknown allowance kind/);
+    expect(() =>
+      applyCommand(documentOf(), createPiece({ allowance: 'other' as unknown as 'none' })),
+    ).toThrowError(/allowance must be "default", "none" or a preset/);
+  });
+
+  it('removes the copied allowances with the piece on undo', () => {
+    const result = applyCommand(documentOf(), createPiece({ allowance: 'default' }));
+    const restored = applyCommand(result.document, result.inverse!).document;
+
+    expect(pieceById(restored, 'piece-1')).toBeUndefined();
+  });
+});
+
+describe('set_default_allowance', () => {
+  const setDefault = (params: {
+    width?: number;
+    kind?: 'seam' | 'single' | 'double';
+    remove?: boolean;
+  }): Command => ({ id: 'default', type: 'set_default_allowance', params });
+
+  it('sets a preset and restores the previous one through its inverse', () => {
+    const result = applyCommand(bareDocument(), setDefault({ width: 15, kind: 'single' }));
+
+    expect(result.document.defaults).toEqual({ allowance: { width: 15, kind: 'single' } });
+    expect(result.inverse).toMatchObject({
+      type: 'set_default_allowance',
+      params: { width: 10, kind: 'seam' },
+    });
+
+    const restored = applyCommand(result.document, result.inverse!).document;
+    expect(effectiveDefaultAllowance(restored)).toEqual({ width: 10, kind: 'seam' });
+  });
+
+  it('defaults an omitted kind to seam', () => {
+    const document = applyCommand(bareDocument(), setDefault({ width: 12 })).document;
+    expect(effectiveDefaultAllowance(document)).toEqual({ width: 12, kind: 'seam' });
+  });
+
+  it('treats an omitted stored kind as seam when comparing', () => {
+    const base = { ...documentOf(), defaults: { allowance: { width: 10 } } };
+    const result = applyCommand(base, setDefault({ width: 10 }));
+
+    expect(result.document).toBe(base);
+    expect(result.inverse).toBeNull();
+  });
+
+  it('changes only the kind when the width stays the same', () => {
+    const result = applyCommand(documentOf(), setDefault({ width: 10, kind: 'single' }));
+
+    expect(result.document.defaults).toEqual({ allowance: { width: 10, kind: 'single' } });
+  });
+
+  it('restores a previous preset that had no explicit kind', () => {
+    const base = { ...documentOf(), defaults: { allowance: { width: 8 } } };
+    const result = applyCommand(base, setDefault({ width: 12 }));
+    const restored = applyCommand(result.document, result.inverse!).document;
+
+    // The inverse omits an absent kind, and the effective `seam` materialises.
+    expect(restored.defaults).toEqual({ allowance: { width: 8, kind: 'seam' } });
+  });
+
+  it('is a no-op when the effective preset is unchanged', () => {
+    const result = applyCommand(documentOf(), setDefault({ width: 10, kind: 'seam' }));
+
+    expect(result.document).toBe(
+      documentOf().defaults === undefined ? result.document : result.document,
+    );
+    expect(result.inverse).toBeNull();
+  });
+
+  it('clears the default and restores it through the inverse', () => {
+    const result = applyCommand(documentOf(), setDefault({ remove: true }));
+
+    expect(result.document.defaults).toEqual({ allowance: null });
+    expect(result.inverse).toMatchObject({
+      type: 'set_default_allowance',
+      params: { width: 10, kind: 'seam' },
+    });
+    expect(applyCommand(result.document, result.inverse!).document.defaults).toEqual({
+      allowance: { width: 10, kind: 'seam' },
+    });
+  });
+
+  it('is a no-op when the default is already off', () => {
+    const off = applyCommand(documentOf(), setDefault({ remove: true })).document;
+    const result = applyCommand(off, setDefault({ remove: true }));
+
+    expect(result.document).toBe(off);
+    expect(result.inverse).toBeNull();
+  });
+
+  it('sets a default from the off state with a remove inverse', () => {
+    const off = applyCommand(documentOf(), setDefault({ remove: true })).document;
+    const result = applyCommand(off, setDefault({ width: 5 }));
+
+    expect(result.inverse).toMatchObject({
+      type: 'set_default_allowance',
+      params: { remove: true },
+    });
+  });
+
+  it('rejects remove with a width or kind and invalid values', () => {
+    expect(() => applyCommand(documentOf(), setDefault({ remove: true, width: 10 }))).toThrowError(
+      /remove takes no width or kind/,
+    );
+    expect(() =>
+      applyCommand(documentOf(), setDefault({ remove: true, kind: 'seam' })),
+    ).toThrowError(/remove takes no width or kind/);
+
+    for (const width of [undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => applyCommand(documentOf(), setDefault({ width }))).toThrowError(
+        /width must be a finite number greater than 0/,
+      );
+    }
+
+    expect(() =>
+      applyCommand(documentOf(), setDefault({ width: 10, kind: 'welded' as unknown as 'seam' })),
+    ).toThrowError(/unknown allowance kind/);
+  });
+
+  it('is idempotent for the same command id', () => {
+    const once = applyCommand(documentOf(), setDefault({ width: 12 })).document;
+    const twice = applyCommand(once, setDefault({ width: 12 }));
+
+    expect(twice.document).toBe(once);
+    expect(twice.inverse).toBeNull();
   });
 });
 
@@ -926,14 +1154,14 @@ describe('piece guards on the legacy tools', () => {
     ).toThrowError(/set the allowance on the piece/);
   });
 
-  it('refuses a corner round on lines that belong to a piece', () => {
+  it('refuses a corner round when the piece allowances differ at the corner', () => {
     expect(() =>
       applyCommand(withPiece(), {
         id: 'round',
         type: 'add_corner_round',
         params: { first: 'bottom', second: 'right', radius: 5 },
       }),
-    ).toThrowError(/Remove the piece first/);
+    ).toThrowError(/Both edges need the same allowance/);
   });
   it('recreates a dimension that had no explicit placement', () => {
     const document = applyCommand(withPiece(), {
@@ -1067,5 +1295,197 @@ describe('cut dimensions stay out of the solver', () => {
     expect(derivedDimensionValue(solved.document, derivedOf(solved.document, 'cut-width'))).toBe(
       220,
     );
+  });
+});
+
+describe('corner rounds on piece corners', () => {
+  const roundCorner = (id = 'round-1', radius = 20, first = 'right', second = 'top'): Command => ({
+    id,
+    type: 'add_corner_round',
+    params: { first, second, radius },
+  });
+
+  function roundedPiece(): PatternDocument {
+    return applyCommand(withPiece(), roundCorner()).document;
+  }
+
+  it('keeps the piece, its edges and its allowances', () => {
+    const before = withPiece();
+    const after = applyCommand(before, roundCorner()).document;
+    const piece = pieceById(after, 'piece-1')!;
+
+    expect(piece.edges).toEqual(['bottom', 'right', 'top', 'left']);
+    expect(piece.allowances).toEqual(pieceById(before, 'piece-1')!.allowances);
+    expect(pieceLoop(after, piece)).not.toBeNull();
+    expect(pieceCutLoop(after, piece)?.selfIntersections).toEqual([]);
+  });
+
+  it('rejects two edges whose piece allowances differ', () => {
+    // `bottom` has no allowance, `right` has 10 mm single.
+    expect(() =>
+      applyCommand(withPiece(), roundCorner('round-1', 20, 'bottom', 'right')),
+    ).toThrowError(/Both edges need the same allowance to round this corner/);
+  });
+
+  it('rejects an allowance edit that would unbalance a rounded corner', () => {
+    const document = roundedPiece();
+    const target = pieceById(document, 'piece-1')!;
+
+    expect(() =>
+      applyCommand(document, {
+        id: 'widen',
+        type: 'set_piece_allowance',
+        params: { piece: 'piece-1', edge: 'right', width: 12, kind: 'single' },
+      }),
+    ).toThrowError(/Remove the corner round before changing one side/);
+
+    expect(() =>
+      applyCommand(document, {
+        id: 'remove-right',
+        type: 'set_piece_allowance',
+        params: { piece: 'piece-1', edge: 'right', remove: true },
+      }),
+    ).toThrowError(/Remove the corner round before changing one side/);
+
+    // An edge without a round on it is still editable.
+    const widened = applyCommand(document, {
+      id: 'widen-left',
+      type: 'set_piece_allowance',
+      params: { piece: 'piece-1', edge: 'left', width: 12, kind: 'single' },
+    }).document;
+    expect(pieceById(widened, 'piece-1')!.allowances).toContainEqual({
+      edge: 'left',
+      width: 12,
+      kind: 'single',
+    });
+    expect(target.allowances).toHaveLength(3);
+  });
+
+  it('removing the round restores the sharp loop, the piece and its cut dimension', () => {
+    const before = applyCommand(withPiece(), addDerived()).document;
+    const sharp = pieceCutLoop(before, pieceById(before, 'piece-1')!);
+    const rounded = applyCommand(before, roundCorner()).document;
+
+    const removed = applyCommand(rounded, {
+      id: 'remove-round',
+      type: 'remove_corner_round',
+      params: { id: 'round-1' },
+    }).document;
+
+    expect(pieceById(removed, 'piece-1')!.allowances).toEqual(
+      pieceById(before, 'piece-1')!.allowances,
+    );
+    expect(pieceCutLoop(removed, pieceById(removed, 'piece-1')!)).toEqual(sharp);
+    expect(getConstraint(removed, 'cut-width')).toEqual(getConstraint(before, 'cut-width'));
+    expect(measureCutDimension(removed, getConstraint(removed, 'cut-width')!)).toBeCloseTo(220);
+  });
+
+  it('rounds every piece that contains the two corner edges', () => {
+    const shared: Piece = {
+      id: 'piece-2',
+      edges: ['bottom', 'right', 'top', 'left'],
+      allowances: [],
+    };
+    const base = withPiece();
+    const document: PatternDocument = { ...base, pieces: [...base.pieces, shared] };
+
+    const rounded = applyCommand(document, roundCorner()).document;
+
+    for (const id of ['piece-1', 'piece-2']) {
+      expect(pieceLoop(rounded, pieceById(rounded, id)!)).not.toBeNull();
+      expect(pieceCutLoop(rounded, pieceById(rounded, id)!)).not.toBeNull();
+    }
+  });
+
+  it('keeps a cut dimension anchored to a rounded piece', () => {
+    const document = roundedPiece();
+    const withDimension = applyCommand(document, {
+      id: 'cut-width',
+      type: 'add_derived_dimension',
+      params: {
+        piece: 'piece-1',
+        a: { edge: 'bottom', at: 'start' },
+        b: { edge: 'bottom', at: 'end' },
+        orientation: 'horizontal',
+      },
+    }).document;
+
+    const value = measureCutDimension(withDimension, getConstraint(withDimension, 'cut-width')!);
+    expect(value).toBeCloseTo(220);
+  });
+
+  it('updates the loop when the radius changes', () => {
+    const document = roundedPiece();
+    const piece = pieceById(document, 'piece-1')!;
+    const before = pieceLoop(document, piece)!;
+
+    const changed = applyCommand(document, {
+      id: 'radius',
+      type: 'set_corner_round_radius',
+      params: { id: 'round-1', radius: 40 },
+    }).document;
+    const after = pieceLoop(changed, pieceById(changed, 'piece-1')!)!;
+
+    expect(after).not.toBeNull();
+    expect(after.points).not.toEqual(before.points);
+  });
+
+  it('does not block a round when an unrelated piece loop cannot resolve', () => {
+    const broken: Piece = {
+      id: 'piece-1',
+      edges: ['right', 'top'],
+      allowances: [
+        { edge: 'right', width: 10 },
+        { edge: 'top', width: 10 },
+      ],
+    };
+    const document = { ...documentOf(), pieces: [broken] };
+
+    const rounded = applyCommand(document, roundCorner()).document;
+    expect(pieceById(rounded, 'piece-1')!.edges).toEqual(['right', 'top']);
+  });
+
+  it('rejects a radius whose allowance folds the cut line', () => {
+    const lShape: Entity[] = [
+      point('a', 0, 0),
+      point('b', 100, 0),
+      point('c', 100, 40),
+      point('d', 40, 40),
+      point('e', 40, 100),
+      point('f', 0, 100),
+      line('ab', 'a', 'b'),
+      line('bc', 'b', 'c'),
+      line('cd', 'c', 'd'),
+      line('de', 'd', 'e'),
+      line('ef', 'e', 'f'),
+      line('fa', 'f', 'a'),
+    ];
+    const edges = ['ab', 'bc', 'cd', 'de', 'ef', 'fa'];
+    let document = applyCommand(
+      { ...createEmptyDocument(), entities: lShape },
+      {
+        id: 'piece-1',
+        type: 'create_piece',
+        params: { edges },
+      },
+    ).document;
+    for (const [index, edge] of ['cd', 'de'].entries()) {
+      document = applyCommand(document, {
+        id: `allow-${index}`,
+        type: 'set_piece_allowance',
+        params: { piece: 'piece-1', edge, width: 10 },
+      }).document;
+    }
+
+    const piece = pieceById(document, 'piece-1')!;
+    expect(pieceCutLoop(document, piece)?.selfIntersections).toEqual([]);
+
+    expect(() =>
+      applyCommand(document, {
+        id: 'round-concave',
+        type: 'add_corner_round',
+        params: { first: 'cd', second: 'de', radius: 1 },
+      }),
+    ).toThrowError(/folds the cut line/);
   });
 });

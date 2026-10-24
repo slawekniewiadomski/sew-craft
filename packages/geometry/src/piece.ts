@@ -1,4 +1,5 @@
 import { getEntity, entityPoints, type Bounds } from './document.js';
+import { roundBridge } from './corner-round.js';
 import {
   edgePolyline,
   findSelfIntersections,
@@ -17,7 +18,6 @@ import type {
   LineEntity,
   PatternDocument,
   Piece,
-  PointEntity,
 } from './types.js';
 import { magnitude, sub, type Vec2 } from './vector.js';
 
@@ -25,6 +25,18 @@ import { magnitude, sub, type Vec2 } from './vector.js';
 const VERTEX_TOLERANCE = 1e-6;
 
 type PieceEdgeEntity = LineEntity | CurveEntity | ArcEntity;
+
+/** One segment of a resolved piece loop: a stored edge or a derived round bridge. */
+interface LoopSegment {
+  /** Polyline in walk direction. */
+  points: Vec2[];
+  /** Index into `piece.edges`, or `null` for a derived bridge. */
+  edgeIndex: number | null;
+  /** Whether the stored edge runs against the walk; bridges are already oriented. */
+  reversed: boolean;
+}
+
+type LoopAssembly = { ok: true; segments: LoopSegment[] } | { ok: false; edgeIndex: number };
 
 /** A piece loop resolved against the current document. */
 export interface PieceLoop {
@@ -116,14 +128,8 @@ export function edgeEndpointIds(entity: PieceEdgeEntity): [EntityId, EntityId] {
   }
 }
 
-function endpointPosition(document: PatternDocument, id: EntityId): Vec2 {
-  // `validatePiece` has already resolved every referenced point of every edge.
-  const entity = getEntity(document, id) as PointEntity;
-  return { x: entity.x, y: entity.y };
-}
-
-const first = (points: Vec2[]): Vec2 => points[0]!;
-const last = (points: Vec2[]): Vec2 => points[points.length - 1]!;
+const first = (points: readonly Vec2[]): Vec2 => points[0]!;
+const last = (points: readonly Vec2[]): Vec2 => points[points.length - 1]!;
 
 function connects(a: Vec2, b: Vec2): boolean {
   return magnitude(sub(a, b)) <= VERTEX_TOLERANCE;
@@ -152,7 +158,7 @@ export function validatePiece(
     };
   }
 
-  const entities: PieceEdgeEntity[] = [];
+  const polylines: Vec2[][] = [];
   for (const id of edges) {
     const entity = getEntity(document, id);
     if (entity === undefined) {
@@ -185,43 +191,27 @@ export function validatePiece(
     if (polyline === null || polyline.length < 2) {
       return { ok: false, message: `Edge ${id} has no usable geometry.`, edge: id };
     }
-    entities.push(entity);
+    polylines.push(polyline);
   }
 
-  // Walk the ordered edges as one chain: each edge must continue at the vertex
-  // the previous edge ended on, and the last must close back to the first. A
-  // selection that only shares one common vertex (a star) fails here. The first
-  // edge may itself run against the walk, so pick the direction that meets the
-  // second edge first, mirroring `orientedPolylines`.
-  const firstPoints = edgeEndpointIds(entities[0]!).map((id) => endpointPosition(document, id));
-  const secondPoints = edgeEndpointIds(entities[1]!).map((id) => endpointPosition(document, id));
-  let origin = firstPoints[0]!;
-  let current = firstPoints[1]!;
-  if (!secondPoints.some((point) => connects(current, point))) {
-    origin = firstPoints[1]!;
-    current = firstPoints[0]!;
-  }
-  for (let i = 1; i < entities.length; i += 1) {
-    const edge = entities[i]!;
-    const [start, end] = edgeEndpointIds(edge).map((id) => endpointPosition(document, id));
-    if (connects(current, start!)) {
-      current = end!;
-    } else if (connects(current, end!)) {
-      current = start!;
-    } else {
+  // Walk the ordered edges as one chain: each edge must continue where the
+  // previous one ended, and the last must close back to the first. A corner that
+  // a committed round has trimmed leaves a gap; `assembleLoop` fills it with the
+  // round's derived arc, so a piece stays one closed loop around the round.
+  const assembly = assembleLoop(document, edges, polylines);
+  if (!assembly.ok) {
+    const index = assembly.edgeIndex;
+    if (index === 0) {
       return {
         ok: false,
-        message: `Edge ${entities[i - 1]!.id} does not connect to edge ${edge.id}.`,
-        edge: edge.id,
+        message: `Edge ${edges[edges.length - 1]} does not connect to edge ${edges[0]}.`,
+        edge: edges[0]!,
       };
     }
-  }
-  if (!connects(current, origin)) {
-    const last = entities[entities.length - 1]!;
     return {
       ok: false,
-      message: `Edge ${last.id} does not connect to edge ${entities[0]!.id}.`,
-      edge: entities[0]!.id,
+      message: `Edge ${edges[index - 1]} does not connect to edge ${edges[index]}.`,
+      edge: edges[index]!,
     };
   }
 
@@ -244,47 +234,162 @@ function reverse(points: readonly Vec2[]): Vec2[] {
 }
 
 /**
- * Flatten the piece's edges into one closed boundary, reversing any edge whose
- * stored direction runs against the walk. Returns `null` when the edges cannot
- * be walked as one closed loop.
+ * Walk the stored edges in one direction, inserting a committed round's arc
+ * wherever consecutive edges no longer meet because the round trimmed them.
+ * Returns the failing edge index when the chain does not close.
  */
-function orientedPolylines(
+function walkLoop(
   document: PatternDocument,
+  edgeIds: readonly EntityId[],
+  polylines: readonly Vec2[][],
+  reverseFirst: boolean,
+): LoopAssembly {
+  const firstPolyline = reverseFirst ? reverse(polylines[0]!) : [...polylines[0]!];
+  const segments: LoopSegment[] = [{ points: firstPolyline, edgeIndex: 0, reversed: reverseFirst }];
+  let current = last(firstPolyline);
+
+  for (let i = 1; i < edgeIds.length; i += 1) {
+    const polyline = polylines[i]!;
+    let points: Vec2[] | null = null;
+    let reversed = false;
+    if (connects(current, first(polyline))) {
+      points = [...polyline];
+    } else if (connects(current, last(polyline))) {
+      points = reverse(polyline);
+      reversed = true;
+    }
+
+    if (points === null) {
+      // `roundBridge` returns the arc already running from the previous edge's
+      // tangent to the next one, which is exactly where the walk stands.
+      const bridge = roundBridge(document, edgeIds[i - 1]!, edgeIds[i]!);
+      if (bridge === null) return { ok: false, edgeIndex: i };
+
+      segments.push({ points: bridge, edgeIndex: null, reversed: false });
+      current = last(bridge);
+      if (connects(current, first(polyline))) {
+        points = [...polyline];
+      } else if (connects(current, last(polyline))) {
+        points = reverse(polyline);
+        reversed = true;
+      } else {
+        return { ok: false, edgeIndex: i };
+      }
+    }
+
+    segments.push({ points, edgeIndex: i, reversed });
+    current = last(points);
+  }
+
+  const origin = first(firstPolyline);
+  if (!connects(current, origin)) {
+    const bridge = roundBridge(document, edgeIds[edgeIds.length - 1]!, edgeIds[0]!);
+    if (bridge === null) return { ok: false, edgeIndex: 0 };
+
+    segments.push({ points: bridge, edgeIndex: null, reversed: false });
+    if (!connects(last(bridge), origin)) return { ok: false, edgeIndex: 0 };
+  }
+
+  return { ok: true, segments };
+}
+
+/**
+ * Resolve the stored edges into one closed walk, trying the stored direction
+ * first and the reversed direction second. Bridges are derived on read.
+ */
+function assembleLoop(
+  document: PatternDocument,
+  edgeIds: readonly EntityId[],
+  polylines: readonly Vec2[][],
+): LoopAssembly {
+  // Mirror the walk's historical first-edge heuristic: when the first edge's
+  // end does not meet the second edge, the walk probably runs the other way.
+  const second = polylines[1]!;
+  const firstEnd = last(polylines[0]!);
+  const reverseFirst = !connects(firstEnd, first(second)) && !connects(firstEnd, last(second));
+
+  const preferred = walkLoop(document, edgeIds, polylines, reverseFirst);
+  if (preferred.ok) return preferred;
+
+  const fallback = walkLoop(document, edgeIds, polylines, !reverseFirst);
+  return fallback.ok ? fallback : preferred;
+}
+
+/**
+ * The allowance a bridge carries: both adjacent edges must agree (both absent,
+ * or the same width and effective kind). `null` when they disagree.
+ */
+function sharedAllowance(
+  before: Allowance | undefined,
+  after: Allowance | undefined,
+): { allowance: Allowance | undefined } | null {
+  if (before === undefined || after === undefined) {
+    return before === after ? { allowance: undefined } : null;
+  }
+  if (before.width !== after.width || (before.kind ?? 'seam') !== (after.kind ?? 'seam')) {
+    return null;
+  }
+  return { allowance: before };
+}
+
+/**
+ * The unsigned allowance distance of every boundary segment, in walk order, or
+ * `null` when a bridge joins two edges whose allowances disagree.
+ */
+function loopDistances(
   piece: Piece,
-): { polylines: Vec2[][]; reversed: boolean[] } | null {
+  edges: readonly PieceEdgeEntity[],
+  segments: readonly LoopSegment[],
+  fold: boolean,
+): number[] | null {
+  const distances: number[] = [];
+
+  for (const [index, segment] of segments.entries()) {
+    let allowance: Allowance | undefined;
+    if (segment.edgeIndex === null) {
+      const before = segments[index - 1]!.edgeIndex!;
+      // Segments alternate edge/bridge, so the next segment is always an edge;
+      // a closing bridge wraps to the first one.
+      const after = segments[(index + 1) % segments.length]!.edgeIndex!;
+      const shared = sharedAllowance(
+        allowanceForEdge(piece, edges[before]!.id),
+        allowanceForEdge(piece, edges[after]!.id),
+      );
+      if (shared === null) return null;
+      allowance = shared.allowance;
+    } else {
+      allowance = allowanceForEdge(piece, edges[segment.edgeIndex]!.id);
+    }
+
+    const width =
+      allowance === undefined
+        ? 0
+        : fold
+          ? allowance.kind === 'double'
+            ? allowance.width
+            : 0
+          : allowanceDistance(allowance);
+    for (let i = 0; i < segment.points.length - 1; i += 1) distances.push(width);
+  }
+
+  return distances;
+}
+
+/**
+ * Flatten the piece's edges into one closed boundary, reversing any edge whose
+ * stored direction runs against the walk and inserting a committed round's arc
+ * where a rounded corner leaves a gap. Returns `null` when the edges cannot be
+ * walked as one closed loop.
+ */
+function orientedPolylines(document: PatternDocument, piece: Piece): LoopSegment[] | null {
   const edges = pieceEdges(document, piece);
   if (edges.length !== piece.edges.length || edges.length < 3) return null;
 
   const polylines = edges.map((edge) => edgePolyline(document, edge.id));
   if (polylines.some((polyline) => polyline === null)) return null;
-  const resolved = polylines as Vec2[][];
-  const reversed = resolved.map(() => false);
 
-  const second = resolved[1]!;
-  const firstEnd = last(resolved[0]!);
-  if (!connects(firstEnd, first(second)) && !connects(firstEnd, last(second))) {
-    resolved[0] = reverse(resolved[0]!);
-    reversed[0] = true;
-  }
-
-  let current = last(resolved[0]!);
-  for (let i = 1; i < resolved.length; i += 1) {
-    const polyline = resolved[i]!;
-    if (connects(current, first(polyline))) {
-      current = last(polyline);
-      continue;
-    }
-    if (connects(current, last(polyline))) {
-      resolved[i] = reverse(polyline);
-      reversed[i] = true;
-      current = last(resolved[i]!);
-      continue;
-    }
-    return null;
-  }
-
-  if (!connects(current, first(resolved[0]!))) return null;
-  return { polylines: resolved, reversed };
+  const assembly = assembleLoop(document, piece.edges, polylines as Vec2[][]);
+  return assembly.ok ? assembly.segments : null;
 }
 
 /**
@@ -293,38 +398,46 @@ function orientedPolylines(
  * no stored side is needed. Returns `null` for an unresolvable loop.
  */
 export function pieceLoop(document: PatternDocument, piece: Piece): PieceLoop | null {
-  const oriented = orientedPolylines(document, piece);
-  if (oriented === null) return null;
+  const segments = orientedPolylines(document, piece);
+  if (segments === null) return null;
+  return loopFromSegments(piece, pieceEdges(document, piece), segments);
+}
 
+/** Resolve one loop from its already-oriented segments and per-edge allowances. */
+function loopFromSegments(
+  piece: Piece,
+  edges: readonly PieceEdgeEntity[],
+  segments: LoopSegment[],
+): PieceLoop | null {
   const boundary: Vec2[] = [];
-  const naturalStart: number[] = [];
-  const spans: number[] = [];
+  const starts = new Array<number>(edges.length).fill(0);
+  const spans = new Array<number>(edges.length).fill(0);
 
-  for (const polyline of oriented.polylines) {
-    naturalStart.push(boundary.length);
-    spans.push(polyline.length - 1);
-    for (let i = 0; i < polyline.length - 1; i += 1) {
-      boundary.push(polyline[i]!);
+  for (const segment of segments) {
+    if (segment.edgeIndex !== null) {
+      starts[segment.edgeIndex] = boundary.length;
+      spans[segment.edgeIndex] = segment.points.length - 1;
+    }
+    for (let i = 0; i < segment.points.length - 1; i += 1) {
+      boundary.push(segment.points[i]!);
     }
   }
 
+  const unsigned = loopDistances(piece, edges, segments, false);
+  if (unsigned === null) return null;
+
   const sign = signedArea(boundary) > 0 ? -1 : 1;
-  const distances: number[] = [];
-  const edges = pieceEdges(document, piece);
-  edges.forEach((edge, index) => {
-    const allowance = allowanceForEdge(piece, edge.id);
-    const distance = allowance === undefined ? 0 : sign * allowanceDistance(allowance);
-    for (let i = 0; i < spans[index]!; i += 1) distances.push(distance);
-  });
+  const distances = unsigned.map((distance) => sign * distance);
 
   // A reversed edge traverses its natural start at the far end of its span.
-  const naturalStarts = naturalStart.map((start, index) => {
-    if (!oriented.reversed[index]) return start;
+  const naturalStart = starts.map((start, index) => {
+    const segment = segments.find((candidate) => candidate.edgeIndex === index)!;
+    if (!segment.reversed) return start;
     const end = (start + spans[index]!) % boundary.length;
     return end;
   });
 
-  return { points: boundary, distances, naturalStart: naturalStarts, spans };
+  return { points: boundary, distances, naturalStart, spans };
 }
 
 /** The cut loop: the stitch boundary offset per edge and joined at every vertex. */
@@ -346,24 +459,25 @@ export function pieceCutLoop(document: PatternDocument, piece: Piece): PieceCutL
  * this loop is exactly the single-fold cut outline.
  */
 export function pieceFoldLines(document: PatternDocument, piece: Piece): Vec2[][] {
-  const loop = pieceLoop(document, piece);
+  const segments = orientedPolylines(document, piece);
+  if (segments === null) return [];
+
+  const loop = loopFromSegments(piece, pieceEdges(document, piece), segments);
   if (loop === null) return [];
 
+  // `loopFromSegments` above already rejected a bridge whose two edges carry
+  // different allowances, so the fold distances resolve for the same segments.
+  const unsigned = loopDistances(piece, pieceEdges(document, piece), segments, true)!;
+  if (unsigned.every((distance) => distance === 0)) return [];
+
   const sign = signedArea(loop.points) > 0 ? -1 : 1;
-  let hasDouble = false;
-  const distances: number[] = [];
-  const edges = pieceEdges(document, piece);
-
-  edges.forEach((edge, index) => {
-    const allowance = allowanceForEdge(piece, edge.id);
-    const distance =
-      allowance !== undefined && allowance.kind === 'double' ? sign * allowance.width : 0;
-    if (distance !== 0) hasDouble = true;
-    for (let i = 0; i < loop.spans[index]!; i += 1) distances.push(distance);
-  });
-
-  if (!hasDouble) return [];
-  return [offsetVariablePolyline(loop.points, distances, { closed: true })];
+  return [
+    offsetVariablePolyline(
+      loop.points,
+      unsigned.map((distance) => sign * distance),
+      { closed: true },
+    ),
+  ];
 }
 
 /**
