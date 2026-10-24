@@ -14,6 +14,7 @@ import {
   pieceLoop,
   solveDocument,
   type Command,
+  type CurveEntity,
   type Entity,
   type LineEntity,
   type PatternDocument,
@@ -35,6 +36,16 @@ const line = (id: string, start: string, end: string): LineEntity => ({
   kind: 'line',
   start,
   end,
+  construction: false,
+});
+
+const curve = (id: string, p0: string, p1: string, p2: string, p3: string): CurveEntity => ({
+  id,
+  kind: 'curve',
+  p0,
+  p1,
+  p2,
+  p3,
   construction: false,
 });
 
@@ -901,7 +912,7 @@ describe('add_derived_dimension', () => {
           b: { edge: 'bottom', at: 'end' },
         },
       }),
-    ).toThrowError(/must be 'start' or 'end'/);
+    ).toThrowError(/must be 'start', 'end' or 'edge'/);
   });
 
   it('rejects identical anchors and anchors that resolve to one point', () => {
@@ -917,7 +928,7 @@ describe('add_derived_dimension', () => {
           b: { edge: 'bottom', at: 'start' },
         },
       }),
-    ).toThrowError(/different loop vertices/);
+    ).toThrowError(/the two anchors must be different/);
 
     // The end of one edge and the start of the next share a loop vertex.
     expect(() =>
@@ -981,6 +992,152 @@ describe('add_derived_dimension', () => {
         },
       }),
     ).toThrowError(/cannot resolve these anchors/);
+  });
+
+  it('adds a corner-to-edge cut dimension in either order', () => {
+    const vertexFirst = applyCommand(withPiece(), {
+      id: 'corner-edge',
+      type: 'add_derived_dimension',
+      params: {
+        piece: 'piece-1',
+        a: { edge: 'bottom', at: 'start' },
+        b: { edge: 'right', at: 'edge' },
+      },
+    }).document;
+    expect(derivedOf(vertexFirst, 'corner-edge')).toEqual({
+      id: 'corner-edge',
+      type: 'derived_distance',
+      piece: 'piece-1',
+      a: { edge: 'bottom', at: 'start' },
+      b: { edge: 'right', at: 'edge' },
+    });
+    expect(measureCutDimension(vertexFirst, derivedOf(vertexFirst, 'corner-edge'))).toBe(220);
+
+    const edgeFirst = applyCommand(vertexFirst, {
+      id: 'edge-corner',
+      type: 'add_derived_dimension',
+      params: {
+        piece: 'piece-1',
+        a: { edge: 'right', at: 'edge' },
+        b: { edge: 'bottom', at: 'start' },
+        orientation: 'aligned',
+        offset: 12,
+      },
+    }).document;
+    expect(measureCutDimension(edgeFirst, derivedOf(edgeFirst, 'edge-corner'))).toBe(220);
+  });
+
+  it('adds an edge-to-edge cut dimension on parallel edges', () => {
+    const document = applyCommand(withPiece(), {
+      id: 'edge-edge',
+      type: 'add_derived_dimension',
+      params: {
+        piece: 'piece-1',
+        a: { edge: 'bottom', at: 'edge' },
+        b: { edge: 'top', at: 'edge' },
+        orientation: 'aligned',
+      },
+    }).document;
+    const constraint = derivedOf(document, 'edge-edge');
+
+    expect(measureCutDimension(document, constraint)).toBe(210);
+    expect(derivedDimensionGeometry(document, constraint)).not.toBeNull();
+    expect(derivedDimensionState(document, constraint)).toBe('derived');
+  });
+
+  it('rejects a curve edge anchor and a non-parallel edge pair', () => {
+    const base = withPiece();
+    const curvedPiece: Piece = {
+      ...pieceById(base, 'piece-1')!,
+      edges: ['bottom', 'curve'],
+    };
+    const curved: PatternDocument = {
+      ...base,
+      entities: [...base.entities, curve('curve', 'a', 'b', 'c', 'd')],
+      pieces: [curvedPiece],
+    };
+
+    expect(() =>
+      applyCommand(curved, {
+        id: 'dim',
+        type: 'add_derived_dimension',
+        params: {
+          piece: 'piece-1',
+          a: { edge: 'curve', at: 'edge' },
+          b: { edge: 'bottom', at: 'start' },
+        },
+      }),
+    ).toThrowError(/straight line edge/);
+
+    expect(() =>
+      applyCommand(base, {
+        id: 'dim',
+        type: 'add_derived_dimension',
+        params: {
+          piece: 'piece-1',
+          a: { edge: 'bottom', at: 'edge' },
+          b: { edge: 'right', at: 'edge' },
+        },
+      }),
+    ).toThrowError(/must be parallel/);
+  });
+
+  it('rejects a vertex on its own edge and a zero span', () => {
+    const document = withPiece();
+
+    expect(() =>
+      applyCommand(document, {
+        id: 'dim',
+        type: 'add_derived_dimension',
+        params: {
+          piece: 'piece-1',
+          a: { edge: 'bottom', at: 'edge' },
+          b: { edge: 'bottom', at: 'start' },
+        },
+      }),
+    ).toThrowError(/the two anchors must be different/);
+
+    // The right edge's start lands exactly on the bottom edge's cut line.
+    expect(() =>
+      applyCommand(document, {
+        id: 'dim',
+        type: 'add_derived_dimension',
+        params: {
+          piece: 'piece-1',
+          a: { edge: 'right', at: 'start' },
+          b: { edge: 'bottom', at: 'edge' },
+        },
+      }),
+    ).toThrowError(/must not resolve to the same point/);
+  });
+
+  it('accepts aligned only for an edge anchor', () => {
+    const document = withPiece();
+
+    expect(() =>
+      applyCommand(document, {
+        id: 'dim',
+        type: 'add_derived_dimension',
+        params: {
+          piece: 'piece-1',
+          a: { edge: 'bottom', at: 'edge' },
+          b: { edge: 'top', at: 'edge' },
+          orientation: 'horizontal',
+        },
+      }),
+    ).toThrowError(/always aligned/);
+    expect(() =>
+      applyCommand(document, {
+        id: 'dim',
+        type: 'add_derived_dimension',
+        params: {
+          piece: 'piece-1',
+          a: { edge: 'bottom', at: 'edge' },
+          b: { edge: 'top', at: 'edge' },
+          orientation: 'aligned',
+        },
+      }),
+    ).not.toThrow();
   });
 });
 
@@ -1068,6 +1225,35 @@ describe('update_constraint on a cut dimension', () => {
     expect(result.inverse).toBeNull();
   });
 
+  it('rejects a horizontal or vertical edit for an edge anchor', () => {
+    const document = applyCommand(withPiece(), {
+      id: 'edge-edge',
+      type: 'add_derived_dimension',
+      params: {
+        piece: 'piece-1',
+        a: { edge: 'bottom', at: 'edge' },
+        b: { edge: 'top', at: 'edge' },
+      },
+    }).document;
+
+    for (const orientation of ['horizontal', 'vertical'] as const) {
+      expect(() =>
+        applyCommand(document, {
+          id: 'move',
+          type: 'update_constraint',
+          params: { id: 'edge-edge', orientation },
+        }),
+      ).toThrowError(/always aligned/);
+    }
+
+    const moved = applyCommand(document, {
+      id: 'move',
+      type: 'update_constraint',
+      params: { id: 'edge-edge', orientation: 'aligned', offset: 30 },
+    }).document;
+    expect(getConstraint(moved, 'edge-edge')).toMatchObject({ orientation: 'aligned', offset: 30 });
+  });
+
   it('rejects a value, a reference, no placement, an unknown orientation or a bad offset', () => {
     const document = applyCommand(withPiece(), addDerived()).document;
 
@@ -1128,6 +1314,35 @@ describe('remove_constraint on a cut dimension', () => {
         b: { edge: 'bottom', at: 'end' },
         orientation: 'horizontal',
         offset: 15,
+      },
+    });
+  });
+
+  it('restores an edge-anchored dimension with its anchors', () => {
+    const document = applyCommand(withPiece(), {
+      id: 'edge-edge',
+      type: 'add_derived_dimension',
+      params: {
+        piece: 'piece-1',
+        a: { edge: 'bottom', at: 'edge' },
+        b: { edge: 'top', at: 'edge' },
+        offset: 25,
+      },
+    }).document;
+    const result = applyCommand(document, {
+      id: 'remove',
+      type: 'remove_constraint',
+      params: { id: 'edge-edge' },
+    });
+
+    expect(result.inverse).toEqual({
+      id: 'edge-edge',
+      type: 'add_derived_dimension',
+      params: {
+        piece: 'piece-1',
+        a: { edge: 'bottom', at: 'edge' },
+        b: { edge: 'top', at: 'edge' },
+        offset: 25,
       },
     });
   });

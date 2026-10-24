@@ -9,14 +9,7 @@ import {
   getSeam,
   seamForEdge,
 } from './document.js';
-import {
-  allowanceForEdge,
-  pieceById,
-  pieceCutLoop,
-  pieceCutVertex,
-  pieceForEdge,
-  validatePiece,
-} from './piece.js';
+import { allowanceForEdge, pieceById, pieceCutLoop, pieceForEdge, validatePiece } from './piece.js';
 import {
   cornerRoundGeometry,
   cornerRoundsForEntity,
@@ -30,7 +23,10 @@ import {
   constraintOffset,
   constraintOrientation,
   createsReferenceCycle,
+  cutAnchorIssue,
   resolveSetValue,
+  usesCutEdgeAnchor,
+  type CutAnchorIssueReason,
 } from './dimension.js';
 import { CommandValidationError } from './errors.js';
 import { solve } from './solver.js';
@@ -1704,7 +1700,7 @@ function requirePieceName(commandType: CommandType, name: string | null | undefi
   }
 }
 
-/** Reject an anchor that does not address a vertex of this piece. */
+/** Reject an anchor that does not address a vertex or whole edge of this piece. */
 function requireCutAnchor(commandType: CommandType, piece: Piece, anchor: CutAnchor): void {
   if (!piece.edges.includes(anchor.edge)) {
     throw new CommandValidationError(
@@ -1712,13 +1708,23 @@ function requireCutAnchor(commandType: CommandType, piece: Piece, anchor: CutAnc
       `edge ${anchor.edge} is not in piece ${piece.id}`,
     );
   }
-  if (anchor.at !== 'start' && anchor.at !== 'end') {
+  if (anchor.at !== 'start' && anchor.at !== 'end' && anchor.at !== 'edge') {
     throw new CommandValidationError(
       commandType,
-      `anchor ${String(anchor.at)} must be 'start' or 'end'`,
+      `anchor ${String(anchor.at)} must be 'start', 'end' or 'edge'`,
     );
   }
 }
+
+/** The command error for each shared cut-anchor rejection. */
+const CUT_ANCHOR_MESSAGES: Record<CutAnchorIssueReason, string> = {
+  missing: 'the piece cut loop cannot resolve these anchors',
+  'not-straight': 'an edge anchor must be a straight line edge',
+  'different-piece': 'both anchors must belong to the same piece',
+  'same-anchor': 'the two anchors must be different',
+  'not-parallel': 'two edge anchors must be parallel',
+  'zero-span': 'the two anchors must not resolve to the same point',
+};
 
 /** Replace one piece in the document, preserving piece order. */
 function replacePiece(document: PatternDocument, piece: Piece): PatternDocument {
@@ -2064,7 +2070,7 @@ function applySetPieceAllowance(
   };
 }
 
-/** Add a read-only dimension measuring the cut loop between two loop vertices. */
+/** Add a read-only dimension measuring the cut loop between two anchors of one piece. */
 function applyAddDerivedDimension(
   document: PatternDocument,
   command: CommandOf<'add_derived_dimension'>,
@@ -2080,11 +2086,10 @@ function applyAddDerivedDimension(
   }
   requireCutAnchor('add_derived_dimension', piece, a);
   requireCutAnchor('add_derived_dimension', piece, b);
-  if (a.edge === b.edge && a.at === b.at) {
-    throw new CommandValidationError(
-      'add_derived_dimension',
-      'the two anchors must be different loop vertices',
-    );
+
+  const issue = cutAnchorIssue(document, piece, a, b);
+  if (issue.reason !== null) {
+    throw new CommandValidationError('add_derived_dimension', CUT_ANCHOR_MESSAGES[issue.reason]);
   }
   if (orientation !== undefined && !DIMENSION_ORIENTATIONS.includes(orientation)) {
     throw new CommandValidationError(
@@ -2092,23 +2097,14 @@ function applyAddDerivedDimension(
       `unknown dimension orientation: ${String(orientation)}`,
     );
   }
+  if (usesCutEdgeAnchor({ a, b }) && orientation !== undefined && orientation !== 'aligned') {
+    throw new CommandValidationError(
+      'add_derived_dimension',
+      'a cut dimension with an edge anchor is always aligned',
+    );
+  }
   if (offset !== undefined && !Number.isFinite(offset)) {
     throw new CommandValidationError('add_derived_dimension', 'offset must be a finite number');
-  }
-
-  const start = pieceCutVertex(document, piece, a);
-  const end = pieceCutVertex(document, piece, b);
-  if (start === null || end === null) {
-    throw new CommandValidationError(
-      'add_derived_dimension',
-      'the piece cut loop cannot resolve these anchors',
-    );
-  }
-  if (Math.hypot(end.x - start.x, end.y - start.y) <= 1e-9) {
-    throw new CommandValidationError(
-      'add_derived_dimension',
-      'the two anchors resolve to the same point',
-    );
   }
 
   const constraint: DerivedDistanceConstraint = {
@@ -2154,6 +2150,12 @@ function applyUpdateDerivedDimension(
     throw new CommandValidationError(
       'update_constraint',
       `unknown dimension orientation: ${String(orientation)}`,
+    );
+  }
+  if (usesCutEdgeAnchor(constraint) && orientation !== undefined && orientation !== 'aligned') {
+    throw new CommandValidationError(
+      'update_constraint',
+      'a cut dimension with an edge anchor is always aligned',
     );
   }
   if (offset !== undefined && !Number.isFinite(offset)) {

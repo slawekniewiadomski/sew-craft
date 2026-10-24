@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://sewcraft.local/schemas/command-spec-0.10.json",
+  "$id": "https://sewcraft.local/schemas/command-spec-0.12.json",
   "title": "SewCraft Command Spec",
-  "schema": "sewcraft.command-spec/0.10",
-  "spec_version": "0.11.0",
+  "schema": "sewcraft.command-spec/0.12",
+  "spec_version": "0.12.0",
   "units": "mm",
   "envelope": {
     "id": "ULID string, client-generated, unique",
@@ -177,11 +177,11 @@
       "inverse": "set_default_allowance"
     },
     "add_derived_dimension": {
-      "description": "Add a read-only cut dimension between two loop vertices of one piece. Its value follows the cut loop and adds no solver equation.",
+      "description": "Add a read-only cut dimension between two corners or straight edges of one piece. Its value follows the cut loop and adds no solver equation.",
       "params": {
         "piece": "entity_id",
-        "a": "cut_anchor",
-        "b": "cut_anchor",
+        "a": "cut_anchor { edge: entity_id, at: start|end|edge }",
+        "b": "cut_anchor { edge: entity_id, at: start|end|edge }",
         "orientation": "aligned|horizontal|vertical?",
         "offset": "number?"
       },
