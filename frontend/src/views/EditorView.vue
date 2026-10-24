@@ -19,6 +19,7 @@ import {
   PATTERN_SCHEMA,
   seamForEdge,
   toSvg,
+  usesCutEdgeAnchor,
 } from '@sewcraft/geometry';
 import type {
   AddConstraintParams,
@@ -110,6 +111,7 @@ import { buildLineCommands, type LineEndpoint } from '@/lib/line-tool';
 import { buildRectangleCommands, type RectangleMode } from '@/lib/rectangle-tool';
 import {
   edgeLabel,
+  canonicalCutAnchors,
   findDerivedDimension,
   pieceCreationFromSelection,
   pieceLabel,
@@ -781,13 +783,18 @@ function onAddDimension(placement: DimensionPlacement): void {
 
 /** Place a read-only cut dimension, updating the existing one on the same span. */
 function onAddCutDimension(placement: CutDimensionPlacement): void {
-  const existing = findDerivedDimension(pattern.value, placement.piece, placement.a, placement.b);
+  // The canvas only starts a placement for a piece that exists in this document.
+  const piece = pattern.value.pieces.find((candidate) => candidate.id === placement.piece)!;
+
+  const [a, b] = canonicalCutAnchors(piece, placement.a, placement.b);
+  const orientation = usesCutEdgeAnchor({ a, b }) ? 'aligned' : placement.orientation;
+  const existing = findDerivedDimension(pattern.value, placement.piece, a, b);
   if (existing !== undefined) {
     run(() =>
       dispatch({
         id: nextCommandId('cut-dimension'),
         type: 'update_constraint',
-        params: { id: existing.id, orientation: placement.orientation, offset: placement.offset },
+        params: { id: existing.id, orientation, offset: placement.offset },
       }),
     );
     return;
@@ -799,9 +806,9 @@ function onAddCutDimension(placement: CutDimensionPlacement): void {
       type: 'add_derived_dimension',
       params: {
         piece: placement.piece,
-        a: placement.a,
-        b: placement.b,
-        orientation: placement.orientation,
+        a,
+        b,
+        orientation,
         offset: placement.offset,
       },
     }),

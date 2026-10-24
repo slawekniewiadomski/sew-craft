@@ -2473,6 +2473,25 @@ describe('EditorView', () => {
     ]);
   });
 
+  it('creates a corner-to-edge cut dimension', async () => {
+    const { wrapper, store } = await mountLoaded(pieceDoc);
+
+    await wrapper.find('[data-testid="tool-cut_dimension"]').trigger('click');
+    pointDown(wrapper, 'a');
+    entityDown(wrapper, 'line', 'cd');
+    canvasDown(wrapper, 400, 300);
+    await flushPromises();
+
+    expect(store.document.constraints).toEqual([
+      expect.objectContaining({
+        type: 'derived_distance',
+        a: { edge: 'ab', at: 'start' },
+        b: { edge: 'cd', at: 'edge' },
+        orientation: 'aligned',
+      }),
+    ]);
+  });
+
   it('updates an existing cut dimension instead of duplicating it', async () => {
     const { wrapper, store } = await mountLoaded(cutDimensionDoc);
 
@@ -2491,6 +2510,20 @@ describe('EditorView', () => {
     expect(store.journal).toHaveLength(1);
   });
 
+  it('updates the existing cut dimension when the same corners are picked in reverse', async () => {
+    const { wrapper, store } = await mountLoaded(cutDimensionDoc);
+
+    await wrapper.find('[data-testid="tool-cut_dimension"]').trigger('click');
+    pointDown(wrapper, 'c');
+    pointDown(wrapper, 'a');
+    canvasDown(wrapper, 400, 300);
+    await flushPromises();
+
+    expect(store.document.constraints).toHaveLength(1);
+    expect(store.document.constraints[0]).toMatchObject({ id: 'cut' });
+    expect(store.journal).toHaveLength(1);
+  });
+
   it('rejects a cut dimension pick outside a piece without emitting a command', async () => {
     const { wrapper, store } = await mountLoaded(lineDoc);
 
@@ -2499,7 +2532,7 @@ describe('EditorView', () => {
     await nextTick();
 
     expect(wrapper.find('[data-testid="cut-dimension-hint"]').text()).toBe(
-      'Pick a corner of a piece',
+      'Pick a corner or a straight edge of a piece.',
     );
     expect(store.document.constraints).toHaveLength(0);
     expect(store.journal).toHaveLength(0);
