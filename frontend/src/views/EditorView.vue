@@ -158,8 +158,8 @@ const activeTool = ref<EditorTool>('select');
 const selectedEntityIds = ref<EntityId[]>([]);
 /**
  * Ordered, ephemeral dimension selection. Dimensions are constraints, not
- * entities, so they keep a separate selection that stays mutually exclusive
- * with entities and pieces.
+ * entities, so they keep a separate selection. A click or drawer row keeps the
+ * two kinds exclusive; only a committed marquee may fill both.
  */
 const selectedDimensionIds = ref<EntityId[]>([]);
 /**
@@ -241,7 +241,17 @@ const defaultAllowanceHint = computed(() => {
     ? 'New pieces start with no allowance.'
     : `New pieces get ${choice.width} mm ${ALLOWANCE_KIND_LABELS[choice.kind].toLowerCase()}.`;
 });
-const canCreatePiece = computed(() => pieceCreation.value.ok);
+/** A piece is a loop of entities, so a dimension in the selection is ambiguous. */
+const canCreatePiece = computed(
+  () => pieceCreation.value.ok && selectedDimensionIds.value.length === 0,
+);
+
+/** Why Create piece is refused while a dimension is selected; a tooltip. */
+const createPieceHint = computed(() =>
+  selectedDimensionIds.value.length > 0
+    ? 'Clear the dimension selection: Create piece applies to entities only.'
+    : undefined,
+);
 
 /** The entity selection as a set, for row highlighting and `aria-current`. */
 const selectedIds = computed(() => new Set(selectedEntityIds.value));
@@ -308,14 +318,17 @@ const orphanHint = computed(() =>
 
 /** Live-region text, announced whenever the selection count changes. */
 const selectionStatus = computed(() => {
-  if (selectedDimensionIds.value.length > 0) {
-    return selectedDimensionIds.value.length === 1
-      ? '1 dimension selected'
-      : `${selectedDimensionIds.value.length} dimensions selected`;
+  const dimensions = selectedDimensionIds.value.length;
+  const entities = selectedEntityIds.value.length;
+  if (dimensions > 0 && entities > 0) {
+    return `${entities} ${entities === 1 ? 'entity' : 'entities'} and ${dimensions} ${
+      dimensions === 1 ? 'dimension' : 'dimensions'
+    } selected`;
   }
-  return selectedEntityIds.value.length === 1
-    ? '1 entity selected'
-    : `${selectedEntityIds.value.length} entities selected`;
+  if (dimensions > 0) {
+    return dimensions === 1 ? '1 dimension selected' : `${dimensions} dimensions selected`;
+  }
+  return entities === 1 ? '1 entity selected' : `${entities} entities selected`;
 });
 
 /**
@@ -678,14 +691,11 @@ function onSetAllAllowances(
 watch(selectedEntityIds, (ids) => {
   if (ids.length === 0) return;
   selectedPieceId.value = null;
-  // Entity and dimension selection are mutually exclusive.
-  selectedDimensionIds.value = [];
 });
 
 watch(selectedDimensionIds, (ids) => {
   if (ids.length === 0) return;
   selectedPieceId.value = null;
-  selectedEntityIds.value = [];
 });
 
 /**
@@ -694,6 +704,9 @@ watch(selectedDimensionIds, (ids) => {
  */
 function onOutlineSelect(id: EntityId, event: MouseEvent): void {
   const mode = selectionModeFrom(event);
+  // A drawer click is exclusive like a canvas click: the marquee is the only
+  // gesture that may leave both kinds selected.
+  selectedDimensionIds.value = [];
   if (mode === 'replace') {
     selectedEntityIds.value = [id];
     return;
@@ -711,6 +724,8 @@ function onOutlineSelect(id: EntityId, event: MouseEvent): void {
  */
 function onDimensionSelect(id: EntityId, event: MouseEvent | KeyboardEvent): void {
   const mode = selectionModeFrom(event);
+  // A drawer click is exclusive like a canvas click, whatever the modifier.
+  selectedEntityIds.value = [];
   if (mode === 'replace') {
     selectedDimensionIds.value = [id];
     return;
@@ -721,25 +736,17 @@ function onDimensionSelect(id: EntityId, event: MouseEvent | KeyboardEvent): voi
       : applySelection(selectedDimensionIds.value, [id], 'subtract');
 }
 
+/** Remove the whole selection, mixed or not, as one journal entry. */
 function deleteSelected(): void {
   if (marqueeActive.value || editor.readOnly) return;
 
-  // Dimensions are constraints, not entities: they take their own branch so the
-  // entity orphan guard is never consulted for them.
-  if (selectedDimensionIds.value.length > 0) {
-    const dimensionCommands: Command[] = selectedDimensionIds.value.map((id) => ({
-      id: nextCommandId('constraint'),
-      type: 'remove_constraint',
-      params: { id },
-    }));
-    if (run(() => dispatchGroup(dimensionCommands))) selectedDimensionIds.value = [];
-    return;
-  }
+  const dimensionIds = selectedDimensionIds.value;
+  const entityIds = selectedEntityIds.value;
+  if (dimensionIds.length === 0 && entityIds.length === 0) return;
 
-  const ids = selectedEntityIds.value;
-  if (ids.length === 0) return;
-
-  const orphans = orphanCandidates.value;
+  // The orphan guard protects the entity half only, and a hit refuses the whole
+  // group so a mixed delete is never half-applied. The selection stays intact.
+  const orphans = entityIds.length === 0 ? [] : orphanCandidates.value;
   if (orphans.length > 0) {
     error.value = `Cannot delete this selection: ${orphans.join(', ')} would lose a point. Include the edge${
       orphans.length === 1 ? '' : 's'
@@ -747,12 +754,24 @@ function deleteSelected(): void {
     return;
   }
 
-  const commands: Command[] = ids.map((id) => ({
-    id: nextCommandId('delete'),
-    type: 'delete_entity',
-    params: { id },
-  }));
-  if (run(() => dispatchGroup(commands))) selectedEntityIds.value = [];
+  // Dimensions first: removing a constraint before its anchor cascade keeps the
+  // batch idempotent, and both kinds still land in the same journal entry.
+  const commands: Command[] = [
+    ...dimensionIds.map((id): Command => ({
+      id: nextCommandId('constraint'),
+      type: 'remove_constraint',
+      params: { id },
+    })),
+    ...entityIds.map((id): Command => ({
+      id: nextCommandId('delete'),
+      type: 'delete_entity',
+      params: { id },
+    })),
+  ];
+  if (run(() => dispatchGroup(commands))) {
+    selectedDimensionIds.value = [];
+    selectedEntityIds.value = [];
+  }
 }
 
 function onRibbonAction(action: RibbonAction): void {
@@ -1586,6 +1605,7 @@ onBeforeUnmount(() => {
         :can-redo="canRedo"
         :can-delete="selectedEntityIds.length > 0 || selectedDimensionIds.length > 0"
         :can-create-piece="canCreatePiece"
+        :create-piece-hint="createPieceHint"
         :read-only="editor.readOnly"
         @select-tool="selectTool"
         @select-constraint="selectConstraint"
@@ -1669,8 +1689,8 @@ onBeforeUnmount(() => {
               v-if="selectedDimensionIds.length > 0 || selectedEntityIds.length > 1"
               :entities="selectedEntities"
               :dimensions="selectedDimensionIds.length"
-              :delete-disabled="selectedDimensionIds.length === 0 && orphanCandidates.length > 0"
-              :delete-hint="selectedDimensionIds.length === 0 ? orphanHint : undefined"
+              :delete-disabled="orphanCandidates.length > 0"
+              :delete-hint="orphanHint"
               @delete="deleteSelected"
             />
 

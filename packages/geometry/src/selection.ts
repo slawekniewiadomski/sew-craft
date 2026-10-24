@@ -1,5 +1,6 @@
 import { arcExtents, arcPoints, arcThroughPoints } from './arc.js';
 import { MIN_RADIUS } from './circle.js';
+import { derivedDimensionGeometry, dimensionGeometry } from './dimension.js';
 import { allPoints } from './document.js';
 import type { EntityId, PatternDocument, PointEntity } from './types.js';
 
@@ -216,6 +217,41 @@ export function entitiesInRect(document: PatternDocument, rect: Rect, mode: Rect
         ? resolved.every((point) => pointInRect(point, rect))
         : convexOverlap(entity.kind === 'line' ? resolved : convexHull(resolved), corners);
     if (hit) hits.push(entity.id);
+  }
+
+  return hits;
+}
+
+/**
+ * Visible dimensions hit by a rectangle, in constraint order. A dimension's hit
+ * geometry is its dimension line: `window` keeps only dimensions whose line has
+ * both endpoints inside, `crossing` accepts any overlap. Extension lines,
+ * chevrons and the value label are not targets, and a dimension whose layout does
+ * not resolve is skipped exactly as the renderer skips it.
+ */
+export function dimensionsInRect(
+  document: PatternDocument,
+  rect: Rect,
+  mode: RectMode,
+): EntityId[] {
+  const corners = rectCorners(rect);
+  const hits: EntityId[] = [];
+
+  for (const constraint of document.constraints) {
+    if (constraint.type !== 'distance' && constraint.type !== 'derived_distance') continue;
+
+    const layout =
+      constraint.type === 'distance'
+        ? dimensionGeometry(document, constraint)
+        : derivedDimensionGeometry(document, constraint);
+    if (layout === null) continue;
+
+    const line = [layout.dimensionStart, layout.dimensionEnd];
+    const hit =
+      mode === 'window'
+        ? line.every((point) => pointInRect(point, rect))
+        : convexOverlap(line, corners);
+    if (hit) hits.push(constraint.id);
   }
 
   return hits;

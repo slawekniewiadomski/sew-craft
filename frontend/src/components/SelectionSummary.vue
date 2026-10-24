@@ -9,7 +9,7 @@ const props = withDefaults(
   defineProps<{
     /** The selected entities, in selection order. */
     entities?: Entity[];
-    /** How many dimensions are selected; dimensions use this summary alone. */
+    /** How many dimensions are selected; they render alone or beside entities. */
     dimensions?: number;
     /** Refuse Delete while a selected point would orphan an edge. */
     deleteDisabled?: boolean;
@@ -23,6 +23,9 @@ const emit = defineEmits<{ delete: [] }>();
 
 const dimensionMode = computed(() => props.dimensions > 0);
 
+/** A committed marquee is the one gesture that can select both kinds at once. */
+const mixed = computed(() => props.entities.length > 0 && props.dimensions > 0);
+
 const counts = computed(() => {
   const points = props.entities.filter((entity) => entity.kind === 'point').length;
   const lines = props.entities.filter((entity) => entity.kind === 'line').length;
@@ -32,6 +35,12 @@ const counts = computed(() => {
 });
 
 const countLabel = computed(() => {
+  if (mixed.value) {
+    const entities = props.entities.length;
+    return `${entities} ${entities === 1 ? 'entity' : 'entities'} and ${props.dimensions} ${
+      props.dimensions === 1 ? 'dimension' : 'dimensions'
+    } selected`;
+  }
   if (dimensionMode.value) {
     return props.dimensions === 1
       ? '1 dimension selected'
@@ -68,7 +77,7 @@ const breakdown = computed(() => {
       {{ countLabel }}
     </p>
     <p
-      v-if="!dimensionMode"
+      v-if="!dimensionMode || mixed"
       class="text-2xs text-muted-foreground"
       data-testid="selection-breakdown"
     >

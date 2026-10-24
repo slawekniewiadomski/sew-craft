@@ -62,6 +62,31 @@ describe('SelectionSummary', () => {
     expect(wrapper.find('[data-testid="selection-delete"]').attributes('disabled')).toBeUndefined();
   });
 
+  it('names both counts for a mixed selection and keeps the entity breakdown', () => {
+    const mixed = mount(SelectionSummary, {
+      props: { entities: [line('ab', 'a', 'b'), point('a')], dimensions: 3 },
+    });
+
+    expect(mixed.find('[data-testid="selection-count"]').text()).toBe(
+      '2 entities and 3 dimensions selected',
+    );
+    expect(mixed.find('[data-testid="selection-breakdown"]').text()).toBe('1 point · 1 line');
+    expect(mixed.find('[data-testid="selection-pointer-note"]').text()).toBe(
+      'Ctrl/Cmd-click adds or removes a dimension.',
+    );
+  });
+
+  it('uses singular counts in a mixed selection', () => {
+    const wrapper = mount(SelectionSummary, {
+      props: { entities: [line('ab', 'a', 'b')], dimensions: 1 },
+    });
+
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe(
+      '1 entity and 1 dimension selected',
+    );
+    expect(wrapper.find('[data-testid="selection-breakdown"]').text()).toBe('1 line');
+  });
+
   it('uses singular counts and emits delete', async () => {
     const wrapper = mountSummary([line('ab', 'a', 'b')]);
 

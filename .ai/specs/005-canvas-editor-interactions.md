@@ -25,13 +25,16 @@ Geometry package, command bus, `PatternDocument`.
 - Snap (grid + to points) as a frontend concern.
 - Tools: select, add point, add line, add curve.
 - Selection: click, Ctrl/Cmd-click to toggle, and a left-drag marquee
-  (right = crossing, left = window); Delete removes the whole selection as one
-  undo entry, refusing when a selected point would orphan an unselected edge.
+  (right = crossing, left = window). The marquee selects dimensions as well as
+  entities, and a mixed selection deletes as one undo entry, refusing when a
+  selected point would orphan an unselected edge.
 - Dimensions are separately selectable: a Select-tool click on a dimension line
   or label, Ctrl/Cmd-click to add or remove, and drawer row selection on the same
-  modifiers. Dimension selection is mutually exclusive with entity and piece
-  selection, and Delete removes every selected dimension as one grouped undo
-  entry through `remove_constraint`.
+  modifiers. A click or drawer row keeps entities, dimensions and pieces
+  mutually exclusive; only a committed marquee may leave both entity and
+  dimension selections non-empty. Delete removes the whole selection as one
+  grouped undo entry, composing `remove_constraint` with `delete_entity` when the
+  marquee mixed the two kinds.
 - Emits commands via the bus; renders solver output.
 
 ## Acceptance criteria

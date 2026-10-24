@@ -3127,7 +3127,126 @@ describe('EditorView dimension selection', () => {
     expect(store.document.constraints.some((constraint) => constraint.id === 'height')).toBe(false);
   });
 
-  it('keeps entity, dimension and piece selection mutually exclusive', async () => {
+  it('deletes a mixed selection as one undo entry', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      constraints: [{ id: 'w', type: 'distance', a: 'a', b: 'b', value: 100 }],
+    });
+
+    pointDown(wrapper, 'e');
+    await nextTick();
+    wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedDimensionIds', ['w']);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe(
+      '1 entity and 1 dimension selected',
+    );
+
+    const journal = store.journal.length;
+    await wrapper.find('[data-testid="selection-delete"]').trigger('click');
+    await nextTick();
+
+    expect(store.document.entities.some((entity) => entity.id === 'e')).toBe(false);
+    expect(store.document.constraints).toEqual([]);
+    expect(store.journal).toHaveLength(journal + 1);
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
+
+    store.undo();
+    await nextTick();
+    expect(store.document.entities.some((entity) => entity.id === 'e')).toBe(true);
+    expect(store.document.constraints.some((constraint) => constraint.id === 'w')).toBe(true);
+  });
+
+  it('refuses a mixed delete whose entity half would orphan an edge', async () => {
+    const w = { id: 'w', type: 'distance' as const, a: 'a', b: 'b', value: 100 };
+    const { wrapper, store } = await mountLoaded({ ...lineDoc, constraints: [w] });
+
+    pointDown(wrapper, 'a');
+    await nextTick();
+    wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedDimensionIds', ['w']);
+    await nextTick();
+
+    const button = wrapper.find('[data-testid="selection-delete"]');
+    expect(button.attributes('disabled')).toBeDefined();
+    expect(button.attributes('title')).toBe(
+      'Include ab, da in the selection to delete these points.',
+    );
+
+    const journal = store.journal.length;
+    keydown('Delete');
+    await nextTick();
+
+    expect(store.journal).toHaveLength(journal);
+    expect(store.document.constraints).toEqual([w]);
+    expect(store.document.entities.some((entity) => entity.id === 'a')).toBe(true);
+    expect(wrapper.text()).toContain('ab, da would lose a point');
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe(
+      '1 entity and 1 dimension selected',
+    );
+  });
+
+  it('summarises a mixed selection and disables Create piece while a dimension is selected', async () => {
+    const { wrapper } = await mountLoaded({
+      ...lineDoc,
+      constraints: [
+        { id: 'w', type: 'distance', a: 'a', b: 'b', value: 100 },
+        { id: 'h', type: 'distance', a: 'b', b: 'c', value: 100, orientation: 'vertical' },
+      ],
+    });
+    const canvas = wrapper.findComponent(PatternCanvas);
+
+    canvas.vm.$emit('update:selectedEntityIds', ['ab', 'bc', 'cd', 'da']);
+    await nextTick();
+    expect(wrapper.find('[data-testid="create-piece"]').attributes('disabled')).toBeUndefined();
+
+    canvas.vm.$emit('update:selectedDimensionIds', ['w']);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe(
+      '4 entities and 1 dimension selected',
+    );
+    expect(wrapper.find('[data-testid="selection-breakdown"]').text()).toBe('4 lines');
+    expect(wrapper.find('[data-testid="selection-pointer-note"]').text()).toBe(
+      'Ctrl/Cmd-click adds or removes a dimension.',
+    );
+    expect(wrapper.find('[data-testid="selection-status"]').text()).toBe(
+      '4 entities and 1 dimension selected',
+    );
+    expect(wrapper.find('[data-testid="create-piece"]').attributes('disabled')).toBeDefined();
+
+    canvas.vm.$emit('update:selectedDimensionIds', ['w', 'h']);
+    await nextTick();
+    expect(wrapper.find('[data-testid="selection-status"]').text()).toBe(
+      '4 entities and 2 dimensions selected',
+    );
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe(
+      '4 entities and 2 dimensions selected',
+    );
+  });
+
+  it('keeps the surviving kind when the other disappears underneath a mixed selection', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      constraints: [{ id: 'w', type: 'distance', a: 'a', b: 'b', value: 100 }],
+    });
+
+    pointDown(wrapper, 'e');
+    await nextTick();
+    wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedDimensionIds', ['w']);
+    await nextTick();
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe(
+      '1 entity and 1 dimension selected',
+    );
+
+    store.dispatch({ id: 'external', type: 'remove_constraint', params: { id: 'w' } });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="selection-status"]').text()).toBe('1 entity selected');
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(true);
+  });
+
+  it('lets a marquee mix kinds while drawer rows and pieces stay exclusive', async () => {
     const { wrapper } = await mountLoaded({
       ...pieceDoc,
       constraints: [{ id: 'w', type: 'distance', a: 'a', b: 'b', value: 100 }],
@@ -3138,18 +3257,25 @@ describe('EditorView dimension selection', () => {
     await nextTick();
     expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(true);
 
+    // The marquee may fill both arrays; the mixed selection shows the summary.
     canvas.vm.$emit('update:selectedDimensionIds', ['w']);
     await nextTick();
     expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe(
+      '1 entity and 1 dimension selected',
+    );
+    expect(wrapper.find('[data-testid="selection-status"]').text()).toBe(
+      '1 entity and 1 dimension selected',
+    );
+
+    // A drawer dimension row is a click: it clears the entity selection.
+    await openDimensions(wrapper);
+    await wrapper.find('[data-testid="select-dimension-w"]').trigger('click');
+    await nextTick();
     expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
+    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
 
-    canvas.vm.$emit('update:selectedEntityIds', ['b']);
-    await nextTick();
-    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(true);
-
-    canvas.vm.$emit('update:selectedDimensionIds', ['w']);
-    await nextTick();
+    // A piece clears both selections.
     await wrapper.find('[data-testid="piece-row-p1"]').trigger('click');
     await nextTick();
     expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);

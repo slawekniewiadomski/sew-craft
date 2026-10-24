@@ -124,6 +124,33 @@ describe('EditorRibbon', () => {
     );
   });
 
+  it('explains a refused Create piece in its tooltip', () => {
+    const wrapper = mount(EditorRibbon, {
+      props: {
+        activeTool: 'select',
+        activeConstraint: null,
+        canUndo: false,
+        canRedo: false,
+        canDelete: false,
+        canCreatePiece: false,
+        createPieceHint: 'Clear the dimension selection: Create piece applies to entities only.',
+      },
+      global: {
+        stubs: {
+          TooltipProvider: { template: '<div><slot /></div>' },
+          Tooltip: { template: '<div><slot /></div>' },
+          TooltipTrigger: { template: '<div><slot /></div>' },
+          TooltipContent: { template: '<span class="ribbon-tooltip"><slot /></span>' },
+        },
+      },
+    });
+
+    const createPiece = wrapper.findAll('.ribbon-tooltip')[1]!.text();
+    expect(createPiece).toBe(
+      'Clear the dimension selection: Create piece applies to entities only.',
+    );
+  });
+
   it('styles the active tool distinctly and outlines action buttons', () => {
     const wrapper = mountRibbon({ activeTool: 'add_line' });
 
