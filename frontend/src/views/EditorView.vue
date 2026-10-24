@@ -157,6 +157,12 @@ const activeTool = ref<EditorTool>('select');
 /** Ordered, ephemeral selection: never written to the document or journal. */
 const selectedEntityIds = ref<EntityId[]>([]);
 /**
+ * Ordered, ephemeral dimension selection. Dimensions are constraints, not
+ * entities, so they keep a separate selection that stays mutually exclusive
+ * with entities and pieces.
+ */
+const selectedDimensionIds = ref<EntityId[]>([]);
+/**
  * The piece whose card is open in the Pieces drawer. Ephemeral like the entity
  * selection, and deliberately separate from it: deleting a row never targets a
  * loop by accident.
@@ -240,12 +246,15 @@ const canCreatePiece = computed(() => pieceCreation.value.ok);
 /** The entity selection as a set, for row highlighting and `aria-current`. */
 const selectedIds = computed(() => new Set(selectedEntityIds.value));
 
+/** The dimension selection as a set, for drawer row highlighting. */
+const selectedDimensionIdSet = computed(() => new Set(selectedDimensionIds.value));
+
 /** Every piece, in document order, as the Pieces drawer lists them. */
 const pieces = computed(() => pieceSummaries(pattern.value));
 
 /** Per-drawer row counts for the header badges; the View drawer has none. */
 const drawerCounts = computed<Partial<Record<DrawerId, number>>>(() => ({
-  properties: selectedEntityIds.value.length,
+  properties: selectedEntityIds.value.length + selectedDimensionIds.value.length,
   pieces: pieces.value.length,
   outline: edges.value.length,
   dimensions: dimensions.value.length,
@@ -267,12 +276,16 @@ const EDGE_KIND_ICONS: Record<'line' | 'curve' | 'arc' | 'circle', RibbonIconNam
 };
 
 /**
- * Open or collapse one piece's card. Selecting a piece clears the entity
- * selection so Delete and the inspector never act on the wrong target.
+ * Open or collapse one piece's card. Selecting a piece clears the entity and
+ * dimension selections so Delete and the inspector never act on the wrong
+ * target.
  */
 function selectPiece(id: EntityId): void {
   selectedPieceId.value = selectedPieceId.value === id ? null : id;
-  if (selectedPieceId.value !== null) selectedEntityIds.value = [];
+  if (selectedPieceId.value !== null) {
+    selectedEntityIds.value = [];
+    selectedDimensionIds.value = [];
+  }
 }
 
 /** The selected entities in selection order, for the multi-selection summary. */
@@ -294,11 +307,16 @@ const orphanHint = computed(() =>
 );
 
 /** Live-region text, announced whenever the selection count changes. */
-const selectionStatus = computed(() =>
-  selectedEntityIds.value.length === 1
+const selectionStatus = computed(() => {
+  if (selectedDimensionIds.value.length > 0) {
+    return selectedDimensionIds.value.length === 1
+      ? '1 dimension selected'
+      : `${selectedDimensionIds.value.length} dimensions selected`;
+  }
+  return selectedEntityIds.value.length === 1
     ? '1 entity selected'
-    : `${selectedEntityIds.value.length} entities selected`,
-);
+    : `${selectedEntityIds.value.length} entities selected`;
+});
 
 /**
  * Distance constraints are the driving dimensions; the sidebar edits their
@@ -658,7 +676,16 @@ function onSetAllAllowances(
 }
 
 watch(selectedEntityIds, (ids) => {
-  if (ids.length > 0) selectedPieceId.value = null;
+  if (ids.length === 0) return;
+  selectedPieceId.value = null;
+  // Entity and dimension selection are mutually exclusive.
+  selectedDimensionIds.value = [];
+});
+
+watch(selectedDimensionIds, (ids) => {
+  if (ids.length === 0) return;
+  selectedPieceId.value = null;
+  selectedEntityIds.value = [];
 });
 
 /**
@@ -677,9 +704,40 @@ function onOutlineSelect(id: EntityId, event: MouseEvent): void {
       : applySelection(selectedEntityIds.value, [id], 'subtract');
 }
 
+/**
+ * Select one dimension from its Dimensions drawer row with the same modifier
+ * rules as the canvas: plain click replaces, Ctrl/Cmd toggles, Ctrl/Cmd+Shift
+ * (or Alt) subtracts.
+ */
+function onDimensionSelect(id: EntityId, event: MouseEvent | KeyboardEvent): void {
+  const mode = selectionModeFrom(event);
+  if (mode === 'replace') {
+    selectedDimensionIds.value = [id];
+    return;
+  }
+  selectedDimensionIds.value =
+    mode === 'add'
+      ? toggleSelection(selectedDimensionIds.value, id)
+      : applySelection(selectedDimensionIds.value, [id], 'subtract');
+}
+
 function deleteSelected(): void {
+  if (marqueeActive.value || editor.readOnly) return;
+
+  // Dimensions are constraints, not entities: they take their own branch so the
+  // entity orphan guard is never consulted for them.
+  if (selectedDimensionIds.value.length > 0) {
+    const dimensionCommands: Command[] = selectedDimensionIds.value.map((id) => ({
+      id: nextCommandId('constraint'),
+      type: 'remove_constraint',
+      params: { id },
+    }));
+    if (run(() => dispatchGroup(dimensionCommands))) selectedDimensionIds.value = [];
+    return;
+  }
+
   const ids = selectedEntityIds.value;
-  if (ids.length === 0 || marqueeActive.value || editor.readOnly) return;
+  if (ids.length === 0) return;
 
   const orphans = orphanCandidates.value;
   if (orphans.length > 0) {
@@ -1132,6 +1190,14 @@ watch(pattern, (next) => {
     selectedEntityIds.value = surviving;
   }
 
+  // The same applies to dimensions: a removed constraint drops its id.
+  const survivingDimensions = selectedDimensionIds.value.filter((id) =>
+    next.constraints.some((constraint) => constraint.id === id),
+  );
+  if (survivingDimensions.length !== selectedDimensionIds.value.length) {
+    selectedDimensionIds.value = survivingDimensions;
+  }
+
   if (
     selectedPieceId.value !== null &&
     !next.pieces.some((piece) => piece.id === selectedPieceId.value)
@@ -1518,7 +1584,7 @@ onBeforeUnmount(() => {
         :active-constraint="activeConstraint"
         :can-undo="canUndo"
         :can-redo="canRedo"
-        :can-delete="selectedEntityIds.length > 0"
+        :can-delete="selectedEntityIds.length > 0 || selectedDimensionIds.length > 0"
         :can-create-piece="canCreatePiece"
         :read-only="editor.readOnly"
         @select-tool="selectTool"
@@ -1559,6 +1625,7 @@ onBeforeUnmount(() => {
         <div class="min-h-0 flex-1 p-2">
           <PatternCanvas
             v-model:selected-entity-ids="selectedEntityIds"
+            v-model:selected-dimension-ids="selectedDimensionIds"
             :document="visibleDocument"
             :tool="activeTool"
             :fit-token="fitToken"
@@ -1599,10 +1666,11 @@ onBeforeUnmount(() => {
         >
           <template #properties>
             <SelectionSummary
-              v-if="selectedEntityIds.length > 1"
+              v-if="selectedDimensionIds.length > 0 || selectedEntityIds.length > 1"
               :entities="selectedEntities"
-              :delete-disabled="orphanCandidates.length > 0"
-              :delete-hint="orphanHint"
+              :dimensions="selectedDimensionIds.length"
+              :delete-disabled="selectedDimensionIds.length === 0 && orphanCandidates.length > 0"
+              :delete-hint="selectedDimensionIds.length === 0 ? orphanHint : undefined"
               @delete="deleteSelected"
             />
 
@@ -1626,7 +1694,7 @@ onBeforeUnmount(() => {
               v-else
               icon="select"
               message="Nothing selected"
-              hint="Select a point, line, curve, arc or circle on the canvas."
+              hint="Select a point, line, curve, arc, circle or dimension on the canvas or in a drawer."
               data-testid="properties-empty"
             />
           </template>
@@ -1811,11 +1879,21 @@ onBeforeUnmount(() => {
               <li
                 v-for="dimension in dimensions"
                 :key="dimension.id"
-                class="space-y-1.5 border-t pt-2 first:border-t-0 first:pt-0"
+                class="space-y-1.5 rounded-sm border-t px-1 pt-2 first:border-t-0 first:pt-0"
+                :class="selectedDimensionIdSet.has(dimension.id) ? 'bg-primary/10' : ''"
                 :data-testid="`dimension-${dimension.id}`"
               >
                 <div class="flex items-center justify-between gap-2">
-                  <div class="min-w-0 flex flex-wrap items-baseline gap-1">
+                  <div
+                    role="button"
+                    tabindex="0"
+                    class="min-w-0 flex flex-wrap items-baseline gap-1 rounded-sm text-left"
+                    :aria-current="selectedDimensionIdSet.has(dimension.id) ? 'true' : undefined"
+                    :data-testid="`select-dimension-${dimension.id}`"
+                    @click="onDimensionSelect(dimension.id, $event)"
+                    @keydown.enter.prevent="onDimensionSelect(dimension.id, $event)"
+                    @keydown.space.prevent="onDimensionSelect(dimension.id, $event)"
+                  >
                     <span class="font-mono text-2xs text-muted-foreground">{{ dimension.id }}</span>
                     <span class="text-2xs text-muted-foreground">
                       ({{ dimension.entities.join(', ') }})

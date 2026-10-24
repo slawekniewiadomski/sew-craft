@@ -27,6 +27,11 @@ Geometry package, command bus, `PatternDocument`.
 - Selection: click, Ctrl/Cmd-click to toggle, and a left-drag marquee
   (right = crossing, left = window); Delete removes the whole selection as one
   undo entry, refusing when a selected point would orphan an unselected edge.
+- Dimensions are separately selectable: a Select-tool click on a dimension line
+  or label, Ctrl/Cmd-click to add or remove, and drawer row selection on the same
+  modifiers. Dimension selection is mutually exclusive with entity and piece
+  selection, and Delete removes every selected dimension as one grouped undo
+  entry through `remove_constraint`.
 - Emits commands via the bus; renders solver output.
 
 ## Acceptance criteria

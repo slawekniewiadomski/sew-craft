@@ -226,6 +226,7 @@ interface DimensionDrawing {
   /** The label's full accessible name, including the state and source. */
   accessibleName: string;
   preview: boolean;
+  selected: boolean;
   draggable: boolean;
   editable: boolean;
   dragging: boolean;
@@ -245,6 +246,7 @@ interface DimensionLabelView {
   y: number;
   angle: number;
   preview: boolean;
+  selected: boolean;
   draggable: boolean;
   editable: boolean;
 }
@@ -259,6 +261,7 @@ interface DerivedDimensionDrawing {
   state: Extract<DimensionState, 'derived' | 'broken'>;
   accessibleName: string;
   preview: boolean;
+  selected: boolean;
   draggable: boolean;
   dragging: boolean;
 }
@@ -274,6 +277,7 @@ interface DerivedDimensionLabelView {
   y: number;
   angle: number;
   preview: boolean;
+  selected: boolean;
   draggable: boolean;
 }
 
@@ -297,6 +301,8 @@ const props = withDefaults(
     document: PatternDocument;
     tool: EditorTool;
     selectedEntityIds?: EntityId[];
+    /** Ordered dimension selection, kept apart from the entity selection. */
+    selectedDimensionIds?: EntityId[];
     fitToken?: number;
     showAllowances?: boolean;
     /** The piece whose card is open; its band reads as selected. */
@@ -313,6 +319,7 @@ const props = withDefaults(
   }>(),
   {
     selectedEntityIds: () => [],
+    selectedDimensionIds: () => [],
     fitToken: 0,
     showAllowances: true,
     selectedPieceId: null,
@@ -329,6 +336,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   'update:selectedEntityIds': [ids: EntityId[]];
+  'update:selectedDimensionIds': [ids: EntityId[]];
   'marquee-change': [active: boolean];
   'move-point': [id: EntityId, x: number, y: number];
   'add-point': [x: number, y: number];
@@ -899,6 +907,9 @@ const tangentPreview = computed(() => {
 /** Membership test for every selected entity's highlight. */
 const selectedIds = computed(() => new Set(props.selectedEntityIds));
 
+/** The dimension selection as a set, so a render never scans per segment. */
+const selectedDimensionIds = computed(() => new Set(props.selectedDimensionIds));
+
 /** The marquee's screen-space rectangle, live while the pointer moves. */
 const marqueeRect = computed(() => {
   const state = marqueeState.value;
@@ -1300,6 +1311,7 @@ function drawingFor(constraint: DistanceConstraint, preview: boolean): Dimension
     ...(constraint.reference === undefined ? {} : { sourceId: constraint.reference }),
     accessibleName: dimensionAccessibleName(value, state, constraint.reference),
     preview,
+    selected: !preview && selectedDimensionIds.value.has(constraint.id),
     draggable: !preview && dimensionDragEnabled.value,
     editable: !preview && !props.constraintActive,
     dragging: drag !== null && drag.id === constraint.id,
@@ -1365,6 +1377,7 @@ const dimensionLabels = computed<DimensionLabelView[]>(() =>
       y: screen.y,
       angle: drawing.layout.label.angleDegrees,
       preview: drawing.preview,
+      selected: drawing.selected,
       draggable: drawing.draggable,
       editable: drawing.editable,
     };
@@ -1418,6 +1431,7 @@ function derivedDrawingFor(
     state,
     accessibleName: dimensionAccessibleName(value, state),
     preview,
+    selected: !preview && selectedDimensionIds.value.has(constraint.id),
     draggable: !preview && dimensionDragEnabled.value,
     dragging: !preview && drag !== null && drag.id === constraint.id,
   };
@@ -1451,6 +1465,7 @@ const derivedDimensionLabels = computed<DerivedDimensionLabelView[]>(() =>
       y: screen.y,
       angle: drawing.layout.label.angleDegrees,
       preview: drawing.preview,
+      selected: drawing.selected,
       draggable: drawing.draggable,
     };
   }),
@@ -1851,8 +1866,43 @@ function updateDimensionPlacement(screen: Vec2): void {
   };
 }
 
-function beginDimensionDrag(constraint: DistanceConstraint, event: PointerEvent): void {
+/**
+ * Selection comes first: with the Select tool a press selects, adds or
+ * subtracts the dimension; only a plain press then starts the existing drag.
+ * The Dimension and Cut dimension tools keep their drag-only behaviour.
+ */
+function onDimensionPointerDown(
+  constraint: DistanceConstraint | DerivedDistanceConstraint,
+  event: PointerEvent,
+): void {
   if (props.readOnly) return;
+
+  if (props.tool === 'select') {
+    const mode = selectionModeFrom(event);
+    if (mode === 'replace') {
+      emit('update:selectedDimensionIds', [constraint.id]);
+    } else {
+      emit(
+        'update:selectedDimensionIds',
+        mode === 'add'
+          ? toggleSelection(props.selectedDimensionIds, constraint.id)
+          : applySelection(props.selectedDimensionIds, [constraint.id], 'subtract'),
+      );
+      // A modified press selects only; it never starts a drag.
+      event.stopPropagation();
+      event.preventDefault();
+      return;
+    }
+  }
+
+  if (constraint.type === 'distance') {
+    beginDimensionDrag(constraint, event);
+  } else {
+    beginDerivedDimensionDrag(constraint, event);
+  }
+}
+
+function beginDimensionDrag(constraint: DistanceConstraint, event: PointerEvent): void {
   event.stopPropagation();
   event.preventDefault();
   const offset = constraintOffset(constraint);
@@ -1872,7 +1922,6 @@ function beginDerivedDimensionDrag(
   constraint: DerivedDistanceConstraint,
   event: PointerEvent,
 ): void {
-  if (props.readOnly) return;
   event.stopPropagation();
   event.preventDefault();
   // The drag strip only renders for a drawing whose span already resolved.
@@ -2133,7 +2182,10 @@ function onPointerDown(event: PointerEvent): void {
       if (hit === null) {
         // Touch keeps its single tap/pan; a mouse or pen drag is a marquee.
         if (event.pointerType === 'touch') {
-          if (mode === 'replace') emit('update:selectedEntityIds', []);
+          if (mode === 'replace') {
+            emit('update:selectedEntityIds', []);
+            emit('update:selectedDimensionIds', []);
+          }
           beginPan(screen);
         } else {
           startMarquee(screen, mode);
@@ -2142,6 +2194,8 @@ function onPointerDown(event: PointerEvent): void {
       }
 
       selectEntity(hit.id, mode);
+      // A plain entity click replaces the dimension selection; modifiers keep it.
+      if (mode === 'replace') emit('update:selectedDimensionIds', []);
       if (mode !== 'replace') break;
       if (hit.kind === 'point' && !isCornerRoundDerived(props.document, hit.id)) {
         beginDrag(hit.id, pointById.value.get(hit.id)!);
@@ -2594,11 +2648,17 @@ function finishMarquee(): void {
   emit('marquee-change', false);
 
   if (!state.latched) {
-    if (state.mode === 'replace') emit('update:selectedEntityIds', []);
+    // A bare-canvas click clears both selections; dimension modifiers keep theirs.
+    if (state.mode === 'replace') {
+      emit('update:selectedEntityIds', []);
+      emit('update:selectedDimensionIds', []);
+    }
     return;
   }
 
   emit('update:selectedEntityIds', applySelection(props.selectedEntityIds, hits, state.mode));
+  // A committed marquee is an entity gesture; an additive one with no hits is not.
+  if (state.mode === 'replace' || hits.length > 0) emit('update:selectedDimensionIds', []);
 }
 
 /** Discard the rectangle and leave the previous selection untouched. */
@@ -3409,24 +3469,36 @@ watch(
           class="pointer-events-none"
           :data-testid="`dimension-lines-${drawing.id}`"
           :data-dimension-id="drawing.id"
+          :data-selected="drawing.selected ? 'true' : 'false'"
         >
-          <line
-            v-for="segment in drawing.segments"
-            :key="segment.key"
-            :x1="segment.x1"
-            :y1="segment.y1"
-            :x2="segment.x2"
-            :y2="segment.y2"
-            :class="
-              drawing.preview
-                ? 'stroke-primary'
-                : segment.main
-                  ? 'stroke-foreground'
-                  : 'stroke-muted-foreground'
-            "
-            stroke-width="1"
-            vector-effect="non-scaling-stroke"
-          />
+          <template v-for="segment in drawing.segments" :key="segment.key">
+            <line
+              v-if="segment.main && drawing.selected"
+              :x1="segment.x1"
+              :y1="segment.y1"
+              :x2="segment.x2"
+              :y2="segment.y2"
+              class="stroke-primary opacity-30"
+              stroke-width="4"
+              vector-effect="non-scaling-stroke"
+              data-testid="dimension-selection-halo"
+            />
+            <line
+              :x1="segment.x1"
+              :y1="segment.y1"
+              :x2="segment.x2"
+              :y2="segment.y2"
+              :class="
+                drawing.preview
+                  ? 'stroke-primary'
+                  : segment.main
+                    ? 'stroke-foreground'
+                    : 'stroke-muted-foreground'
+              "
+              stroke-width="1"
+              vector-effect="non-scaling-stroke"
+            />
+          </template>
           <line
             v-if="drawing.draggable"
             :x1="drawing.layout.dimensionStart.x"
@@ -3438,7 +3510,7 @@ watch(
             vector-effect="non-scaling-stroke"
             class="pointer-events-auto cursor-move"
             :data-testid="`dimension-drag-${drawing.id}`"
-            @pointerdown.stop="beginDimensionDrag(drawing.constraint, $event)"
+            @pointerdown.stop="onDimensionPointerDown(drawing.constraint, $event)"
           />
         </g>
 
@@ -3449,24 +3521,36 @@ watch(
           :data-testid="`dimension-lines-${drawing.id}`"
           :data-dimension-id="drawing.id"
           :data-dimension-derived="drawing.id"
+          :data-selected="drawing.selected ? 'true' : 'false'"
         >
-          <line
-            v-for="segment in drawing.segments"
-            :key="segment.key"
-            :x1="segment.x1"
-            :y1="segment.y1"
-            :x2="segment.x2"
-            :y2="segment.y2"
-            :class="
-              drawing.preview && segment.main
-                ? 'stroke-primary'
-                : segment.main
-                  ? 'stroke-dimension-derived'
-                  : 'stroke-muted-foreground'
-            "
-            stroke-width="1"
-            vector-effect="non-scaling-stroke"
-          />
+          <template v-for="segment in drawing.segments" :key="segment.key">
+            <line
+              v-if="segment.main && drawing.selected"
+              :x1="segment.x1"
+              :y1="segment.y1"
+              :x2="segment.x2"
+              :y2="segment.y2"
+              class="stroke-primary opacity-30"
+              stroke-width="4"
+              vector-effect="non-scaling-stroke"
+              data-testid="dimension-selection-halo"
+            />
+            <line
+              :x1="segment.x1"
+              :y1="segment.y1"
+              :x2="segment.x2"
+              :y2="segment.y2"
+              :class="
+                drawing.preview && segment.main
+                  ? 'stroke-primary'
+                  : segment.main
+                    ? 'stroke-dimension-derived'
+                    : 'stroke-muted-foreground'
+              "
+              stroke-width="1"
+              vector-effect="non-scaling-stroke"
+            />
+          </template>
           <line
             v-if="drawing.draggable"
             :x1="drawing.layout.dimensionStart.x"
@@ -3478,7 +3562,7 @@ watch(
             vector-effect="non-scaling-stroke"
             class="pointer-events-auto cursor-move"
             :data-testid="`dimension-drag-${drawing.id}`"
-            @pointerdown.stop="beginDerivedDimensionDrag(drawing.constraint, $event)"
+            @pointerdown.stop="onDimensionPointerDown(drawing.constraint, $event)"
           />
         </g>
       </g>
@@ -3496,18 +3580,19 @@ watch(
           "
           :data-dimension-id="label.id"
           :data-testid="`dimension-label-${label.id}`"
+          :data-selected="label.selected ? 'true' : 'false'"
           :transform="`translate(${label.x} ${label.y}) rotate(${label.angle})`"
           role="img"
           :aria-label="label.accessibleName"
           @pointerdown.stop="
-            label.draggable ? beginDimensionDrag(label.constraint, $event) : undefined
+            label.draggable ? onDimensionPointerDown(label.constraint, $event) : undefined
           "
           @dblclick.stop.prevent="onDimensionDoubleClick(label)"
         >
           <title>
             {{
               label.draggable
-                ? 'Drag to reposition, double-click to edit'
+                ? 'Click to select, drag to reposition, double-click to edit'
                 : label.editable
                   ? 'Double-click to edit'
                   : 'Dimension preview'
@@ -3519,7 +3604,8 @@ watch(
             :width="label.width"
             height="16"
             rx="2"
-            class="fill-background"
+            :class="label.selected ? 'fill-background stroke-primary' : 'fill-background'"
+            :stroke-width="label.selected ? 2 : 0"
           />
           <text
             v-if="label.state === 'broken'"
@@ -3550,20 +3636,19 @@ watch(
           :data-dimension-id="label.id"
           :data-dimension-derived="label.id"
           :data-testid="`dimension-label-${label.id}`"
+          :data-selected="label.selected ? 'true' : 'false'"
           :transform="`translate(${label.x} ${label.y}) rotate(${label.angle})`"
           role="img"
           :aria-label="label.accessibleName"
           @pointerdown.stop="
             label.draggable
-              ? beginDerivedDimensionDrag(derivedConstraint(label.id), $event)
+              ? onDimensionPointerDown(derivedConstraint(label.id), $event)
               : undefined
           "
         >
           <title>
             {{
-              label.draggable
-                ? 'Cut dimension: drag to reposition; the value follows the cut loop'
-                : 'Cut dimension (read-only)'
+              label.draggable ? 'Click to select, drag to reposition' : 'Cut dimension (read-only)'
             }}
           </title>
           <rect
@@ -3572,7 +3657,8 @@ watch(
             :width="label.width"
             height="16"
             rx="2"
-            class="fill-background"
+            :class="label.selected ? 'fill-background stroke-primary' : 'fill-background'"
+            :stroke-width="label.selected ? 2 : 0"
           />
           <text
             text-anchor="middle"

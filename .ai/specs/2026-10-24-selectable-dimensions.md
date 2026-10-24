@@ -1,6 +1,6 @@
 # Selectable dimensions
 
-Status: draft — design-only; Q1 open
+Status: implemented — Q1 confirmed in favour of the recommended separate selection by `spec-ready`; implementation lands on this PR
 Refs: [#82 — Selectable dimensions](https://github.com/slawekniewiadomski/sew-craft/issues/82)
 Builds on: `.ai/specs/2026-10-20-multi-entity-selection.md`,
 `.ai/specs/2026-10-19-movable-linear-dimensions.md`,
@@ -26,8 +26,8 @@ contract changes.
 | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Q1  | Should dimension selection be a **separate, mutually exclusive** selection (like the Pieces drawer selection), or should dimensions join the existing entity selection as **one mixed selection** where a single Delete removes both kinds? | It decides the shape of the selection state, the `PatternCanvas` prop/emit contract, what a future marquee selects, and whether a mixed Delete must compose `remove_constraint` with `delete_entity`. Reversing it later rewrites the same files and tests. | **Separate and mutually exclusive.** It ships the requested capability with no refactor of the entity selection, entity Delete or orphan guard, reuses the precedent set by `selectedPieceId`, and leaves one typed mixed selection available as a later upgrade. |
 
-The spec is written under the recommended answer. A human should confirm Q1 (or
-accept the default) before implementation; the PR stays draft until then.
+The spec is written under the recommended answer. `spec-ready` on the PR is the
+human confirmation of Q1, so implementation proceeds under that model.
 
 ## 📝 Problem Statement
 
