@@ -2455,11 +2455,16 @@ describe('EditorView', () => {
     ]);
   });
 
-  it('creates a cut dimension from one piece edge', async () => {
+  it('creates a cut dimension from a straight edge and another edge', async () => {
     const { wrapper, store } = await mountLoaded(pieceDoc);
 
     await wrapper.find('[data-testid="tool-cut_dimension"]').trigger('click');
     entityDown(wrapper, 'line', 'ab');
+    await flushPromises();
+    // One pick is only the first anchor; the old one-click shortcut is gone.
+    expect(store.document.constraints).toHaveLength(0);
+
+    entityDown(wrapper, 'line', 'cd');
     canvasDown(wrapper, 400, 300);
     await flushPromises();
 
@@ -2467,13 +2472,14 @@ describe('EditorView', () => {
       expect.objectContaining({
         type: 'derived_distance',
         piece: 'p1',
-        a: { edge: 'ab', at: 'start' },
-        b: { edge: 'ab', at: 'end' },
+        a: { edge: 'ab', at: 'edge' },
+        b: { edge: 'cd', at: 'edge' },
+        orientation: 'aligned',
       }),
     ]);
   });
 
-  it('creates a corner-to-edge cut dimension', async () => {
+  it('creates a corner-to-edge cut dimension in either order', async () => {
     const { wrapper, store } = await mountLoaded(pieceDoc);
 
     await wrapper.find('[data-testid="tool-cut_dimension"]').trigger('click');
@@ -2522,6 +2528,32 @@ describe('EditorView', () => {
     expect(store.document.constraints).toHaveLength(1);
     expect(store.document.constraints[0]).toMatchObject({ id: 'cut' });
     expect(store.journal).toHaveLength(1);
+  });
+
+  it('stores edge anchors in piece order and dedupes a reversed re-placement', async () => {
+    const { wrapper, store } = await mountLoaded(pieceDoc);
+
+    await wrapper.find('[data-testid="tool-cut_dimension"]').trigger('click');
+    entityDown(wrapper, 'line', 'cd');
+    entityDown(wrapper, 'line', 'ab');
+    canvasDown(wrapper, 400, 300);
+    await flushPromises();
+
+    expect(store.document.constraints).toHaveLength(1);
+    expect(store.document.constraints[0]).toMatchObject({
+      type: 'derived_distance',
+      a: { edge: 'ab', at: 'edge' },
+      b: { edge: 'cd', at: 'edge' },
+      orientation: 'aligned',
+    });
+
+    entityDown(wrapper, 'line', 'ab');
+    entityDown(wrapper, 'line', 'cd');
+    canvasDown(wrapper, 400, 300);
+    await flushPromises();
+
+    expect(store.document.constraints).toHaveLength(1);
+    expect(store.journal).toHaveLength(2);
   });
 
   it('rejects a cut dimension pick outside a piece without emitting a command', async () => {

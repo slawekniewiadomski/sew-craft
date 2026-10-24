@@ -1400,15 +1400,6 @@ function onCutDimensionPointer(hit: Hit | null): void {
 
   if (pending === null) {
     cutDimensionHint.value = null;
-    if (candidate.anchor.at === 'edge') {
-      // The one-click edge length shortcut: measure the edge by its two corners.
-      startCutDimensionPlacement(
-        candidate.piece.id,
-        { edge: candidate.anchor.edge, at: 'start' },
-        { edge: candidate.anchor.edge, at: 'end' },
-      );
-      return;
-    }
     cutDimensionPending.value = candidate;
     return;
   }

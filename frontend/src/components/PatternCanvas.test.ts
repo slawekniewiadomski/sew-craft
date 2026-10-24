@@ -2794,43 +2794,46 @@ describe('PatternCanvas', () => {
     );
   });
 
-  it('emits a cut dimension for one clicked piece edge', async () => {
-    const wrapper = mountCanvas({ document: pieceDoc, tool: 'cut_dimension' });
+  it('emits a cut dimension from a straight edge and a corner, in either order', async () => {
+    const edgeThenCorner = mountCanvas({ document: pieceDoc, tool: 'cut_dimension' });
 
-    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200);
+    down(edgeThenCorner.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200);
     await nextTick();
-    expect(wrapper.find('[data-testid="dimension-label-cut-dimension-preview"]').exists()).toBe(
-      true,
+    expect(
+      edgeThenCorner.find('[data-testid="dimension-label-cut-dimension-preview"]').exists(),
+    ).toBe(false);
+    expect(edgeThenCorner.find('[data-testid="cut-dimension-hint"]').text()).toBe(
+      'Pick the second anchor on the same piece.',
     );
 
-    down(wrapper.find('[data-testid="grid"]').element, 400, 300);
+    down(pointCircle(edgeThenCorner, 'c').element, 300, 200);
+    await nextTick();
+    down(edgeThenCorner.find('[data-testid="grid"]').element, 400, 300);
 
-    expect(wrapper.emitted('add-cut-dimension')).toEqual([
+    expect(edgeThenCorner.emitted('add-cut-dimension')).toEqual([
       [
         {
           piece: 'p1',
-          a: { edge: 'ab', at: 'start' },
-          b: { edge: 'ab', at: 'end' },
+          a: { edge: 'ab', at: 'edge' },
+          b: { edge: 'bc', at: 'end' },
           orientation: 'aligned',
           offset: 20,
         },
       ],
     ]);
-  });
 
-  it('emits a cut dimension from a corner and a straight edge', async () => {
-    const wrapper = mountCanvas({ document: pieceDoc, tool: 'cut_dimension' });
+    const cornerThenEdge = mountCanvas({ document: pieceDoc, tool: 'cut_dimension' });
 
-    down(pointCircle(wrapper, 'a').element, 300, 200);
-    down(wrapper.find('[data-kind="line"][data-entity-id="cd"]').element, 300, 200);
+    down(pointCircle(cornerThenEdge, 'a').element, 300, 200);
+    down(cornerThenEdge.find('[data-kind="line"][data-entity-id="cd"]').element, 300, 200);
     await nextTick();
-    expect(wrapper.find('[data-testid="dimension-label-cut-dimension-preview"]').exists()).toBe(
-      true,
-    );
+    expect(
+      cornerThenEdge.find('[data-testid="dimension-label-cut-dimension-preview"]').exists(),
+    ).toBe(true);
 
-    down(wrapper.find('[data-testid="grid"]').element, 400, 300);
+    down(cornerThenEdge.find('[data-testid="grid"]').element, 400, 300);
 
-    expect(wrapper.emitted('add-cut-dimension')).toEqual([
+    expect(cornerThenEdge.emitted('add-cut-dimension')).toEqual([
       [
         {
           piece: 'p1',
@@ -2841,6 +2844,51 @@ describe('PatternCanvas', () => {
         },
       ],
     ]);
+  });
+
+  it('emits an aligned cut dimension between two parallel edges', async () => {
+    const wrapper = mountCanvas({ document: pieceDoc, tool: 'cut_dimension' });
+
+    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200);
+    down(wrapper.find('[data-kind="line"][data-entity-id="cd"]').element, 300, 200);
+    await nextTick();
+
+    // The pointer would infer the vertical axis for this span; an edge anchor
+    // forces aligned.
+    pointerMove(wrapper, 600, 300);
+    await nextTick();
+    down(wrapper.find('[data-testid="grid"]').element, 400, 300);
+
+    expect(wrapper.emitted('add-cut-dimension')).toEqual([
+      [
+        {
+          piece: 'p1',
+          a: { edge: 'ab', at: 'edge' },
+          b: { edge: 'cd', at: 'edge' },
+          orientation: 'aligned',
+          offset: expect.any(Number),
+        },
+      ],
+    ]);
+  });
+
+  it('rejects two non-parallel edges and keeps the first pick', async () => {
+    const wrapper = mountCanvas({ document: pieceDoc, tool: 'cut_dimension' });
+
+    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200);
+    down(wrapper.find('[data-kind="line"][data-entity-id="bc"]').element, 300, 200);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="cut-dimension-hint"]').text()).toBe(
+      'Pick two parallel edges.',
+    );
+    expect(wrapper.emitted('add-cut-dimension')).toBeUndefined();
+
+    down(wrapper.find('[data-kind="line"][data-entity-id="cd"]').element, 300, 200);
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-label-cut-dimension-preview"]').exists()).toBe(
+      true,
+    );
   });
 
   it('rejects cut picks outside a piece and clears on an empty click', async () => {
