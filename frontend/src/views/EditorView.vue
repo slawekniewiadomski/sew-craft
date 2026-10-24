@@ -305,6 +305,8 @@ interface DimensionRow {
   stateLabel: string;
   sourceId: EntityId | null;
   orientation: DimensionOrientation;
+  /** Edge-anchored cut dimensions are always aligned; the axis control is hidden. */
+  orientationLocked: boolean;
   offset: string;
 }
 
@@ -329,6 +331,7 @@ const dimensions = computed<DimensionRow[]>(() =>
           stateLabel: dimensionStateLabel(state),
           sourceId: null,
           orientation: constraintOrientation(constraint),
+          orientationLocked: usesCutEdgeAnchor(constraint),
           offset: formatDimensionValue(constraintOffset(constraint)),
         },
       ];
@@ -351,6 +354,7 @@ const dimensions = computed<DimensionRow[]>(() =>
         stateLabel: dimensionStateLabel(state),
         sourceId: constraint.reference ?? null,
         orientation: constraintOrientation(constraint),
+        orientationLocked: false,
         offset: formatDimensionValue(constraintOffset(constraint)),
       },
     ];
@@ -1760,7 +1764,15 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div class="flex flex-wrap items-center gap-1.5">
+                  <span
+                    v-if="dimension.orientationLocked"
+                    class="h-7 rounded-sm border px-1.5 text-2xs leading-7"
+                    :data-testid="`dimension-orientation-locked-${dimension.id}`"
+                  >
+                    Aligned
+                  </span>
                   <select
+                    v-else
                     class="h-7 rounded-sm border px-1.5 text-2xs"
                     :value="dimension.orientation"
                     :aria-label="`Orientation for ${dimension.id}`"

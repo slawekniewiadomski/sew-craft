@@ -2556,6 +2556,28 @@ describe('EditorView', () => {
     expect(store.journal).toHaveLength(2);
   });
 
+  it('locks the axis control for an edge-anchored cut dimension', async () => {
+    const edgeDoc: PatternDocument = {
+      ...pieceDoc,
+      constraints: [
+        {
+          id: 'cut',
+          type: 'derived_distance',
+          piece: 'p1',
+          a: { edge: 'ab', at: 'edge' },
+          b: { edge: 'cd', at: 'edge' },
+          offset: 20,
+        },
+      ],
+    };
+    const { wrapper } = await mountLoaded(edgeDoc);
+
+    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+
+    expect(wrapper.find('[data-testid="dimension-orientation-locked-cut"]').text()).toBe('Aligned');
+    expect(wrapper.find('[data-testid="dimension-orientation-cut"]').exists()).toBe(false);
+  });
+
   it('rejects a cut dimension pick outside a piece without emitting a command', async () => {
     const { wrapper, store } = await mountLoaded(lineDoc);
 
