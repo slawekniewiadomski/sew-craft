@@ -112,6 +112,10 @@ piece instead of breaking the canvas or export:
 - `pieceCutVertex(document, piece, anchor)` — the resolved cut-loop point at one
   end of a loop edge, used by cut dimensions. Returns `null` for an `at: 'edge'`
   anchor, which has no single vertex.
+- Both vertex resolvers read an edge's natural start and end from its own span,
+  so a reversed edge's `end` is its walk start rather than the next edge's
+  start. This is a behaviour fix: before, `at: 'end'` on a reversed edge wrapped
+  one span past the edge.
 - `pieceLoopVertex(document, piece, anchor)` — the same vertex on the **stitch**
   loop, index for index, including the trimmed tangent points a corner-round
   bridge contributes and a reversed edge. Returns `null` for `at: 'edge'`.
