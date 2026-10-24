@@ -121,6 +121,14 @@ removes its cut dimensions.
 - `orientation` and `offset` apply only to `distance`; they are presentation for
   the linear dimension that renders the constraint. `orientation` defaults to
   `aligned`, `offset` to `20` mm (signed, measured from the span).
+- For `distance`, each entry of `entities` is an **anchor**: a point id or a
+  straight `line` id. A point → line anchor measures the perpendicular from the
+  point to the line's infinite supporting line. Two lines must be parallel within
+  0.5° at creation (anti-parallel accepted) and measure from the canonical first
+  line's midpoint (lower id) to the second line. Curves, arcs and circles are not
+  anchors in this slice. A line-anchored dimension is always `aligned`: an
+  explicit `horizontal` or `vertical` is rejected. The resolved span must be
+  greater than `1e-6` mm; a smaller span is rejected.
 - inverse: `remove_constraint`
 
 Constraint param mapping:
@@ -243,8 +251,9 @@ sketch.
   least `0.001` mm of each line outside the tangent point. The corner angle must
   be strictly between `0°` and `180°` with a `1°` guard at each end.
 - Derived ids are deterministic: `<id>:a` and `<id>:b` (tangent points),
-  `<id>:c1`/`<id>:c2` (controls) and `<id>:arc`. Re-applying a command whose
-  feature exists is a no-op.
+  `<id>:c1`/`<id>:c2` (controls), `<id>:arc` and `<id>:center` (the radius
+  centre, a fixed construction point). Re-applying a command whose feature
+  exists is a no-op.
 - inverse: `remove_corner_round` with the feature id.
 
 ### `set_corner_round_radius`
@@ -265,8 +274,9 @@ Restore a rounded corner.
 
 - params: `id: entity_id` (the feature id)
 - Restores both line endpoints to the sharp corner, restores the corner's
-  previous construction flag, deletes the tangent points, control points and arc,
-  and removes the feature. A line with a round at its other end keeps that round.
+  previous construction flag, deletes the tangent points, control points, radius
+  centre and arc, and removes the feature. A line with a round at its other end
+  keeps that round.
 - inverse: `add_corner_round` with the original lines and radius.
 
 ### `create_piece`
@@ -383,6 +393,12 @@ Add a read-only **cut dimension** between two anchors of one piece.
 - inverse: `remove_constraint`
 
 ### Migration from spec 0.11.0
+
+`add_constraint` accepts a straight line as either `distance` anchor, so point →
+line and line → line dimensions use the existing command and shape. The change is
+additive: every 0.11.0 payload still applies. A line-anchored dimension is always
+`aligned`, and the document schema stays `sewcraft.pattern/0.2`; an older build
+accepts the document but reports the line id as an unknown point when it solves.
 
 `add_derived_dimension` gains the `at: 'edge'` anchor value and widens its
 orientation rule; both are additive, so every 0.11.0 payload still applies

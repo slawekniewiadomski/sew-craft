@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DIMENSION_ORIENTATION_OPTIONS,
+  anchorLabel,
   dimensionAccessibleName,
   dimensionLabelWidth,
   dimensionPatchForEdit,
@@ -174,7 +175,13 @@ describe('dimension state presentation', () => {
 
   it('maps an edit to a command patch and refuses a missing target', () => {
     const options: DimensionReferenceOption[] = [
-      { id: 'A', value: 120, entities: ['p1', 'p2'], orientation: 'horizontal' },
+      {
+        id: 'A',
+        value: 120,
+        entities: ['p1', 'p2'],
+        labels: ['p1', 'p2'],
+        orientation: 'horizontal',
+      },
     ];
 
     expect(dimensionPatchForEdit({ kind: 'set', value: 10 }, options)).toEqual({ value: 10 });
@@ -209,7 +216,13 @@ describe('reference options', () => {
 
   it('lists only eligible sources with their resolved value', () => {
     expect(referenceOptions(document, edited)).toEqual([
-      { id: 'A', value: 120, entities: ['p1', 'p2'], orientation: 'horizontal' },
+      {
+        id: 'A',
+        value: 120,
+        entities: ['p1', 'p2'],
+        labels: ['p1', 'p2'],
+        orientation: 'horizontal',
+      },
     ]);
   });
 
@@ -226,6 +239,27 @@ describe('reference options', () => {
     const option = referenceOptions(document, edited)[0]!;
 
     expect(referenceOptionLabel(option)).toBe('A · 120 mm · p1 → p2 · Horizontal');
+  });
+
+  it('marks a line anchor so it cannot read as a point', () => {
+    const withLine: PatternDocument = {
+      ...document,
+      entities: [
+        ...document.entities,
+        { id: 'L', kind: 'line', start: 'p1', end: 'p2', construction: false },
+      ],
+      constraints: [
+        ...document.constraints,
+        { id: 'lineSource', type: 'distance', a: 'L', b: 'p3', value: 70 },
+      ],
+    };
+
+    expect(anchorLabel(withLine, 'L')).toBe('L (line)');
+    expect(anchorLabel(withLine, 'p1')).toBe('p1');
+
+    const option = referenceOptions(withLine, edited).find((entry) => entry.id === 'lineSource')!;
+    expect(option.labels).toEqual(['L (line)', 'p3']);
+    expect(referenceOptionLabel(option)).toBe('lineSource · 70 mm · L (line) → p3 · Aligned');
   });
 });
 

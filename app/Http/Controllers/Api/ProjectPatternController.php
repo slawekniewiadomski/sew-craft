@@ -28,6 +28,7 @@ class ProjectPatternController extends Controller
                 $request->input('document'),
                 $request->validated('expected_version'),
                 $request->validated('expected_schema'),
+                $request->validated('origin') ?? 'manual',
             );
         } catch (PatternConflictException $conflict) {
             return response()->json([

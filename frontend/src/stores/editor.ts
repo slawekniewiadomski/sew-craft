@@ -9,8 +9,14 @@ import {
 import { defineStore } from 'pinia';
 import { computed, ref, shallowRef } from 'vue';
 
-/** The status of the last save attempt; `idle` before the first one. */
-export type SaveState = 'idle' | 'saving' | 'saved' | 'failed';
+import type { SaveOrigin } from '@/lib/autosave';
+
+/**
+ * The status of the last save attempt; `idle` before the first one. `failed` is
+ * retryable, `error` is terminal until the document changes, and `paused` means
+ * an autosave lost the version race and waits for an explicit resolution.
+ */
+export type SaveState = 'idle' | 'saving' | 'saved' | 'failed' | 'paused' | 'error';
 
 /**
  * One committed command. `before` is the exact document the command was applied
@@ -46,6 +52,8 @@ export const useEditorStore = defineStore('editor', () => {
   const savedVersion = ref(0);
   const lastSavedAt = ref<string | null>(null);
   const saveState = ref<SaveState>('idle');
+  /** Which writer produced the last acknowledged save; drives the bar's copy. */
+  const lastSaveOrigin = ref<SaveOrigin | null>(null);
   /** Read-only documents reject every mutation, including undo and redo. */
   const readOnly = ref(false);
 
@@ -147,6 +155,7 @@ export const useEditorStore = defineStore('editor', () => {
     savedVersion.value = 0;
     lastSavedAt.value = null;
     saveState.value = 'idle';
+    lastSaveOrigin.value = null;
     readOnly.value = false;
   }
 
@@ -158,6 +167,7 @@ export const useEditorStore = defineStore('editor', () => {
     savedVersion.value = version;
     lastSavedAt.value = savedAt;
     saveState.value = 'idle';
+    lastSaveOrigin.value = null;
     readOnly.value = false;
   }
 
@@ -173,6 +183,7 @@ export const useEditorStore = defineStore('editor', () => {
     savedVersion.value = version;
     lastSavedAt.value = savedAt;
     saveState.value = 'idle';
+    lastSaveOrigin.value = null;
     readOnly.value = true;
   }
 
@@ -184,16 +195,38 @@ export const useEditorStore = defineStore('editor', () => {
    * Record a successful save. `next` is the exact snapshot that was sent, so
    * edits made while the request was in flight keep the document dirty.
    */
-  function markSaved(next: PatternDocument, version: number, savedAt: string | null): void {
+  function markSaved(
+    next: PatternDocument,
+    version: number,
+    savedAt: string | null,
+    origin: SaveOrigin = 'manual',
+  ): void {
     savedDocument.value = next;
     newProject.value = false;
     savedVersion.value = version;
     lastSavedAt.value = savedAt;
     saveState.value = 'saved';
+    lastSaveOrigin.value = origin;
   }
 
+  /** A transient failure: autosave retries on a backoff ladder. */
   function markSaveFailed(): void {
     saveState.value = 'failed';
+  }
+
+  /** An autosave lost the version race; wait for an explicit Save to resolve it. */
+  function markSavePaused(): void {
+    saveState.value = 'paused';
+  }
+
+  /** A permanent failure (422, payload too large): no retry until the document changes. */
+  function markSaveError(): void {
+    saveState.value = 'error';
+  }
+
+  /** A new change makes a terminal failure retryable again. */
+  function clearSaveError(): void {
+    if (saveState.value === 'error') saveState.value = 'idle';
   }
 
   function setReadOnly(value: boolean): void {
@@ -210,6 +243,7 @@ export const useEditorStore = defineStore('editor', () => {
     savedVersion,
     lastSavedAt,
     saveState,
+    lastSaveOrigin,
     readOnly,
     isDirty,
     isNew,
@@ -225,6 +259,9 @@ export const useEditorStore = defineStore('editor', () => {
     markSaving,
     markSaved,
     markSaveFailed,
+    markSavePaused,
+    markSaveError,
+    clearSaveError,
     setReadOnly,
   };
 });

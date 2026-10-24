@@ -25,6 +25,7 @@ import type {
 } from '@/lib/entity-properties';
 import {
   DIMENSION_ORIENTATION_OPTIONS,
+  anchorLabel,
   dimensionPatchForEdit,
   dimensionStateLabel,
   dimensionTone,
@@ -519,7 +520,7 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
               <span class="font-mono text-2xs text-muted-foreground">{{ dimension.id }}</span>
               <span class="text-2xs text-muted-foreground">
                 {{ orientationLabel(dimension.orientation) }} ·
-                {{ dimension.entities.join(', ') }}
+                {{ dimension.entities.map((id) => anchorLabel(props.document, id)).join(', ') }}
               </span>
             </div>
             <SidebarAction

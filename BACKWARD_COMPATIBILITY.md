@@ -80,6 +80,12 @@ or the geometry package depend on.
   `set_seam_allowance` and `remove_seam_allowance` stay valid commands with no UI
   surface), and it is removed in 0.3. A document already at 0.2 is returned
   unchanged.
+- Since spec 0.12 the document may carry a `distance` whose `a`/`b` name a
+  straight line. The anchor meaning is additive inside `sewcraft.pattern/0.2`
+  (no field or migration changes), but a build that predates the feature accepts
+  the document and then fails in the solver on the line id — a loud, unsupported
+  downgrade, not silent wrong geometry. See
+  `.ai/specs/2026-10-23-dimension-point-and-line-anchors.md`.
 - Since spec 0.11 the document may carry an optional `defaults.allowance`
   preset copied onto new pieces (`set_default_allowance`). It is additive: a
   document without it resolves the built-in 10 mm seam on load, no existing field

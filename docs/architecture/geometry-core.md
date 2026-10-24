@@ -184,10 +184,25 @@ The pure helpers in `dimension.ts` compute state and rendering for the frontend:
 
 - `dimensionGeometry(document, constraint)` — extension lines, dimension line,
   end chevrons and a rotated value label for a `distance` constraint, or `null`
-  when its points are missing. Honors `orientation` and `offset`
-  (`DEFAULT_DIMENSION_OFFSET` is `20` mm).
-- `measureLinearDimension(document, a, b, orientation)` — the span the constraint
-  would drive, or `null` when a point is missing.
+  when its anchors are missing or the span is degenerate. Honors `orientation`
+  and `offset` (`DEFAULT_DIMENSION_OFFSET` is `20` mm); a line anchor forces
+  aligned.
+- `lineEndpoints(document, id)` / `resolveAnchor(document, id)` — a straight
+  line's endpoints, or one anchor as a point or a line segment (`null` for a
+  curve, arc, circle or missing reference).
+- `resolveAnchorSpan(document, a, b)` / `resolveDistanceSpan(document,
+constraint)` — the resolved span and anchor kinds for point → point, point ↔
+  line (perpendicular foot on the infinite supporting line, normalized
+  point-first) and line ↔ line (canonical by entity id, first midpoint → second
+  line). `null` when the span is at or below `1e-9` mm.
+- `distanceAnchorIssue(document, a, b)` — the shared pick-time verdict the
+  command and canvas both map (`missing`, `not-a-line`, `not-parallel`,
+  `point-on-line`, `coincident`, `zero-length`), plus the span.
+- `measureDistanceDimension(document, constraint)` — absolute span length when a
+  line is an anchor, otherwise the stored-axis measurement.
+- `measureLinearDimension(document, a, b, orientation)` — the point-to-point span
+  the constraint would drive, or `null` when a point is missing; kept for entity
+  lengths and other point-only callers.
 - `dimensionState(document, constraint)` — one of `set`, `driven`, `referenced`
   or `broken`.
 - `isDrivenDimension(constraint)` — true only when the constraint has neither a
@@ -325,6 +340,7 @@ interface CornerRound {
   radius: number; // millimetres
   arc: EntityId; // derived cubic Bézier (cut edge)
   controls: [EntityId, EntityId]; // derived Bézier control points
+  center?: EntityId; // derived radius centre; optional for older documents
   cornerConstruction: boolean; // the corner's flag before the round
 }
 ```
@@ -332,8 +348,10 @@ interface CornerRound {
 `PatternDocument.cornerRounds` is optional so documents written before the
 feature load unchanged. A line may carry one round at each end; a sharp corner
 may carry at most one. Derived ids are deterministic from the command id:
-`<id>:a`, `<id>:b` (tangent points), `<id>:c1`, `<id>:c2` (controls) and
-`<id>:arc`.
+`<id>:a`, `<id>:b` (tangent points), `<id>:c1`, `<id>:c2` (controls), `<id>:arc`
+and `<id>:center` (the radius centre). The centre is an ordinary fixed
+construction point entity, so it can be selected, snapped to and measured; it is
+never added to a piece loop and is not exported.
 
 ### Math
 
@@ -343,6 +361,8 @@ opposite anchors, `θ` the interior angle, and `r` the radius:
 - Reject `θ` within 1° of 0° (spike) or 180° (straight).
 - Tangent distance `t = r / tan(θ / 2)`; tangent points
   `T_A = corner + uA·t`, `T_B = corner + uB·t`.
+- Radius centre `O = corner + normalize(uA + uB)·(r / sin(θ / 2))`, one radius
+  from both lines and both tangent points.
 - Control distance `k = (4/3)·tan((π − θ)/4)·r`; controls
   `P1 = T_A − uA·k`, `P2 = T_B − uB·k`.
 - The arc is the cubic `T_A, P1, P2, T_B`. Its error against a true circle is
@@ -351,9 +371,11 @@ opposite anchors, `θ` the interior angle, and `r` the radius:
 ### Helpers
 
 - `cornerRoundsForEntity(document, id)` — every feature that references a line,
-  arc, tangent, control, sharp corner or anchor.
-- `isCornerRoundDerived(document, id)` — true for an arc, tangent or control
-  point; used by command validation and the canvas.
+  arc, tangent, control, centre, sharp corner or anchor.
+- `isCornerRoundDerived(document, id)` — true for an arc, tangent, control or
+  centre point; used by command validation and the canvas. The canvas filters
+  arcs and controls out of the drafting handles and draws the centre and tangents
+  as always-visible feature dots instead.
 - `cornerRoundGeometry(document, corner, anchorA, anchorB, radius)` — the pure
   tangent/control math plus a validation error for a spike, a straight corner,
   a missing point or an invalid radius.
@@ -366,8 +388,10 @@ opposite anchors, `θ` the interior angle, and `r` the radius:
   `solveDocument`.
 - `normalizeCornerRounds(document)` — validate loaded features without moving
   geometry; a feature whose invariants no longer hold is dropped and its
-  persisted entities stay as static geometry. Never throws. The frontend load
-  path calls it once.
+  persisted entities stay as static geometry. A kept round written before
+  feature points gains its deterministic `<id>:center` entity, minted once from
+  the stored radius; an existing centre coordinate is never rewritten. Never
+  throws. The frontend load path calls it once.
 - `roundBetween(document, first, second)` — the committed round whose two ends
   are exactly these lines, in either order.
 - `roundBridge(document, first, second)` — that round's arc as a polyline

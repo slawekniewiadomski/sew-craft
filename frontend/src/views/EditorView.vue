@@ -13,6 +13,8 @@ import {
   getEntity,
   isDrivenDimension,
   isKnownPatternSchema,
+  isLineAnchor,
+  measureDistanceDimension,
   measureLinearDimension,
   normalizeDocument,
   ALLOWANCE_KIND_LABELS,
@@ -84,6 +86,7 @@ import {
 } from '@/lib/corner-round';
 import {
   DIMENSION_ORIENTATION_OPTIONS,
+  anchorLabel,
   dimensionPatchForEdit,
   dimensionStateLabel,
   dimensionTone,
@@ -101,6 +104,7 @@ import {
   type CutDimensionPlacement,
 } from '@/lib/dimensions';
 import { buildArcCommands, type ArcEndpoint } from '@/lib/arc-tool';
+import { createAutosave, fitsKeepaliveBudget, type SaveOrigin } from '@/lib/autosave';
 import { downloadSvgFile } from '@/lib/download';
 import type { DraftingEndpoint } from '@/lib/drafting';
 import type { RibbonAction } from '@/lib/editor-ribbon';
@@ -137,6 +141,15 @@ const {
 } = useCommandBus();
 const editor = useEditorStore();
 const router = useRouter();
+
+/**
+ * The one background writer. It owns timing only: every write still goes
+ * through `persist`, so autosave and the Save button share one code path.
+ */
+const autosave = createAutosave({
+  write: (origin) => persist(editor.savedVersion, { origin }),
+  shouldWrite: canAutosave,
+});
 const { width, collapsed, setWidth } = useSidebarLayout(window.localStorage);
 
 const error = ref<string | null>(null);
@@ -305,7 +318,7 @@ interface DimensionRow {
   stateLabel: string;
   sourceId: EntityId | null;
   orientation: DimensionOrientation;
-  /** Edge-anchored cut dimensions are always aligned; the axis control is hidden. */
+  /** Edge- or line-anchored dimensions are always aligned; the axis control is hidden. */
   orientationLocked: boolean;
   offset: string;
 }
@@ -347,14 +360,18 @@ const dimensions = computed<DimensionRow[]>(() =>
         constraint,
         kind: 'distance',
         readOnly: false,
-        entities: [constraint.a, constraint.b],
+        entities: [
+          anchorLabel(pattern.value, constraint.a),
+          anchorLabel(pattern.value, constraint.b),
+        ],
         value: formatDimensionValue(measured ?? 0),
         field: formatDimensionField(constraint, measured, state),
         state,
         stateLabel: dimensionStateLabel(state),
         sourceId: constraint.reference ?? null,
         orientation: constraintOrientation(constraint),
-        orientationLocked: false,
+        orientationLocked:
+          isLineAnchor(pattern.value, constraint.a) || isLineAnchor(pattern.value, constraint.b),
         offset: formatDimensionValue(constraintOffset(constraint)),
       },
     ];
@@ -751,25 +768,30 @@ function onAddCurve(points: [EntityId, EntityId, EntityId, EntityId]): void {
  * then only updates its presentation.
  */
 function onAddDimension(placement: DimensionPlacement): void {
+  const orientation =
+    isLineAnchor(pattern.value, placement.a) || isLineAnchor(pattern.value, placement.b)
+      ? 'aligned'
+      : placement.orientation;
   const existing = findDistanceConstraint(pattern.value, placement.a, placement.b);
   if (existing !== undefined) {
     run(() =>
       dispatch({
         id: nextCommandId('dimension'),
         type: 'update_constraint',
-        params: { id: existing.id, orientation: placement.orientation, offset: placement.offset },
+        params: { id: existing.id, orientation, offset: placement.offset },
       }),
     );
     return;
   }
 
-  const measured = measureLinearDimension(
-    pattern.value,
-    placement.a,
-    placement.b,
-    placement.orientation,
-  )!;
-  if (measured <= 0) return;
+  const measured = measureDistanceDimension(pattern.value, {
+    id: placement.a,
+    type: 'distance',
+    a: placement.a,
+    b: placement.b,
+    orientation,
+  });
+  if (measured === null || measured <= 0) return;
 
   run(() =>
     dispatch({
@@ -778,7 +800,7 @@ function onAddDimension(placement: DimensionPlacement): void {
       params: {
         type: 'distance',
         entities: [placement.a, placement.b],
-        orientation: placement.orientation,
+        orientation,
         offset: placement.offset,
       },
     }),
@@ -1096,6 +1118,13 @@ function onKeyDown(event: KeyboardEvent): void {
   }
 }
 
+watch(pattern, () => {
+  // A terminal failure stops retrying the same document; a new change is what
+  // makes the save attempt meaningful again.
+  editor.clearSaveError();
+  autosave.schedule();
+});
+
 watch(pattern, (next) => {
   // Undo, redo or a load can remove a selected entity; keep only live ids.
   const surviving = selectedEntityIds.value.filter((id) => getEntity(next, id) !== undefined);
@@ -1133,7 +1162,16 @@ watch(pattern, (next) => {
 });
 
 type LoadState = 'loading' | 'ready' | 'error';
-type SaveBarState = 'new' | 'dirty' | 'saving' | 'saved' | 'failed';
+type SaveBarState = 'new' | 'dirty' | 'saving' | 'saved' | 'failed' | 'paused' | 'error';
+type SaveOutcome = 'saved' | 'retry' | 'stop';
+
+interface SaveOptions {
+  origin?: SaveOrigin;
+  /** The schema the stored document had, so the server archives it first. */
+  expectedSchema?: string;
+  /** Keep the request alive when the page is hidden or unloading. */
+  keepalive?: boolean;
+}
 
 interface PendingUpgrade {
   /** The document exactly as stored; a failed upgrade keeps this read-only. */
@@ -1155,12 +1193,25 @@ const conflict = ref<{ savedAt: string | null } | null>(null);
 /** Either modal owns the keyboard and blocks the editor shortcuts. */
 const dialogOpen = computed(() => pendingUpgrade.value !== null || conflict.value !== null);
 
-/** The one status the save bar shows, in priority order. */
+/** The one status the save bar shows: paused > saving > error > dirty/failed > saved. */
 const saveBarState = computed<SaveBarState>(() => {
+  if (editor.saveState === 'paused') return 'paused';
   if (editor.saveState === 'saving') return 'saving';
+  if (editor.saveState === 'error') return 'error';
   if (editor.isDirty) return editor.saveState === 'failed' ? 'failed' : 'dirty';
   return editor.isNew ? 'new' : 'saved';
 });
+
+/** Whether a background write is meaningful right now. */
+function canAutosave(): boolean {
+  if (loadState.value !== 'ready') return false;
+  if (editor.readOnly) return false;
+  if (dialogOpen.value) return false;
+  if (editor.saveState === 'paused') return false;
+  // A manual save (or a lifecycle flush) already writes this document.
+  if (editor.saveState === 'saving') return false;
+  return editor.isDirty;
+}
 
 /** Whether a stored document has the arrays every render path dereferences. */
 function isRenderableDocument(stored: PatternDocument): boolean {
@@ -1177,6 +1228,7 @@ function unreadableMessage(name: string): string {
 
 /** Load the stored pattern; a new project opens empty, a missing one errors. */
 async function loadPattern(): Promise<void> {
+  autosave.cancel();
   loadState.value = 'loading';
   loadError.value = null;
   // Drop any previous project's document so a shortcut or save can never send
@@ -1243,40 +1295,65 @@ function applySnapshot(snapshot: Pattern): void {
 }
 
 /**
- * Write the current document. Returns whether a checkpoint landed; a conflict
- * opens the dialog instead and leaves the work untouched.
+ * Write the current document. Returns what the writer should do next: an
+ * explicit save that tripped a conflict opens the dialog instead and leaves the
+ * work untouched, while an autosave pauses quietly and waits for a manual Save.
  */
-async function persist(expectedVersion: number | null, expectedSchema?: string): Promise<boolean> {
+async function persist(
+  expectedVersion: number | null,
+  { origin = 'manual', expectedSchema, keepalive = false }: SaveOptions = {},
+): Promise<SaveOutcome> {
   const snapshot = pattern.value;
   editor.markSaving();
 
   try {
-    const response = await projectsApi.savePattern(Number(props.id), {
+    const payload = {
       document: snapshot,
       expected_version: expectedVersion,
       ...(expectedSchema === undefined ? {} : { expected_schema: expectedSchema }),
-    });
-    editor.markSaved(snapshot, response.data.version, response.data.saved_at);
+      ...(origin === 'autosave' ? { origin } : {}),
+    };
+
+    const response = keepalive
+      ? await projectsApi.savePattern(Number(props.id), payload, { keepalive: true })
+      : await projectsApi.savePattern(Number(props.id), payload);
+    editor.markSaved(snapshot, response.data.version, response.data.saved_at, origin);
     error.value = null;
-    return true;
+    return 'saved';
   } catch (cause) {
     if (cause instanceof ApiError && cause.status === 409) {
       const body = cause.body as { saved_at?: string | null } | null;
+
+      // Never open a modal while the maker is typing: an autosave conflict only
+      // pauses the bar, and the explicit Save reuses the existing dialog.
+      if (origin === 'autosave') {
+        editor.markSavePaused();
+        return 'stop';
+      }
+
       conflict.value = { savedAt: body?.saved_at ?? null };
       editor.markSaveFailed();
-      return false;
+      return 'stop';
     }
 
     if (cause instanceof ApiError && cause.status === 404) {
       editor.markSaveFailed();
       loadError.value = 'This project no longer exists.';
       loadState.value = 'error';
-      return false;
+      return 'stop';
+    }
+
+    // A 4xx other than a conflict or a missing project is permanent: retrying
+    // the same document would fail the same way, so a new change is required.
+    if (cause instanceof ApiError && cause.status >= 400 && cause.status < 500) {
+      editor.markSaveError();
+      error.value = cause.message;
+      return 'stop';
     }
 
     editor.markSaveFailed();
     error.value = cause instanceof Error ? cause.message : 'Save failed';
-    return false;
+    return 'retry';
   }
 }
 
@@ -1285,25 +1362,31 @@ function save(): void {
   if (loadState.value !== 'ready') return;
   if (editor.readOnly || editor.saveState === 'saving') return;
   if (!editor.isDirty && !editor.isNew) return;
-  void persist(editor.savedVersion);
+
+  // A retryable failure arms the background ladder inside the scheduler.
+  void autosave.flush();
 }
 
 function reloadFromConflict(): void {
   conflict.value = null;
+  autosave.cancel();
   void loadPattern();
 }
 
 /** Explicit overwrite: no expected version, so the save appends a checkpoint. */
 function overwrite(): void {
   conflict.value = null;
-  void persist(null);
+  autosave.cancel();
+  void persist(null).then((outcome) => {
+    if (outcome === 'retry') autosave.retry();
+  });
 }
 
 async function updateDocument(): Promise<void> {
   const pending = pendingUpgrade.value;
   if (pending === null || editor.saveState === 'saving') return;
 
-  if (!(await persist(pending.version, pending.schema))) {
+  if ((await persist(pending.version, { expectedSchema: pending.schema })) !== 'saved') {
     // A stale version during an upgrade must reload, not run the generic
     // overwrite path: that path would write the migrated document without
     // archiving the stored one.
@@ -1354,15 +1437,52 @@ onBeforeRouteLeave(() => {
   return window.confirm('You have unsaved changes. Leave without saving?');
 });
 
+/**
+ * Best-effort write while the tab is hidden or the page is unloading. The
+ * browser drops oversized keepalive requests, so an over-budget payload is
+ * skipped and the unload guard remains the backstop.
+ */
+function flushBeforeUnload(): void {
+  if (!canAutosave()) return;
+
+  const payload = {
+    document: pattern.value,
+    expected_version: editor.savedVersion,
+    origin: 'autosave' as const,
+  };
+
+  if (!fitsKeepaliveBudget(JSON.stringify(payload))) return;
+
+  autosave.cancel();
+  // The response still updates the bar when the tab merely lost focus; during a
+  // real unload there is nothing left to update, which is harmless.
+  void persist(editor.savedVersion, { origin: 'autosave', keepalive: true });
+}
+
+function onVisibilityChange(): void {
+  if (document.hidden) {
+    flushBeforeUnload();
+    return;
+  }
+
+  // A hidden tab cancelled the pending timers; re-arm when the maker returns.
+  if (editor.isDirty) autosave.schedule();
+}
+
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('beforeunload', onBeforeUnload);
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  window.addEventListener('pagehide', flushBeforeUnload);
   void loadPattern();
 });
 
 onBeforeUnmount(() => {
+  autosave.cancel();
   window.removeEventListener('keydown', onKeyDown);
   window.removeEventListener('beforeunload', onBeforeUnload);
+  document.removeEventListener('visibilitychange', onVisibilityChange);
+  window.removeEventListener('pagehide', flushBeforeUnload);
 });
 </script>
 
@@ -1388,6 +1508,7 @@ onBeforeUnmount(() => {
         :name="patternName"
         :state="saveBarState"
         :saved-at="editor.lastSavedAt"
+        :origin="editor.lastSaveOrigin"
         :read-only="editor.readOnly"
         @save="save"
       />

@@ -9,6 +9,7 @@ import {
   type EntityId,
   entitiesInRect,
   executeCommand,
+  getEntity,
   type LineEntity,
   type PatternDocument,
   type PointEntity,
@@ -1704,11 +1705,17 @@ describe('PatternCanvas', () => {
     expect(wrapper.find('[data-testid="dimension-labels-layer"]').text()).not.toContain('100');
   });
 
-  it('previews a dimension from a line, follows the pointer and emits the placement', async () => {
+  it('previews a dimension from a line anchor, follows the pointer and emits the placement', async () => {
     const wrapper = mountCanvas({ document: dimensionDoc, tool: 'dimension' });
     const vp = fittedViewport(dimensionDoc);
 
+    // A line is only the first anchor now: no preview until the second pick.
     down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200);
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-hint"]').text()).toBe('Pick the second anchor.');
+
+    down(pointCircle(wrapper, 'c').element, 300, 200);
     await nextTick();
 
     expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(true);
@@ -1725,7 +1732,7 @@ describe('PatternCanvas', () => {
       wrapper.find('[data-testid="dimension-label-dimension-preview"]').attributes('aria-label'),
     ).toBe('Driven dimension, measured 100 millimetres');
 
-    const target = worldToScreen(vp, { x: 50, y: 40 });
+    const target = worldToScreen(vp, { x: 150, y: 40 });
     wrapper
       .find('svg')
       .element.dispatchEvent(
@@ -1737,7 +1744,7 @@ describe('PatternCanvas', () => {
     await nextTick();
 
     expect(wrapper.emitted('add-dimension')).toEqual([
-      [{ a: 'a', b: 'b', orientation: 'horizontal', offset: 40 }],
+      [{ a: 'ab', b: 'c', orientation: 'aligned', offset: 50 }],
     ]);
     expect(wrapper.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(false);
 
@@ -1786,11 +1793,18 @@ describe('PatternCanvas', () => {
     ]);
   });
 
-  it('resets dimension picks when an empty or curve hit interrupts them', async () => {
+  it('resets dimension picks when an empty hit interrupts them', async () => {
     const wrapper = mountCanvas({ document: dimensionDoc, tool: 'dimension' });
 
     down(pointCircle(wrapper, 'a').element, 300, 200);
     down(wrapper.find('[data-kind="curve"]').element, 300, 200);
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-hint"]').text()).toBe(
+      'Pick a point or a straight line.',
+    );
+
+    // An empty click clears the pending first anchor.
+    down(wrapper.find('[data-testid="grid"]').element, 400, 300);
     down(pointCircle(wrapper, 'b').element, 300, 200);
     await nextTick();
 
@@ -1799,6 +1813,158 @@ describe('PatternCanvas', () => {
     down(wrapper.find('[data-testid="grid"]').element, 400, 300);
     expect(wrapper.emitted('add-dimension')).toBeUndefined();
     expect(wrapper.emitted('update:selectedEntityIds')).toBeUndefined();
+  });
+
+  it('picks point-line, line-point and line-line anchors', async () => {
+    const anchorDoc = doc([
+      pt('a', 0, 0),
+      pt('b', 100, 0),
+      pt('c', 0, 50),
+      pt('d', 100, 50),
+      pt('f', 100, 100),
+      pt('p', 50, 25),
+      ln('L', 'a', 'b'),
+      ln('M', 'c', 'd'),
+      ln('V', 'b', 'f'),
+      ln('Z', 'a', 'a'),
+      ln('D', 'a', 'b'),
+      cv('curve', 'a', 'b', 'c', 'd'),
+    ]);
+
+    const pointLine = mountCanvas({ document: anchorDoc, tool: 'dimension' });
+    down(pointCircle(pointLine, 'p').element, 300, 200);
+    down(pointLine.find('[data-kind="line"][data-entity-id="L"]').element, 300, 200);
+    await nextTick();
+    expect(
+      pointLine.find('[data-testid="dimension-label-dimension-preview"]').find('text').text(),
+    ).toBe('(25)');
+    down(pointLine.find('[data-testid="grid"]').element, 400, 300);
+    expect(pointLine.emitted('add-dimension')).toEqual([
+      [{ a: 'p', b: 'L', orientation: 'aligned', offset: 20 }],
+    ]);
+
+    const linePoint = mountCanvas({ document: anchorDoc, tool: 'dimension' });
+    down(linePoint.find('[data-kind="line"][data-entity-id="L"]').element, 300, 200);
+    down(pointCircle(linePoint, 'p').element, 300, 200);
+    await nextTick();
+    down(linePoint.find('[data-testid="grid"]').element, 400, 300);
+    expect(linePoint.emitted('add-dimension')).toEqual([
+      [{ a: 'L', b: 'p', orientation: 'aligned', offset: 20 }],
+    ]);
+
+    const lineLine = mountCanvas({ document: anchorDoc, tool: 'dimension' });
+    down(lineLine.find('[data-kind="line"][data-entity-id="L"]').element, 300, 200);
+    down(lineLine.find('[data-kind="line"][data-entity-id="M"]').element, 300, 200);
+    await nextTick();
+    expect(
+      lineLine.find('[data-testid="dimension-label-dimension-preview"]').find('text').text(),
+    ).toBe('(50)');
+    down(lineLine.find('[data-testid="grid"]').element, 400, 300);
+    expect(lineLine.emitted('add-dimension')).toEqual([
+      [{ a: 'L', b: 'M', orientation: 'aligned', offset: 20 }],
+    ]);
+  });
+
+  it('explains each rejected anchor pair and clears the hint on a valid pick', async () => {
+    const anchorDoc = doc([
+      pt('a', 0, 0),
+      pt('b', 100, 0),
+      pt('c', 0, 50),
+      pt('d', 100, 50),
+      pt('f', 100, 100),
+      pt('p', 50, 25),
+      ln('L', 'a', 'b'),
+      ln('M', 'c', 'd'),
+      ln('V', 'b', 'f'),
+      ln('Z', 'a', 'a'),
+      ln('D', 'a', 'b'),
+      cv('curve', 'a', 'b', 'c', 'd'),
+    ]);
+    const wrapper = mountCanvas({ document: anchorDoc, tool: 'dimension' });
+    const hint = () => wrapper.find('[data-testid="dimension-hint"]').text();
+
+    expect(hint()).toBe('Pick a point or a line.');
+
+    down(wrapper.find('[data-kind="curve"]').element, 300, 200);
+    await nextTick();
+    expect(hint()).toBe('Pick a point or a straight line.');
+
+    down(pointCircle(wrapper, 'a').element, 300, 200);
+    down(wrapper.find('[data-kind="line"][data-entity-id="L"]').element, 300, 200);
+    await nextTick();
+    expect(hint()).toBe('The point lies on the line.');
+
+    down(wrapper.find('[data-kind="line"][data-entity-id="L"]').element, 300, 200);
+    await nextTick();
+    expect(hint()).toBe('The point lies on the line.');
+
+    // An empty click clears the pending first anchor, so the next pick starts over.
+    down(wrapper.find('[data-testid="grid"]').element, 400, 300);
+    down(pointCircle(wrapper, 'p').element, 300, 200);
+    await nextTick();
+    expect(hint()).toBe('Pick the second anchor.');
+  });
+
+  it('rejects non-parallel, coincident and zero-length lines with a hint', async () => {
+    const anchorDoc = doc([
+      pt('a', 0, 0),
+      pt('b', 100, 0),
+      pt('c', 0, 50),
+      pt('d', 100, 50),
+      pt('f', 100, 100),
+      ln('L', 'a', 'b'),
+      ln('M', 'c', 'd'),
+      ln('V', 'b', 'f'),
+      ln('Z', 'a', 'a'),
+      ln('D', 'a', 'b'),
+    ]);
+    const wrapper = mountCanvas({ document: anchorDoc, tool: 'dimension' });
+    const hint = () => wrapper.find('[data-testid="dimension-hint"]').text();
+    const click = (id: string) =>
+      down(wrapper.find(`[data-kind="line"][data-entity-id="${id}"]`).element, 300, 200);
+    const clear = () => down(wrapper.find('[data-testid="grid"]').element, 400, 300);
+
+    click('L');
+    click('V');
+    await nextTick();
+    expect(hint()).toBe('Pick two parallel lines — use Angle for a corner.');
+    clear();
+
+    click('L');
+    click('D');
+    await nextTick();
+    expect(hint()).toBe('The lines are coincident.');
+    clear();
+
+    click('L');
+    click('Z');
+    await nextTick();
+    expect(hint()).toBe('Pick a point or a straight line.');
+    clear();
+
+    click('L');
+    click('L');
+    await nextTick();
+    expect(hint()).toBe('Pick the second anchor.');
+  });
+
+  it('clears a pending dimension pick on Escape and on a tool change', async () => {
+    const anchorDoc = doc([pt('a', 0, 0), pt('b', 100, 0), ln('L', 'a', 'b')]);
+    const wrapper = mountCanvas({ document: anchorDoc, tool: 'dimension' });
+
+    down(pointCircle(wrapper, 'a').element, 300, 200);
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-hint"]').text()).toBe('Pick the second anchor.');
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-hint"]').text()).toBe('Pick a point or a line.');
+
+    down(pointCircle(wrapper, 'a').element, 300, 200);
+    wrapper.setProps({ tool: 'select' });
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-hint"]').exists()).toBe(false);
+    expect(wrapper.emitted('add-dimension')).toBeUndefined();
   });
 
   it('opens the inline editor on double-click and commits a valid value', async () => {
@@ -1972,6 +2138,7 @@ describe('PatternCanvas', () => {
     const wrapper = mountCanvas({ document: dimensionDoc, tool: 'dimension' });
 
     down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200);
+    down(pointCircle(wrapper, 'c').element, 300, 200);
     await nextTick();
     await wrapper.find('[data-testid="dimension-label-dimension-preview"]').trigger('dblclick');
     expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(false);
@@ -2074,6 +2241,7 @@ describe('PatternCanvas', () => {
   it('renders the drag strip only while a drag is possible', async () => {
     const placing = mountCanvas({ document: dimensionDoc, tool: 'dimension' });
     down(placing.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200);
+    down(pointCircle(placing, 'c').element, 300, 200);
     await nextTick();
     expect(placing.find('[data-testid="dimension-lines-dimension-preview"]').exists()).toBe(true);
     expect(placing.find('[data-testid="dimension-drag-dimension-preview"]').exists()).toBe(false);
@@ -2109,6 +2277,7 @@ describe('PatternCanvas', () => {
 
     const placing = mountCanvas({ document: dimensionDoc, tool: 'dimension' });
     down(placing.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200);
+    down(pointCircle(placing, 'c').element, 300, 200);
     await nextTick();
     const preview = placing.find('[data-testid="dimension-label-dimension-preview"]');
     expect(preview.classes()).toContain('pointer-events-none');
@@ -2128,6 +2297,7 @@ describe('PatternCanvas', () => {
 
     const placing = mountCanvas({ document: dimensionDoc, tool: 'dimension' });
     down(placing.find('[data-kind="line"][data-entity-id="ab"]').element, 300, 200);
+    down(pointCircle(placing, 'c').element, 300, 200);
     await nextTick();
     expect(placing.find('[data-testid="dimension-label-dimension-preview"] title').text()).toBe(
       'Dimension preview',
@@ -2332,11 +2502,12 @@ describe('PatternCanvas', () => {
     expect(wrapper.find('[data-testid="corner-round-preview"]').exists()).toBe(false);
   });
 
-  it('hides derived points and shows handles and the label for a selected round', () => {
+  it('shows feature dots without control points and handles for a selected round', () => {
     const document = roundedSquare();
     const wrapper = mountCanvas({ document, selectedEntityIds: ['ab'] });
 
-    expect(pointCircle(wrapper, 'r1:a').exists()).toBe(false);
+    // Tangents and the centre are feature points now; Bézier controls stay hidden.
+    expect(pointCircle(wrapper, 'r1:a').exists()).toBe(true);
     expect(pointCircle(wrapper, 'r1:c1').exists()).toBe(false);
     expect(pointCircle(wrapper, 'b').exists()).toBe(true);
 
@@ -3087,5 +3258,91 @@ describe('PatternCanvas', () => {
     up();
 
     expect(wrapper.emitted('update-dimension')).toHaveLength(1);
+  });
+});
+
+describe('corner round feature points', () => {
+  const featureIds = (wrapper: VueWrapper): (string | undefined)[] =>
+    wrapper
+      .find('[data-testid="corner-round-feature-layer"]')
+      .findAll('[data-kind="point"]')
+      .map((dot) => dot.attributes('data-entity-id'));
+
+  it('renders the radius centre and both tangents as always-visible dots', () => {
+    const wrapper = mountCanvas({ document: roundedSquare() });
+
+    const layer = wrapper.find('[data-testid="corner-round-feature-layer"]');
+    expect(layer.attributes('aria-hidden')).toBe('true');
+    expect(featureIds(wrapper)).toEqual(['r1:center', 'r1:a', 'r1:b']);
+
+    const centre = wrapper.find('[data-testid="corner-round-feature-r1:center"]');
+    expect(centre.attributes('r')).toBe('3');
+    expect(centre.attributes('cx')).toBe('90');
+    expect(centre.attributes('cy')).toBe('10');
+    expect(centre.classes()).toContain('fill-background');
+    expect(centre.classes()).toContain('stroke-muted-foreground');
+
+    // A drawing without rounds shows no feature dots.
+    expect(featureIds(mountCanvas())).toEqual([]);
+  });
+
+  it('promotes the three dots of the selected round', () => {
+    const wrapper = mountCanvas({ document: roundedSquare(), selectedEntityIds: ['r1:center'] });
+
+    for (const dot of wrapper.findAll('[data-testid^="corner-round-feature-r1:"]')) {
+      expect(dot.classes()).toContain('fill-primary');
+    }
+  });
+
+  it('skips a round written before feature points and a dot whose point is gone', () => {
+    const document = roundedSquare();
+    const legacy: PatternDocument = {
+      ...document,
+      cornerRounds: [{ ...document.cornerRounds![0]!, center: undefined }],
+    };
+    expect(featureIds(mountCanvas({ document: legacy }))).toEqual(['r1:a', 'r1:b']);
+
+    const missingTangent: PatternDocument = {
+      ...document,
+      entities: document.entities.filter((entity) => entity.id !== 'r1:a'),
+    };
+    expect(featureIds(mountCanvas({ document: missingTangent }))).toEqual(['r1:center', 'r1:b']);
+  });
+
+  it('selects a feature point without starting a drag', () => {
+    const wrapper = mountCanvas({ document: roundedSquare() });
+
+    down(wrapper.find('[data-testid="corner-round-feature-r1:center"]').element, 300, 200);
+    move(320, 220);
+    up();
+
+    expect(wrapper.emitted('update:selectedEntityIds')).toEqual([[['r1:center']]]);
+    expect(wrapper.emitted('move-point')).toBeUndefined();
+  });
+
+  it('snaps a new point to the radius centre', () => {
+    const document = roundedSquare();
+    const wrapper = mountCanvas({ document, tool: 'add_point' });
+    const centre = getEntity(document, 'r1:center') as PointEntity;
+
+    const screen = worldToScreen(fitToBounds(bounds(document)!, SIZE), centre);
+    down(wrapper.find('svg').element, screen.x + 2, screen.y + 2);
+
+    expect(wrapper.emitted('add-point')).toEqual([[centre.x, centre.y]]);
+  });
+
+  it('measures from the radius centre to another point', async () => {
+    const wrapper = mountCanvas({ document: roundedSquare(), tool: 'dimension' });
+
+    down(pointCircle(wrapper, 'r1:center').element, 300, 200);
+    await nextTick();
+    down(pointCircle(wrapper, 'a').element, 300, 200);
+    await nextTick();
+    down(wrapper.find('[data-testid="grid"]').element, 400, 300);
+
+    expect(wrapper.emitted('add-dimension')![0]![0]).toMatchObject({
+      a: 'r1:center',
+      b: 'a',
+    });
   });
 });

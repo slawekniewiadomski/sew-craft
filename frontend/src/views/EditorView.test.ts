@@ -24,6 +24,17 @@ import EditorView from './EditorView.vue';
 
 vi.mock('@/lib/download', () => ({ downloadSvgFile: vi.fn() }));
 
+// floating-ui's auto-update watches an anchored menu through an
+// IntersectionObserver, which jsdom does not implement.
+vi.stubGlobal(
+  'IntersectionObserver',
+  class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  },
+);
+
 vi.mock('@/api/projects', () => {
   class ApiError extends Error {
     constructor(
@@ -187,6 +198,19 @@ function entityDown(
 
 function pointDown(wrapper: VueWrapper, id: EntityId): void {
   entityDown(wrapper, 'point', id);
+}
+
+/** Arm one of the grouped rectangle modes through the ribbon's split control. */
+async function selectRectangleMode(
+  wrapper: VueWrapper,
+  mode: 'add_rectangle' | 'add_center_rectangle' | 'add_3point_rectangle',
+): Promise<void> {
+  await wrapper.find('[data-testid="tool-rectangle-modes"]').trigger('click');
+  await flushPromises();
+  document
+    .querySelector<HTMLElement>(`[data-testid="tool-${mode}"]`)!
+    .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await flushPromises();
 }
 
 function keydown(key: string, init: KeyboardEventInit = {}): void {
@@ -584,7 +608,7 @@ describe('EditorView', () => {
     const { wrapper, store } = await mountLoaded(simpleDoc);
     const before = store.document.entities.length;
 
-    await wrapper.find('[data-testid="tool-add_rectangle"]').trigger('click');
+    await selectRectangleMode(wrapper, 'add_rectangle');
     pointDown(wrapper, 'p');
     pointDown(wrapper, 'r');
     await flushPromises();
@@ -605,7 +629,7 @@ describe('EditorView', () => {
     const { wrapper, store } = await mountLoaded(simpleDoc);
     const before = store.document.entities.length;
 
-    await wrapper.find('[data-testid="tool-add_center_rectangle"]').trigger('click');
+    await selectRectangleMode(wrapper, 'add_center_rectangle');
     canvasDown(wrapper, 700, 200);
     await nextTick();
     expect(wrapper.findAll('[data-testid^="rectangle-pending-corner-"]')).toHaveLength(1);
@@ -627,7 +651,7 @@ describe('EditorView', () => {
   it('constrains a fresh rectangle and leaves a reused-corner one alone', async () => {
     const { wrapper, store } = await mountLoaded(simpleDoc);
 
-    await wrapper.find('[data-testid="tool-add_rectangle"]').trigger('click');
+    await selectRectangleMode(wrapper, 'add_rectangle');
     canvasDown(wrapper, 700, 500);
     canvasDown(wrapper, 300, 200);
     await flushPromises();
@@ -642,7 +666,7 @@ describe('EditorView', () => {
     expect(store.document.constraints).toHaveLength(0);
 
     const lateral = await mountLoaded(simpleDoc);
-    await lateral.wrapper.find('[data-testid="tool-add_rectangle"]').trigger('click');
+    await selectRectangleMode(lateral.wrapper, 'add_rectangle');
     pointDown(lateral.wrapper, 'p');
     pointDown(lateral.wrapper, 'r');
     await flushPromises();
@@ -656,7 +680,7 @@ describe('EditorView', () => {
   it('constrains a rotated rectangle with three right angles', async () => {
     const { wrapper, store } = await mountLoaded(simpleDoc);
 
-    await wrapper.find('[data-testid="tool-add_3point_rectangle"]').trigger('click');
+    await selectRectangleMode(wrapper, 'add_3point_rectangle');
     canvasDown(wrapper, 300, 500);
     canvasDown(wrapper, 300, 300);
     canvasDown(wrapper, 500, 400);
@@ -676,7 +700,7 @@ describe('EditorView', () => {
     };
     const { wrapper, store } = await mountLoaded(constrained);
 
-    await wrapper.find('[data-testid="tool-add_rectangle"]').trigger('click');
+    await selectRectangleMode(wrapper, 'add_rectangle');
     pointDown(wrapper, 'p');
     pointDown(wrapper, 'r');
     await flushPromises();
@@ -1285,6 +1309,20 @@ describe('EditorView', () => {
     expect(wrapper.findAll('[aria-label="Dimensions"] li')).toHaveLength(1);
   });
 
+  it('hides the axis control for a line-anchored dimension', async () => {
+    const { wrapper } = await mountLoaded({
+      ...lineDoc,
+      constraints: [{ id: 'gap', type: 'distance', a: 'ab', b: 'c' }],
+    });
+
+    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="dimension-orientation-gap"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-orientation-locked-gap"]').text()).toBe('Aligned');
+    expect(wrapper.find('[data-testid="dimension-offset-gap"]').exists()).toBe(true);
+  });
+
   it('clears a set dimension to driven from the sidebar and undoes it', async () => {
     const { wrapper, store } = await mountLoaded({
       ...lineDoc,
@@ -1876,6 +1914,7 @@ describe('EditorView', () => {
 
     await wrapper.find('[data-testid="tool-dimension"]').trigger('click');
     entityDown(wrapper, 'line', 'ab');
+    pointDown(wrapper, 'c');
     await nextTick();
 
     expect(store.document.constraints).toHaveLength(0);
@@ -1894,8 +1933,8 @@ describe('EditorView', () => {
     const constraint = store.document.constraints[0]!;
     expect(constraint).toMatchObject({
       type: 'distance',
-      a: 'a',
-      b: 'b',
+      a: 'ab',
+      b: 'c',
       orientation: 'aligned',
       offset: 20,
     });
@@ -1932,7 +1971,8 @@ describe('EditorView', () => {
     });
 
     await wrapper.find('[data-testid="tool-dimension"]').trigger('click');
-    entityDown(wrapper, 'line', 'ab');
+    pointDown(wrapper, 'a');
+    pointDown(wrapper, 'b');
     canvasDown(wrapper, 400, 300);
     await flushPromises();
 
@@ -2004,7 +2044,8 @@ describe('EditorView', () => {
     });
 
     await wrapper.find('[data-testid="tool-dimension"]').trigger('click');
-    entityDown(wrapper, 'line', 'ab');
+    pointDown(wrapper, 'a');
+    pointDown(wrapper, 'b');
     canvasDown(wrapper, 400, 300);
     await flushPromises();
 
@@ -3184,7 +3225,7 @@ describe('EditorView persistence', () => {
     await wrapper.find('[data-testid="save-project"]').trigger('click');
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed — retry');
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed — retrying');
     expect(wrapper.text()).toContain('Network down');
     expect(store.isDirty).toBe(true);
     expect(points(wrapper)).toHaveLength(5);
@@ -3347,7 +3388,7 @@ describe('EditorView persistence', () => {
     expect(store.readOnly).toBe(true);
     expect(store.document.schema).toBe('sewcraft.pattern/0.1');
     expect(wrapper.find('[data-testid="upgrade-dialog"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed — retry');
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed — retrying');
   });
 
   it('opens an older document read-only without saving and keeps export', async () => {
@@ -3543,7 +3584,7 @@ describe('EditorView persistence', () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain('Save failed');
-    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed — retry');
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed — retrying');
   });
 
   it('ignores a repeated upgrade action while the save is in flight', async () => {
@@ -3597,5 +3638,419 @@ describe('EditorView persistence', () => {
     expect(wrapper.find('[data-testid="editor-load-error"]').text()).toContain(
       'Failed to load the project',
     );
+  });
+});
+
+describe('EditorView autosave', () => {
+  function markDirty(pinia: Pinia): void {
+    useEditorStore(pinia).dispatch({ id: 'dirty', type: 'add_point', params: { x: 1, y: 2 } });
+  }
+
+  function setHidden(hidden: boolean): void {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+  }
+
+  afterEach(() => {
+    delete (document as { hidden?: boolean }).hidden;
+    vi.useRealTimers();
+  });
+
+  it('writes a committed change after the idle delay and reports it as autosaved', async () => {
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+    const store = useEditorStore(pinia);
+    vi.useFakeTimers();
+
+    markDirty(pinia);
+    await nextTick();
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Unsaved changes');
+
+    await vi.advanceTimersByTimeAsync(1499);
+    expect(vi.mocked(projectsApi.savePattern)).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledWith(1, {
+      document: store.document,
+      expected_version: 1,
+      origin: 'autosave',
+    });
+    expect(wrapper.find('[data-testid="save-status"]').text()).toContain('Autosaved');
+    expect(store.isDirty).toBe(false);
+  });
+
+  it('cancels the pending autosave when Save is pressed', async () => {
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+    const store = useEditorStore(pinia);
+    vi.useFakeTimers();
+
+    markDirty(pinia);
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(1000);
+
+    await wrapper.find('[data-testid="save-project"]').trigger('click');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledWith(1, {
+      document: store.document,
+      expected_version: 1,
+    });
+
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes again when an edit lands during an autosave request', async () => {
+    let resolveSave: (value: unknown) => void = () => {};
+    vi.mocked(projectsApi.savePattern).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSave = resolve as (value: unknown) => void;
+        }),
+    );
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+    vi.useFakeTimers();
+
+    markDirty(pinia);
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+
+    markDirty(pinia);
+    await nextTick();
+    resolveSave({
+      data: { id: 1, version: 2, saved_at: '2026-10-23T16:00:00.000Z', created: false },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[data-testid="save-status"]').text()).toContain('Autosaved');
+  });
+
+  it('retries a transient autosave failure on the backoff ladder', async () => {
+    vi.mocked(projectsApi.savePattern).mockRejectedValueOnce(new Error('Network down'));
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+    vi.useFakeTimers();
+
+    markDirty(pinia);
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(1500);
+
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed — retrying');
+
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[data-testid="save-status"]').text()).toContain('Autosaved');
+  });
+
+  it('stops on a permanent failure until the document changes', async () => {
+    vi.mocked(projectsApi.savePattern).mockRejectedValueOnce(
+      new ApiError(422, { message: 'The document may not be greater than 2 MB.' }),
+    );
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+    const store = useEditorStore(pinia);
+    vi.useFakeTimers();
+
+    markDirty(pinia);
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(1500);
+
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed');
+    expect(wrapper.text()).toContain('The document may not be greater than 2 MB.');
+    expect(store.saveState).toBe('error');
+    expect(wrapper.find('[data-testid="conflict-dialog"]').exists()).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+
+    // A new change makes the same document worth trying again.
+    markDirty(pinia);
+    await nextTick();
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Unsaved changes');
+
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(2);
+  });
+
+  it('pauses on an autosave conflict and opens the dialog only on Save', async () => {
+    vi.mocked(projectsApi.savePattern)
+      .mockRejectedValueOnce(new ApiError(409, { current_version: 4, saved_at: null }))
+      .mockRejectedValueOnce(new ApiError(409, { current_version: 4, saved_at: null }));
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+    vi.useFakeTimers();
+
+    markDirty(pinia);
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(1500);
+
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe(
+      'Save paused — changed elsewhere',
+    );
+    expect(wrapper.find('[data-testid="conflict-dialog"]').exists()).toBe(false);
+
+    // Editing while paused keeps the work in memory and stays paused.
+    markDirty(pinia);
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+
+    // An explicit Save is what opens the existing conflict dialog.
+    await wrapper.find('[data-testid="save-project"]').trigger('click');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenLastCalledWith(1, {
+      document: expect.anything(),
+      expected_version: 1,
+    });
+    expect(wrapper.find('[data-testid="conflict-dialog"]').exists()).toBe(true);
+  });
+
+  it('resumes autosave after the conflict is reloaded', async () => {
+    vi.mocked(projectsApi.savePattern)
+      .mockRejectedValueOnce(new ApiError(409, { current_version: 4, saved_at: null }))
+      .mockRejectedValueOnce(new ApiError(409, { current_version: 4, saved_at: null }));
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+    const store = useEditorStore(pinia);
+    vi.useFakeTimers();
+
+    markDirty(pinia);
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(store.saveState).toBe('paused');
+
+    await wrapper.find('[data-testid="save-project"]').trigger('click');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(wrapper.find('[data-testid="conflict-dialog"]').exists()).toBe(true);
+
+    vi.mocked(projectsApi.getPattern).mockResolvedValueOnce({
+      data: {
+        id: 1,
+        project_id: 1,
+        name: 'Bodice',
+        document: seededDocument,
+        version: 4,
+        saved_at: '2026-10-23T16:05:00.000Z',
+      },
+    });
+    await wrapper.find('[data-testid="conflict-reload"]').trigger('click');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(wrapper.find('[data-testid="conflict-dialog"]').exists()).toBe(false);
+    expect(store.saveState).toBe('idle');
+    expect(store.savedVersion).toBe(4);
+
+    // Autosave re-arms against the reloaded version.
+    markDirty(pinia);
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(1500);
+
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenLastCalledWith(
+      1,
+      expect.objectContaining({ expected_version: 4, origin: 'autosave' }),
+    );
+  });
+
+  it('retries a transient overwrite failure on the background ladder', async () => {
+    vi.mocked(projectsApi.savePattern)
+      .mockRejectedValueOnce(new ApiError(409, { current_version: 4, saved_at: null }))
+      .mockRejectedValueOnce(new Error('Network down'));
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+    vi.useFakeTimers();
+
+    markDirty(pinia);
+    await nextTick();
+    await wrapper.find('[data-testid="save-project"]').trigger('click');
+    await vi.advanceTimersByTimeAsync(0);
+
+    await wrapper.find('[data-testid="conflict-overwrite"]').trigger('click');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed — retrying');
+
+    await vi.advanceTimersByTimeAsync(2000);
+
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(3);
+    expect(wrapper.find('[data-testid="save-status"]').text()).toContain('Autosaved');
+  });
+
+  it('does not autosave while the conflict dialog owns the editor', async () => {
+    vi.mocked(projectsApi.savePattern).mockRejectedValueOnce(
+      new ApiError(409, { current_version: 4, saved_at: null }),
+    );
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+    vi.useFakeTimers();
+
+    markDirty(pinia);
+    await nextTick();
+    await wrapper.find('[data-testid="save-project"]').trigger('click');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(wrapper.find('[data-testid="conflict-dialog"]').exists()).toBe(true);
+
+    markDirty(pinia);
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(20000);
+
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+  });
+
+  it('flushes a hidden tab with keepalive and reports the write', async () => {
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+    const store = useEditorStore(pinia);
+    vi.useFakeTimers();
+
+    // A clean editor writes nothing on the lifecycle event.
+    setHidden(true);
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(vi.mocked(projectsApi.savePattern)).not.toHaveBeenCalled();
+
+    markDirty(pinia);
+    await nextTick();
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledWith(
+      1,
+      {
+        document: store.document,
+        expected_version: 1,
+        origin: 'autosave',
+      },
+      { keepalive: true },
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(wrapper.find('[data-testid="save-status"]').text()).toContain('Autosaved');
+
+    // Returning to a clean tab writes nothing more.
+    setHidden(false);
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-arms autosave when the tab returns with a failed lifecycle flush', async () => {
+    vi.mocked(projectsApi.savePattern)
+      .mockRejectedValueOnce(new Error('Network down'))
+      .mockResolvedValueOnce({
+        data: { id: 1, version: 2, saved_at: '2026-10-23T16:00:00.000Z', created: false },
+      });
+    const pinia = createPinia();
+    const wrapper = await mountEditor(pinia);
+    vi.useFakeTimers();
+
+    markDirty(pinia);
+    await nextTick();
+    setHidden(true);
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed — retrying');
+
+    // Leaving the tab paused the retry ladder; returning re-arms the writer.
+    setHidden(false);
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(1500);
+
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[data-testid="save-status"]').text()).toContain('Autosaved');
+  });
+
+  it('flushes on pagehide as well', async () => {
+    const pinia = createPinia();
+    await mountEditor(pinia);
+    vi.useFakeTimers();
+    markDirty(pinia);
+    await nextTick();
+
+    window.dispatchEvent(new Event('pagehide'));
+
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ origin: 'autosave' }),
+      { keepalive: true },
+    );
+  });
+
+  it('skips the keepalive flush when the payload exceeds the browser budget', async () => {
+    const pinia = createPinia();
+    await mountEditor(pinia);
+    const store = useEditorStore(pinia);
+    vi.useFakeTimers();
+
+    store.document = {
+      ...store.document,
+      entities: [
+        {
+          id: 'x'.repeat(70_000),
+          kind: 'point',
+          x: 0,
+          y: 0,
+          construction: false,
+          fixed: false,
+        },
+      ],
+    };
+    await nextTick();
+
+    window.dispatchEvent(new Event('pagehide'));
+
+    expect(vi.mocked(projectsApi.savePattern)).not.toHaveBeenCalled();
+  });
+
+  it('does not schedule a write while a lifecycle flush is in flight', async () => {
+    let resolveSave: (value: unknown) => void = () => {};
+    vi.mocked(projectsApi.savePattern).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSave = resolve as (value: unknown) => void;
+        }),
+    );
+    const pinia = createPinia();
+    await mountEditor(pinia);
+    vi.useFakeTimers();
+
+    markDirty(pinia);
+    await nextTick();
+    window.dispatchEvent(new Event('pagehide'));
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+
+    // The edit lands while that request is still open; scheduling would race it
+    // for the same version token, so it waits for the next committed change.
+    markDirty(pinia);
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+
+    resolveSave({
+      data: { id: 1, version: 2, saved_at: '2026-10-23T16:00:00.000Z', created: false },
+    });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+  });
+
+  it('swallows a rejected keepalive flush', async () => {
+    vi.mocked(projectsApi.savePattern).mockRejectedValueOnce(new Error('offline'));
+    const pinia = createPinia();
+    await mountEditor(pinia);
+    vi.useFakeTimers();
+    markDirty(pinia);
+    await nextTick();
+
+    window.dispatchEvent(new Event('pagehide'));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,8 +1,11 @@
 # Rectangle sketching (rectangle tool)
 
-Status: **implementing** — Q1, Q2 and Q3 were accepted with `spec-ready` and the
-recommended answer of each is being built: I1 (a rotated third mode), A (constrain
-fresh corners only) and A (three ribbon buttons). The execution plan is
+Status: **implemented** — Q1, Q2 and Q3 were accepted with `spec-ready` and were
+built: I1 (a rotated third mode), A (constrain fresh corners only) and A (three
+ribbon buttons). The three buttons were later grouped under one split control
+with a mode menu, so the ribbon surface now follows
+`.ai/specs/2026-10-23-grouped-sketch-tools.md`; the gestures, commands and tests
+below stand unchanged. The execution plan is
 `.ai/runs/2026-10-23-rectangle-tool.md`.
 Refs #60
 Closes #60
@@ -220,10 +223,12 @@ envelope stays `{ id, type, params, issuedAt? }`.
 
 ## 📝 UI/UX
 
-- **Ribbon.** Three icon buttons in the Sketching group, after Circle: Rectangle,
-  Centre rectangle, 3-point rectangle. The group grows from seven to ten items and
-  the ribbon wraps (`frontend/src/components/EditorRibbon.vue:92`); Q3 covers the
-  alternative of one button plus a mode picker.
+- **Ribbon.** Three gestures grouped behind one split control in the Sketching
+  group, after Circle: the icon half arms the displayed mode (Rectangle, Centre
+  rectangle or 3-point rectangle) and the caret opens a menu of all three. The
+  grouped surface is specified in
+  `.ai/specs/2026-10-23-grouped-sketch-tools.md`; the three tool ids below are
+  unchanged and the menu items keep their `tool-*` test ids.
 - **Cursor.** Crosshair, as for the other drafting tools.
 - **Preview.** A dashed rectangle in the muted foreground with
   `pointer-events-none`, recomputed from the same corner function that commits:
@@ -313,7 +318,7 @@ Asked on issue #60. The PR is a draft until these are answered.
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | Q1  | **What should the third mode be?** I1 a rotated rectangle (corner, end of first side, perpendicular width), I2 three corners of an axis-aligned rectangle, or drop the third mode?                                                  | I1 is what Onshape calls the aligned rectangle and the only reading that adds a capability; I2 is the diagonal mode with an extra click; dropping the mode contradicts the issue. The choice fixes the click count, the preview maths and whether a rotated rectangle is supported at all | **I1.** It is the CAD convention and the only mode that earns its place next to the other two                                              |
 | Q2  | **Should the tool add constraints?** A: yes — two `horizontal` + two `vertical` for the axis-aligned modes, three 90° `angle` constraints for the rotated mode (a closed quadrilateral's fourth angle follows), skipped when any corner is a reused point. B: always auto-constrain, even onto reused points. C: never auto-constrain; the user adds them with the constraint ribbon | Without constraints a "rectangle" skews and cannot be driven by width/height dimensions, which is most of the point of a rectangle in a parametric editor. With them, four extra constraint icons and possible conflicts on reused corners appear; `add_constraint` does not detect conflict today | **A.** Keeps rectangle behaviour predictable for fresh drafting, and does not silently over-constrain geometry the user already constrained                        |
-| Q3  | **Where do the modes live?** A: three ribbon buttons. B: one Rectangle button plus a segmented mode control in a contextual bar (the corner-round prompt bar is the precedent). C: one button, mode cycling with a shortcut | Three buttons are the smallest surface and need no new UI machinery, but Sketching reaches ten items. One button plus a picker keeps the ribbon compact and makes the current mode explicit, at the cost of a new component and one more click before drawing | **A for v1.** Ship the capability first; consolidating the three controls behind a picker is a visible UI change that deserves its own review |
+| Q3  | **Where do the modes live?** A: three ribbon buttons. B: one Rectangle button plus a segmented mode control in a contextual bar (the corner-round prompt bar is the precedent). C: one button, mode cycling with a shortcut | Three buttons are the smallest surface and need no new UI machinery, but Sketching reaches ten items. One button plus a picker keeps the ribbon compact and makes the current mode explicit, at the cost of a new component and one more click before drawing | **A for v1.** Ship the capability first; consolidating the three controls behind a picker is a visible UI change that deserves its own review. **Superseded for the surface** by `2026-10-23-grouped-sketch-tools.md`, which groups the three controls under one split button with a mode menu; the three gestures and their commands stand |
 
 ## ✅ Resolved assumptions (autonomous defaults)
 

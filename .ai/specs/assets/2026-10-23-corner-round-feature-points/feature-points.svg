@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" width="760" height="300" role="img" aria-labelledby="title desc">
+  <title id="title">Corner round feature points: current and proposed canvas</title>
+  <desc id="desc">Two panels show the same rounded 90 degree corner. On the left, the current canvas shows the trimmed lines, the arc and the radius label, with the tangent points hidden. On the right, the proposed canvas also shows a derived centre point and the two tangent points as small construction dots, with a dashed radius from the centre.</desc>
+
+  <style>
+    .panel { fill: #ffffff; stroke: #e5e5e5; }
+    .label { font: 600 12px ui-sans-serif, system-ui, sans-serif; fill: #404040; }
+    .note { font: 12px ui-sans-serif, system-ui, sans-serif; fill: #737373; }
+    .cut { fill: none; stroke: #171717; stroke-width: 2; }
+    .arc { fill: none; stroke: #171717; stroke-width: 2; }
+    .construction { fill: #737373; }
+    .derived { fill: #ffffff; stroke: #737373; stroke-width: 1.5; }
+    .primary { fill: #16a34a; }
+    .radius { stroke: #737373; stroke-width: 1; stroke-dasharray: 4 3; fill: none; }
+    .radius-label { font: 11px ui-sans-serif, system-ui, sans-serif; fill: #737373; }
+  </style>
+
+  <!-- Current canvas -->
+  <g>
+    <rect class="panel" x="8" y="8" width="360" height="240" rx="8" />
+    <text class="label" x="24" y="34">Current</text>
+    <text class="note" x="24" y="52">Tangents exist in the model but are not drawn; no centre.</text>
+
+    <!-- trimmed lines -->
+    <path class="cut" d="M40 90 L150 90" />
+    <path class="cut" d="M190 90 L190 220" />
+
+    <!-- tangent arc: centre (150,130), r 40, from (150,90) to (190,130) -->
+    <path class="arc" d="M150 90 C172.09 90 190 107.91 190 130" />
+
+    <!-- sharp corner kept as a construction point -->
+    <circle class="construction" cx="190" cy="90" r="2" />
+
+    <!-- radius label, as it renders when the round is active -->
+    <g>
+      <rect x="171" y="140" width="38" height="16" rx="2" fill="#ffffff" />
+      <text class="radius-label" x="190" y="152" text-anchor="middle">R 12</text>
+    </g>
+
+    <text class="note" x="24" y="238">No centre to measure from; tangency is invisible.</text>
+  </g>
+
+  <!-- Proposed canvas -->
+  <g>
+    <rect class="panel" x="392" y="8" width="360" height="240" rx="8" />
+    <text class="label" x="408" y="34">Proposed</text>
+    <text class="note" x="408" y="52">Centre and tangent points are visible feature points.</text>
+
+    <!-- trimmed lines -->
+    <path class="cut" d="M424 90 L534 90" />
+    <path class="cut" d="M574 90 L574 220" />
+
+    <!-- tangent arc: centre (534,130), r 40 -->
+    <path class="arc" d="M534 90 C556.09 90 574 107.91 574 130" />
+
+    <!-- sharp corner kept as a construction point -->
+    <circle class="construction" cx="574" cy="90" r="2" />
+
+    <!-- derived centre and radius -->
+    <path class="radius" d="M534 130 L534 90" />
+    <path class="radius" d="M534 130 L574 130" />
+    <text class="radius-label" x="540" y="123">r</text>
+    <circle class="derived" cx="534" cy="130" r="2.5" />
+
+    <!-- tangent feature points -->
+    <circle class="derived" cx="534" cy="90" r="2.5" />
+    <circle class="derived" cx="574" cy="130" r="2.5" />
+
+    <g>
+      <rect x="423" y="140" width="38" height="16" rx="2" fill="#ffffff" />
+      <text class="radius-label" x="442" y="152" text-anchor="middle">R 12</text>
+    </g>
+
+    <text class="note" x="408" y="238">All three points select, snap and take a driven dimension.</text>
+  </g>
+
+  <!-- legend -->
+  <g transform="translate(24 272)">
+    <circle class="derived" cx="6" cy="6" r="2.5" />
+    <text class="note" x="18" y="10">derived feature point (fixed, construction)</text>
+    <circle class="primary" cx="270" cy="6" r="2.5" />
+    <text class="note" x="282" y="10">feature point of the selected round</text>
+  </g>
+</svg>

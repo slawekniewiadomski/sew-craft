@@ -16,7 +16,14 @@ class PatternVersion extends Model
         'pattern_id',
         'version',
         'geometry',
+        'origin',
     ];
+
+    /** A checkpoint written by an explicit Save or an upgrade archive. */
+    public const ORIGIN_MANUAL = 'manual';
+
+    /** A background write; only the newest autosave row per pattern is kept. */
+    public const ORIGIN_AUTOSAVE = 'autosave';
 
     /**
      * @return array<string, string>
