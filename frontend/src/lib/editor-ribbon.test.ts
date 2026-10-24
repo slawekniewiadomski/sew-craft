@@ -109,7 +109,7 @@ describe('RIBBON_GROUPS', () => {
   });
 
   it('offers the three rectangle gestures as one group, diagonal first', () => {
-    const group = RIBBON_GROUPS[1]!.items.find(
+    const group = RIBBON_GROUPS[2]!.items.find(
       (item): item is RibbonToolGroupItem => item.kind === 'tool-group',
     )!;
 
