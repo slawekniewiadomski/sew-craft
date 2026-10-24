@@ -102,12 +102,12 @@ to start implementation, so the spec's recommended answers are taken as accepted
 
 ### Phase 3: Control
 
-- [ ] 3.1 Add the shadcn-vue `dropdown-menu` wrappers and their test
-- [ ] 3.2 Build `RibbonToolGroup.vue` with displayed-mode resolution, split-button markup, primary and menu selection, focus return and read-only state, tested against the behaviour table
-- [ ] 3.3 Wire the group into `EditorRibbon.vue`, widen `isActive` and forward `select-tool`, with ribbon tests at 24 controls
+- [x] 3.1 Add the shadcn-vue `dropdown-menu` wrappers and their test — fed1e9f
+- [x] 3.2 Build `RibbonToolGroup.vue` with displayed-mode resolution, split-button markup, primary and menu selection, focus return and read-only state, tested against the behaviour table — fed1e9f, 2258168
+- [x] 3.3 Wire the group into `EditorRibbon.vue`, widen `isActive` and forward `select-tool`, with ribbon tests at 24 controls — fed1e9f
 
 ### Phase 4: Verification and docs
 
-- [ ] 4.1 Update `.ai/specs/2026-10-23-rectangle-tool.md` to record the grouped ribbon surface
+- [x] 4.1 Update `.ai/specs/2026-10-23-rectangle-tool.md` to record the grouped ribbon surface — 54dce17
 - [ ] 4.2 Run the full validation gate and record the result on the PR
 - [ ] 4.3 Verify the grouped control in the running app — all three modes, toggle, Escape, keyboard, read-only and narrow width — and record the result on the PR
