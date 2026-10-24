@@ -16,6 +16,7 @@ export type RibbonIconName =
   | 'rectangle'
   | 'rectangle-center'
   | 'rectangle-aligned'
+  | 'chevron-down'
   | 'dimension'
   | 'cut-dimension'
   | 'piece'
@@ -57,6 +58,7 @@ const ACTION_ICONS: Record<ActionIconName, RibbonIcon> = {
   'cut-dimension': {
     paths: ['M2.5 2 V10', 'M9.5 2 V10', 'M2.5 6 H6', 'M7.5 6 H9.5', 'M4.8 9.4 L9.2 2.6'],
   },
+  'chevron-down': { paths: ['M3 4.6 L6 7.6 L9 4.6'] },
   piece: {
     paths: [
       'M2.4 3.4 L6 1.6 L9.6 3.4 V8.6 L6 10.4 L2.4 8.6 Z',

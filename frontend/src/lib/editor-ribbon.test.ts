@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { RIBBON_GROUPS } from './editor-ribbon';
+import { RIBBON_GROUPS, type RibbonToolGroupItem } from './editor-ribbon';
 
 describe('RIBBON_GROUPS', () => {
   it('groups controls into tools, sketching, constraints and export', () => {
@@ -50,25 +50,39 @@ describe('RIBBON_GROUPS', () => {
       { kind: 'tool', id: 'tool-add_arc', label: 'Arc', icon: 'arc', tool: 'add_arc' },
       { kind: 'tool', id: 'tool-add_circle', label: 'Circle', icon: 'circle', tool: 'add_circle' },
       {
-        kind: 'tool',
-        id: 'tool-add_rectangle',
+        kind: 'tool-group',
+        id: 'tool-rectangle',
         label: 'Rectangle',
-        icon: 'rectangle',
-        tool: 'add_rectangle',
-      },
-      {
-        kind: 'tool',
-        id: 'tool-add_center_rectangle',
-        label: 'Centre rectangle',
-        icon: 'rectangle-center',
-        tool: 'add_center_rectangle',
-      },
-      {
-        kind: 'tool',
-        id: 'tool-add_3point_rectangle',
-        label: '3-point rectangle',
-        icon: 'rectangle-aligned',
-        tool: 'add_3point_rectangle',
+        primary: {
+          kind: 'tool',
+          id: 'tool-add_rectangle',
+          label: 'Rectangle',
+          icon: 'rectangle',
+          tool: 'add_rectangle',
+        },
+        items: [
+          {
+            kind: 'tool',
+            id: 'tool-add_rectangle',
+            label: 'Rectangle',
+            icon: 'rectangle',
+            tool: 'add_rectangle',
+          },
+          {
+            kind: 'tool',
+            id: 'tool-add_center_rectangle',
+            label: 'Centre rectangle',
+            icon: 'rectangle-center',
+            tool: 'add_center_rectangle',
+          },
+          {
+            kind: 'tool',
+            id: 'tool-add_3point_rectangle',
+            label: '3-point rectangle',
+            icon: 'rectangle-aligned',
+            tool: 'add_3point_rectangle',
+          },
+        ],
       },
       {
         kind: 'tool',
@@ -84,6 +98,21 @@ describe('RIBBON_GROUPS', () => {
         icon: 'cut-dimension',
         tool: 'cut_dimension',
       },
+    ]);
+  });
+
+  it('offers the three rectangle gestures as one group, diagonal first', () => {
+    const group = RIBBON_GROUPS[1]!.items.find(
+      (item): item is RibbonToolGroupItem => item.kind === 'tool-group',
+    )!;
+
+    expect(group.id).toBe('tool-rectangle');
+    expect(group.label).toBe('Rectangle');
+    expect(group.primary.tool).toBe('add_rectangle');
+    expect(group.items.map((item) => item.tool)).toEqual([
+      'add_rectangle',
+      'add_center_rectangle',
+      'add_3point_rectangle',
     ]);
   });
 
