@@ -1,5 +1,5 @@
 import { getEntity } from './document.js';
-import { pieceById, resolveCutAnchor, type CutAnchorResolution } from './piece.js';
+import { pieceById, resolvePieceAnchor, type CutAnchorResolution } from './piece.js';
 import type {
   Constraint,
   CutAnchor,
@@ -756,9 +756,10 @@ function spanBetween(
 }
 
 /**
- * The span between two cut anchors of one piece, or `null` when an anchor no
- * longer resolves. A pair that has drifted out of parallel still resolves as the
- * first midpoint measured to the second cut line.
+ * The span between two anchors of one piece, or `null` when an anchor no longer
+ * resolves. Each anchor resolves against the loop it names; a pair that has
+ * drifted out of parallel still resolves as the first midpoint measured to the
+ * second cut line.
  */
 export function resolveCutSpanForAnchors(
   document: PatternDocument,
@@ -766,8 +767,8 @@ export function resolveCutSpanForAnchors(
   a: CutAnchor,
   b: CutAnchor,
 ): { a: Vec2; b: Vec2 } | null {
-  const resolvedA = resolveCutAnchor(document, piece, a);
-  const resolvedB = resolveCutAnchor(document, piece, b);
+  const resolvedA = resolvePieceAnchor(document, piece, a);
+  const resolvedB = resolvePieceAnchor(document, piece, b);
   if (resolvedA === null || resolvedB === null) return null;
   return spanBetween(piece, a, b, resolvedA, resolvedB);
 }
@@ -823,13 +824,15 @@ export function cutAnchorIssue(
 
   // The same edge twice, or one of its vertices against the edge itself, is the
   // same anchor by identity; a bevel join makes their cut points differ, so no
-  // distance test can stand in for this.
-  if (a.edge === b.edge && (a.at === b.at || a.at === 'edge' || b.at === 'edge')) {
+  // distance test can stand in for this. A stitch and a cut anchor on one vertex
+  // are different measurements, so the loop is part of the identity.
+  const sameLoop = (a.loop ?? 'cut') === (b.loop ?? 'cut');
+  if (sameLoop && a.edge === b.edge && (a.at === b.at || a.at === 'edge' || b.at === 'edge')) {
     return { reason: 'same-anchor', span: null };
   }
 
-  const resolvedA = resolveCutAnchor(document, piece, a);
-  const resolvedB = resolveCutAnchor(document, piece, b);
+  const resolvedA = resolvePieceAnchor(document, piece, a);
+  const resolvedB = resolvePieceAnchor(document, piece, b);
   if (resolvedA === null || resolvedB === null) return { reason: 'missing', span: null };
 
   if (

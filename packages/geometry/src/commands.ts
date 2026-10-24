@@ -1783,6 +1783,19 @@ function requireCutAnchor(commandType: CommandType, piece: Piece, anchor: CutAnc
       `anchor ${String(anchor.at)} must be 'start', 'end' or 'edge'`,
     );
   }
+  if (anchor.loop !== undefined && anchor.loop !== 'stitch' && anchor.loop !== 'cut') {
+    throw new CommandValidationError(
+      commandType,
+      `anchor loop ${String(anchor.loop)} must be 'stitch' or 'cut'`,
+    );
+  }
+  // A stitch edge anchor would duplicate a cut edge and has no stitch equivalent.
+  if (anchor.loop === 'stitch' && anchor.at === 'edge') {
+    throw new CommandValidationError(
+      commandType,
+      "a stitch anchor must be 'start' or 'end', not 'edge'",
+    );
+  }
 }
 
 /** The command error for each shared cut-anchor rejection. */

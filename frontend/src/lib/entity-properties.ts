@@ -12,6 +12,7 @@ import {
   type CircleEntity,
   type Constraint,
   type ConstraintType,
+  type CutAnchor,
   type DimensionOrientation,
   type DimensionState,
   type Entity,
@@ -134,6 +135,16 @@ export type EntityProperties = {
   dimensions: DimensionSummary[];
   constraints: ConstraintSummary[];
 };
+
+/**
+ * How an anchor reads in the inspector: a stitch anchor names its loop, while a
+ * cut anchor keeps the shape it has always had.
+ */
+function cutAnchorText(anchor: CutAnchor): string {
+  return (anchor.loop ?? 'cut') === 'stitch'
+    ? `stitch:${anchor.edge}:${anchor.at}`
+    : `${anchor.edge}:${anchor.at}`;
+}
 
 function geometryOf(entity: Entity): EntityGeometry {
   switch (entity.kind) {
@@ -305,10 +316,10 @@ export function entityProperties(
               value: derivedDimensionValue(document, constraint),
               state: derivedDimensionState(document, constraint),
               orientation: constraintOrientation(constraint),
-              anchors: [
-                `${constraint.a.edge}:${constraint.a.at}`,
-                `${constraint.b.edge}:${constraint.b.at}`,
-              ] as [string, string],
+              anchors: [cutAnchorText(constraint.a), cutAnchorText(constraint.b)] as [
+                string,
+                string,
+              ],
             },
           ];
         });

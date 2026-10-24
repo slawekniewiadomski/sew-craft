@@ -28,6 +28,7 @@ import {
   pieceSummary,
   piecesAtPoint,
   pieceTitleLine,
+  nearestLoopHandle,
 } from './pieces';
 
 const point = (id: string, x: number, y: number): PointEntity => ({
@@ -466,6 +467,48 @@ describe('findDerivedDimension', () => {
         { edge: 'cd', at: 'start' },
       ),
     ).toBeUndefined();
+  });
+
+  it('keeps a stitch and a cut anchor on one vertex apart', () => {
+    const stitchConstraint: DerivedDistanceConstraint = {
+      ...constraint,
+      a: { edge: 'ab', at: 'start', loop: 'stitch' },
+      b: { edge: 'bc', at: 'end', loop: 'stitch' },
+    };
+    const document: PatternDocument = { ...squareDocument(), constraints: [stitchConstraint] };
+
+    expect(findDerivedDimension(document, 'p1', stitchConstraint.a, stitchConstraint.b)).toBe(
+      stitchConstraint,
+    );
+    expect(
+      findDerivedDimension(document, 'p1', { edge: 'ab', at: 'start' }, { edge: 'bc', at: 'end' }),
+    ).toBeUndefined();
+  });
+});
+
+describe('nearestLoopHandle', () => {
+  const candidates = [
+    { key: 'first', point: { x: 0, y: 0 } },
+    { key: 'second', point: { x: 10, y: 0 } },
+  ];
+
+  it('returns the nearest candidate within the radius', () => {
+    expect(nearestLoopHandle(candidates, { x: 2, y: 0 }, 8)?.key).toBe('first');
+    expect(nearestLoopHandle(candidates, { x: 8, y: 0 }, 8)?.key).toBe('second');
+  });
+
+  it('keeps the first candidate on an exact distance tie', () => {
+    expect(nearestLoopHandle(candidates, { x: 5, y: 0 }, 8)?.key).toBe('first');
+  });
+
+  it('includes a candidate exactly on the radius and excludes one outside it', () => {
+    expect(nearestLoopHandle(candidates, { x: 0, y: 8 }, 8)?.key).toBe('first');
+    expect(nearestLoopHandle(candidates, { x: 0, y: 8.01 }, 8)).toBeNull();
+  });
+
+  it('returns null when nothing is close enough', () => {
+    expect(nearestLoopHandle(candidates, { x: 100, y: 100 }, 8)).toBeNull();
+    expect(nearestLoopHandle([], { x: 0, y: 0 }, 8)).toBeNull();
   });
 });
 

@@ -109,8 +109,8 @@ it('exposes the derived cut dimension command', function () {
     $this->getJson('/api/commands')
         ->assertOk()
         ->assertJsonPath('commands.add_derived_dimension.params.piece', 'entity_id')
-        ->assertJsonPath('commands.add_derived_dimension.params.a', 'cut_anchor { edge: entity_id, at: start|end|edge }')
-        ->assertJsonPath('commands.add_derived_dimension.params.b', 'cut_anchor { edge: entity_id, at: start|end|edge }')
+        ->assertJsonPath('commands.add_derived_dimension.params.a', 'cut_anchor { edge: entity_id, at: start|end|edge, loop: stitch|cut? }')
+        ->assertJsonPath('commands.add_derived_dimension.params.b', 'cut_anchor { edge: entity_id, at: start|end|edge, loop: stitch|cut? }')
         ->assertJsonPath('commands.add_derived_dimension.params.orientation', 'aligned|horizontal|vertical?')
         ->assertJsonPath('commands.add_derived_dimension.params.offset', 'number?')
         ->assertJsonPath('commands.add_derived_dimension.inverse', 'remove_constraint');
