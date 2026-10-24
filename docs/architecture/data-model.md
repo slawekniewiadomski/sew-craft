@@ -121,6 +121,13 @@ can be written when it changes.
       "a": { "edge": "l1", "at": "start" },
       "b": { "edge": "l1", "at": "end" },
     },
+    {
+      "id": "c5",
+      "type": "derived_distance", // corner-to-edge and edge-to-edge anchors are allowed
+      "piece": "pc1",
+      "a": { "edge": "l1", "at": "edge" },
+      "b": { "edge": "l2", "at": "edge" },
+    },
   ],
   "pieces": [
     {
@@ -226,15 +233,43 @@ stores no duplicate `value`. When the source disappears, the dependent keeps its
 present. A pre-feature build accepts the document but reports a line anchor as an
 unknown point when it solves, so a line-anchored document is not downgradeable.
 
-A `derived_distance` constraint is a **cut dimension**. It addresses two loop
-vertices of one piece by `{ edge, at }` anchors rather than by point id, because
-the cut loop has no entities of its own. Its value is measured from the resolved
-cut loop on every read, it adds no solver equation (`solveDocument` filters it
-out), and it is read-only: `update_constraint` accepts only `orientation` and
+A `derived_distance` constraint is a **cut dimension**. It addresses two anchors
+of one piece by `{ edge, at: 'start' | 'end' | 'edge', loop?: 'stitch' | 'cut' }`
+rather than by point id, because the loops have no entities of their own.
+`start`/`end` address a loop vertex; `edge` addresses the whole straight cut
+edge's **own** cut segment, the source line plus the edge's cut-distance offset
+(its cut line). `loop` picks the loop the anchor resolves against: omitted means
+`cut`, the allowance boundary and the meaning every stored anchor has always had;
+`stitch` addresses the seamline itself, including the trimmed tangent points of a
+corner-round bridge. `loop: 'stitch'` never combines with `at: 'edge'`. A stitch
+anchor is an ordinary optional field, so a `0.2` document without it loads and
+measures exactly as before; an older build ignores `loop` and reads the cut
+position, a wrong number rather than a crash. An edge anchor
+resolves from the edge's own outgoing/incoming cut points, not from two
+`pieceCutVertex` calls, because a bevel join's two points differ. Its value is
+measured from the resolved loop on every read: two vertices as stored, a
+vertex and its perpendicular foot on the other edge's cut line (normalized
+vertex-first), or two edges' canonical first midpoint and its foot on the second
+cut line. Edge-to-edge pairs must be parallel within 0.5° when placed; a later
+drift still resolves as midpoint → line. A span of at most 1e-9 mm resolves to
+nothing, so a dynamic zero gap renders as broken rather than `0`. An edge-anchored
+dimension is always aligned.
+
+The dimension adds no solver equation (`solveDocument` filters it out) and is
+read-only: `update_constraint` accepts only `orientation` (vertex-to-vertex) and
 `offset`. When the piece or an anchored edge is deleted, `delete_entity` or
 `delete_piece` removes the dimension, and a cut dimension whose anchors no longer
 resolve keeps its references but has no reading to show, so it renders as broken
-without a number.
+without a number. Deleting a loop **point** leaves the piece in place, so the
+dimension stays and becomes broken; only the piece/edge cascade removes it.
+
+**Schema decision (Q4).** The schema string stays `sewcraft.pattern/0.2`: `0.3`
+is reserved for removing the legacy `seams` field, so this feature does not
+consume it. An older build reads `at: 'edge'` as `end` (its anchor resolver only
+knows two values), renders the wrong vertex and can edit and save that misread.
+That is the accepted shipping-now trade-off, documented in
+`BACKWARD_COMPATIBILITY.md`; a later schema can make the downgrade read-only once
+the `0.3` seam removal has landed.
 
 See `docs/architecture/geometry-core.md` for
 entity semantics and `docs/domain/command-spec.json` for the machine-readable

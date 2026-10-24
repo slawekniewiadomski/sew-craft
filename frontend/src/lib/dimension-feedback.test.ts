@@ -13,6 +13,7 @@ import {
   cutAnchorPreviewPosition,
   cutEdgeCandidateFor,
   cutGhostFor,
+  cutLoopCandidateFor,
   cutPointCandidateFor,
   dimensionCandidateFor,
   dimensionGhostFor,
@@ -204,6 +205,40 @@ describe('cutPointCandidateFor', () => {
   });
 });
 
+describe('cutLoopCandidateFor', () => {
+  it('keeps a derived corner only when the pending pick accepts it', () => {
+    const handle = {
+      key: 'cut-p1-bc-end',
+      piece: squarePiece,
+      anchor: { edge: 'bc', at: 'end' as const },
+    };
+    expect(cutLoopCandidateFor(squareDoc, handle, null)).toEqual({
+      ...handle,
+      pointId: null,
+    });
+
+    const pending = { piece: squarePiece, anchor: { edge: 'ab', at: 'end' as const } };
+    expect(cutLoopCandidateFor(squareDoc, handle, pending)).toEqual({
+      ...handle,
+      pointId: null,
+    });
+    expect(
+      cutLoopCandidateFor(squareDoc, { ...handle, anchor: { edge: 'ab', at: 'end' } }, pending),
+    ).toBeNull();
+    expect(
+      cutLoopCandidateFor(
+        squareDoc,
+        {
+          ...handle,
+          piece: { id: 'p2', edges: ['ef'], allowances: [] },
+          anchor: { edge: 'ef', at: 'start' },
+        },
+        pending,
+      ),
+    ).toBeNull();
+  });
+});
+
 describe('cutEdgeCandidateFor', () => {
   it('accepts a piece edge and rejects everything else', () => {
     expect(cutEdgeCandidateFor(squareDoc, null)).toBeNull();
@@ -238,6 +273,13 @@ describe('cutAnchorPreviewPosition', () => {
       x: 100,
       y: 0,
     });
+    expect(
+      cutAnchorPreviewPosition(squareDoc, squarePiece, {
+        edge: 'ab',
+        at: 'start',
+        loop: 'stitch',
+      }),
+    ).toEqual({ x: 0, y: 0 });
     expect(
       cutAnchorPreviewPosition(squareDoc, squarePiece, { edge: 'missing', at: 'start' }),
     ).toBeNull();

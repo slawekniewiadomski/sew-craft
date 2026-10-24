@@ -12,7 +12,9 @@ import {
 import { describe, expect, it } from 'vitest';
 
 import {
+  anchorForEdge,
   anchorForPoint,
+  canonicalCutAnchors,
   edgeEndpoints,
   edgeLabel,
   findDerivedDimension,
@@ -26,6 +28,7 @@ import {
   pieceSummary,
   piecesAtPoint,
   pieceTitleLine,
+  nearestLoopHandle,
 } from './pieces';
 
 const point = (id: string, x: number, y: number): PointEntity => ({
@@ -315,6 +318,62 @@ describe('anchorForPoint', () => {
   });
 });
 
+describe('anchorForEdge', () => {
+  it('addresses a whole straight edge of the piece', () => {
+    const document = squareDocument();
+    const piece = squarePiece(document);
+
+    expect(anchorForEdge(document, piece, 'ab')).toEqual({ edge: 'ab', at: 'edge' });
+  });
+
+  it('rejects a curve, an edge outside the piece and a construction line', () => {
+    const document: PatternDocument = {
+      ...createEmptyDocument(),
+      entities: [
+        point('a', 0, 0),
+        point('b', 100, 0),
+        point('c', 100, 100),
+        line('ab', 'a', 'b'),
+        line('constr', 'b', 'c', true),
+        curve('curve', 'a', 'b', 'c', 'a'),
+      ],
+    };
+    const piece: Piece = { id: 'p', edges: ['ab', 'constr', 'curve'], allowances: [] };
+
+    expect(anchorForEdge(document, piece, 'curve')).toBeNull();
+    expect(anchorForEdge(document, piece, 'constr')).toBeNull();
+    expect(anchorForEdge(document, piece, 'missing')).toBeNull();
+  });
+});
+
+describe('canonicalCutAnchors', () => {
+  it('orders two edges by piece edge order', () => {
+    const piece = squarePiece(squareDocument());
+    const bc = { edge: 'bc', at: 'edge' } as const;
+    const da = { edge: 'da', at: 'edge' } as const;
+
+    expect(canonicalCutAnchors(piece, bc, da)).toEqual([bc, da]);
+    expect(canonicalCutAnchors(piece, da, bc)).toEqual([bc, da]);
+  });
+
+  it('normalizes a vertex and an edge to vertex-first', () => {
+    const piece = squarePiece(squareDocument());
+    const vertex = { edge: 'ab', at: 'start' } as const;
+    const edge = { edge: 'cd', at: 'edge' } as const;
+
+    expect(canonicalCutAnchors(piece, vertex, edge)).toEqual([vertex, edge]);
+    expect(canonicalCutAnchors(piece, edge, vertex)).toEqual([vertex, edge]);
+  });
+
+  it('keeps two vertices in pick order', () => {
+    const piece = squarePiece(squareDocument());
+    const a = { edge: 'ab', at: 'start' } as const;
+    const b = { edge: 'bc', at: 'end' } as const;
+
+    expect(canonicalCutAnchors(piece, a, b)).toEqual([a, b]);
+  });
+});
+
 describe('piecesAtPoint', () => {
   it('returns every piece that has the point on its loop, in document order', () => {
     const document = squareDocument();
@@ -375,6 +434,25 @@ describe('findDerivedDimension', () => {
     expect(findDerivedDimension(document, 'p1', b, a)).toBe(constraint);
   });
 
+  it('finds an edge-anchored span in either direction', () => {
+    const edgeConstraint: DerivedDistanceConstraint = {
+      id: 'edge-cut',
+      type: 'derived_distance',
+      piece: 'p1',
+      a: { edge: 'ab', at: 'edge' },
+      b: { edge: 'cd', at: 'edge' },
+    };
+    const document: PatternDocument = { ...squareDocument(), constraints: [edgeConstraint] };
+
+    expect(
+      findDerivedDimension(document, 'p1', { edge: 'cd', at: 'edge' }, { edge: 'ab', at: 'edge' }),
+    ).toBe(edgeConstraint);
+    // An edge and its own vertex are a different measurement, not the same pair.
+    expect(
+      findDerivedDimension(document, 'p1', { edge: 'ab', at: 'edge' }, { edge: 'ab', at: 'start' }),
+    ).toBeUndefined();
+  });
+
   it('ignores another piece and a different anchor pair', () => {
     const document: PatternDocument = { ...squareDocument(), constraints: [constraint] };
 
@@ -389,6 +467,48 @@ describe('findDerivedDimension', () => {
         { edge: 'cd', at: 'start' },
       ),
     ).toBeUndefined();
+  });
+
+  it('keeps a stitch and a cut anchor on one vertex apart', () => {
+    const stitchConstraint: DerivedDistanceConstraint = {
+      ...constraint,
+      a: { edge: 'ab', at: 'start', loop: 'stitch' },
+      b: { edge: 'bc', at: 'end', loop: 'stitch' },
+    };
+    const document: PatternDocument = { ...squareDocument(), constraints: [stitchConstraint] };
+
+    expect(findDerivedDimension(document, 'p1', stitchConstraint.a, stitchConstraint.b)).toBe(
+      stitchConstraint,
+    );
+    expect(
+      findDerivedDimension(document, 'p1', { edge: 'ab', at: 'start' }, { edge: 'bc', at: 'end' }),
+    ).toBeUndefined();
+  });
+});
+
+describe('nearestLoopHandle', () => {
+  const candidates = [
+    { key: 'first', point: { x: 0, y: 0 } },
+    { key: 'second', point: { x: 10, y: 0 } },
+  ];
+
+  it('returns the nearest candidate within the radius', () => {
+    expect(nearestLoopHandle(candidates, { x: 2, y: 0 }, 8)?.key).toBe('first');
+    expect(nearestLoopHandle(candidates, { x: 8, y: 0 }, 8)?.key).toBe('second');
+  });
+
+  it('keeps the first candidate on an exact distance tie', () => {
+    expect(nearestLoopHandle(candidates, { x: 5, y: 0 }, 8)?.key).toBe('first');
+  });
+
+  it('includes a candidate exactly on the radius and excludes one outside it', () => {
+    expect(nearestLoopHandle(candidates, { x: 0, y: 8 }, 8)?.key).toBe('first');
+    expect(nearestLoopHandle(candidates, { x: 0, y: 8.01 }, 8)).toBeNull();
+  });
+
+  it('returns null when nothing is close enough', () => {
+    expect(nearestLoopHandle(candidates, { x: 100, y: 100 }, 8)).toBeNull();
+    expect(nearestLoopHandle([], { x: 0, y: 0 }, 8)).toBeNull();
   });
 });
 

@@ -1,8 +1,10 @@
 import {
+  cutAnchorIssue,
   distanceAnchorIssue,
   getEntity,
   lineEndpoints,
   pieceCutVertex,
+  pieceLoopVertex,
   type CutAnchor,
   type EntityId,
   type PatternDocument,
@@ -10,7 +12,7 @@ import {
   type Vec2,
 } from '@sewcraft/geometry';
 
-import { anchorForPoint, edgeEndpoints, pieceOwningEdge, piecesAtPoint } from './pieces';
+import { anchorForEdge, anchorForPoint, pieceOwningEdge, piecesAtPoint } from './pieces';
 
 /** One click the Dimension tool accepts: a point or a whole straight line. */
 export interface DimensionPick {
@@ -32,7 +34,10 @@ export interface CutPick {
 
 /** A cut corner that can be the next pick of the current gesture. */
 export interface CutPointCandidate extends CutPick {
-  pointId: EntityId;
+  /** The entity point under the pointer; `null` for a derived loop corner. */
+  pointId: EntityId | null;
+  /** The loop-handle key, when the candidate came from a derived corner. */
+  key?: string;
 }
 
 /** A whole piece edge that would place a cut dimension in one click. */
@@ -186,14 +191,33 @@ export function cutPointCandidateFor(
 
   // `piecesAtPoint()` only returns pieces whose loop resolves this point.
   const anchor = anchorForPoint(document, piece, hit.id)!;
-  if (pending !== null && anchor.edge === pending.anchor.edge && anchor.at === pending.anchor.at) {
+  if (pending !== null && cutAnchorIssue(document, piece, pending.anchor, anchor).reason !== null) {
     return null;
   }
 
   return { piece, anchor, pointId: hit.id };
 }
 
-/** A whole piece edge, the one-click cut pick; `null` for a non-piece entity. */
+/**
+ * A derived loop corner under the pointer, validated against a pending pick so
+ * only the same piece's corners (and a different anchor) stay candidates.
+ */
+export function cutLoopCandidateFor(
+  document: PatternDocument,
+  handle: { key: string; piece: Piece; anchor: CutAnchor },
+  pending: CutPick | null,
+): CutPointCandidate | null {
+  if (
+    pending !== null &&
+    cutAnchorIssue(document, handle.piece, pending.anchor, handle.anchor).reason !== null
+  ) {
+    return null;
+  }
+
+  return { piece: handle.piece, anchor: handle.anchor, pointId: null, key: handle.key };
+}
+
+/** A whole straight piece edge, the one-click cut pick; `null` otherwise. */
 export function cutEdgeCandidateFor(
   document: PatternDocument,
   hit: FeedbackHit | null,
@@ -201,18 +225,20 @@ export function cutEdgeCandidateFor(
   if (hit === null) return null;
 
   const piece = pieceOwningEdge(document, hit.id);
-  if (piece === null || edgeEndpoints(document, hit.id) === null) return null;
+  if (piece === null || anchorForEdge(document, piece, hit.id) === null) return null;
 
   return { piece, edge: hit.id };
 }
 
-/** The cut-loop preview position of one anchor, or `null` when it is stale. */
+/** The loop preview position of one anchor, or `null` when it is stale. */
 export function cutAnchorPreviewPosition(
   document: PatternDocument,
   piece: Piece,
   anchor: CutAnchor,
 ): Vec2 | null {
-  return pieceCutVertex(document, piece, anchor);
+  return (anchor.loop ?? 'cut') === 'stitch'
+    ? pieceLoopVertex(document, piece, anchor)
+    : pieceCutVertex(document, piece, anchor);
 }
 
 /** The dashed cut ghost from the first corner to the pointer or a candidate. */

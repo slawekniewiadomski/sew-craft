@@ -12,6 +12,7 @@ import {
   type PatternDocument,
   type Piece,
   type PieceMetrics,
+  type Vec2,
 } from '@sewcraft/geometry';
 
 import { uniformAllowance, type AllowanceChoice } from './allowance-defaults';
@@ -230,6 +231,38 @@ export function anchorForPoint(
   return null;
 }
 
+/**
+ * The cut anchor a piece's whole straight edge contributes. `null` for an edge
+ * outside the piece or an edge that is not a cut line: a curve's or arc's cut
+ * segment is a chord, so it is never a straight edge anchor.
+ */
+export function anchorForEdge(
+  document: PatternDocument,
+  piece: Piece,
+  edgeId: EntityId,
+): CutAnchor | null {
+  if (!piece.edges.includes(edgeId)) return null;
+  const entity = getEntity(document, edgeId);
+  return entity?.kind === 'line' && !entity.construction ? { edge: edgeId, at: 'edge' } : null;
+}
+
+/**
+ * Order two anchors canonically: edge-to-edge by the piece's edge order, a
+ * vertex and an edge vertex-first, and two vertices as picked. Storing the
+ * canonical order keeps a reversed re-placement idempotent.
+ */
+export function canonicalCutAnchors(
+  piece: Piece,
+  a: CutAnchor,
+  b: CutAnchor,
+): [CutAnchor, CutAnchor] {
+  if (a.at === 'edge' && b.at === 'edge') {
+    return piece.edges.indexOf(a.edge) <= piece.edges.indexOf(b.edge) ? [a, b] : [b, a];
+  }
+  if (a.at === 'edge') return [b, a];
+  return [a, b];
+}
+
 /** Every piece that has this point on its loop, in document order. */
 export function piecesAtPoint(document: PatternDocument, pointId: EntityId): Piece[] {
   return document.pieces.filter((piece) => anchorForPoint(document, piece, pointId) !== null);
@@ -251,7 +284,30 @@ export function edgeLabel(document: PatternDocument, edgeId: EntityId): string {
 }
 
 function sameAnchor(a: CutAnchor, b: CutAnchor): boolean {
-  return a.edge === b.edge && a.at === b.at;
+  return a.edge === b.edge && a.at === b.at && (a.loop ?? 'cut') === (b.loop ?? 'cut');
+}
+
+/**
+ * The nearest candidate whose screen point lies within `radius` pixels of the
+ * pointer, or `null`. Ties keep the first candidate, so a caller that orders its
+ * candidates by piece and then edge order gets a stable pick.
+ */
+export function nearestLoopHandle<T extends { point: Vec2 }>(
+  candidates: readonly T[],
+  pointer: Vec2,
+  radius: number,
+): T | null {
+  let best: T | null = null;
+  let bestDistance = 0;
+  for (const candidate of candidates) {
+    const distance = Math.hypot(candidate.point.x - pointer.x, candidate.point.y - pointer.y);
+    if (distance > radius) continue;
+    if (best === null || distance < bestDistance) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  }
+  return best;
 }
 
 /** A cut dimension already measuring this piece span, in either direction. */

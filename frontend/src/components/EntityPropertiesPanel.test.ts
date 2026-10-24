@@ -737,6 +737,27 @@ describe('EntityPropertiesPanel piece card', () => {
     await wrapper.find('[data-testid="entity-remove-cut-dimension-cut"]').trigger('click');
     expect(wrapper.emitted('remove-constraint')).toEqual([['cut']]);
   });
+
+  it('prints an edge anchor as edge in the cut row', async () => {
+    const { wrapper } = panel(
+      pieceDoc({
+        constraints: [
+          {
+            id: 'edge-cut',
+            type: 'derived_distance',
+            piece: 'p1',
+            a: { edge: 'ab', at: 'edge' },
+            b: { edge: 'cd', at: 'edge' },
+          },
+        ],
+      }),
+      'ab',
+    );
+
+    expect(wrapper.find('[data-testid="entity-cut-dimension-edge-cut"]').text()).toContain(
+      'ab:edge → cd:edge',
+    );
+  });
 });
 
 /** The base document plus line `bc` and a 10 mm round at corner `b`. */

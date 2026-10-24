@@ -239,11 +239,11 @@ return [
             'inverse' => 'set_default_allowance',
         ],
         'add_derived_dimension' => [
-            'description' => 'Add a read-only cut dimension between two loop vertices of one piece. Its value follows the cut loop and adds no solver equation.',
+            'description' => 'Add a read-only cut dimension between two corners or straight edges of one piece. Its value follows the cut loop and adds no solver equation.',
             'params' => [
                 'piece' => 'entity_id',
-                'a' => 'cut_anchor',
-                'b' => 'cut_anchor',
+                'a' => 'cut_anchor { edge: entity_id, at: start|end|edge, loop: stitch|cut? }',
+                'b' => 'cut_anchor { edge: entity_id, at: start|end|edge, loop: stitch|cut? }',
                 'orientation' => 'aligned|horizontal|vertical?',
                 'offset' => 'number?',
             ],
