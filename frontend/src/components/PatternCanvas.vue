@@ -13,6 +13,8 @@ import {
   type CornerRound,
   type CurveEntity,
   type CutAnchor,
+  cutAnchorIssue,
+  type CutAnchorIssueReason,
   DEFAULT_DIMENSION_OFFSET,
   type DerivedDistanceConstraint,
   type DimensionOrientation,
@@ -22,6 +24,9 @@ import {
   dimensionGeometry,
   dimensionOffsetForPointer,
   dimensionOffsetFromSpan,
+  distanceAnchorIssue,
+  type DimensionAnchor,
+  type DistanceAnchorReason,
   type DimensionLayout,
   dimensionState,
   dimensionValue,
@@ -33,6 +38,7 @@ import {
   inferOrientationFromSpan,
   isCornerRoundDerived,
   type LineEntity,
+  measureDistanceDimension,
   measureLinearDimension,
   MIN_RADIUS,
   type PatternDocument,
@@ -45,6 +51,7 @@ import {
   resolveCutSpan,
   seamAllowancePaths,
   svgArcCommand,
+  usesCutEdgeAnchor,
   type Vec2,
 } from '@sewcraft/geometry';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -91,7 +98,13 @@ import {
   type DraftingEndpoint,
 } from '@/lib/drafting';
 import type { EditorTool } from '@/lib/editor-tools';
-import { anchorForPoint, edgeEndpoints, pieceOwningEdge, piecesAtPoint } from '@/lib/pieces';
+import {
+  anchorForEdge,
+  anchorForPoint,
+  edgeEndpoints,
+  pieceOwningEdge,
+  piecesAtPoint,
+} from '@/lib/pieces';
 import {
   newRectangleCorners,
   RECTANGLE_CLICKS,
@@ -344,8 +357,13 @@ const rectangleClicks = ref<DraftingEndpoint[]>([]);
 const rectanglePointer = ref<Vec2 | null>(null);
 const spaceHeld = ref(false);
 
-/** Points picked for a dimension that has not yet been placed. */
-const dimensionPending = ref<EntityId[]>([]);
+/** One pick of the Dimension tool: a point or a whole straight line. */
+type DimensionPick = { id: EntityId; kind: DimensionAnchor['kind'] };
+
+/** Anchors picked for a dimension that has not yet been placed. */
+const dimensionPending = ref<DimensionPick[]>([]);
+/** Why the last dimension pick was rejected; cleared by a valid pick. */
+const dimensionHint = ref<string | null>(null);
 /** The dimension being placed; its orientation/offset follow the pointer. */
 const dimensionPlacement = ref<DimensionPlacement | null>(null);
 /** The first corner picked for a cut dimension, with its owning piece. */
@@ -428,13 +446,34 @@ const cutVertexHandles = computed<PointEntity[]>(() => {
   return visiblePoints.value.filter((point) => ids.has(point.id));
 });
 
+/**
+ * Straight piece edges, highlighted while the Cut dimension tool is active so a
+ * whole edge is visibly eligible alongside the corner rings.
+ */
+const cutEdgeHandles = computed<LineView[]>(() => {
+  const ids = new Set<EntityId>();
+  for (const piece of props.document.pieces) {
+    for (const edge of piece.edges) {
+      if (anchorForEdge(props.document, piece, edge) !== null) ids.add(edge);
+    }
+  }
+  return lines.value.filter((entry) => ids.has(entry.line.id));
+});
+
 /** The cut tool's status message: a rejection, or the prompt for a second pick. */
 const cutDimensionHintText = computed<string | null>(() => {
   if (cutDimensionHint.value !== null) return cutDimensionHint.value;
-  if (cutDimensionPending.value !== null && cutDimensionPlacement.value === null) {
-    return 'Pick second corner of the same piece';
-  }
-  return null;
+  if (props.tool !== 'cut_dimension' || cutDimensionPlacement.value !== null) return null;
+  if (cutDimensionPending.value !== null) return 'Pick the second anchor on the same piece.';
+  return 'Pick a corner or a straight edge of one piece.';
+});
+
+/** The Dimension tool's status message: a rejection, or the next pick prompt. */
+const dimensionHintText = computed<string | null>(() => {
+  if (dimensionHint.value !== null) return dimensionHint.value;
+  if (dimensionPlacement.value !== null) return null;
+  if (dimensionPending.value.length > 0) return 'Pick the second anchor.';
+  return props.tool === 'dimension' ? 'Pick a point or a line.' : null;
 });
 
 const roundPickedLineIds = computed(() => {
@@ -1002,13 +1041,14 @@ const dimensionPreviewConstraint = computed<DistanceConstraint | null>(() => {
   const placement = dimensionPlacement.value;
   if (placement === null) return null;
 
-  const measured = measureLinearDimension(
-    props.document,
-    placement.a,
-    placement.b,
-    placement.orientation,
-  )!;
-  if (measured <= 0) return null;
+  const measured = measureDistanceDimension(props.document, {
+    id: 'dimension-preview',
+    type: 'distance',
+    a: placement.a,
+    b: placement.b,
+    orientation: placement.orientation,
+  });
+  if (measured === null || measured <= 0) return null;
 
   // A dimension being placed is a driven preview: it measures without a value.
   return {
@@ -1297,8 +1337,8 @@ function snappedPoint(world: Vec2): Vec2 {
 }
 
 /**
- * Dimension placement: a line picks its own endpoints, points are collected in
- * pairs, and the next click after a complete pair drops the dimension line.
+ * Dimension placement: every dimension picks two anchors, each a point or a
+ * whole straight line; the next click after the second pick drops the line.
  */
 function onDimensionPointer(hit: Hit | null): void {
   if (dimensionPlacement.value !== null) {
@@ -1306,31 +1346,48 @@ function onDimensionPointer(hit: Hit | null): void {
     return;
   }
 
-  if (hit === null || (hit.kind !== 'point' && hit.kind !== 'line')) {
+  if (hit === null) {
     dimensionPending.value = [];
+    dimensionHint.value = null;
     return;
   }
 
-  if (hit.kind === 'line') {
-    const line = props.document.entities.find(
-      (entity): entity is LineEntity => entity.id === hit.id && entity.kind === 'line',
-    )!;
-    dimensionPending.value = [];
-    startDimensionPlacement(line.start, line.end);
+  if (hit.kind !== 'point' && hit.kind !== 'line') {
+    dimensionHint.value = 'Pick a point or a straight line.';
     return;
   }
 
-  const ids = dimensionPending.value.includes(hit.id)
-    ? dimensionPending.value
-    : [...dimensionPending.value, hit.id];
-  if (ids.length < 2) {
-    dimensionPending.value = ids;
+  const pick: DimensionPick = { id: hit.id, kind: hit.kind };
+  const pending = dimensionPending.value;
+  if (pending.length === 0) {
+    dimensionPending.value = [pick];
+    dimensionHint.value = null;
+    return;
+  }
+
+  // Clicking the same anchor twice is a no-op, not a zero-length dimension.
+  if (pending[0]!.id === pick.id) return;
+
+  const issue = distanceAnchorIssue(props.document, pending[0]!.id, pick.id);
+  if (issue.reason !== null) {
+    dimensionHint.value = DIMENSION_ANCHOR_HINTS[issue.reason];
     return;
   }
 
   dimensionPending.value = [];
-  startDimensionPlacement(ids[0]!, ids[1]!);
+  dimensionHint.value = null;
+  startDimensionPlacement(pending[0]!.id, pick.id);
 }
+
+/** The canvas hint for each shared pick-time anchor rejection. */
+const DIMENSION_ANCHOR_HINTS: Record<DistanceAnchorReason, string> = {
+  missing: 'Pick a point or a straight line.',
+  'not-a-line': 'Pick a point or a straight line.',
+  'not-parallel': 'Pick two parallel lines — use Angle for a corner.',
+  'point-on-line': 'The point lies on the line.',
+  coincident: 'The lines are coincident.',
+  'zero-length': 'Pick a point or a straight line.',
+};
 
 function startDimensionPlacement(a: EntityId, b: EntityId): void {
   dimensionPlacement.value = {
@@ -1372,8 +1429,9 @@ function clearCutDimensionGesture(): void {
 }
 
 /**
- * The cut tool's pick rules: two loop vertices of one piece, or one piece edge.
- * A rejected pick leaves a hint instead of emitting a command.
+ * The cut tool's pick rules: two anchors of one piece, where each anchor is a
+ * piece corner or a whole straight edge. A rejected pick leaves a hint instead
+ * of emitting a command; the shared `cutAnchorIssue` decides the rejection.
  */
 function onCutDimensionPointer(hit: Hit | null): void {
   if (cutDimensionPlacement.value !== null) {
@@ -1387,72 +1445,99 @@ function onCutDimensionPointer(hit: Hit | null): void {
     return;
   }
 
+  const pending = cutDimensionPending.value;
+  const candidate = cutAnchorCandidate(hit, pending?.piece ?? null);
+
+  if (candidate === null) {
+    cutDimensionPending.value = null;
+    cutDimensionHint.value =
+      hit.kind === 'curve' || hit.kind === 'arc'
+        ? 'Pick a straight edge.'
+        : 'Pick a corner or a straight edge of a piece.';
+    return;
+  }
+
+  if (pending === null) {
+    cutDimensionHint.value = null;
+    cutDimensionPending.value = candidate;
+    return;
+  }
+
+  const issue = cutAnchorIssue(props.document, pending.piece, pending.anchor, candidate.anchor);
+  if (issue.reason !== null) {
+    if (CUT_ANCHOR_CLEARS_PENDING[issue.reason]) cutDimensionPending.value = null;
+    cutDimensionHint.value = CUT_ANCHOR_HINTS[issue.reason];
+    return;
+  }
+
+  cutDimensionPending.value = null;
+  cutDimensionHint.value = null;
+  startCutDimensionPlacement(pending.piece.id, pending.anchor, candidate.anchor);
+}
+
+/** The hint shown for each shared cut-anchor rejection. */
+const CUT_ANCHOR_HINTS: Record<CutAnchorIssueReason, string> = {
+  missing: 'Pick a corner or a straight edge of a piece.',
+  'not-straight': 'Pick a straight edge.',
+  'different-piece': 'Both anchors must belong to the same piece.',
+  'same-anchor': 'The anchors must be different.',
+  'not-parallel': 'Pick two parallel edges.',
+  'zero-span': 'The anchors must be different.',
+};
+
+/** Whether a rejection resets the first pick instead of keeping it pending. */
+const CUT_ANCHOR_CLEARS_PENDING: Record<CutAnchorIssueReason, boolean> = {
+  missing: true,
+  'not-straight': true,
+  'different-piece': true,
+  'same-anchor': false,
+  'not-parallel': false,
+  'zero-span': false,
+};
+
+/**
+ * The cut anchor a pointer hit addresses: a corner or a whole straight edge of
+ * a piece. A corner shared by several pieces prefers the pending piece.
+ */
+function cutAnchorCandidate(
+  hit: Hit,
+  pendingPiece: Piece | null,
+): { piece: Piece; anchor: CutAnchor } | null {
   if (hit.kind === 'point') {
     const pieces = piecesAtPoint(props.document, hit.id);
-    if (pieces.length === 0) {
-      cutDimensionPending.value = null;
-      cutDimensionHint.value = 'Pick a corner of a piece';
-      return;
-    }
-
-    const pending = cutDimensionPending.value;
-    if (pending === null) {
-      cutDimensionHint.value = null;
-      cutDimensionPending.value = {
-        piece: pieces[0]!,
-        anchor: anchorForPoint(props.document, pieces[0]!, hit.id)!,
-      };
-      return;
-    }
-
-    const piece = pieces.find((candidate) => candidate.id === pending.piece.id);
-    if (piece === undefined) {
-      cutDimensionPending.value = null;
-      cutDimensionHint.value = 'Both corners must belong to the same piece';
-      return;
-    }
-
-    const anchor = anchorForPoint(props.document, piece, hit.id)!;
-    if (anchor.edge === pending.anchor.edge && anchor.at === pending.anchor.at) {
-      cutDimensionHint.value = 'Corners must be different';
-      return;
-    }
-
-    cutDimensionPending.value = null;
-    cutDimensionHint.value = null;
-    startCutDimensionPlacement(piece.id, pending.anchor, anchor);
-    return;
+    const preferred =
+      pendingPiece === null
+        ? undefined
+        : pieces.find((candidate) => candidate.id === pendingPiece.id);
+    const piece = preferred ?? pieces[0];
+    if (piece === undefined) return null;
+    return { piece, anchor: anchorForPoint(props.document, piece, hit.id)! };
   }
 
-  if (cutDimensionPending.value !== null) {
-    cutDimensionHint.value = 'Pick a corner of the same piece';
-    return;
-  }
-
+  if (hit.kind !== 'line') return null;
   const piece = pieceOwningEdge(props.document, hit.id);
-  if (piece === null || edgeEndpoints(props.document, hit.id) === null) {
-    cutDimensionHint.value = 'Pick a piece edge';
-    return;
-  }
-
-  cutDimensionHint.value = null;
-  startCutDimensionPlacement(piece.id, { edge: hit.id, at: 'start' }, { edge: hit.id, at: 'end' });
+  const anchor = piece === null ? null : anchorForEdge(props.document, piece, hit.id);
+  return piece === null || anchor === null ? null : { piece, anchor };
 }
 
 /** Follow the pointer while placing a cut dimension, over the piece's cut span. */
 function updateCutDimensionPlacement(screen: Vec2): void {
   const placement = cutDimensionPlacement.value!;
-  const span = resolveCutSpan(props.document, {
+  const constraint = {
     id: placement.piece,
-    type: 'derived_distance',
+    type: 'derived_distance' as const,
     piece: placement.piece,
     a: placement.a,
     b: placement.b,
-  });
+  };
+  const span = resolveCutSpan(props.document, constraint);
   if (span === null) return;
 
   const world = screenToWorld(viewport.value, screen);
-  const orientation = inferOrientationFromSpan(span, world);
+  // An edge anchor has no single axis definition, so its dimension is aligned.
+  const orientation = usesCutEdgeAnchor(constraint)
+    ? 'aligned'
+    : inferOrientationFromSpan(span, world);
   cutDimensionPlacement.value = {
     ...placement,
     orientation,
@@ -1966,6 +2051,19 @@ function onKeyDown(event: KeyboardEvent): void {
 
   if (
     event.key === 'Escape' &&
+    (dimensionPending.value.length > 0 ||
+      dimensionPlacement.value !== null ||
+      dimensionHint.value !== null)
+  ) {
+    event.preventDefault();
+    dimensionPending.value = [];
+    dimensionPlacement.value = null;
+    dimensionHint.value = null;
+    return;
+  }
+
+  if (
+    event.key === 'Escape' &&
     (cutDimensionPending.value !== null ||
       cutDimensionPlacement.value !== null ||
       cutDimensionHint.value !== null)
@@ -2276,6 +2374,7 @@ watch(
     clearRectangleGesture();
     dimensionPending.value = [];
     dimensionPlacement.value = null;
+    dimensionHint.value = null;
     clearCutDimensionGesture();
     editingDimension.value = null;
     cancelPointerInteraction();
@@ -2782,6 +2881,21 @@ watch(
         </g>
 
         <g v-if="props.tool === 'cut_dimension'" class="pointer-events-none">
+          <line
+            v-for="entry in cutEdgeHandles"
+            :key="`cut-edge-${entry.line.id}`"
+            :x1="entry.start.x"
+            :y1="entry.start.y"
+            :x2="entry.end.x"
+            :y2="entry.end.y"
+            class="cut-edge-handle stroke-primary"
+            stroke-width="6"
+            stroke-opacity="0.25"
+            stroke-linecap="round"
+            vector-effect="non-scaling-stroke"
+            data-testid="cut-edge-handle"
+            :data-cut-edge="entry.line.id"
+          />
           <circle
             v-for="point in cutVertexHandles"
             :key="`cut-vertex-${point.id}`"
@@ -3123,6 +3237,15 @@ watch(
       data-testid="arc-hint"
     >
       pick a point off the line
+    </p>
+
+    <p
+      v-if="dimensionHintText !== null"
+      class="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground shadow-sm"
+      role="status"
+      data-testid="dimension-hint"
+    >
+      {{ dimensionHintText }}
     </p>
 
     <p

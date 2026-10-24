@@ -1,5 +1,6 @@
 import {
   dimensionValue,
+  isLineAnchor,
   referenceCandidates,
   type CutAnchor,
   type DimensionLayout,
@@ -42,6 +43,8 @@ export interface DimensionReferenceOption {
   id: EntityId;
   value: number;
   entities: [EntityId, EntityId];
+  /** Human labels for the two anchors; a line anchor reads `<id> (line)`. */
+  labels: [string, string];
   orientation: DimensionOrientation;
 }
 
@@ -108,6 +111,11 @@ export function referenceSearchText(input: string): string {
   return trimmed.startsWith('#') ? trimmed.slice(1).trim() : '';
 }
 
+/** A dimension anchor label: a line id is marked so it cannot read as a point. */
+export function anchorLabel(document: PatternDocument, id: EntityId): string {
+  return isLineAnchor(document, id) ? `${id} (line)` : id;
+}
+
 /** The dimensions a dimension may link to, resolved for the picker. */
 export function referenceOptions(
   document: PatternDocument,
@@ -118,6 +126,10 @@ export function referenceOptions(
     // A candidate is eligible only when it resolves, so this is always a number.
     value: dimensionValue(document, candidate)!,
     entities: [candidate.a, candidate.b] as [EntityId, EntityId],
+    labels: [anchorLabel(document, candidate.a), anchorLabel(document, candidate.b)] as [
+      string,
+      string,
+    ],
     orientation: candidate.orientation ?? 'aligned',
   }));
 }
@@ -141,7 +153,7 @@ export function referenceOptionLabel(option: DimensionReferenceOption): string {
   const orientation = DIMENSION_ORIENTATION_OPTIONS.find(
     (entry) => entry.value === option.orientation,
   )!.label;
-  return `${option.id} · ${formatDimensionValue(option.value)} mm · ${option.entities[0]} → ${option.entities[1]} · ${orientation}`;
+  return `${option.id} · ${formatDimensionValue(option.value)} mm · ${option.labels[0]} → ${option.labels[1]} · ${orientation}`;
 }
 
 /** The value field's text: a link shows `#source`, everything else its number. */

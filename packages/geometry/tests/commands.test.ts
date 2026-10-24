@@ -2056,3 +2056,174 @@ describe('dimension references', () => {
     expect(getEntity(solved.document, 'd')).toHaveProperty('x', expect.closeTo(70, 6));
   });
 });
+
+describe('add_constraint with line anchors', () => {
+  const line = (id: string, start: string, end: string): LineEntity => ({
+    id,
+    kind: 'line',
+    start,
+    end,
+    construction: false,
+  });
+
+  const document = documentOf([
+    point('a', 0, 0),
+    point('b', 100, 0),
+    point('c', 0, 50),
+    point('d', 100, 50),
+    point('e', 0, 0),
+    point('f', 100, 0),
+    point('g', 0, 100),
+    point('p', 30, 10),
+    point('z1', 10, 10),
+    point('z2', 10, 10),
+    line('L', 'a', 'b'),
+    line('M', 'c', 'd'),
+    line('N', 'e', 'f'),
+    line('V', 'c', 'g'),
+    line('Z', 'z1', 'z2'),
+  ]);
+
+  const distanceCommand = (
+    id: string,
+    a: string,
+    b: string,
+    extra: { value?: number; orientation?: DimensionOrientation } = {},
+  ): Command => ({
+    id,
+    type: 'add_constraint',
+    params: { type: 'distance', entities: [a, b], ...extra },
+  });
+
+  it('builds a point-to-line and a line-to-line dimension', () => {
+    const pointLine = applyCommand(document, distanceCommand('pl', 'p', 'L'));
+    const lineLine = applyCommand(document, distanceCommand('ll', 'L', 'M', { value: 50 }));
+
+    expect(getConstraint(pointLine.document, 'pl')).toEqual({
+      id: 'pl',
+      type: 'distance',
+      a: 'p',
+      b: 'L',
+    });
+    expect(getConstraint(lineLine.document, 'll')).toMatchObject({ a: 'L', b: 'M', value: 50 });
+  });
+
+  it('accepts an aligned axis and stores it', () => {
+    const applied = applyCommand(
+      document,
+      distanceCommand('d', 'p', 'L', { orientation: 'aligned', value: 10 }),
+    );
+
+    expect(getConstraint(applied.document, 'd')).toMatchObject({
+      orientation: 'aligned',
+      value: 10,
+    });
+  });
+
+  it('rejects a horizontal or vertical axis on a line anchor', () => {
+    for (const orientation of ['horizontal', 'vertical'] as const) {
+      expect(() => applyCommand(document, distanceCommand('d', 'p', 'L', { orientation }))).toThrow(
+        /distance: a line anchor is always aligned/,
+      );
+    }
+  });
+
+  it('rejects curves, arcs and circles as anchors', () => {
+    const curved = documentOf([
+      point('a', 0, 0),
+      point('b', 100, 0),
+      point('p', 30, 10),
+      {
+        id: 'cv',
+        kind: 'curve',
+        p0: 'a',
+        p1: 'b',
+        p2: 'a',
+        p3: 'b',
+        construction: false,
+      },
+    ]);
+
+    expect(() => applyCommand(curved, distanceCommand('d', 'p', 'cv'))).toThrow(
+      'distance: curves, arcs and circles are not line anchors',
+    );
+    expect(() => applyCommand(curved, distanceCommand('d', 'p', 'missing'))).toThrow(
+      'distance: an anchor does not resolve',
+    );
+  });
+
+  it('rejects non-parallel, coincident and point-on-line pairs', () => {
+    expect(() => applyCommand(document, distanceCommand('d', 'L', 'V'))).toThrow(
+      'distance: lines must be parallel',
+    );
+    expect(() => applyCommand(document, distanceCommand('d', 'L', 'N'))).toThrow(
+      'distance: the lines are coincident',
+    );
+    expect(() => applyCommand(document, distanceCommand('d', 'a', 'L'))).toThrow(
+      'distance: the point lies on the line',
+    );
+    expect(() => applyCommand(document, distanceCommand('d', 'p', 'Z'))).toThrow(
+      'distance: a line anchor has zero length',
+    );
+  });
+
+  it('rejects a horizontal edit on an existing line-anchored dimension', () => {
+    const applied = applyCommand(document, distanceCommand('d', 'p', 'L', { value: 10 }));
+
+    expect(() =>
+      applyCommand(applied.document, updateConstraintCommand('d', { orientation: 'horizontal' })),
+    ).toThrow('distance: a line anchor is always aligned');
+  });
+
+  it('re-points a set dimension at the perpendicular value when solved', () => {
+    const applied = applyCommand(document, distanceCommand('d', 'p', 'L', { value: 30 }));
+    const solved = solveDocument(applied.document);
+
+    expect(solved.result.converged).toBe(true);
+    const p = getEntity(solved.document, 'p');
+    const a = getEntity(solved.document, 'a');
+    const b = getEntity(solved.document, 'b');
+    expect(p?.kind).toBe('point');
+    expect(a?.kind).toBe('point');
+    expect(b?.kind).toBe('point');
+    if (p?.kind === 'point' && a?.kind === 'point' && b?.kind === 'point') {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const gap = Math.abs(dx * (p.y - a.y) - dy * (p.x - a.x)) / Math.hypot(dx, dy);
+      expect(gap).toBeCloseTo(30, 6);
+    }
+  });
+
+  it('cascades the dimension when an anchor line is deleted', () => {
+    const applied = applyCommand(document, distanceCommand('d', 'p', 'L'));
+    const deleted = applyCommand(applied.document, deleteCommand('L'));
+
+    expect(getConstraint(deleted.document, 'd')).toBeUndefined();
+  });
+
+  it('is idempotent for a line-anchored dimension', () => {
+    const command = distanceCommand('d', 'p', 'L');
+    const once = applyCommand(document, command);
+    const twice = applyCommand(once.document, command);
+
+    expect(twice.document).toBe(once.document);
+  });
+
+  it('accepts a reference to a line-anchored source', () => {
+    const source = applyCommand(document, distanceCommand('source', 'p', 'L', { value: 10 }));
+    const applied = applyCommand(source.document, {
+      id: 'dependent',
+      type: 'add_constraint',
+      params: {
+        type: 'distance',
+        entities: ['a', 'c'],
+        reference: 'source',
+      },
+    });
+
+    expect(getConstraint(applied.document, 'dependent')).toMatchObject({
+      reference: 'source',
+      lastKnownValue: 10,
+    });
+  });
+});

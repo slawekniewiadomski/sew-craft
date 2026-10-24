@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.11.0',
+    'spec_version' => '0.12.0',
 
     /*
     |--------------------------------------------------------------------------
@@ -115,7 +115,7 @@ return [
             ],
         ],
         'add_constraint' => [
-            'description' => 'Attach a geometric constraint to one or more entities. A distance without a value is a driven dimension; a distance with a reference follows another dimension.',
+            'description' => 'Attach a geometric constraint to one or more entities. A distance without a value is a driven dimension; a distance with a reference follows another dimension. A distance anchor is a point or a straight line; a line anchor is always aligned and two line anchors must be parallel.',
             'params' => [
                 'type' => 'coincident|horizontal|vertical|point_on_line|distance|angle|equal',
                 'entities' => 'entity_id[]',
@@ -239,11 +239,11 @@ return [
             'inverse' => 'set_default_allowance',
         ],
         'add_derived_dimension' => [
-            'description' => 'Add a read-only cut dimension between two loop vertices of one piece. Its value follows the cut loop and adds no solver equation.',
+            'description' => 'Add a read-only cut dimension between two corners or straight edges of one piece. Its value follows the cut loop and adds no solver equation.',
             'params' => [
                 'piece' => 'entity_id',
-                'a' => 'cut_anchor',
-                'b' => 'cut_anchor',
+                'a' => 'cut_anchor { edge: entity_id, at: start|end|edge }',
+                'b' => 'cut_anchor { edge: entity_id, at: start|end|edge }',
                 'orientation' => 'aligned|horizontal|vertical?',
                 'offset' => 'number?',
             ],

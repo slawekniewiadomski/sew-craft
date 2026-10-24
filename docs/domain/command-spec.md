@@ -15,7 +15,7 @@ runtime source of truth is `config/geometry.php`, exposed at `GET /api/commands`
 }
 ```
 
-## Commands (v0.11)
+## Commands (v0.12)
 
 ### `add_point`
 
@@ -121,6 +121,14 @@ removes its cut dimensions.
 - `orientation` and `offset` apply only to `distance`; they are presentation for
   the linear dimension that renders the constraint. `orientation` defaults to
   `aligned`, `offset` to `20` mm (signed, measured from the span).
+- For `distance`, each entry of `entities` is an **anchor**: a point id or a
+  straight `line` id. A point → line anchor measures the perpendicular from the
+  point to the line's infinite supporting line. Two lines must be parallel within
+  0.5° at creation (anti-parallel accepted) and measure from the canonical first
+  line's midpoint (lower id) to the second line. Curves, arcs and circles are not
+  anchors in this slice. A line-anchored dimension is always `aligned`: an
+  explicit `horizontal` or `vertical` is rejected. The resolved span must be
+  greater than `1e-6` mm; a smaller span is rejected.
 - inverse: `remove_constraint`
 
 Constraint param mapping:
@@ -352,23 +360,53 @@ Set, change or clear the allowance that `create_piece` copies onto a new piece.
 
 ### `add_derived_dimension`
 
-Add a read-only **cut dimension** between two loop vertices of one piece.
+Add a read-only **cut dimension** between two anchors of one piece.
 
 - params: `piece: entity_id`, `a: cut_anchor`, `b: cut_anchor`,
   `orientation?: aligned|horizontal|vertical`, `offset?: number`
-- A `cut_anchor` is `{ edge: entity_id, at: 'start' | 'end' }`: it addresses a
-  loop vertex by an edge of the piece rather than by point id, because the cut
-  loop has no entities of its own.
-- Both anchors must name edges in that piece and must differ. The two vertices
-  must not resolve to the same point.
+- A `cut_anchor` is `{ edge: entity_id, at: 'start' | 'end' | 'edge' }`:
+  `start`/`end` address a loop vertex by an edge of the piece, because the cut
+  loop has no entities of its own; `edge` addresses the whole straight cut
+  edge's own offset segment (its cut line, the source line plus the edge's
+  cut-distance offset).
+- Both anchors must name edges in that piece and must be different. Rejecting
+  the same edge twice, and an edge paired with its own `start`/`end` vertex, is
+  by **anchor identity** (a bevel join makes their cut points differ). The two
+  vertices must not resolve to the same point.
+- A corner against an edge measures the perpendicular distance from the corner
+  to the edge's cut line; two edges measure the canonical first edge's midpoint
+  to the second cut line. Edge-to-edge anchors must be parallel within 0.5°
+  (anti-parallel accepted) at creation time.
+- The resolved span must be greater than `1e-6` mm; a smaller span is rejected.
+- `orientation` may be `aligned`, `horizontal` or `vertical` only for two vertex
+  anchors. With an edge anchor it must be `aligned` or omitted.
 - The dimension stores no value: it is measured from the resolved cut loop on
   every read, adds no solver equation, and is read-only in v1. `update_constraint`
-  accepts only `orientation` and `offset` for it.
+  accepts only `orientation` and `offset` for it, and rejects
+  `horizontal`/`vertical` when either anchor is an edge anchor.
 - When the piece or an anchored edge disappears the dimension is **broken**: it
   stores no reading, so it shows no number and adds no equation until its
-  anchors resolve again, exactly like a dangling reference.
+  anchors resolve again, exactly like a dangling reference. Deleting a loop
+  point leaves the piece in place and the dimension broken; deleting the
+  piece/edge removes it with the piece.
 - Re-applying a command whose dimension id already exists is a no-op.
 - inverse: `remove_constraint`
+
+### Migration from spec 0.11.0
+
+`add_constraint` accepts a straight line as either `distance` anchor, so point →
+line and line → line dimensions use the existing command and shape. The change is
+additive: every 0.11.0 payload still applies. A line-anchored dimension is always
+`aligned`, and the document schema stays `sewcraft.pattern/0.2`; an older build
+accepts the document but reports the line id as an unknown point when it solves.
+
+`add_derived_dimension` gains the `at: 'edge'` anchor value and widens its
+orientation rule; both are additive, so every 0.11.0 payload still applies
+unchanged. The pattern schema string stays `sewcraft.pattern/0.2`. An older
+build reads `at: 'edge'` as `end` because its anchor resolver only knows two
+values: it renders the wrong vertex and can save that misread, which is the
+accepted downgrade trade-off documented in `BACKWARD_COMPATIBILITY.md`.
+`spec_version` is bumped to `0.12.0`.
 
 ### Migration from spec 0.10.0
 

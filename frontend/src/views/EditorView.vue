@@ -13,12 +13,15 @@ import {
   getEntity,
   isDrivenDimension,
   isKnownPatternSchema,
+  isLineAnchor,
+  measureDistanceDimension,
   measureLinearDimension,
   normalizeDocument,
   ALLOWANCE_KIND_LABELS,
   PATTERN_SCHEMA,
   seamForEdge,
   toSvg,
+  usesCutEdgeAnchor,
 } from '@sewcraft/geometry';
 import type {
   AddConstraintParams,
@@ -83,6 +86,7 @@ import {
 } from '@/lib/corner-round';
 import {
   DIMENSION_ORIENTATION_OPTIONS,
+  anchorLabel,
   dimensionPatchForEdit,
   dimensionStateLabel,
   dimensionTone,
@@ -111,6 +115,7 @@ import { buildLineCommands, type LineEndpoint } from '@/lib/line-tool';
 import { buildRectangleCommands, type RectangleMode } from '@/lib/rectangle-tool';
 import {
   edgeLabel,
+  canonicalCutAnchors,
   findDerivedDimension,
   pieceCreationFromSelection,
   pieceLabel,
@@ -313,6 +318,8 @@ interface DimensionRow {
   stateLabel: string;
   sourceId: EntityId | null;
   orientation: DimensionOrientation;
+  /** Edge- or line-anchored dimensions are always aligned; the axis control is hidden. */
+  orientationLocked: boolean;
   offset: string;
 }
 
@@ -337,6 +344,7 @@ const dimensions = computed<DimensionRow[]>(() =>
           stateLabel: dimensionStateLabel(state),
           sourceId: null,
           orientation: constraintOrientation(constraint),
+          orientationLocked: usesCutEdgeAnchor(constraint),
           offset: formatDimensionValue(constraintOffset(constraint)),
         },
       ];
@@ -352,13 +360,18 @@ const dimensions = computed<DimensionRow[]>(() =>
         constraint,
         kind: 'distance',
         readOnly: false,
-        entities: [constraint.a, constraint.b],
+        entities: [
+          anchorLabel(pattern.value, constraint.a),
+          anchorLabel(pattern.value, constraint.b),
+        ],
         value: formatDimensionValue(measured ?? 0),
         field: formatDimensionField(constraint, measured, state),
         state,
         stateLabel: dimensionStateLabel(state),
         sourceId: constraint.reference ?? null,
         orientation: constraintOrientation(constraint),
+        orientationLocked:
+          isLineAnchor(pattern.value, constraint.a) || isLineAnchor(pattern.value, constraint.b),
         offset: formatDimensionValue(constraintOffset(constraint)),
       },
     ];
@@ -755,25 +768,30 @@ function onAddCurve(points: [EntityId, EntityId, EntityId, EntityId]): void {
  * then only updates its presentation.
  */
 function onAddDimension(placement: DimensionPlacement): void {
+  const orientation =
+    isLineAnchor(pattern.value, placement.a) || isLineAnchor(pattern.value, placement.b)
+      ? 'aligned'
+      : placement.orientation;
   const existing = findDistanceConstraint(pattern.value, placement.a, placement.b);
   if (existing !== undefined) {
     run(() =>
       dispatch({
         id: nextCommandId('dimension'),
         type: 'update_constraint',
-        params: { id: existing.id, orientation: placement.orientation, offset: placement.offset },
+        params: { id: existing.id, orientation, offset: placement.offset },
       }),
     );
     return;
   }
 
-  const measured = measureLinearDimension(
-    pattern.value,
-    placement.a,
-    placement.b,
-    placement.orientation,
-  )!;
-  if (measured <= 0) return;
+  const measured = measureDistanceDimension(pattern.value, {
+    id: placement.a,
+    type: 'distance',
+    a: placement.a,
+    b: placement.b,
+    orientation,
+  });
+  if (measured === null || measured <= 0) return;
 
   run(() =>
     dispatch({
@@ -782,7 +800,7 @@ function onAddDimension(placement: DimensionPlacement): void {
       params: {
         type: 'distance',
         entities: [placement.a, placement.b],
-        orientation: placement.orientation,
+        orientation,
         offset: placement.offset,
       },
     }),
@@ -791,13 +809,18 @@ function onAddDimension(placement: DimensionPlacement): void {
 
 /** Place a read-only cut dimension, updating the existing one on the same span. */
 function onAddCutDimension(placement: CutDimensionPlacement): void {
-  const existing = findDerivedDimension(pattern.value, placement.piece, placement.a, placement.b);
+  // The canvas only starts a placement for a piece that exists in this document.
+  const piece = pattern.value.pieces.find((candidate) => candidate.id === placement.piece)!;
+
+  const [a, b] = canonicalCutAnchors(piece, placement.a, placement.b);
+  const orientation = usesCutEdgeAnchor({ a, b }) ? 'aligned' : placement.orientation;
+  const existing = findDerivedDimension(pattern.value, placement.piece, a, b);
   if (existing !== undefined) {
     run(() =>
       dispatch({
         id: nextCommandId('cut-dimension'),
         type: 'update_constraint',
-        params: { id: existing.id, orientation: placement.orientation, offset: placement.offset },
+        params: { id: existing.id, orientation, offset: placement.offset },
       }),
     );
     return;
@@ -809,9 +832,9 @@ function onAddCutDimension(placement: CutDimensionPlacement): void {
       type: 'add_derived_dimension',
       params: {
         piece: placement.piece,
-        a: placement.a,
-        b: placement.b,
-        orientation: placement.orientation,
+        a,
+        b,
+        orientation,
         offset: placement.offset,
       },
     }),
@@ -1862,7 +1885,15 @@ onBeforeUnmount(() => {
                 </div>
 
                 <div class="flex flex-wrap items-center gap-1.5">
+                  <span
+                    v-if="dimension.orientationLocked"
+                    class="h-7 rounded-sm border px-1.5 text-2xs leading-7"
+                    :data-testid="`dimension-orientation-locked-${dimension.id}`"
+                  >
+                    Aligned
+                  </span>
                   <select
+                    v-else
                     class="h-7 rounded-sm border px-1.5 text-2xs"
                     :value="dimension.orientation"
                     :aria-label="`Orientation for ${dimension.id}`"

@@ -1309,6 +1309,20 @@ describe('EditorView', () => {
     expect(wrapper.findAll('[aria-label="Dimensions"] li')).toHaveLength(1);
   });
 
+  it('hides the axis control for a line-anchored dimension', async () => {
+    const { wrapper } = await mountLoaded({
+      ...lineDoc,
+      constraints: [{ id: 'gap', type: 'distance', a: 'ab', b: 'c' }],
+    });
+
+    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="dimension-orientation-gap"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-orientation-locked-gap"]').text()).toBe('Aligned');
+    expect(wrapper.find('[data-testid="dimension-offset-gap"]').exists()).toBe(true);
+  });
+
   it('clears a set dimension to driven from the sidebar and undoes it', async () => {
     const { wrapper, store } = await mountLoaded({
       ...lineDoc,
@@ -1900,6 +1914,7 @@ describe('EditorView', () => {
 
     await wrapper.find('[data-testid="tool-dimension"]').trigger('click');
     entityDown(wrapper, 'line', 'ab');
+    pointDown(wrapper, 'c');
     await nextTick();
 
     expect(store.document.constraints).toHaveLength(0);
@@ -1918,8 +1933,8 @@ describe('EditorView', () => {
     const constraint = store.document.constraints[0]!;
     expect(constraint).toMatchObject({
       type: 'distance',
-      a: 'a',
-      b: 'b',
+      a: 'ab',
+      b: 'c',
       orientation: 'aligned',
       offset: 20,
     });
@@ -1956,7 +1971,8 @@ describe('EditorView', () => {
     });
 
     await wrapper.find('[data-testid="tool-dimension"]').trigger('click');
-    entityDown(wrapper, 'line', 'ab');
+    pointDown(wrapper, 'a');
+    pointDown(wrapper, 'b');
     canvasDown(wrapper, 400, 300);
     await flushPromises();
 
@@ -2028,7 +2044,8 @@ describe('EditorView', () => {
     });
 
     await wrapper.find('[data-testid="tool-dimension"]').trigger('click');
-    entityDown(wrapper, 'line', 'ab');
+    pointDown(wrapper, 'a');
+    pointDown(wrapper, 'b');
     canvasDown(wrapper, 400, 300);
     await flushPromises();
 
@@ -2479,11 +2496,16 @@ describe('EditorView', () => {
     ]);
   });
 
-  it('creates a cut dimension from one piece edge', async () => {
+  it('creates a cut dimension from a straight edge and another edge', async () => {
     const { wrapper, store } = await mountLoaded(pieceDoc);
 
     await wrapper.find('[data-testid="tool-cut_dimension"]').trigger('click');
     entityDown(wrapper, 'line', 'ab');
+    await flushPromises();
+    // One pick is only the first anchor; the old one-click shortcut is gone.
+    expect(store.document.constraints).toHaveLength(0);
+
+    entityDown(wrapper, 'line', 'cd');
     canvasDown(wrapper, 400, 300);
     await flushPromises();
 
@@ -2491,8 +2513,28 @@ describe('EditorView', () => {
       expect.objectContaining({
         type: 'derived_distance',
         piece: 'p1',
+        a: { edge: 'ab', at: 'edge' },
+        b: { edge: 'cd', at: 'edge' },
+        orientation: 'aligned',
+      }),
+    ]);
+  });
+
+  it('creates a corner-to-edge cut dimension in either order', async () => {
+    const { wrapper, store } = await mountLoaded(pieceDoc);
+
+    await wrapper.find('[data-testid="tool-cut_dimension"]').trigger('click');
+    pointDown(wrapper, 'a');
+    entityDown(wrapper, 'line', 'cd');
+    canvasDown(wrapper, 400, 300);
+    await flushPromises();
+
+    expect(store.document.constraints).toEqual([
+      expect.objectContaining({
+        type: 'derived_distance',
         a: { edge: 'ab', at: 'start' },
-        b: { edge: 'ab', at: 'end' },
+        b: { edge: 'cd', at: 'edge' },
+        orientation: 'aligned',
       }),
     ]);
   });
@@ -2515,6 +2557,68 @@ describe('EditorView', () => {
     expect(store.journal).toHaveLength(1);
   });
 
+  it('updates the existing cut dimension when the same corners are picked in reverse', async () => {
+    const { wrapper, store } = await mountLoaded(cutDimensionDoc);
+
+    await wrapper.find('[data-testid="tool-cut_dimension"]').trigger('click');
+    pointDown(wrapper, 'c');
+    pointDown(wrapper, 'a');
+    canvasDown(wrapper, 400, 300);
+    await flushPromises();
+
+    expect(store.document.constraints).toHaveLength(1);
+    expect(store.document.constraints[0]).toMatchObject({ id: 'cut' });
+    expect(store.journal).toHaveLength(1);
+  });
+
+  it('stores edge anchors in piece order and dedupes a reversed re-placement', async () => {
+    const { wrapper, store } = await mountLoaded(pieceDoc);
+
+    await wrapper.find('[data-testid="tool-cut_dimension"]').trigger('click');
+    entityDown(wrapper, 'line', 'cd');
+    entityDown(wrapper, 'line', 'ab');
+    canvasDown(wrapper, 400, 300);
+    await flushPromises();
+
+    expect(store.document.constraints).toHaveLength(1);
+    expect(store.document.constraints[0]).toMatchObject({
+      type: 'derived_distance',
+      a: { edge: 'ab', at: 'edge' },
+      b: { edge: 'cd', at: 'edge' },
+      orientation: 'aligned',
+    });
+
+    entityDown(wrapper, 'line', 'ab');
+    entityDown(wrapper, 'line', 'cd');
+    canvasDown(wrapper, 400, 300);
+    await flushPromises();
+
+    expect(store.document.constraints).toHaveLength(1);
+    expect(store.journal).toHaveLength(2);
+  });
+
+  it('locks the axis control for an edge-anchored cut dimension', async () => {
+    const edgeDoc: PatternDocument = {
+      ...pieceDoc,
+      constraints: [
+        {
+          id: 'cut',
+          type: 'derived_distance',
+          piece: 'p1',
+          a: { edge: 'ab', at: 'edge' },
+          b: { edge: 'cd', at: 'edge' },
+          offset: 20,
+        },
+      ],
+    };
+    const { wrapper } = await mountLoaded(edgeDoc);
+
+    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+
+    expect(wrapper.find('[data-testid="dimension-orientation-locked-cut"]').text()).toBe('Aligned');
+    expect(wrapper.find('[data-testid="dimension-orientation-cut"]').exists()).toBe(false);
+  });
+
   it('rejects a cut dimension pick outside a piece without emitting a command', async () => {
     const { wrapper, store } = await mountLoaded(lineDoc);
 
@@ -2523,7 +2627,7 @@ describe('EditorView', () => {
     await nextTick();
 
     expect(wrapper.find('[data-testid="cut-dimension-hint"]').text()).toBe(
-      'Pick a corner of a piece',
+      'Pick a corner or a straight edge of a piece.',
     );
     expect(store.document.constraints).toHaveLength(0);
     expect(store.journal).toHaveLength(0);

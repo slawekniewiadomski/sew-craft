@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { distance, solve, type Constraint, type PointEntity } from '../src/index.js';
+import {
+  distance,
+  solve,
+  type Constraint,
+  type Entity,
+  type LineEntity,
+  type PointEntity,
+} from '../src/index.js';
 
 const point = (id: string, x: number, y: number, fixed = false): PointEntity => ({
   id,
@@ -368,5 +375,116 @@ describe('solve with referenced dimensions', () => {
     expect(result.converged).toBe(true);
     expect(result.residualNorm).toBe(0);
     expect(result.coordinates.get('b')).toEqual({ x: 3, y: 0 });
+  });
+});
+
+describe('solve with line anchors', () => {
+  const line = (id: string, start: string, end: string): LineEntity => ({
+    id,
+    kind: 'line',
+    start,
+    end,
+    construction: false,
+  });
+
+  it('drives a point to its perpendicular distance from a line', () => {
+    const points = [point('a', 0, 0, true), point('b', 100, 0, true), point('p', 30, 10)];
+    const entities: Entity[] = [line('L', 'a', 'b')];
+    const constraints: Constraint[] = [{ id: 'd', type: 'distance', a: 'p', b: 'L', value: 30 }];
+
+    const result = solve(points, constraints, {}, entities);
+
+    expect(result.converged).toBe(true);
+    expect(result.coordinates.get('p')!.x).toBeCloseTo(30, 6);
+    expect(result.coordinates.get('p')!.y).toBeCloseTo(30, 6);
+  });
+
+  it('normalizes a line-then-point anchor order', () => {
+    const points = [point('a', 0, 0, true), point('b', 100, 0, true), point('p', 30, 10)];
+    const entities: Entity[] = [line('L', 'a', 'b')];
+    const constraints: Constraint[] = [{ id: 'd', type: 'distance', a: 'L', b: 'p', value: 30 }];
+
+    const result = solve(points, constraints, {}, entities);
+
+    expect(result.converged).toBe(true);
+    expect(result.coordinates.get('p')!.y).toBeCloseTo(30, 6);
+  });
+
+  it('drives a line to a perpendicular gap and canonicalizes the pair', () => {
+    const points = [
+      point('a', 0, 0, true),
+      point('b', 100, 0, true),
+      point('c', 0, 50),
+      point('d', 100, 50),
+    ];
+    const entities: Entity[] = [line('L', 'a', 'b'), line('M', 'c', 'd')];
+    const constraints: Constraint[] = [{ id: 'd', type: 'distance', a: 'M', b: 'L', value: 20 }];
+
+    const result = solve(points, constraints, {}, entities);
+
+    expect(result.converged).toBe(true);
+    expect(result.coordinates.get('c')!.y).toBeCloseTo(20, 6);
+    expect(result.coordinates.get('d')!.y).toBeCloseTo(20, 6);
+  });
+
+  it('throws when a line anchor is solved without the entities input', () => {
+    const points = [point('a', 0, 0), point('b', 100, 0), point('p', 30, 10)];
+    const constraints: Constraint[] = [{ id: 'd', type: 'distance', a: 'p', b: 'L', value: 30 }];
+
+    expect(() => solve(points, constraints)).toThrow('Constraint "d" references unknown point: L');
+  });
+
+  it('throws when a line anchor references a missing endpoint', () => {
+    const points = [point('a', 0, 0), point('p', 30, 10)];
+    const entities: Entity[] = [line('L', 'a', 'missing')];
+    const constraints: Constraint[] = [{ id: 'd', type: 'distance', a: 'p', b: 'L', value: 30 }];
+
+    expect(() => solve(points, constraints, {}, entities)).toThrow(
+      'Constraint "d" line anchor L references unknown point: missing',
+    );
+  });
+
+  it('rejects a curve anchor with a clear error', () => {
+    const points = [point('a', 0, 0), point('b', 100, 0), point('p', 30, 10)];
+    const entities: Entity[] = [
+      { id: 'cv', kind: 'curve', p0: 'a', p1: 'b', p2: 'a', p3: 'b', construction: false },
+    ];
+    const constraints: Constraint[] = [{ id: 'd', type: 'distance', a: 'p', b: 'cv', value: 30 }];
+
+    expect(() => solve(points, constraints, {}, entities)).toThrow(
+      'Constraint "d" anchor cv is a curve, expected a point or line',
+    );
+  });
+
+  it('skips a zero-length line instead of producing NaN', () => {
+    const points = [point('a', 0, 0), point('p', 30, 10)];
+    const entities: Entity[] = [line('Z', 'a', 'a')];
+    const constraints: Constraint[] = [{ id: 'd', type: 'distance', a: 'p', b: 'Z', value: 30 }];
+
+    const result = solve(points, constraints, {}, entities);
+
+    expect(result.converged).toBe(true);
+    expect(Number.isNaN(result.residualNorm)).toBe(false);
+    expect(result.residualNorm).toBe(0);
+  });
+
+  it('keeps a drifted non-parallel pair measurable', () => {
+    const points = [
+      point('a', 0, 0, true),
+      point('b', 100, 0, true),
+      point('c', 0, 50, true),
+      point('d', 100, 80, true),
+    ];
+    const entities: Entity[] = [line('L', 'a', 'b'), line('M', 'c', 'd')];
+    // Midpoint of L is (50,0); the distance to line M is still well defined.
+    const expected = Math.abs(100 * (0 - 50) - 30 * (50 - 0)) / Math.hypot(100, 30);
+    const constraints: Constraint[] = [
+      { id: 'd', type: 'distance', a: 'L', b: 'M', value: expected },
+    ];
+
+    const result = solve(points, constraints, {}, entities);
+
+    expect(result.converged).toBe(true);
+    expect(result.residualNorm).toBeLessThan(TOLERANCE);
   });
 });

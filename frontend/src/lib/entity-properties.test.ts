@@ -275,6 +275,48 @@ describe('entityProperties', () => {
     expect(entityProperties(document, 'cd')!.cutDimensions).toEqual([]);
   });
 
+  it('labels an edge anchor and keeps a point-deleted dimension broken', () => {
+    const document = rectangle([
+      {
+        id: 'edge-cut',
+        type: 'derived_distance',
+        piece: 'p1',
+        a: { edge: 'ab', at: 'edge' },
+        b: { edge: 'cd', at: 'edge' },
+      },
+    ]);
+    document.pieces = [
+      { id: 'p1', name: 'Front', edges: ['ab', 'bc', 'cd', 'da'], allowances: [] },
+    ];
+
+    expect(entityProperties(document, 'ab')!.cutDimensions).toEqual([
+      {
+        id: 'edge-cut',
+        piece: 'p1',
+        value: 60,
+        state: 'derived',
+        orientation: 'aligned',
+        anchors: ['ab:edge', 'cd:edge'],
+      },
+    ]);
+
+    // Deleting a loop point leaves the piece and the row in place, now broken.
+    const broken: PatternDocument = {
+      ...document,
+      entities: document.entities.filter((entity) => entity.id !== 'c'),
+    };
+    expect(entityProperties(broken, 'ab')!.cutDimensions).toEqual([
+      {
+        id: 'edge-cut',
+        piece: 'p1',
+        value: null,
+        state: 'broken',
+        orientation: 'aligned',
+        anchors: ['ab:edge', 'cd:edge'],
+      },
+    ]);
+  });
+
   it('lists only the rows that act on the selected line in the seeded rectangle', () => {
     const document = rectangle(rectangleConstraints);
 
@@ -329,6 +371,21 @@ describe('entityProperties', () => {
         sourceId: null,
         orientation: 'aligned',
       },
+    ]);
+  });
+
+  it('lists a dimension that anchors to the selected line itself', () => {
+    const document = rectangle([
+      ...rectangleConstraints,
+      { id: 'gap', type: 'distance', a: 'ab', b: 'd' },
+    ]);
+
+    expect(entityProperties(document, 'ab')?.dimensions.map((dimension) => dimension.id)).toEqual([
+      'width',
+      'gap',
+    ]);
+    expect(entityProperties(document, 'bc')?.dimensions.map((dimension) => dimension.id)).toEqual([
+      'height',
     ]);
   });
 

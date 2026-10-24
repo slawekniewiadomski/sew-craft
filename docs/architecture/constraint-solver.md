@@ -43,6 +43,18 @@ and contributes no residual, so a document containing only driven dimensions is
 already converged. See `specs/014-linear-dimensions.md` and
 `.ai/specs/2026-10-20-driven-and-set-dimensions.md`.
 
+Each `a`/`b` anchor is a point **or a straight line**. `solve` takes an optional
+fourth `entities` argument (`solveDocument` passes `document.entities`): a line
+anchor reads its two endpoints from that list. Point → line drives
+`|cross(dir, p − start) / ‖dir‖ − value|`, normalizing the anchor order; line →
+line canonicalizes by entity id and drives the perpendicular from the first
+midpoint to the second line. A line anchor is always aligned (its stored
+`orientation` is ignored), and a line with a degenerate endpoint pair skips its
+residual instead of producing `NaN`. A line anchor supplied without `entities`
+is an unknown point, a missing endpoint is a clear error, and a curve/arc/circle
+anchor is rejected up front. See
+`.ai/specs/2026-10-23-dimension-point-and-line-anchors.md`.
+
 Further types (parallel, perpendicular, tangent, symmetry, radius, point-on-circle)
 are deferred; see `specs/003-constraint-solver-core.md`.
 

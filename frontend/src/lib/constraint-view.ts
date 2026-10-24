@@ -1,6 +1,7 @@
 import {
   allPoints,
   constraintEntityIds,
+  isLineAnchor,
   type Constraint,
   type ConstraintType,
   type EntityId,
@@ -113,6 +114,13 @@ export function constraintMarkers(document: PatternDocument): ConstraintMarker[]
     // Cut dimensions anchor to piece loop vertices, not solver points; the
     // canvas draws them with the dimension layer instead of an icon.
     if (constraint.type === 'derived_distance') return [];
+    // A line-anchored distance is drawn by the dimension layer too.
+    if (
+      constraint.type === 'distance' &&
+      (isLineAnchor(document, constraint.a) || isLineAnchor(document, constraint.b))
+    ) {
+      return [];
+    }
     const ids = constraintEntityIds(constraint);
     const resolved = ids.flatMap((id) => {
       const point = points.get(id);
