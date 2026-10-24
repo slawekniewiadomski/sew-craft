@@ -2,13 +2,20 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createEmptyDocument,
+  derivedDimensionGeometry,
+  dimensionGeometry,
+  dimensionsInRect,
   entitiesInRect,
   type CircleEntity,
   type CurveEntity,
   type ArcEntity,
+  type Constraint,
+  type DerivedDistanceConstraint,
+  type DistanceConstraint,
   type Entity,
   type LineEntity,
   type PatternDocument,
+  type Piece,
   type PointEntity,
   type Rect,
 } from '../src/index.js';
@@ -230,5 +237,106 @@ describe('entitiesInRect with circles', () => {
     expect(hits).not.toContain('dangling');
     expect(hits).not.toContain('huge');
     expect(hits).toContain('ball');
+  });
+});
+
+describe('dimensionsInRect', () => {
+  const square: Entity[] = [
+    point('a', 0, 0),
+    point('b', 100, 0),
+    point('c', 100, 100),
+    point('d', 0, 100),
+    line('ab', 'a', 'b'),
+    line('bc', 'b', 'c'),
+    line('cd', 'c', 'd'),
+    line('da', 'd', 'a'),
+  ];
+  const piece: Piece = { id: 'p', edges: ['ab', 'bc', 'cd', 'da'], allowances: [] };
+  const distance: DistanceConstraint = { id: 'dim', type: 'distance', a: 'a', b: 'b' };
+  const derived: DerivedDistanceConstraint = {
+    id: 'cut',
+    type: 'derived_distance',
+    piece: 'p',
+    a: { edge: 'ab', at: 'start' },
+    b: { edge: 'bc', at: 'end' },
+    orientation: 'aligned',
+  };
+
+  function fixture(constraints: Constraint[]): PatternDocument {
+    return { ...documentOf(square), pieces: [piece], constraints };
+  }
+
+  // A default-offset horizontal dimension sits at y = 20, spanning x 0 → 100.
+  const document = fixture([distance]);
+
+  it('selects a dimension whose line the crossing rectangle overlaps', () => {
+    expect(dimensionsInRect(document, rect(40, 15, 60, 25), 'crossing')).toEqual(['dim']);
+  });
+
+  it('selects a window only when both line endpoints are inside', () => {
+    expect(dimensionsInRect(document, rect(-5, 10, 105, 30), 'window')).toEqual(['dim']);
+    expect(dimensionsInRect(document, rect(10, 10, 90, 30), 'window')).toEqual([]);
+    // The same rectangle still crosses the line.
+    expect(dimensionsInRect(document, rect(10, 10, 90, 30), 'crossing')).toEqual(['dim']);
+  });
+
+  it('ignores a rectangle that covers only an extension line or the label', () => {
+    const layout = dimensionGeometry(document, distance)!;
+
+    // The first extension line runs from the measured point down to the
+    // dimension line, at x = 0 and below y = 20.
+    expect(dimensionsInRect(document, rect(-2, 2, 2, 15), 'crossing')).toEqual([]);
+
+    const label = layout.label.position;
+    expect(
+      dimensionsInRect(
+        document,
+        rect(label.x - 2, label.y - 2, label.x + 2, label.y + 2),
+        'crossing',
+      ),
+    ).toEqual([]);
+  });
+
+  it('skips unresolvable and non-dimension constraints and keeps order', () => {
+    const broken: DistanceConstraint = { id: 'broken', type: 'distance', a: 'a', b: 'missing' };
+    const horizontal: Constraint = { id: 'level', type: 'horizontal', a: 'a', b: 'b' };
+    const second: DistanceConstraint = {
+      id: 'second',
+      type: 'distance',
+      a: 'c',
+      b: 'd',
+      orientation: 'horizontal',
+    };
+    const ordered = fixture([broken, horizontal, distance, second]);
+
+    expect(dimensionsInRect(ordered, rect(-5, -20, 105, 130), 'crossing')).toEqual([
+      'dim',
+      'second',
+    ]);
+  });
+
+  it('selects a derived cut dimension on the same terms', () => {
+    const document = fixture([derived]);
+    const layout = derivedDimensionGeometry(document, derived)!;
+    const start = layout.dimensionStart;
+    const end = layout.dimensionEnd;
+    const around = rect(
+      Math.min(start.x, end.x) - 1,
+      Math.min(start.y, end.y) - 1,
+      Math.max(start.x, end.x) + 1,
+      Math.max(start.y, end.y) + 1,
+    );
+
+    expect(dimensionsInRect(document, around, 'window')).toEqual(['cut']);
+    expect(dimensionsInRect(document, rect(-5, -5, 5, 5), 'crossing')).toEqual([]);
+  });
+
+  it('skips a derived dimension whose piece is missing', () => {
+    expect(dimensionsInRect(fixture([derived]), rect(-100, -100, 200, 200), 'crossing')).toEqual([
+      'cut',
+    ]);
+
+    const withoutPiece: PatternDocument = { ...fixture([derived]), pieces: [] };
+    expect(dimensionsInRect(withoutPiece, rect(-100, -100, 200, 200), 'crossing')).toEqual([]);
   });
 });
