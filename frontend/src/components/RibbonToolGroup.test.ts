@@ -201,12 +201,50 @@ describe('RibbonToolGroup', () => {
   it('closes on an outside click without changing the armed tool', async () => {
     const wrapper = mountGroup();
     await openMenu(wrapper);
+    const bubble = vi.fn();
+    window.addEventListener('pointerdown', bubble);
 
     document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
     await flushPromises();
 
     expect(menuItems()).toHaveLength(0);
     expect(wrapper.emitted('select-tool')).toBeUndefined();
+    // The click is consumed so the canvas cannot start a drawing gesture.
+    expect(bubble).not.toHaveBeenCalled();
+
+    window.removeEventListener('pointerdown', bubble);
+  });
+
+  it('lets a pointerdown inside the split control or the menu through', async () => {
+    const wrapper = mountGroup();
+    const bubble = vi.fn();
+    window.addEventListener('pointerdown', bubble);
+    await openMenu(wrapper);
+
+    iconHalf(wrapper).element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    expect(bubble).toHaveBeenCalledTimes(1);
+    expect(menuItems()).toHaveLength(3);
+
+    menuItems()[0]!.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    expect(bubble).toHaveBeenCalledTimes(2);
+    expect(menuItems()).toHaveLength(3);
+
+    window.removeEventListener('pointerdown', bubble);
+  });
+
+  it('stops consuming pointerdowns once the menu is closed', async () => {
+    const wrapper = mountGroup();
+    const bubble = vi.fn();
+    window.addEventListener('pointerdown', bubble);
+    await openMenu(wrapper);
+    await wrapper.setProps({ activeTool: 'add_line' });
+    await flushPromises();
+
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+
+    expect(bubble).toHaveBeenCalledTimes(1);
+
+    window.removeEventListener('pointerdown', bubble);
   });
 
   it('closes when the active tool changes while the menu is open', async () => {

@@ -32,6 +32,7 @@ const emit = defineEmits<{
 const open = ref(false);
 const lastArmed = ref<EditorTool | null>(null);
 const caret = ref<HTMLButtonElement | null>(null);
+const root = ref<HTMLElement | null>(null);
 
 function isMember(tool: EditorTool): boolean {
   return props.item.items.some((mode) => mode.tool === tool);
@@ -74,12 +75,31 @@ function closeOnEscape(): void {
   close();
   void nextTick(() => caret.value?.focus());
 }
+
+/**
+ * A click outside the open menu closes it and stops there. Without this the
+ * canvas's window-level gesture handler still receives the pointerdown and
+ * starts drawing a rectangle the user only meant to dismiss the menu with.
+ */
+function swallowOutsidePointerDown(event: PointerEvent): void {
+  const target = event.target as Element;
+  if (root.value!.contains(target)) return;
+  if (target.closest('[role="menu"]') !== null) return;
+  open.value = false;
+  event.stopPropagation();
+}
+
+watch(open, (isOpen, _previousOpen, onCleanup) => {
+  if (!isOpen) return;
+  window.addEventListener('pointerdown', swallowOutsidePointerDown, true);
+  onCleanup(() => window.removeEventListener('pointerdown', swallowOutsidePointerDown, true));
+});
 </script>
 
 <template>
   <TooltipProvider :delay-duration="300">
     <DropdownMenu v-model:open="open" :modal="false">
-      <div class="flex items-stretch">
+      <div ref="root" class="flex items-stretch">
         <Tooltip>
           <TooltipTrigger as-child>
             <Button
@@ -118,7 +138,7 @@ function closeOnEscape(): void {
         @keydown.escape.stop.prevent="closeOnEscape"
         @keydown.tab="close"
       >
-        <DropdownMenuRadioGroup :model-value="displayed.tool">
+        <DropdownMenuRadioGroup :model-value="displayed.tool" :aria-label="`${item.label} modes`">
           <DropdownMenuRadioItem
             v-for="mode in item.items"
             :key="mode.tool"
