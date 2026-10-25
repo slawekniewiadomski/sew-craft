@@ -74,11 +74,13 @@ describe('createEmptyDocument', () => {
     const document = createEmptyDocument();
 
     expect(document.schema).toBe(PATTERN_SCHEMA);
-    expect(document.schema).toBe('sewcraft.pattern/0.3');
+    expect(document.schema).toBe('sewcraft.pattern/0.4');
     expect(document.units).toBe('mm');
     expect(document.entities).toEqual([]);
     expect(document.constraints).toEqual([]);
     expect(document.pieces).toEqual([]);
+    expect(document.assemblies).toEqual([]);
+    expect(document.tabs).toEqual([]);
   });
 });
 

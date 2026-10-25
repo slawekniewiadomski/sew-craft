@@ -309,46 +309,6 @@ describe('set_role', () => {
   });
 });
 
-describe('move_piece', () => {
-  it('translates every owned point, including fixed ones, and returns the inverse', () => {
-    const fixed = { ...point('fixed', 50, 50), fixed: true } as Entity;
-    const document = documentOf([fixed]);
-    const applied = applyCommand(document, {
-      id: 'move',
-      type: 'move_piece',
-      params: { id: 'p1', dx: 5, dy: -7 },
-    });
-
-    expect(getEntity(applied.document, 'a')).toMatchObject({ x: 5, y: -7 });
-    expect(getEntity(applied.document, 'fixed')).toMatchObject({ x: 55, y: 43 });
-    expect(applied.inverse).toEqual({
-      id: 'move',
-      type: 'move_piece',
-      params: { id: 'p1', dx: -5, dy: 7 },
-    });
-    expect(apply(applied.document, applied.inverse!)).toEqual(document);
-  });
-
-  it('no-ops at zero and rejects non-finite deltas and an unknown piece', () => {
-    const document = documentOf();
-    expect(
-      applyCommand(document, { id: 'm', type: 'move_piece', params: { id: 'p1', dx: 0, dy: 0 } })
-        .document,
-    ).toBe(document);
-
-    expect(() =>
-      applyCommand(document, {
-        id: 'm',
-        type: 'move_piece',
-        params: { id: 'p1', dx: Number.NaN, dy: 0 },
-      }),
-    ).toThrow('finite');
-    expect(() =>
-      applyCommand(document, { id: 'm', type: 'move_piece', params: { id: 'p2', dx: 1, dy: 1 } }),
-    ).toThrow('unknown piece');
-  });
-});
-
 describe('add_text and update_text', () => {
   it('creates a label with defaults', () => {
     const added = apply(documentOf(), addText());

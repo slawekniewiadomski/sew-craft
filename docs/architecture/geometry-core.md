@@ -73,6 +73,10 @@ interface Piece {
   edges: EntityId[]; // closed chain, in loop order
   allowances: Allowance[];
   quantity?: number; // defaults to 1
+  notes?: string;
+  fabric?: string;
+  color?: string; // #rrggbb
+  defaults?: { allowance: AllowancePreset | null };
 }
 ```
 
@@ -86,7 +90,36 @@ least three of them, forming one closed chain: every edge continues at the verte
 where the previous edge ended and the last closes back to the first. Annotation
 and construction edges are refused, as is an edge owned by another piece. A star
 selection that only shares one common vertex is rejected. Circles are not
-supported as piece edges in v0.3.
+supported as piece edges in v0.4.
+
+A piece's stored coordinates are its own: nothing outside the piece reads their
+absolute values. The piece tab fits the piece's bounds, and an assembly places a
+copy by its **derived anchor** rather than by an origin that could go stale.
+
+## Assembly placement (`assembly.ts`)
+
+`pieceAnchor(document, piece)` is the centre of the stitch-loop bounds when the
+loop resolves, otherwise the centre of the bounds of the piece's own points,
+otherwise `null`. Using the finished loop rather than the cut loop keeps an
+instance in place when an allowance changes.
+
+`instancePlacement(document, piece, instance)` combines that anchor with the
+stored placement; `placePoint` maps one piece-local point `p` into assembly space:
+
+```
+p' = (x, y) + rotate(rotation) · (mirrored ? (-(p.x - a.x), p.y - a.y) : p - a)
+```
+
+where `a` is the anchor. Mirror happens **before** rotation, about the anchor's
+vertical axis, and rotation uses SVG's y-down convention (positive turns
+clockwise on screen). This is a contract: changing it would rewrite every stored
+instance, so asymmetric fixtures pin it in `tests/assembly.test.ts`.
+
+`instanceLoops` returns the cut loop, stitch loop and fold lines transformed into
+assembly coordinates; `assemblyBounds` unions the transformed cut bounds, ignoring
+pieces with no anchor and pieces whose cut loop does not resolve. An instance of
+an empty piece still has a placement when the piece owns points and renders a
+placeholder; the transform is always derived on read and never written back.
 
 ### Annotation text
 
@@ -511,7 +544,7 @@ const { document, inverse } = applyCommand(document, command);
 const executed = executeCommand(document, command); // applies + solves, or throws
 
 // Export is a pure serializer; see export.md.
-const svg = toSvg(document, { construction: false });
+const svg = toSvgPiece(document, piece, { construction: false });
 ```
 
 Keep the public surface small and typed. New exports go through `src/index.ts`.
@@ -521,4 +554,4 @@ Keep the public surface small and typed. New exports go through `src/index.ts`.
 The geometry package does **not** render to screen. The frontend maps entities to
 SVG (`path`, `line`, `polygon`) and controls styling, hit-testing and viewport.
 Exports (SVG/PDF/DXF) are serializers that consume the same document; the SVG
-serializer (`toSvg`, see `export.md`) is the first of these.
+serializer (`toSvgPiece`, see `export.md`) is the first of these.

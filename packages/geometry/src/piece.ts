@@ -19,6 +19,7 @@ import type {
   LineEntity,
   PatternDocument,
   Piece,
+  PointEntity,
 } from './types.js';
 import { magnitude, sub, type Vec2 } from './vector.js';
 
@@ -628,8 +629,9 @@ export function resolvePieceAnchor(
   return resolveCutAnchor(document, piece, anchor);
 }
 
-/** Axis-aligned bounds of a closed loop, or `null` for an empty loop. */
-export function loopBounds(points: readonly Vec2[]): Bounds | null {
+/** Axis-aligned bounds of a closed loop, or `null` for an empty loop. */ export function loopBounds(
+  points: readonly Vec2[],
+): Bounds | null {
   if (points.length === 0) return null;
   let minX = Infinity;
   let minY = Infinity;
@@ -648,6 +650,33 @@ export function loopBounds(points: readonly Vec2[]): Bounds | null {
 export function pieceCutBounds(document: PatternDocument, piece: Piece): Bounds | null {
   const cut = pieceCutLoop(document, piece);
   return cut === null ? null : loopBounds(cut.points);
+}
+
+/**
+ * A piece's own bounds: the stitch loop when it resolves, otherwise the bounds
+ * of the points it owns. Shared by the piece-tab fit and the assembly anchor, so
+ * an allowance edit never moves a placed instance.
+ */
+export function pieceBounds(document: PatternDocument, piece: Piece): Bounds | null {
+  const loop = pieceLoop(document, piece);
+  if (loop !== null) return loopBounds(loop.points);
+
+  const owned = document.entities.filter(
+    (entity): entity is PointEntity => entity.kind === 'point' && entity.piece === piece.id,
+  );
+  if (owned.length === 0) return null;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const point of owned) {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  }
+  return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
 }
 
 function areaOf(points: readonly Vec2[]): number {

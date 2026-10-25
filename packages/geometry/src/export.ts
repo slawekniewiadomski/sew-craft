@@ -1,14 +1,15 @@
 import { arcGeometry, svgArcCommand } from './arc.js';
 import { circleGeometry } from './circle.js';
-import { bounds, getEntity } from './document.js';
+import { getEntity } from './document.js';
 import { formatSvgNumber as formatNumber } from './number.js';
-import { isCut } from './roles.js';
 import { pieceCutBounds, pieceCutLoop, pieceFoldLines, pieceLoop, pieceMetrics } from './piece.js';
+import { isCut } from './roles.js';
 import {
   PATTERN_SCHEMA,
   type ArcEntity,
   type CircleEntity,
   type CurveEntity,
+  type Entity,
   type EntityId,
   type LineEntity,
   type PatternDocument,
@@ -17,26 +18,14 @@ import {
 } from './types.js';
 import type { Vec2 } from './vector.js';
 
-/**
- * A precomputed seam-allowance outline for one stitch edge. Legacy edges that
- * close no piece keep this outline; a piece's allowances are derived from its
- * loop instead and never take this path.
- */
-export interface SvgSeamAllowancePath {
-  edge: EntityId;
-  path: readonly Vec2[];
-}
-
 export interface SvgExportOptions {
-  /** Include construction geometry. Off by default so exports are cut-ready. */
+  /** Include the piece's construction geometry. Off by default so exports are cut-ready. */
   construction?: boolean;
-  /** Include the stitch loops of every piece. On by default. */
+  /** Include the piece's stitch loop. On by default. */
   stitch?: boolean;
   /** Include every double-fold fold line. On by default. */
   fold?: boolean;
-  /** Legacy seam-allowance outlines for edges outside any piece. Empty by default. */
-  seamAllowance?: readonly SvgSeamAllowancePath[];
-  /** Whitespace around the drawing, in millimetres. Defaults to 10 mm. */
+  /** Whitespace around the piece, in millimetres. Defaults to 10 mm. */
   padding?: number;
   /** Override the metadata timestamp (useful for deterministic output). */
   generatedAt?: string;
@@ -49,26 +38,12 @@ interface ViewBox {
   height: number;
 }
 
-interface Box {
-  min: Vec2;
-  max: Vec2;
-}
-
-interface PieceRender {
-  cut: string | null;
-  stitch: string | null;
-  fold: string[];
-  metadata: string | null;
-  bounds: Box | null;
-}
-
 const DEFAULT_PADDING = 10;
 
 const CUT_COLOR = '#000000';
 const STITCH_COLOR = '#374151';
 const FOLD_COLOR = '#2563eb';
 const CONSTRUCTION_COLOR = '#9ca3af';
-const SEAM_ALLOWANCE_COLOR = '#2563eb';
 
 const indent = (line: string): string => `  ${line}`;
 
@@ -127,13 +102,17 @@ function circleElement(document: PatternDocument, circle: CircleEntity): string 
   return `<circle cx="${formatNumber(geometry.center.x)}" cy="${formatNumber(geometry.center.y)}" r="${formatNumber(geometry.radius)}"${entityAttr(circle.id)} data-kind="circle" />`;
 }
 
-/** Split the document's line, curve, circle and arc entities into cut and construction layers. */
-function renderEntities(document: PatternDocument): { cut: string[]; construction: string[] } {
-  const cut: string[] = [];
-  const construction: string[] = [];
+/** Whether a piece owns an entity directly or through its cut loop. */
+function belongsToPiece(piece: Piece, entity: Entity): boolean {
+  return entity.piece === piece.id || piece.edges.includes(entity.id);
+}
 
+/** The piece's construction lines, curves, circles and arcs. */
+function renderConstruction(document: PatternDocument, piece: Piece): string[] {
+  const construction: string[] = [];
   for (const entity of document.entities) {
-    if (entity.kind === 'point' || entity.kind === 'text') continue;
+    if (entity.kind === 'point' || entity.kind === 'text' || isCut(entity)) continue;
+    if (!belongsToPiece(piece, entity)) continue;
 
     const element =
       entity.kind === 'line'
@@ -143,23 +122,21 @@ function renderEntities(document: PatternDocument): { cut: string[]; constructio
           : entity.kind === 'circle'
             ? circleElement(document, entity)
             : curveElement(document, entity);
-    if (element === null) continue;
-
-    (isCut(entity) ? cut : construction).push(element);
+    if (element !== null) construction.push(element);
   }
-
-  return { cut, construction };
+  return construction;
 }
 
 /** A closed `path` element for a piece loop. */
-function loopElement(points: readonly Vec2[], attributes: string, closed: boolean): string | null {
+function loopElement(points: readonly Vec2[], attributes: string): string | null {
+  /* v8 ignore next -- every caller passes a resolved, non-empty loop */
   if (points.length === 0) return null;
 
   const [first, ...rest] = points;
   const commands = [
     `M ${formatNumber(first!.x)} ${formatNumber(first!.y)}`,
     ...rest.map((point) => `L ${formatNumber(point.x)} ${formatNumber(point.y)}`),
-    ...(closed ? ['Z'] : []),
+    'Z',
   ];
   return `<path d="${commands.join(' ')}"${attributes} />`;
 }
@@ -179,45 +156,7 @@ function pieceMetadata(document: PatternDocument, piece: Piece): string | null {
   return `<!-- sewcraft:piece ${attributes.join(' ')} -->`;
 }
 
-function renderPiece(document: PatternDocument, piece: Piece): PieceRender {
-  const cut = pieceCutLoop(document, piece);
-  const loop = pieceLoop(document, piece);
-  const folds = pieceFoldLines(document, piece);
-  const pieceAttr = ` data-piece="${escapeXml(piece.id)}"`;
-
-  const cutWarnings =
-    cut === null || cut.selfIntersections.length === 0 ? '' : ' data-warning="self-intersection"';
-
-  return {
-    cut: cut === null ? null : loopElement(cut.points, `${pieceAttr}${cutWarnings}`, true),
-    stitch:
-      loop === null ? null : loopElement(loop.points, `${pieceAttr} data-kind="stitch"`, true),
-    fold: folds.map((fold) => loopElement(fold, `${pieceAttr} data-kind="fold"`, true)!),
-    metadata: pieceMetadata(document, piece),
-    bounds: pieceCutBounds(document, piece),
-  };
-}
-
-function seamElement(entry: SvgSeamAllowancePath): string | null {
-  return loopElement(entry.path, ` data-edge="${escapeXml(entry.edge)}"`, false);
-}
-
-/** The union of two boxes, or `null` while neither exists. */
-function unionBox(a: Box | null, b: Box | null): Box | null {
-  if (a === null) return b;
-  if (b === null) return a;
-  return {
-    min: { x: Math.min(a.min.x, b.min.x), y: Math.min(a.min.y, b.min.y) },
-    max: { x: Math.max(a.max.x, b.max.x), y: Math.max(a.max.y, b.max.y) },
-  };
-}
-
-/** The union of every piece's cut bounds, or `null` when no piece resolves. */
-function cutBoundsOf(pieces: readonly PieceRender[]): Box | null {
-  return pieces.reduce<Box | null>((box, piece) => unionBox(box, piece.bounds), null);
-}
-
-function computeViewBox(box: Box | null, padding: number): ViewBox {
+function computeViewBox(box: ReturnType<typeof pieceCutBounds>, padding: number): ViewBox {
   if (box === null) {
     return { minX: 0, minY: 0, width: 0, height: 0 };
   }
@@ -231,88 +170,68 @@ function computeViewBox(box: Box | null, padding: number): ViewBox {
 }
 
 /**
- * Serialize a pattern to a true-to-scale SVG in millimetres. The output is pure
- * string data (no DOM) with one user unit per millimetre and a `viewBox` in
- * pattern coordinates.
- *
- * A document with pieces exports its derived geometry: the `cut` layer is the
- * closed cut loop of every piece and is always present, while `stitch` and
- * `fold` default to on and can be switched off individually. A document without
- * pieces keeps the legacy contract, where `cut` is every non-construction
- * entity and the `viewBox` follows the document bounds. Legacy allowances stay in
- * their own `seam-allowance` layer, and `construction` remains opt-in.
+ * Serialize one piece to a true-to-scale SVG in millimetres. The output is pure
+ * string data (no DOM) with one user unit per millimetre and a `viewBox` in the
+ * piece's own cut-bounds coordinates. The `cut` layer is the piece's closed cut
+ * loop and is always present; `stitch` and `fold` default to on and can be
+ * switched off individually; `construction` is opt-in.
  */
-export function toSvg(document: PatternDocument, options: SvgExportOptions = {}): string {
+export function toSvgPiece(
+  document: PatternDocument,
+  piece: Piece,
+  options: SvgExportOptions = {},
+): string {
   const construction = options.construction ?? false;
   const stitch = options.stitch ?? true;
   const fold = options.fold ?? true;
   const padding = options.padding ?? DEFAULT_PADDING;
-  const seamAllowance = options.seamAllowance ?? [];
   const generatedAt = options.generatedAt ?? new Date().toISOString();
 
-  const legacy = renderEntities(document);
-  const pieces = document.pieces.map((piece) => renderPiece(document, piece));
-  const pieceCut = pieces
-    .map((piece) => piece.cut)
-    .filter((element): element is string => element !== null);
-  const pieceStitch = pieces
-    .map((piece) => piece.stitch)
-    .filter((element): element is string => element !== null);
-  const pieceFold = pieces.flatMap((piece) => piece.fold);
-  const metadata = pieces
-    .map((piece) => piece.metadata)
-    .filter((element): element is string => element !== null);
+  const cut = pieceCutLoop(document, piece);
+  const loop = pieceLoop(document, piece);
+  const folds = pieceFoldLines(document, piece);
+  const pieceAttr = ` data-piece="${escapeXml(piece.id)}"`;
+  const cutWarnings =
+    cut === null || cut.selfIntersections.length === 0 ? '' : ' data-warning="self-intersection"';
 
-  // The presence of pieces decides the contract, not whether their loops
-  // resolve: a broken piece exports an empty cut layer and a zero-size viewBox
-  // rather than silently falling back to every entity as a cut line.
-  const hasPieces = pieces.length > 0;
-  const cutElements = hasPieces ? pieceCut : legacy.cut;
-  const stitchElements = hasPieces ? pieceStitch : [];
-  const cutBounds = cutBoundsOf(pieces);
-  const box = computeViewBox(hasPieces ? cutBounds : bounds(document), padding);
+  const cutElement = cut === null ? null : loopElement(cut.points, `${pieceAttr}${cutWarnings}`);
+  const stitchElement =
+    loop === null ? null : loopElement(loop.points, `${pieceAttr} data-kind="stitch"`);
+  const foldElements = folds.map((points) => loopElement(points, `${pieceAttr} data-kind="fold"`)!);
+  const constructionElements = construction ? renderConstruction(document, piece) : [];
+  const metadata = pieceMetadata(document, piece);
+  const box = computeViewBox(pieceCutBounds(document, piece), padding);
 
   const lines: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     `<!-- sewcraft:svg schema="${PATTERN_SCHEMA}" generated="${escapeXml(generatedAt)}" -->`,
-    ...metadata,
+    ...(metadata === null ? [] : [metadata]),
     `<svg xmlns="http://www.w3.org/2000/svg" width="${formatNumber(box.width)}mm" height="${formatNumber(box.height)}mm" viewBox="${formatNumber(box.minX)} ${formatNumber(box.minY)} ${formatNumber(box.width)} ${formatNumber(box.height)}">`,
     `<g data-layer="cut" fill="none" stroke="${CUT_COLOR}" stroke-width="1">`,
-    ...cutElements.map(indent),
+    ...(cutElement === null ? [] : [indent(cutElement)]),
     '</g>',
   ];
 
-  if (stitch && stitchElements.length > 0) {
+  if (stitch && stitchElement !== null) {
     lines.push(
       `<g data-layer="stitch" fill="none" stroke="${STITCH_COLOR}" stroke-width="0.35">`,
-      ...stitchElements.map(indent),
+      indent(stitchElement),
       '</g>',
     );
   }
 
-  if (fold && pieceFold.length > 0) {
+  if (fold && foldElements.length > 0) {
     lines.push(
       `<g data-layer="fold" fill="none" stroke="${FOLD_COLOR}" stroke-width="0.35" stroke-dasharray="6 3">`,
-      ...pieceFold.map(indent),
+      ...foldElements.map(indent),
       '</g>',
     );
   }
 
-  const seams = seamAllowance
-    .map(seamElement)
-    .filter((element): element is string => element !== null);
-  if (seams.length > 0) {
-    lines.push(
-      `<g data-layer="seam-allowance" fill="none" stroke="${SEAM_ALLOWANCE_COLOR}" stroke-width="0.5" stroke-dasharray="6 3">`,
-      ...seams.map(indent),
-      '</g>',
-    );
-  }
-
-  if (construction && legacy.construction.length > 0) {
+  if (constructionElements.length > 0) {
     lines.push(
       `<g data-layer="construction" fill="none" stroke="${CONSTRUCTION_COLOR}" stroke-width="0.5" stroke-dasharray="4 4">`,
-      ...legacy.construction.map(indent),
+      ...constructionElements.map(indent),
       '</g>',
     );
   }

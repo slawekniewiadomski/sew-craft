@@ -15,7 +15,7 @@ runtime source of truth is `config/geometry.php`, exposed at `GET /api/commands`
 }
 ```
 
-## Commands (v0.13)
+## Commands (v0.15)
 
 ### `add_point`
 
@@ -290,11 +290,16 @@ Create an **empty piece** — the container every new entity belongs to. The cut
 loop is captured later by `set_piece_loop`, normally automatically when the first
 closed chain of the piece's cut edges appears.
 
-- params: `name?: string`, `quantity?: int` (≥ 1)
+- params: `name?: string`, `quantity?: int` (≥ 1), `color?: '#rrggbb'`,
+  `defaults?: { allowance: AllowancePreset | null }`
 - `name` is trimmed and must be non-empty; `quantity` must be an integer of at
-  least 1. Both are optional; an omitted quantity means 1.
-- The deprecated pre-0.3 `edges` and `allowance` params are still accepted by the
-  command core for stored plans, but the UI never sends them.
+  least 1. `color` is exactly `#` plus six lowercase hex digits. Both the
+  deprecated `edges` and `allowance` params are **removed**: a piece is always
+  created empty and looped later.
+- `defaults` stores the piece's own allowance override; `{ allowance: null }`
+  means this piece starts with no allowance, and an absent object inherits the
+  document default.
+- The new piece's tab is appended to `tabs` in the same command.
 - Re-applying a command whose piece id already exists is a no-op.
 - inverse: `delete_piece` for the new piece.
 
@@ -308,21 +313,13 @@ Store the piece's **cut loop**, or clear it with an empty list.
   `line`/`curve`/`arc` edges owned by the piece. Circles, construction and
   annotation edges are refused, as is an edge owned by another piece.
 - `allowance` defaults to `'default'`: it fills edges that have no allowance yet
-  from the document default and keeps existing widths. `'none'` adds none; an
-  object copies that preset. Clearing removes the loop and its allowances.
+  from the piece's effective default (its own override, else the document
+  default) and keeps existing widths. `'none'` adds none; an object copies that
+  preset. Changing either default never rewrites an existing allowance. Clearing
+  removes the loop and its allowances.
 - A loop is stored rather than derived so corner rounds keep working; editing a
   loop edge later leaves the loop **broken** until it is repaired or cleared.
 - inverse: `null`; the journal snapshot restores the previous loop and allowances.
-
-### `move_piece`
-
-Translate every point the piece owns, including fixed ones, as one undoable step.
-
-- params: `id: entity_id`, `dx: number`, `dy: number`
-- `dx` and `dy` must be finite; `(0, 0)` is a no-op.
-- Constraints are translation-invariant in the current model, so no re-solve is
-  needed; a future world-anchored constraint would have to refuse or re-solve.
-- inverse: `move_piece` with `-dx`, `-dy`.
 
 ### `add_text`
 
@@ -354,12 +351,15 @@ Edit a label's content, anchor, presentation or leader.
 
 ### `update_piece`
 
-Rename a piece or change its cut quantity.
+Change a piece's parameters.
 
-- params: `id: entity_id`, `name?: string | null`, `quantity?: int | null`
-- At least one of `name` and `quantity` is required.
-- A string sets the trimmed name; `null` clears it. A quantity is an integer of at
-  least 1; `null` clears it, which means 1.
+- params: `id: entity_id`, `name?: string | null`, `quantity?: int | null`,
+  `notes?: string | null`, `fabric?: string | null`, `color?: '#rrggbb' | null`
+- At least one field is required.
+- A string sets the trimmed value; `null` or empty text clears the field. `notes`
+  is at most 500 characters, `fabric` at most 120, and `color` is exactly `#`
+  plus six lowercase hex digits.
+- A quantity is an integer of at least 1; `null` clears it, which means 1.
 - Re-applying the current values is a no-op with `inverse: null`.
 - inverse: `update_piece` with the previous values (`null` for a value that was
   absent).
@@ -367,12 +367,89 @@ Rename a piece or change its cut quantity.
 ### `delete_piece`
 
 Remove a piece and cascade its owned geometry, constraints, texts, corner rounds
-and cut dimensions. Other pieces are untouched.
+and cut dimensions. Its instances in every assembly and its tab are removed in
+the same command; other pieces are untouched.
 
 - params: `id: entity_id`
 - Deleting an already-missing piece is a no-op.
 - inverse: `null`; restoring a piece together with its cascade is not a single
   command, so undo uses the journal's document snapshot.
+
+### `set_piece_default_allowance`
+
+Set, clear or hand back a piece's allowance override.
+
+- params: `piece: entity_id`, and exactly one of
+  `mode: 'inherit'` (drop the override), `mode: 'none'` (store an explicit null)
+  or `mode: 'preset'` with `width: number > 0` and optional `kind`.
+- Editing the override never touches an existing edge's allowance; it applies to
+  edges added to the loop afterwards.
+- Re-applying the current override is a no-op.
+- inverse: `set_piece_default_allowance` restoring the previous mode and preset.
+
+### `create_assembly`
+
+Create an empty assembly and append its tab.
+
+- params: `name?: string` (trimmed, 1–80 characters; defaults to `Assembly N` by
+  creation index)
+- The assembly id is the command id; re-applying it is a no-op.
+- inverse: `delete_assembly`
+
+### `update_assembly`
+
+Rename an assembly.
+
+- params: `id: entity_id`, `name: string` (trimmed, 1–80 characters)
+- inverse: `update_assembly` with the previous name.
+
+### `delete_assembly`
+
+Remove an assembly and its tab. Placed pieces are untouched; instances die with
+the assembly.
+
+- params: `id: entity_id`
+- Deleting an already-missing assembly is a no-op.
+- inverse: `null`; undo uses the journal's document snapshot.
+
+### `add_instance`
+
+Place one instance of a piece in an assembly.
+
+- params: `assembly: entity_id`, `piece: entity_id`, `x: number`, `y: number`,
+  `rotation?: number`, `mirrored?: boolean`
+- Both the assembly and the piece must exist, and `x`, `y` and `rotation` must be
+  finite. `(x, y)` positions the piece's derived anchor; an omitted rotation is
+  0 and an omitted mirror is false.
+- The instance id is the command id; re-applying it is a no-op.
+- inverse: `remove_instance`
+
+### `remove_instance`
+
+Remove one placed instance.
+
+- params: `assembly: entity_id`, `instance: entity_id`
+- Removing an already-missing instance is a no-op.
+- inverse: `add_instance` with the stored placement.
+
+### `update_instance`
+
+Move, rotate or mirror one placed instance.
+
+- params: `assembly: entity_id`, `instance: entity_id`, and at least one of
+  `x`, `y`, `rotation`, `mirrored`
+- Every numeric field must be finite; an unknown instance is an error.
+- inverse: `update_instance` with all the previous fields, so a drag, a nudge and
+  an inspector edit share one journal entry shape.
+
+### `reorder_tabs`
+
+Replace the document's tab order.
+
+- params: `tabs: TabRef[]` where `TabRef = { kind: 'piece' | 'assembly', id }`
+- `tabs` must be a permutation of the current refs: same length, no duplicates,
+  every ref known. Reordering is undoable.
+- inverse: `reorder_tabs` with the previous order.
 
 ### `set_piece_allowance`
 
@@ -582,6 +659,24 @@ Request a solver rebuild. Typically emitted after a batch of geometry commands.
 3. Implement `applyCommand` handling in `@sewcraft/geometry` with tests.
 4. Wire any UI affordance. Emit it from the command bus — never mutate state
    directly.
+
+## Migration from spec 0.14.0
+
+`spec_version` is **0.15.0** and the pattern schema is
+`sewcraft.pattern/0.4`. This is a breaking development-stage change:
+
+- `PatternDocument` gains `assemblies` and `tabs`; `Piece` gains `notes`,
+  `fabric`, `color` and `defaults.allowance`.
+- `create_piece` drops its deprecated `edges`/`allowance` params and gains
+  `color`/`defaults`.
+- `update_piece` gains `notes`, `fabric` and `color`.
+- `delete_piece` cascades instances and the tab.
+- New commands: `set_piece_default_allowance`, `create_assembly`,
+  `update_assembly`, `delete_assembly`, `add_instance`, `remove_instance`,
+  `update_instance`, `reorder_tabs`.
+- `move_piece` retires: arranging is the assembly's job.
+- Stored 0.3 documents are refused with `UnsupportedPatternSchemaError`; there
+  is no migration.
 
 ## Migration from spec 0.13.0
 

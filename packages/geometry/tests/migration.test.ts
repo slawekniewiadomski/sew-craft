@@ -15,9 +15,80 @@ const builtIn = { allowance: { width: 10, kind: 'seam' as const } };
 describe('normalizeDocument', () => {
   it('returns a current document untouched', () => {
     const piece: Piece = { id: 'p', edges: ['a'], allowances: [] };
-    const current = { ...createEmptyDocument(), pieces: [piece] };
+    const current = {
+      ...createEmptyDocument(),
+      pieces: [piece],
+      tabs: [{ kind: 'piece' as const, id: 'p' }],
+    };
 
     expect(normalizeDocument(current)).toBe(current);
+  });
+
+  it('defaults a missing assembly list and tab order', () => {
+    const current = { ...createEmptyDocument() } as LegacyPatternDocument;
+    delete current.assemblies;
+    delete current.tabs;
+
+    const migrated = normalizeDocument(current);
+
+    expect(migrated.assemblies).toEqual([]);
+    expect(migrated.tabs).toEqual([]);
+  });
+
+  it('appends missing objects in pieces-then-assemblies order', () => {
+    const current = {
+      ...createEmptyDocument(),
+      pieces: [
+        { id: 'p1', edges: [], allowances: [] },
+        { id: 'p2', edges: [], allowances: [] },
+      ],
+      assemblies: [
+        { id: 'a1', name: 'A', instances: [] },
+        { id: 'a2', name: 'B', instances: [] },
+      ],
+      tabs: [{ kind: 'assembly' as const, id: 'a1' }],
+    };
+
+    expect(normalizeDocument(current).tabs).toEqual([
+      { kind: 'assembly', id: 'a1' },
+      { kind: 'piece', id: 'p1' },
+      { kind: 'piece', id: 'p2' },
+      { kind: 'assembly', id: 'a2' },
+    ]);
+  });
+
+  it('drops duplicate and stale tabs and keeps a valid order', () => {
+    const current = {
+      ...createEmptyDocument(),
+      pieces: [{ id: 'p1', edges: [], allowances: [] }],
+      assemblies: [{ id: 'a1', name: 'A', instances: [] }],
+      tabs: [
+        { kind: 'assembly' as const, id: 'a1' },
+        { kind: 'assembly' as const, id: 'a1' },
+        { kind: 'assembly' as const, id: 'gone' },
+        { kind: 'piece' as const, id: 'p1' },
+      ],
+    };
+
+    expect(normalizeDocument(current).tabs).toEqual([
+      { kind: 'assembly', id: 'a1' },
+      { kind: 'piece', id: 'p1' },
+    ]);
+  });
+
+  it('accepts a valid non-default tab order without rebuilding it', () => {
+    const tabs = [
+      { kind: 'assembly' as const, id: 'a1' },
+      { kind: 'piece' as const, id: 'p1' },
+    ];
+    const current = {
+      ...createEmptyDocument(),
+      pieces: [{ id: 'p1', edges: [], allowances: [] }],
+      assemblies: [{ id: 'a1', name: 'A', instances: [] }],
+      tabs,
+    };
+
+    expect(normalizeDocument(current).tabs).toBe(tabs);
   });
 
   it('adds a piece list to a current document written without one', () => {
@@ -26,8 +97,17 @@ describe('normalizeDocument', () => {
 
     const migrated = normalizeDocument(current);
 
-    expect(migrated.schema).toBe('sewcraft.pattern/0.3');
+    expect(migrated.schema).toBe('sewcraft.pattern/0.4');
     expect(migrated.pieces).toEqual([]);
+  });
+
+  it('refuses a 0.3 document instead of migrating it', () => {
+    const legacy = {
+      ...createEmptyDocument(),
+      schema: 'sewcraft.pattern/0.3',
+    } as LegacyPatternDocument;
+
+    expect(() => normalizeDocument(legacy)).toThrow(UnsupportedPatternSchemaError);
   });
 
   it('refuses a 0.2 document instead of migrating it', () => {
@@ -74,17 +154,18 @@ describe('normalizeDocument', () => {
 
 describe('known pattern schemas', () => {
   it('lists only the current schema', () => {
-    expect(KNOWN_PATTERN_SCHEMAS).toEqual(['sewcraft.pattern/0.3']);
+    expect(KNOWN_PATTERN_SCHEMAS).toEqual(['sewcraft.pattern/0.4']);
   });
 
   it('accepts the schema this build understands', () => {
-    expect(isKnownPatternSchema('sewcraft.pattern/0.3')).toBe(true);
+    expect(isKnownPatternSchema('sewcraft.pattern/0.4')).toBe(true);
   });
 
   it('refuses a legacy, newer or hand-edited schema', () => {
     expect(isKnownPatternSchema('sewcraft.pattern/0.1')).toBe(false);
     expect(isKnownPatternSchema('sewcraft.pattern/0.2')).toBe(false);
-    expect(isKnownPatternSchema('sewcraft.pattern/0.4')).toBe(false);
+    expect(isKnownPatternSchema('sewcraft.pattern/0.3')).toBe(false);
+    expect(isKnownPatternSchema('sewcraft.pattern/0.5')).toBe(false);
     expect(isKnownPatternSchema('')).toBe(false);
   });
 });

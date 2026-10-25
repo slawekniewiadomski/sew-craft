@@ -1,16 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  applyCommand,
   createEmptyDocument,
-  PATTERN_SCHEMA,
-  toSvg,
+  toSvgPiece,
   type ArcEntity,
   type CircleEntity,
   type CurveEntity,
   type Entity,
   type LineEntity,
   type PatternDocument,
+  type Piece,
   type PointEntity,
 } from '../src/index.js';
 
@@ -18,12 +17,13 @@ const point = (
   id: string,
   x: number,
   y: number,
-  options: { construction?: boolean; fixed?: boolean } = {},
+  options: { construction?: boolean; fixed?: boolean; piece?: string } = {},
 ): PointEntity => ({
   id,
   kind: 'point',
   x,
   y,
+  ...(options.piece === undefined ? {} : { piece: options.piece }),
   construction: options.construction ?? false,
   fixed: options.fixed ?? false,
 });
@@ -32,19 +32,20 @@ const line = (
   id: string,
   start: string,
   end: string,
-  options: { construction?: boolean } = {},
+  options: { construction?: boolean; piece?: string } = {},
 ): LineEntity => ({
   id,
   kind: 'line',
   start,
   end,
+  ...(options.piece === undefined ? {} : { piece: options.piece }),
   construction: options.construction ?? false,
 });
 
 const curve = (
   id: string,
   points: [string, string, string, string],
-  options: { construction?: boolean } = {},
+  options: { construction?: boolean; piece?: string } = {},
 ): CurveEntity => ({
   id,
   kind: 'curve',
@@ -52,12 +53,8 @@ const curve = (
   p1: points[1],
   p2: points[2],
   p3: points[3],
+  ...(options.piece === undefined ? {} : { piece: options.piece }),
   construction: options.construction ?? false,
-});
-
-const documentOf = (entities: Entity[]): PatternDocument => ({
-  ...createEmptyDocument(),
-  entities,
 });
 
 const arc = (
@@ -65,13 +62,14 @@ const arc = (
   start: string,
   end: string,
   through: string,
-  options: { construction?: boolean } = {},
+  options: { construction?: boolean; piece?: string } = {},
 ): ArcEntity => ({
   id,
   kind: 'arc',
   start,
   end,
   through,
+  ...(options.piece === undefined ? {} : { piece: options.piece }),
   construction: options.construction ?? false,
 });
 
@@ -79,280 +77,178 @@ const circle = (
   id: string,
   center: string,
   rim: string,
-  options: { construction?: boolean } = {},
+  options: { construction?: boolean; piece?: string } = {},
 ): CircleEntity => ({
   id,
   kind: 'circle',
   center,
   rim,
+  ...(options.piece === undefined ? {} : { piece: options.piece }),
   construction: options.construction ?? false,
 });
 
-const square = (): PatternDocument =>
-  documentOf([point('a', 0, 0), point('b', 100, 50), line('l', 'a', 'b')]);
+const loop: Entity[] = [
+  point('a', 0, 0),
+  point('b', 200, 0),
+  point('c', 200, 200),
+  point('d', 0, 200),
+  line('bottom', 'a', 'b'),
+  line('right', 'b', 'c'),
+  line('top', 'c', 'd'),
+  line('left', 'd', 'a'),
+];
 
-describe('toSvg', () => {
-  it('exports a true-to-scale millimetre viewBox with padding around the geometry', () => {
-    const svg = toSvg(square(), { generatedAt: '2026-01-01T00:00:00.000Z' });
+const piece: Piece = {
+  id: 'piece-1',
+  edges: ['bottom', 'right', 'top', 'left'],
+  allowances: [],
+};
 
-    expect(svg).toContain(
-      '<svg xmlns="http://www.w3.org/2000/svg" width="120mm" height="70mm" viewBox="-10 -10 120 70">',
-    );
-    expect(svg).toContain(
-      `<!-- sewcraft:svg schema="${PATTERN_SCHEMA}" generated="2026-01-01T00:00:00.000Z" -->`,
-    );
-    expect(svg).toContain('<line x1="0" y1="0" x2="100" y2="50" data-entity-id="l" />');
-  });
+const documentOf = (extra: Entity[] = []): PatternDocument => ({
+  ...createEmptyDocument(),
+  entities: [...loop, ...extra],
+  pieces: [piece],
+});
 
-  it('always emits the cut layer and omits construction by default', () => {
-    const svg = toSvg(
-      documentOf([
-        point('a', 0, 0),
-        point('b', 10, 0),
-        point('c', 10, 10),
-        line('cut', 'a', 'b'),
-        line('guide', 'b', 'c', { construction: true }),
-      ]),
-    );
+const generatedAt = '2026-10-22T00:00:00.000Z';
 
-    expect(svg).toContain('<g data-layer="cut" fill="none"');
-    expect(svg).toContain('data-entity-id="cut"');
-    expect(svg).not.toContain('data-layer="construction"');
-    expect(svg).not.toContain('data-entity-id="guide"');
-  });
+const svg = (document: PatternDocument, options = {}): string =>
+  toSvgPiece(document, piece, { generatedAt, ...options });
 
-  it('includes construction geometry in its own layer when requested', () => {
-    const svg = toSvg(
-      documentOf([
-        point('a', 0, 0),
-        point('b', 10, 0),
-        line('guide', 'a', 'b', { construction: true }),
-      ]),
-      { construction: true },
-    );
+/** The inner content of the layer group with this name, or `null` when absent. */
+function layer(svgText: string, name: string): string[] | null {
+  const open = `<g data-layer="${name}"`;
+  const start = svgText.indexOf(open);
+  if (start < 0) return null;
+  const inner = svgText.slice(start + open.length);
+  const end = inner.indexOf('</g>');
+  return inner
+    .slice(inner.indexOf('>') + 1, end)
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
 
-    expect(svg).toContain('<g data-layer="construction"');
-    expect(svg).toContain('data-entity-id="guide"');
+describe('toSvgPiece construction layer', () => {
+  it('omits construction by default and includes only the piece-owned geometry on request', () => {
+    const document = documentOf([
+      point('g1', 300, 0, { piece: 'piece-1' }),
+      point('g2', 300, 100, { piece: 'piece-1' }),
+      point('other1', 400, 0, { piece: 'other' }),
+      point('other2', 400, 100, { piece: 'other' }),
+      line('guide', 'g1', 'g2', { construction: true, piece: 'piece-1' }),
+      line('foreign', 'other1', 'other2', { construction: true, piece: 'other' }),
+    ]);
+
+    expect(layer(svg(document), 'construction')).toBeNull();
+    const construction = layer(svg(document, { construction: true }), 'construction')!;
+    expect(construction).toHaveLength(1);
+    expect(construction[0]).toContain('data-entity-id="guide"');
+    expect(construction[0]).not.toContain('foreign');
   });
 
   it('omits an empty construction layer even when construction is requested', () => {
-    const svg = toSvg(square(), { construction: true });
-
-    expect(svg).not.toContain('data-layer="construction"');
+    expect(layer(svg(documentOf(), { construction: true }), 'construction')).toBeNull();
   });
 
-  it('exports a rounded corner as trimmed cut lines and a cut arc', () => {
-    const rounded = applyCommand(
-      documentOf([
-        point('c', 0, 0),
-        point('a', 100, 0),
-        point('b', 0, 100),
-        line('l1', 'c', 'a'),
-        line('l2', 'c', 'b'),
-      ]),
-      { id: 'r1', type: 'add_corner_round', params: { first: 'l1', second: 'l2', radius: 10 } },
-    ).document;
-    const svg = toSvg(rounded);
+  it('renders a line, curve, and true arc as cut-ready elements', () => {
+    const document = documentOf([
+      point('c1', 10, 10, { piece: 'piece-1' }),
+      point('c2', 50, 10, { piece: 'piece-1' }),
+      point('c3', 50, 50, { piece: 'piece-1' }),
+      curve('bend', ['c1', 'c1', 'c2', 'c2'], { construction: true, piece: 'piece-1' }),
+      point('a1', 0, 100, { piece: 'piece-1' }),
+      point('a2', 100, 100, { piece: 'piece-1' }),
+      point('a3', 50, 50, { piece: 'piece-1' }),
+      arc('bump', 'a1', 'a2', 'a3', { construction: true, piece: 'piece-1' }),
+      point('k1', 20, 20, { piece: 'piece-1' }),
+      point('k2', 30, 20, { piece: 'piece-1' }),
+      circle('hole', 'k1', 'k2', { construction: true, piece: 'piece-1' }),
+    ]);
+    const construction = layer(svg(document, { construction: true }), 'construction')!;
 
-    expect(svg).toContain('<g data-layer="cut" fill="none"');
-    expect(svg).toContain('data-entity-id="l1"');
-    expect(svg).toContain('data-entity-id="l2"');
-    expect(svg).toContain('data-entity-id="r1:arc"');
-    expect(svg).toContain('<path d="M 10 0 C');
+    expect(construction).toHaveLength(3);
+    expect(construction[0]).toContain('<path d="M 10 10 C');
+    expect(construction[1]).toContain('A ');
+    expect(construction[2]).toContain('<circle cx="20" cy="20" r="10"');
   });
 
-  it('renders curves as cubic Bézier paths', () => {
-    const svg = toSvg(
-      documentOf([
-        point('p0', 0, 0),
-        point('p1', 10, 20),
-        point('p2', 30, 20),
-        point('p3', 40, 0),
-        curve('c', ['p0', 'p1', 'p2', 'p3']),
-      ]),
-    );
+  it('skips a degenerate or unresolvable arc and circle', () => {
+    const document = documentOf([
+      point('collinear1', 0, 100, { piece: 'piece-1' }),
+      point('collinear2', 10, 100, { piece: 'piece-1' }),
+      point('collinear3', 20, 100, { piece: 'piece-1' }),
+      arc('flat', 'collinear1', 'collinear3', 'collinear2', {
+        construction: true,
+        piece: 'piece-1',
+      }),
+      point('k1', 20, 20, { piece: 'piece-1' }),
+      point('k2', 20, 20, { piece: 'piece-1' }),
+      circle('empty', 'k1', 'k2', { construction: true, piece: 'piece-1' }),
+      point('g1', 300, 0, { piece: 'piece-1' }),
+      point('g2', 300, 100, { piece: 'piece-1' }),
+      line('missing', 'g1', 'gone', { construction: true, piece: 'piece-1' }),
+    ]);
+    const construction = layer(svg(document, { construction: true }), 'construction');
 
-    expect(svg).toContain('<path d="M 0 0 C 10 20 30 20 40 0" data-entity-id="c" />');
+    // The arc is collinear, the circle has a zero radius and the line's second
+    // point is missing, so nothing renderable is left.
+    expect(construction).toBeNull();
   });
 
-  it('renders a cut arc as one true SVG A command', () => {
-    const svg = toSvg(
-      documentOf([
-        point('s', -10, 0),
-        point('t', 0, 10),
-        point('e', 10, 0),
-        arc('a1', 's', 'e', 't'),
-      ]),
-    );
+  it('skips a curve with a missing point', () => {
+    const document = documentOf([
+      point('g1', 0, 0, { piece: 'piece-1' }),
+      point('g2', 50, 0, { piece: 'piece-1' }),
+      curve('broken', ['g1', 'g2', 'gone', 'g2'], { construction: true, piece: 'piece-1' }),
+    ]);
 
-    expect(svg).toContain(
-      '<path d="M -10 0 A 10 10 0 0 0 10 0" data-entity-id="a1" data-kind="arc" />',
-    );
+    expect(layer(svg(document, { construction: true }), 'construction')).toBeNull();
   });
 
-  it('sets the large-arc flag for an arc that sweeps more than half the circle', () => {
-    const svg = toSvg(
-      documentOf([
-        point('s', 10, 0),
-        point('t', 0, -10),
-        point('e', 0, 10),
-        arc('a1', 's', 'e', 't'),
-      ]),
-    );
+  it('generates a timestamp when none is supplied', () => {
+    const output = toSvgPiece(documentOf(), piece);
 
-    expect(svg).toContain('A 10 10 0 1 0 0 10" data-entity-id="a1"');
+    expect(output).toMatch(/generated="\d{4}-\d{2}-\d{2}T/);
   });
 
-  it('renders a construction arc in the construction layer', () => {
-    const svg = toSvg(
-      documentOf([
-        point('s', -10, 0),
-        point('t', 0, 10),
-        point('e', 10, 0),
-        arc('guide', 's', 'e', 't', { construction: true }),
-      ]),
-      { construction: true },
-    );
+  it('skips a circle whose referenced points are missing or not points', () => {
+    const document = documentOf([
+      point('k1', 20, 20, { piece: 'piece-1' }),
+      point('k2', 30, 20, { piece: 'piece-1' }),
+      circle('missing', 'k1', 'gone', { construction: true, piece: 'piece-1' }),
+      circle('not-points', 'missing', 'gone', { construction: true, piece: 'piece-1' }),
+      circle('renderable', 'k1', 'k2', { construction: true, piece: 'piece-1' }),
+    ]);
+    const construction = layer(svg(document, { construction: true }), 'construction')!;
 
-    expect(svg).toContain('<g data-layer="construction"');
-    expect(svg).toContain('data-entity-id="guide"');
-    expect(svg.indexOf('<g data-layer="construction"')).toBeLessThan(
-      svg.indexOf('data-entity-id="guide"'),
-    );
-  });
-
-  it('renders a cut circle as a true SVG circle', () => {
-    const svg = toSvg(documentOf([point('c', 10, 20), point('r', 13, 24), circle('c1', 'c', 'r')]));
-
-    expect(svg).toContain(
-      '<circle cx="10" cy="20" r="5" data-entity-id="c1" data-kind="circle" />',
-    );
-  });
-
-  it('renders a construction circle in the construction layer', () => {
-    const svg = toSvg(
-      documentOf([
-        point('c', 0, 0),
-        point('r', 0, 10),
-        circle('guide', 'c', 'r', { construction: true }),
-      ]),
-      { construction: true },
-    );
-
-    expect(svg).toContain('<g data-layer="construction"');
-    expect(svg).toContain('data-entity-id="guide"');
-    expect(svg.indexOf('<g data-layer="construction"')).toBeLessThan(
-      svg.indexOf('data-entity-id="guide"'),
-    );
-  });
-
-  it('skips a degenerate or unresolvable arc', () => {
-    const svg = toSvg(
-      documentOf([
-        point('s', 0, 0),
-        point('e', 10, 0),
-        point('t', 5, 0),
-        arc('flat', 's', 'e', 't'),
-        arc('dangling', 's', 'e', 'missing'),
-      ]),
-    );
-
-    expect(svg).not.toContain('data-entity-id="flat"');
-    expect(svg).not.toContain('data-entity-id="dangling"');
-  });
-
-  it('skips a degenerate or unresolvable circle', () => {
-    const svg = toSvg(
-      documentOf([
-        point('c', 0, 0),
-        point('r', 0, 0),
-        circle('degenerate', 'c', 'r'),
-        circle('dangling', 'c', 'missing'),
-        circle('huge', 'c', 'big'),
-        point('big', Number.MAX_VALUE, Number.MAX_VALUE),
-      ]),
-    );
-
-    expect(svg).not.toContain('data-entity-id="degenerate"');
-    expect(svg).not.toContain('data-entity-id="dangling"');
-    expect(svg).not.toContain('data-entity-id="huge"');
-  });
-
-  it('skips entities whose referenced points are missing or not points', () => {
-    const svg = toSvg(
-      documentOf([
-        point('a', 0, 0),
-        line('dangling', 'a', 'missing'),
-        line('not-point', 'a', 'ref'),
-        line('ref', 'a', 'a'),
-        curve('broken', ['a', 'a', 'a', 'missing']),
-      ]),
-    );
-
-    expect(svg).not.toContain('dangling');
-    expect(svg).not.toContain('not-point');
-    expect(svg).not.toContain('broken');
-  });
-
-  it('renders seam allowance outlines in a dedicated layer', () => {
-    const svg = toSvg(square(), {
-      seamAllowance: [
-        {
-          edge: 'l',
-          path: [
-            { x: 0, y: 5 },
-            { x: 100, y: 55 },
-          ],
-        },
-      ],
-    });
-
-    expect(svg).toContain('data-layer="seam-allowance"');
-    expect(svg).toContain('<path d="M 0 5 L 100 55" data-edge="l" />');
-  });
-
-  it('renders a single-point allowance path and skips empty ones', () => {
-    const svg = toSvg(square(), {
-      seamAllowance: [
-        { edge: 'empty', path: [] },
-        { edge: 'dot', path: [{ x: 1, y: 2 }] },
-      ],
-    });
-
-    expect(svg).toContain('<path d="M 1 2" data-edge="dot" />');
-    expect(svg).not.toContain('data-edge="empty"');
-  });
-
-  it('omits the seam-allowance layer entirely when there is nothing to draw', () => {
-    const svg = toSvg(square(), { seamAllowance: [{ edge: 'empty', path: [] }] });
-
-    expect(svg).not.toContain('data-layer="seam-allowance"');
-  });
-
-  it('formats an empty document as a zero-sized viewBox with an empty cut layer', () => {
-    const svg = toSvg(createEmptyDocument());
-
-    expect(svg).toContain('width="0mm" height="0mm" viewBox="0 0 0 0"');
-    expect(svg).toContain('<g data-layer="cut" fill="none"');
+    expect(construction).toHaveLength(1);
+    expect(construction[0]).toContain('data-entity-id="renderable"');
   });
 
   it('escapes XML special characters in ids and the metadata timestamp', () => {
-    const svg = toSvg(
-      documentOf([point('a', 0, 0), point('b', 1, 1), line('a&b<c>"d\'e', 'a', 'b')]),
-      { generatedAt: 'now & then <"\' >' },
-    );
+    const document = documentOf([
+      point('g1', 300, 0, { piece: 'piece-1' }),
+      point('g2', 300, 100, { piece: 'piece-1' }),
+      line('a&b<"c"', 'g1', 'g2', { construction: true, piece: 'piece-1' }),
+    ]);
+    const output = toSvgPiece(document, piece, {
+      construction: true,
+      generatedAt: 'a&b<c>',
+    });
 
-    expect(svg).toContain('generated="now &amp; then &lt;&quot;&apos; &gt;"');
-    expect(svg).toContain('data-entity-id="a&amp;b&lt;c&gt;&quot;d&apos;e"');
+    expect(output).toContain('data-entity-id="a&amp;b&lt;&quot;c&quot;"');
+    expect(output).toContain('generated="a&amp;b&lt;c&gt;"');
   });
 
   it('rounds coordinates to micrometres and normalises negative zero', () => {
-    const svg = toSvg(
-      documentOf([point('a', -0.00004, 1 / 3), point('b', 1000000000000, 0), line('l', 'a', 'b')]),
-      { padding: 0 },
-    );
+    const document = documentOf([
+      point('g1', -0, 0, { piece: 'piece-1' }),
+      point('g2', 0.0000004, 100, { piece: 'piece-1' }),
+      line('guide', 'g1', 'g2', { construction: true, piece: 'piece-1' }),
+    ]);
+    const output = svg(document, { construction: true });
 
-    expect(svg).toContain('x1="0" y1="0.3333"');
-    expect(svg).toContain('x2="1000000000000" y2="0"');
+    expect(output).toContain('x1="0" y1="0" x2="0" y2="100"');
   });
 });

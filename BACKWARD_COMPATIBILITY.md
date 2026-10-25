@@ -10,6 +10,19 @@ or the geometry package depend on.
 
 ## Development-stage exemptions
 
+### 2026-10-25 — pattern schema 0.4 (piece tabs and assemblies)
+
+Schema `sewcraft.pattern/0.3` is **not read** by this build. Stored projects and
+stored versions are refused with `UnsupportedPatternSchemaError` and the
+unsupported-format dialog; they are never migrated, rewritten or overwritten. The
+document gains `assemblies` and `tabs`, `Piece` gains `notes`/`fabric`/`color`
+and a per-piece allowance override, and the export API becomes
+`toSvgPiece(document, piece, options)` for one piece at a time. This is a
+deliberate development-stage break, settled with the sole maintainer (D6): old
+projects are expected to be recreated. Details:
+`.ai/specs/2026-10-25-piece-tabs-and-assemblies.md` and
+`docs/domain/command-spec.md` (Migration from spec 0.14.0).
+
 ### 2026-10-25 — pattern schema 0.3 (piece containers)
 
 Schema `sewcraft.pattern/0.2` is **not read** by this build. Stored projects are

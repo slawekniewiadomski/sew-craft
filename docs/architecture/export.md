@@ -14,74 +14,63 @@ or scale.
 
 ## SVG (v0.1)
 
-The editor already renders SVG, so SVG export reuses the same mapping. Layer
-meaning depends on whether the document has pieces:
+The editor already renders SVG, so SVG export reuses the same mapping. Export is
+**per piece**: the workspace exports the active piece, and assembling or exporting
+a sheet of pieces belongs to the future drawing workflow.
 
-**With pieces** (the current path):
+`toSvgPiece(document, piece, options)` serialises exactly one piece. Layers:
 
-- `cut` (always): one closed `<path>` per piece, the **cut loop** — the stitch
-  loop offset outward per edge by its allowance and joined at every corner. This
-  is what you cut, not what you sew. Each path carries `data-piece="<id>"`, and
+- `cut` (always): one closed `<path>`, the **cut loop** — the stitch loop offset
+  outward per edge by its allowance and joined at every corner. This is what you
+  cut, not what you sew. It carries `data-piece="<id>"`, and
   `data-warning="self-intersection"` when the offset loop crosses itself.
-- `stitch` (on by default, `stitch: false` omits it): the piece boundary as
-  drawn, one closed thin path per piece.
+- `stitch` (on by default, `stitch: false` omits it): the piece boundary as drawn,
+  one closed thin path.
 - `fold` (on by default, `fold: false` omits it): one dashed closed path per
   double-fold allowance, at the finished width inside the cut line. A `seam` or
   `single` allowance emits no fold line.
-- `construction` (off by default): the guide layer, as before.
-- **Annotation geometry and text are not exported in this change.** They stay
-  canvas-only until the export follow-up adds a print preset; the cut, stitch and
-  fold layers are unchanged, and a document whose entities are all annotations
-  still exports an empty cut layer rather than falling back to every entity.
-- `seam-allowance`: only the legacy per-edge outlines passed in `seamAllowance`
-  for edges outside any piece. A piece's allowances never take this path.
-- `width`/`height` in `mm`, and a `viewBox` from the union of the pieces' **cut**
-  bounds plus `padding`, so allowance geometry is never clipped.
-- one metadata comment per piece: `<!-- sewcraft:piece id="…" name="…"
-finished="WxH" cut="WxH" quantity="N" -->` (mm), plus the document comment with
-  `schema` and timestamp.
+- `construction` (off by default): the piece's own guide geometry — lines, curves,
+  circles and arcs that belong to it.
+- Annotation geometry and text are not exported; they stay canvas-only until a
+  print preset adds them.
+- `width`/`height` in `mm`, and a `viewBox` from the piece's **cut** bounds plus
+  `padding`, so allowance geometry is never clipped.
+- one metadata comment:
+  `<!-- sewcraft:piece id="…" name="…" finished="WxH" cut="WxH" quantity="N" -->`
+  (mm), plus the document comment with `schema` and timestamp.
 
-The presence of pieces decides the contract, not whether they resolve. A piece
-whose loop is broken (a deleted point or edge) emits no cut, stitch, fold or
-metadata and contributes no bounds; when no piece resolves, the `cut` layer is
-empty and the `viewBox` is `0 0 0 0`. It never falls back to exporting every
-entity as a cut line.
-
-**Without pieces** (legacy contract, unchanged):
-
-- `cut` is every non-construction line, curve, circle and arc; the `viewBox` comes
-  from `bounds(document)`; `stitch` and `fold` emit nothing; legacy seam-allowance
-  outlines stay in their own `seam-allowance` layer.
+A piece whose loop is broken (a deleted point or edge) emits no cut, stitch, fold
+or metadata; its `cut` layer is empty and the `viewBox` is `0 0 0 0`. It never
+falls back to exporting every entity as a cut line. The document-wide `toSvg`, the
+legacy no-pieces branch and the `seamAllowance` option are removed.
 
 No third-party dependency needed; build the string from the model.
 
 ### Serializer interface
 
-`toSvg(document, options)` lives in `@sewcraft/geometry` and returns the SVG as a
-string. It is pure (no DOM, no network) and uses one user unit per millimetre, so
-the result measures 1:1 at 100%.
+`toSvgPiece(document, piece, options)` lives in `@sewcraft/geometry` and returns
+the SVG as a string. It is pure (no DOM, no network) and uses one user unit per
+millimetre, so the result measures 1:1 at 100%.
 
 ```ts
-import { toSvg } from '@sewcraft/geometry';
+import { toSvgPiece } from '@sewcraft/geometry';
 
-toSvg(document, {
-  construction: false, // include the construction layer (default off)
-  stitch: true, // include piece stitch loops (default on)
+toSvgPiece(document, piece, {
+  construction: false, // include the piece's construction layer (default off)
+  stitch: true, // include the stitch loop (default on)
   fold: true, // include double-fold fold lines (default on)
-  seamAllowance: [], // legacy offset outlines for edges outside a piece
-  padding: 10, // whitespace in mm around the drawing
+  padding: 10, // whitespace in mm around the piece
 });
 ```
 
-The output has a `viewBox` in pattern coordinates plus `width`/`height` in `mm`,
-and an XML comment carrying the pattern `schema` and a generation timestamp.
+The output has a `viewBox` in the piece's own coordinates plus `width`/`height` in
+`mm`, and an XML comment carrying the pattern `schema` and a generation timestamp.
 Layers are emitted as `<g data-layer="...">` groups; a group is omitted when it
 would be empty.
 
 Piece geometry is **not** computed here either: `pieceCutLoop`, `pieceLoop`,
 `pieceFoldLines`, `pieceMetrics` and `pieceCutBounds` in `piece.ts` derive it, and
-the serializer only renders the result. Legacy allowance outlines stay an
-extension point, passed in as `{ edge, path }`.
+the serializer only renders the result.
 
 ## PDF (later)
 
