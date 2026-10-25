@@ -44,7 +44,7 @@ function isMember(tool: EditorTool): boolean {
 watch(
   () => props.activeTool,
   (tool) => {
-    if (isMember(tool)) lastArmed.value = tool;
+    if (isMember(tool) && props.item.rememberLast !== false) lastArmed.value = tool;
     open.value = false;
   },
   { immediate: true },

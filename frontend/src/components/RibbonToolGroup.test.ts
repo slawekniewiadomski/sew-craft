@@ -109,6 +109,20 @@ describe('RibbonToolGroup', () => {
     expect(iconHalf(wrapper).attributes('aria-pressed')).toBeUndefined();
   });
 
+  it('returns to the primary when the group does not remember the last mode', async () => {
+    const wrapper = mount(RibbonToolGroup, {
+      props: { item: { ...ITEM, rememberLast: false }, activeTool: 'add_center_rectangle' },
+      attachTo: document.body,
+    });
+
+    expect(iconHalf(wrapper).attributes('data-mode')).toBe('add_center_rectangle');
+
+    await wrapper.setProps({ activeTool: 'select' });
+
+    expect(iconHalf(wrapper).attributes('data-mode')).toBe('add_rectangle');
+    expect(iconHalf(wrapper).attributes('aria-label')).toBe('Rectangle');
+  });
+
   it('arms the displayed mode on a primary click', async () => {
     const wrapper = mountGroup();
 

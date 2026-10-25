@@ -58,9 +58,37 @@ describe('RIBBON_GROUPS', () => {
     ]);
   });
 
-  it('offers annotation text in its own group', () => {
+  it('offers annotation text as a Text / Text with leader split control', () => {
     expect(RIBBON_GROUPS[2]!.items).toEqual([
-      { kind: 'tool', id: 'tool-add_text', label: 'Text', icon: 'text', tool: 'add_text' },
+      {
+        kind: 'tool-group',
+        id: 'tool-text',
+        label: 'Text',
+        primary: {
+          kind: 'tool',
+          id: 'tool-add_text',
+          label: 'Text',
+          icon: 'text',
+          tool: 'add_text',
+        },
+        items: [
+          {
+            kind: 'tool',
+            id: 'tool-add_text',
+            label: 'Text',
+            icon: 'text',
+            tool: 'add_text',
+          },
+          {
+            kind: 'tool',
+            id: 'tool-add_text_leader',
+            label: 'Text with leader',
+            icon: 'text-leader',
+            tool: 'add_text_leader',
+          },
+        ],
+        rememberLast: false,
+      },
     ]);
   });
 

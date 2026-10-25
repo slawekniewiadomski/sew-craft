@@ -361,7 +361,7 @@ describe('add_text and update_text', () => {
       content: 'velcro',
       alignment: 'left',
       rotation: 0,
-      fontSize: 6,
+      fontSize: 10,
     });
   });
 
@@ -762,7 +762,7 @@ describe('cascade and preset details', () => {
       content: 'y',
       alignment: 'left',
       rotation: 0,
-      fontSize: 6,
+      fontSize: 10,
     });
   });
 });

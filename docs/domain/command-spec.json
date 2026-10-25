@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://sewcraft.local/schemas/command-spec-0.13.json",
+  "$id": "https://sewcraft.local/schemas/command-spec-0.14.json",
   "title": "SewCraft Command Spec",
-  "schema": "sewcraft.command-spec/0.13",
-  "spec_version": "0.13.0",
+  "schema": "sewcraft.command-spec/0.14",
+  "spec_version": "0.14.0",
   "units": "mm",
   "envelope": {
     "id": "ULID string, client-generated, unique",

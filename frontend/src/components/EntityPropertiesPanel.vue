@@ -54,7 +54,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   'set-role': [id: EntityId, role: 'cut' | 'construction' | 'annotation'];
   'update-text': [id: EntityId, patch: Record<string, unknown>];
-  'create-leader': [id: EntityId];
   'update-dimension': [id: EntityId, patch: DimensionPatch];
   'remove-constraint': [id: EntityId];
   'set-corner-round-radius': [id: EntityId, radius: number];
@@ -531,30 +530,6 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
               @change="onTextNumber('fontSize', $event)"
             />
             <span class="text-2xs text-muted-foreground">mm</span>
-          </span>
-        </SidebarField>
-        <SidebarField label="Leader">
-          <span class="inline-flex items-center gap-1">
-            <span class="font-mono text-2xs text-muted-foreground" data-testid="text-leader">
-              {{ props.entity.text.leader ?? 'None' }}
-            </span>
-            <button
-              type="button"
-              class="h-7 rounded-sm border px-2 text-2xs font-medium"
-              data-testid="text-leader-pick"
-              @click="emit('create-leader', props.entity.id)"
-            >
-              Use selected point
-            </button>
-            <button
-              v-if="props.entity.text.leader"
-              type="button"
-              class="h-7 rounded-sm border px-2 text-2xs font-medium"
-              data-testid="text-leader-clear"
-              @click="emit('update-text', props.entity.id, { leader: null })"
-            >
-              Clear
-            </button>
           </span>
         </SidebarField>
       </dl>

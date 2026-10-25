@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_TEXT_SIZE,
+  LEADER_HEAD_LENGTH_RATIO,
+  LEADER_HEAD_WIDTH_RATIO,
+  LEADER_RULE_GAP_RATIO,
   MONO_ADVANCE_RATIO,
   textLayout,
-  textLeader,
+  textLeaderGeometry,
   type TextEntity,
 } from '../src/index.js';
 
@@ -58,38 +61,111 @@ describe('textLayout', () => {
   });
 });
 
-describe('textLeader', () => {
+describe('textLeaderGeometry', () => {
   const anchor = { x: 0, y: 0 };
-  const leader = { x: 100, y: 100 };
+  const target = { x: 100, y: 100 };
+  const gap = DEFAULT_TEXT_SIZE * LEADER_RULE_GAP_RATIO;
+  const headLength = DEFAULT_TEXT_SIZE * LEADER_HEAD_LENGTH_RATIO;
+  const headWidth = DEFAULT_TEXT_SIZE * LEADER_HEAD_WIDTH_RATIO;
 
   it('returns null when there is no leader field', () => {
-    expect(textLeader(text(), anchor, leader)).toBeNull();
+    expect(textLeaderGeometry(text(), anchor, target)).toBeNull();
   });
 
   it('returns null when the leader point or anchor is missing', () => {
     const withLeader = text({ leader: 'b' });
-    expect(textLeader(withLeader, null, leader)).toBeNull();
-    expect(textLeader(withLeader, anchor, null)).toBeNull();
+    expect(textLeaderGeometry(withLeader, null, target)).toBeNull();
+    expect(textLeaderGeometry(withLeader, anchor, null)).toBeNull();
   });
 
-  it('runs from the nearest label edge to the leader point', () => {
+  it('draws the rule under the baseline, spanning the label width', () => {
     const withLeader = text({ leader: 'b', content: 'x' });
     const layout = textLayout(withLeader, anchor)!;
-    const points = textLeader(withLeader, anchor, leader)!;
+    const geometry = textLeaderGeometry(withLeader, anchor, target)!;
 
-    expect(points).toHaveLength(2);
-    expect(points[1]).toEqual(leader);
-    // The nearest edge is the top-right corner of the box.
-    expect(points[0]!.x).toBeGreaterThanOrEqual(0);
-    expect(points[0]!.x).toBeLessThanOrEqual(layout.width);
-    expect(points[0]!.y).toBeGreaterThanOrEqual(-DEFAULT_TEXT_SIZE);
-    expect(points[0]!.y).toBeLessThanOrEqual(0);
+    expect(geometry.underline.start).toEqual({ x: 0, y: gap });
+    expect(geometry.underline.end).toEqual({ x: layout.width, y: gap });
   });
 
-  it('follows a rotated label edge', () => {
-    const withLeader = text({ leader: 'b', rotation: Math.PI });
-    const points = textLeader(withLeader, anchor, leader)!;
-    expect(points).toHaveLength(2);
-    expect(points[0]!.y).toBeLessThanOrEqual(DEFAULT_TEXT_SIZE);
+  it('leaves from the nearer rule end and fills a head at the target', () => {
+    const withLeader = text({ leader: 'b', content: 'x' });
+    const layout = textLayout(withLeader, anchor)!;
+    const geometry = textLeaderGeometry(withLeader, anchor, target)!;
+    const base = {
+      x: (geometry.head[1]!.x + geometry.head[2]!.x) / 2,
+      y: (geometry.head[1]!.y + geometry.head[2]!.y) / 2,
+    };
+
+    expect(geometry.shaft).not.toBeNull();
+    expect(geometry.shaft!.start).toEqual(geometry.underline.end);
+    expect(geometry.shaft!.end).toEqual(base);
+    expect(geometry.head[0]).toEqual(target);
+    expect(
+      Math.hypot(
+        geometry.head[1]!.x - geometry.head[2]!.x,
+        geometry.head[1]!.y - geometry.head[2]!.y,
+      ),
+    ).toBeCloseTo(headWidth);
+    expect(Math.hypot(geometry.head[0]!.x - base.x, geometry.head[0]!.y - base.y)).toBeCloseTo(
+      headLength,
+    );
+    expect(layout.width).toBeGreaterThan(0);
+  });
+
+  it('leaves from the left end for a target on the left', () => {
+    const withLeader = text({ leader: 'b', content: 'x', fontSize: 12 });
+    const geometry = textLeaderGeometry(withLeader, anchor, { x: -100, y: 100 })!;
+
+    expect(geometry.shaft!.start).toEqual(geometry.underline.start);
+  });
+
+  it('breaks a tie towards the target’s side, then the right end', () => {
+    const centred = text({ leader: 'b', content: 'x', alignment: 'center' });
+    const exact = textLeaderGeometry(centred, anchor, { x: 0, y: 100 })!;
+    expect(exact.shaft!.start).toEqual(exact.underline.end);
+
+    const nudged = textLeaderGeometry(centred, anchor, { x: -0.00001, y: 100 })!;
+    expect(nudged.shaft!.start).toEqual(nudged.underline.start);
+  });
+
+  it('shrinks the head and drops the shaft for a short leader', () => {
+    const withLeader = text({ leader: 'b', content: 'x', alignment: 'right' });
+    const geometry = textLeaderGeometry(withLeader, anchor, { x: 0, y: gap + 1 })!;
+    const base = {
+      x: (geometry.head[1]!.x + geometry.head[2]!.x) / 2,
+      y: (geometry.head[1]!.y + geometry.head[2]!.y) / 2,
+    };
+
+    expect(geometry.shaft).toBeNull();
+    expect(geometry.head[0]).toEqual({ x: 0, y: gap + 1 });
+    expect(Math.hypot(geometry.head[0]!.x - base.x, geometry.head[0]!.y - base.y)).toBeCloseTo(1);
+    expect(
+      Math.hypot(
+        geometry.head[1]!.x - geometry.head[2]!.x,
+        geometry.head[1]!.y - geometry.head[2]!.y,
+      ),
+    ).toBeCloseTo(headWidth / 3);
+  });
+
+  it('rotates the rule with the box', () => {
+    const withLeader = text({ leader: 'b', content: 'x', rotation: Math.PI / 2 });
+    const geometry = textLeaderGeometry(withLeader, anchor, target)!;
+
+    expect(geometry.underline.start.x).toBeCloseTo(-gap);
+    expect(geometry.underline.start.y).toBeCloseTo(0);
+    expect(geometry.underline.end.x).toBeCloseTo(-gap);
+    expect(geometry.underline.end.y).toBeCloseTo(6);
+  });
+
+  it('degenerates cleanly when the target is the rule end', () => {
+    const withLeader = text({ leader: 'b', content: 'x' });
+    const geometry = textLeaderGeometry(withLeader, anchor, { x: 6, y: gap })!;
+
+    expect(geometry.shaft).toBeNull();
+    expect(geometry.head).toEqual([
+      { x: 6, y: gap },
+      { x: 6, y: gap },
+      { x: 6, y: gap },
+    ]);
   });
 });

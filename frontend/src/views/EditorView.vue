@@ -799,21 +799,6 @@ function onUpdateText(id: EntityId, patch: Record<string, unknown>): void {
   );
 }
 
-function onCreateLeader(id: EntityId): void {
-  const text = getEntity(pattern.value, id);
-  if (text?.kind !== 'text') return;
-  // The first other point of the same piece is a predictable default; the user
-  // can then drag the label or clear the leader from the inspector.
-  const leader = pattern.value.entities.find(
-    (entity) => entity.kind === 'point' && entity.id !== text.anchor && entity.piece === text.piece,
-  );
-  if (leader === undefined) {
-    error.value = 'Add another point to the piece before choosing a leader.';
-    return;
-  }
-  onUpdateText(id, { leader: leader.id });
-}
-
 watch(selectedEntityIds, (ids) => {
   if (ids.length === 0) return;
   selectedPieceId.value = null;
@@ -1007,13 +992,13 @@ function onAddRectangle(mode: RectangleMode, clicks: DraftingEndpoint[]): void {
   );
 }
 
-function onAddText(anchor: DraftingEndpoint): void {
+function onAddText(anchor: DraftingEndpoint, leader?: DraftingEndpoint): void {
   const pieceId = activePieceId.value;
   if (pieceId === null) {
     error.value = 'Create or select a piece before placing annotation text.';
     return;
   }
-  run(() => dispatchGroup(buildTextCommands(anchor, pieceId, nextCommandId)));
+  run(() => dispatchGroup(buildTextCommands(anchor, pieceId, nextCommandId, leader)));
 }
 
 function onAddCurve(points: [EntityId, EntityId, EntityId, EntityId]): void {
@@ -1907,7 +1892,6 @@ onBeforeUnmount(() => {
               @remove-piece="onRemovePiece"
               @set-role="onSetRole"
               @update-text="onUpdateText"
-              @create-leader="onCreateLeader"
             />
 
             <SidebarEmpty

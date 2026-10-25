@@ -1,6 +1,7 @@
 import {
   allPoints,
   isAnnotation,
+  isCornerRoundDerived,
   type Command,
   type EntityId,
   getEntity,
@@ -52,8 +53,63 @@ export function resolveDraftingEndpoint(
     : { kind: 'point', id: existing.id };
 }
 
-/** Same point id, or coordinates within {@link ENDPOINT_TOLERANCE}. */
-export function sameDraftingEndpoint(a: DraftingEndpoint, b: DraftingEndpoint): boolean {
+/** The points a text gesture can snap to, never a derived corner-round point. */
+function textSnapPoints(
+  document: PatternDocument,
+  activePieceId?: EntityId | null,
+): { id: EntityId; x: number; y: number }[] {
+  return allPoints(document).filter(
+    (point) =>
+      !isCornerRoundDerived(document, point.id) &&
+      (activePieceId === undefined ||
+        activePieceId === null ||
+        point.piece === undefined ||
+        point.piece === activePieceId),
+  );
+}
+
+/**
+ * The first click of a label gesture: snap to a nearby point or the grid, but
+ * always resolve to a fresh coordinate. A label's anchor is private to it, so
+ * dragging the label can never move pattern geometry.
+ */
+export function resolveTextAnchorEndpoint(
+  document: PatternDocument,
+  world: Vec2,
+  activePieceId?: EntityId | null,
+): DraftingEndpoint {
+  const snapped = snapPoint(
+    world,
+    textSnapPoints(document, activePieceId).map((point) => ({ x: point.x, y: point.y })),
+  );
+  return { kind: 'new', x: snapped.x, y: snapped.y };
+}
+
+/**
+ * The second click of a label gesture: reuse a point of the active piece —
+ * annotation marks included — when one snaps, otherwise create a new one at the
+ * grid-snapped position. Corner-round-derived points are not candidates.
+ */
+export function resolveLeaderEndpoint(
+  document: PatternDocument,
+  world: Vec2,
+  activePieceId?: EntityId | null,
+): DraftingEndpoint {
+  const points = textSnapPoints(document, activePieceId);
+  const snapped = snapPoint(
+    world,
+    points.map((point) => ({ x: point.x, y: point.y })),
+  );
+  const existing = points.find((point) => point.x === snapped.x && point.y === snapped.y);
+  return existing === undefined
+    ? { kind: 'new', x: snapped.x, y: snapped.y }
+    : { kind: 'point', id: existing.id };
+}
+
+/** Same point id, or coordinates within {@link ENDPOINT_TOLERANCE}. */ export function sameDraftingEndpoint(
+  a: DraftingEndpoint,
+  b: DraftingEndpoint,
+): boolean {
   if (a.kind === 'point' && b.kind === 'point') return a.id === b.id;
   if (a.kind === 'new' && b.kind === 'new') {
     return Math.abs(a.x - b.x) <= ENDPOINT_TOLERANCE && Math.abs(a.y - b.y) <= ENDPOINT_TOLERANCE;
@@ -97,6 +153,7 @@ export function resolveEndpointCommands(
   commands: Command[],
   nextId: (prefix: string) => EntityId,
   piece?: EntityId,
+  role?: 'construction' | 'annotation',
 ): EntityId {
   if (endpoint.kind === 'point') return endpoint.id;
 
@@ -104,7 +161,12 @@ export function resolveEndpointCommands(
   commands.push({
     id,
     type: 'add_point',
-    params: { x: endpoint.x, y: endpoint.y, ...(piece === undefined ? {} : { piece }) },
+    params: {
+      x: endpoint.x,
+      y: endpoint.y,
+      ...(piece === undefined ? {} : { piece }),
+      ...(role === undefined ? {} : { role }),
+    },
   });
   return id;
 }

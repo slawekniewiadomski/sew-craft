@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { EDITOR_TOOLS } from './editor-tools';
 
 describe('EDITOR_TOOLS', () => {
-  it('lists the thirteen editor tools in order', () => {
+  it('lists the editor tools in order', () => {
     expect(EDITOR_TOOLS.map((tool) => tool.id)).toEqual([
       'select',
       'add_point',
@@ -12,6 +12,7 @@ describe('EDITOR_TOOLS', () => {
       'add_arc',
       'add_circle',
       'add_text',
+      'add_text_leader',
       'add_rectangle',
       'add_center_rectangle',
       'add_3point_rectangle',

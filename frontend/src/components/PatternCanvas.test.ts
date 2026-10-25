@@ -142,6 +142,7 @@ function mountCanvas(
       | 'add_center_rectangle'
       | 'add_3point_rectangle'
       | 'add_text'
+      | 'add_text_leader'
       | 'dimension'
       | 'cut_dimension';
     selectedEntityIds: EntityId[];
@@ -4174,21 +4175,43 @@ describe('containers, annotation text and move mode', () => {
     return worldToScreen(fitToBounds(bounds(document)!, SIZE), world);
   }
 
-  it('renders the label, its leader and the active-piece badge', () => {
+  it('renders the label, its rule, leader and arrow, and the active-piece badge', () => {
     const document = containerDoc();
     const wrapper = mountCanvas({ document, activePieceId: 'p1' });
 
     expect(wrapper.find('[data-testid="annotation-layer"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="text-t1"]').text()).toBe('velcro');
+    expect(wrapper.find('[data-testid="text-underline-t1"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="text-leader-t1"]').exists()).toBe(true);
+    const arrow = wrapper.find('[data-testid="text-arrow-t1"]');
+    expect(arrow.element.tagName.toLowerCase()).toBe('polygon');
+    expect(arrow.classes()).toContain('fill-annotation');
+    expect(arrow.attributes('points')!.split(' ')).toHaveLength(3);
 
     // A label is selected through its whole rotated box, not only its glyphs.
     const hit = wrapper.find('[data-testid="text-hit-t1"]');
     expect(hit.attributes('data-entity-id')).toBe('t1');
     expect(hit.attributes('data-kind')).toBe('text');
     expect(hit.attributes('pointer-events')).toBe('all');
+    expect(hit.classes()).toContain('cursor-move');
     expect(wrapper.find('[data-testid="active-piece-badge"]').text()).toContain('Piece 1');
     expect(wrapper.find('[data-testid="active-piece-badge"]').text()).toContain('cut loop');
+  });
+
+  it('drops the shaft when the head fills a short leader', () => {
+    const document: PatternDocument = {
+      ...containerDoc(),
+      entities: [
+        pt('a', 0, 0),
+        pt('near', 2, 2, false),
+        { id: 't1', kind: 'text', piece: 'p1', anchor: 'a', content: 'x', leader: 'near' },
+      ],
+    };
+    const wrapper = mountCanvas({ document });
+
+    expect(wrapper.find('[data-testid="text-underline-t1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="text-leader-t1"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="text-arrow-t1"]').exists()).toBe(true);
   });
 
   it('styles annotation geometry distinctly and keeps guides muted', () => {
@@ -4275,7 +4298,7 @@ describe('annotation text defaults and multi-piece move preview', () => {
     const wrapper = mountCanvas({ document: bareText() });
 
     expect(wrapper.find('[data-testid="text-t1"]').text()).toBe('x');
-    expect(wrapper.find('[data-testid="text-t1"]').attributes('font-size')).toBe('6');
+    expect(wrapper.find('[data-testid="text-t1"]').attributes('font-size')).toBe('10');
     expect(wrapper.find('[data-testid="text-sorted"]').attributes('text-anchor')).toBe('end');
     expect(wrapper.find('[data-testid="text-orphan"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="text-leader-led"]').exists()).toBe(false);
@@ -4340,5 +4363,202 @@ describe('annotation defaults', () => {
   it('centres a label with text-anchor middle', () => {
     const wrapper = mountCanvas({ document: document() });
     expect(wrapper.find('[data-testid="text-c"]').attributes('text-anchor')).toBe('middle');
+  });
+});
+
+describe('annotation text with a leader', () => {
+  const document = (): PatternDocument => ({
+    ...doc([
+      pt('a', 0, 0),
+      pt('b', 100, 0),
+      pt('c', 100, 100),
+      pt('d', 0, 100),
+      ln('ab', 'a', 'b'),
+      ln('bc', 'b', 'c'),
+      ln('cd', 'c', 'd'),
+      ln('da', 'd', 'a'),
+    ]),
+    pieces: [{ id: 'p1', edges: ['ab', 'bc', 'cd', 'da'], allowances: [] }],
+  });
+
+  function at(doc: PatternDocument, world: Vec2): Vec2 {
+    return worldToScreen(fitToBounds(bounds(doc)!, SIZE), world);
+  }
+
+  it('shows a ghost label after the first click and commits on the second', async () => {
+    const doc = document();
+    const wrapper = mountCanvas({ document: doc, tool: 'add_text_leader', activePieceId: 'p1' });
+    const first = at(doc, { x: 40, y: 40 });
+
+    down(wrapper.find('svg').element, first.x, first.y);
+    await nextTick();
+
+    expect(wrapper.emitted('add-text')).toBeUndefined();
+    expect(wrapper.find('[data-testid="text-leader-preview"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="text-preview"]').text()).toBe('Text');
+    expect(wrapper.find('[data-testid="text-leader-hint"]').text()).toBe('Click the arrow target.');
+
+    const target = at(doc, { x: 100, y: 0 });
+    pointerMove(wrapper, target.x, target.y);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="text-leader-preview-shaft"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="text-leader-preview-arrow"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="text-leader-hint"]').exists()).toBe(false);
+
+    down(wrapper.find('svg').element, target.x, target.y);
+    await nextTick();
+
+    expect(wrapper.emitted('add-text')).toEqual([
+      [
+        { kind: 'new', x: 40, y: 40 },
+        { kind: 'point', id: 'b' },
+      ],
+    ]);
+    expect(wrapper.find('[data-testid="text-leader-preview"]').exists()).toBe(false);
+  });
+
+  it('refuses the anchor itself and stays armed', async () => {
+    const doc = document();
+    const wrapper = mountCanvas({ document: doc, tool: 'add_text_leader', activePieceId: 'p1' });
+    const first = at(doc, { x: 40, y: 40 });
+
+    down(wrapper.find('svg').element, first.x, first.y);
+    down(wrapper.find('svg').element, first.x, first.y);
+    await nextTick();
+
+    expect(wrapper.emitted('add-text')).toBeUndefined();
+    expect(wrapper.find('[data-testid="text-leader-hint"]').text()).toBe(
+      'The arrow needs a different point.',
+    );
+    expect(wrapper.find('[data-testid="text-leader-preview"]').exists()).toBe(true);
+  });
+
+  it('refuses a target inside the label box', async () => {
+    const doc = document();
+    const wrapper = mountCanvas({ document: doc, tool: 'add_text_leader', activePieceId: 'p1' });
+    const first = at(doc, { x: 40, y: 40 });
+    const inside = at(doc, { x: 45, y: 35 });
+
+    down(wrapper.find('svg').element, first.x, first.y);
+    down(wrapper.find('svg').element, inside.x, inside.y);
+    await nextTick();
+
+    expect(wrapper.emitted('add-text')).toBeUndefined();
+    expect(wrapper.find('[data-testid="text-leader-hint"]').text()).toBe(
+      'Choose a point outside the label.',
+    );
+  });
+
+  it('cancels the pending gesture on Escape', async () => {
+    const doc = document();
+    const wrapper = mountCanvas({ document: doc, tool: 'add_text_leader', activePieceId: 'p1' });
+    const first = at(doc, { x: 40, y: 40 });
+
+    down(wrapper.find('svg').element, first.x, first.y);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="text-leader-preview"]').exists()).toBe(false);
+    expect(wrapper.emitted('add-text')).toBeUndefined();
+  });
+
+  it('cancels the pending gesture on a tool change', async () => {
+    const doc = document();
+    const wrapper = mountCanvas({ document: doc, tool: 'add_text_leader', activePieceId: 'p1' });
+    const first = at(doc, { x: 40, y: 40 });
+
+    down(wrapper.find('svg').element, first.x, first.y);
+    await wrapper.setProps({ tool: 'select' });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="text-leader-preview"]').exists()).toBe(false);
+  });
+
+  it('creates a dedicated anchor even when the click lands on a point', async () => {
+    const doc = document();
+    const wrapper = mountCanvas({ document: doc, tool: 'add_text_leader', activePieceId: 'p1' });
+    const anchor = at(doc, { x: 0, y: 0 });
+    const target = at(doc, { x: 100, y: 0 });
+
+    down(wrapper.find('[data-kind="point"][data-entity-id="a"]').element, anchor.x, anchor.y);
+    down(wrapper.find('[data-kind="point"][data-entity-id="b"]').element, target.x, target.y);
+    await nextTick();
+
+    expect(wrapper.emitted('add-text')).toEqual([
+      [
+        { kind: 'new', x: 0, y: 0 },
+        { kind: 'point', id: 'b' },
+      ],
+    ]);
+  });
+});
+
+describe('annotation label and target movement', () => {
+  const document = (): PatternDocument =>
+    doc([
+      pt('a', 0, 0),
+      pt('b', 100, 0),
+      {
+        id: 't1',
+        kind: 'text',
+        piece: 'p1',
+        anchor: 'a',
+        content: 'velcro',
+        leader: 'b',
+      },
+    ]);
+
+  function at(doc: PatternDocument, world: Vec2): Vec2 {
+    return worldToScreen(fitToBounds(bounds(doc)!, SIZE), world);
+  }
+
+  it('drags the label anchor and leaves the arrow target alone', async () => {
+    const doc = document();
+    const wrapper = mountCanvas({ document: doc, tool: 'select' });
+    const start = at(doc, { x: 5, y: -5 });
+    const end = at(doc, { x: 50, y: 30 });
+
+    down(wrapper.find('[data-testid="text-hit-t1"]').element, start.x, start.y);
+    move(end.x, end.y);
+    up();
+
+    expect(wrapper.emitted('update:selectedEntityIds')).toEqual([[['t1']]]);
+    expect(wrapper.emitted('move-point')).toEqual([['a', 50, 30]]);
+  });
+
+  it('selects without dragging on a modified click', async () => {
+    const doc = document();
+    const wrapper = mountCanvas({ document: doc, tool: 'select' });
+    const start = at(doc, { x: 5, y: -5 });
+
+    down(wrapper.find('[data-testid="text-hit-t1"]').element, start.x, start.y, 0, {
+      ctrlKey: true,
+    });
+    move(start.x + 40, start.y + 20);
+    up();
+
+    expect(wrapper.emitted('move-point')).toBeUndefined();
+    expect(wrapper.emitted('update:selectedEntityIds')).toEqual([[['t1']]]);
+  });
+
+  it('follows a target drag live while the label stays put', async () => {
+    const doc = document();
+    const wrapper = mountCanvas({ document: doc, tool: 'select' });
+    const before = wrapper.find('[data-testid="text-arrow-t1"]').attributes('points');
+    const start = at(doc, { x: 100, y: 0 });
+    const end = at(doc, { x: 60, y: 60 });
+
+    down(wrapper.find('[data-kind="point"][data-entity-id="b"]').element, start.x, start.y);
+    move(end.x, end.y);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="text-arrow-t1"]').attributes('points')).not.toBe(before);
+    expect(wrapper.find('[data-testid="text-t1"]').attributes('transform')).toBe(
+      'translate(0 0) rotate(0)',
+    );
+
+    up();
+    expect(wrapper.emitted('move-point')).toEqual([['b', 60, 60]]);
   });
 });
