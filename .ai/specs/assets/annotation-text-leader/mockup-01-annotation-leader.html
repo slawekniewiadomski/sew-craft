@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Annotation text with a leader — mockup</title>
+<style>
+  :root {
+    --ink: #242424;
+    --muted: #7a7a7a;
+    --line: #e4e4e7;
+    --tone: #f4f4f5;
+    --annotation: oklch(0.55 0.2 300);
+    --annotation-soft: oklch(0.55 0.2 300 / 0.07);
+    --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; color: var(--ink); font-family: var(--sans); }
+  .page { max-width: 1040px; margin: 0 auto; padding: 32px 24px 40px; }
+  .eyebrow { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+  h1 { font-size: 26px; line-height: 1.15; margin: 0 0 8px; letter-spacing: -.02em; }
+  .lede { max-width: 640px; margin: 0 0 26px; font-size: 14px; line-height: 1.5; color: #555; }
+
+  .ribbon { display: flex; align-items: flex-end; gap: 20px; padding: 12px 16px 16px; background: var(--tone); border-radius: 10px; margin-bottom: 14px; }
+  .rgroup { display: grid; gap: 5px; justify-items: center; }
+  .rlabel { font-size: 9px; letter-spacing: .07em; text-transform: uppercase; color: #8a8a8a; }
+  .split { display: flex; height: 34px; background: #fff; border-radius: 5px; box-shadow: 0 0 0 1px #00000010; overflow: hidden; }
+  .split button { border: 0; background: transparent; cursor: pointer; display: grid; place-items: center; }
+  .split .main { width: 40px; color: var(--annotation); font: italic 17px var(--mono); }
+  .split .caret { width: 22px; border-left: 1px solid var(--line); color: #555; font-size: 10px; }
+  .menu { position: relative; width: 206px; background: #fff; border-radius: 8px; box-shadow: 0 10px 30px #0000001f, 0 0 0 1px #0000000d; padding: 4px; }
+  .item { display: flex; align-items: center; gap: 9px; height: 32px; padding: 0 9px; border-radius: 5px; font-size: 12.5px; }
+  .item.sel { background: oklch(0.55 0.2 300 / .09); color: #5b21b6; font-weight: 600; }
+  .glyph { width: 18px; text-align: center; font: italic 15px var(--mono); }
+  .hint { font-size: 11.5px; color: #858585; align-self: center; }
+
+  .board { position: relative; background: #fff; border-radius: 12px; box-shadow: 0 0 0 1px #0000000f; overflow: hidden; }
+  .board svg { display: block; width: 100%; height: auto; touch-action: none; }
+  .board .tip { position: absolute; left: 16px; bottom: 13px; font-size: 11.5px; color: var(--muted); pointer-events: none; }
+  .label-hit, .target-hit { cursor: move; }
+  .caption { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 14px 2px 0; font-size: 12px; color: var(--muted); }
+  .caption b { color: var(--ink); font-weight: 600; }
+  .swatch { display: inline-block; width: 18px; height: 2px; background: var(--annotation); vertical-align: middle; margin-right: 6px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <p class="eyebrow">SewCraft · annotation text</p>
+  <h1>Text with leader</h1>
+  <p class="lede">The rule under the label starts the arrow. Drag either the text or the arrow target: each one moves on its own and the leader re-derives from the nearer end of the rule.</p>
+
+  <div class="ribbon" aria-label="Annotation ribbon mockup">
+    <div class="rgroup">
+      <div class="split">
+        <button class="main" type="button" aria-label="Text tool">T</button>
+        <button class="caret" type="button" aria-label="More annotation tools">▾</button>
+      </div>
+      <span class="rlabel">Annotation</span>
+    </div>
+    <div class="menu">
+      <div class="item"><span class="glyph">T</span> Text</div>
+      <div class="item sel"><span class="glyph">T↗</span> Text with leader</div>
+    </div>
+    <div class="hint">split control, same pattern as Rectangle</div>
+  </div>
+
+  <div class="board">
+    <svg id="scene" viewBox="0 0 900 430" role="img" aria-label="Two draggable annotation labels with leader arrows">
+      <defs>
+        <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
+          <circle cx="0" cy="0" r="0.75" fill="#1a1a1a" opacity="0.13"/>
+        </pattern>
+      </defs>
+      <rect width="900" height="430" fill="url(#grid)"/>
+      <path d="M52 52 Q52 40 64 40 H836 Q848 40 848 52 V378 Q848 390 836 390 H64 Q52 390 52 378 Z" fill="none" stroke="#242424" stroke-width="1.8"/>
+      <rect x="472" y="96" width="96" height="58" rx="3" fill="oklch(0.55 0.2 300 / .07)" stroke="oklch(0.55 0.2 300)" stroke-width="1.4" stroke-dasharray="6 4"/>
+      <g id="drawing"></g>
+    </svg>
+    <span class="tip">drag the label or the arrow target</span>
+  </div>
+
+  <div class="caption">
+    <span><span class="swatch"></span>rule, shaft and head are annotation-coloured</span>
+    <span><b>10 mm</b> default cap height</span>
+    <span><b>3 × 1.5 mm</b> head at the default size</span>
+  </div>
+</div>
+
+<script>
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.getElementById('scene');
+  const drawing = document.getElementById('drawing');
+  const MM = 3; // mockup pixels per millimetre
+  const ink = 'oklch(0.55 0.2 300)';
+
+  const labels = [
+    { id: 'velcro', content: 'velcro', anchor: { x: 170, y: 240 }, size: 10, target: { x: 520, y: 125 } },
+    { id: 'rivet', content: 'rivet 2×', anchor: { x: 520, y: 330 }, size: 10, target: { x: 700, y: 286 } }
+  ];
+
+  let drag = null;
+
+  function el(name, attrs) {
+    const node = document.createElementNS(NS, name);
+    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, String(value));
+    return node;
+  }
+
+  function geometry(label) {
+    const size = label.size * MM;
+    const width = label.content.length * size * 0.6;
+    const gap = 0.12 * size;
+    const a = { x: label.anchor.x, y: label.anchor.y + gap };
+    const b = { x: label.anchor.x + width, y: label.anchor.y + gap };
+    const da = Math.hypot(label.target.x - a.x, label.target.y - a.y);
+    const db = Math.hypot(label.target.x - b.x, label.target.y - b.y);
+    const start = da <= db ? a : b;
+    const dx = label.target.x - start.x;
+    const dy = label.target.y - start.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    const ux = dx / distance;
+    const uy = dy / distance;
+    const fullLength = 0.3 * size;
+    const length = Math.min(fullLength, distance * 0.55);
+    const half = 0.075 * size * (length / fullLength);
+    const base = { x: label.target.x - ux * length, y: label.target.y - uy * length };
+    return {
+      size, width, gap, a, b, start,
+      shaft: { x1: start.x, y1: start.y, x2: base.x, y2: base.y },
+      head: [
+        { x: label.target.x, y: label.target.y },
+        { x: base.x + -uy * half, y: base.y + ux * half },
+        { x: base.x - -uy * half, y: base.y - ux * half }
+      ]
+    };
+  }
+
+  function render() {
+    drawing.replaceChildren();
+    for (const label of labels) {
+      const g = geometry(label);
+
+      // Rule under the text.
+      drawing.append(el('line', {
+        x1: g.a.x, y1: g.a.y, x2: g.b.x, y2: g.b.y,
+        stroke: ink, 'stroke-width': 1.4
+      }));
+
+      // Shaft stops at the head base; the head tip is the target.
+      drawing.append(el('line', {
+        x1: g.shaft.x1, y1: g.shaft.y1, x2: g.shaft.x2, y2: g.shaft.y2,
+        stroke: ink, 'stroke-width': 1.4
+      }));
+      drawing.append(el('polygon', {
+        points: g.head.map((p) => `${p.x},${p.y}`).join(' '),
+        fill: ink
+      }));
+
+      // Arrow target: a visible ring with a generous drag hit area.
+      drawing.append(el('circle', {
+        cx: label.target.x, cy: label.target.y, r: 13,
+        fill: 'transparent', class: 'target-hit', 'data-target-hit': label.id
+      }));
+      drawing.append(el('circle', {
+        cx: label.target.x, cy: label.target.y, r: 3,
+        fill: '#fff', stroke: ink, 'stroke-width': 1.6, 'pointer-events': 'none'
+      }));
+
+      // Label text and its drag hit box.
+      const text = el('text', {
+        x: label.anchor.x, y: label.anchor.y,
+        'font-family': "'IBM Plex Mono', ui-monospace, monospace",
+        'font-style': 'italic', 'font-size': g.size, fill: ink,
+        'pointer-events': 'none'
+      });
+      text.textContent = label.content;
+      drawing.append(text);
+      drawing.append(el('rect', {
+        x: label.anchor.x - 4, y: label.anchor.y - g.size - 4,
+        width: g.width + 8, height: g.size + 12,
+        fill: 'transparent', class: 'label-hit', 'data-label-hit': label.id
+      }));
+    }
+  }
+
+  function point(event) {
+    const p = svg.createSVGPoint();
+    p.x = event.clientX;
+    p.y = event.clientY;
+    return p.matrixTransform(svg.getScreenCTM().inverse());
+  }
+
+  svg.addEventListener('pointerdown', (event) => {
+    const labelHit = event.target.closest('[data-label-hit]');
+    const targetHit = event.target.closest('[data-target-hit]');
+    const p = point(event);
+    if (labelHit) {
+      const label = labels.find((item) => item.id === labelHit.getAttribute('data-label-hit'));
+      if (!label) return;
+      drag = { kind: 'label', label, dx: p.x - label.anchor.x, dy: p.y - label.anchor.y };
+    } else if (targetHit) {
+      const label = labels.find((item) => item.id === targetHit.getAttribute('data-target-hit'));
+      if (!label) return;
+      drag = { kind: 'target', label, dx: p.x - label.target.x, dy: p.y - label.target.y };
+    } else {
+      return;
+    }
+    event.preventDefault();
+  });
+
+  window.addEventListener('pointermove', (event) => {
+    if (!drag) return;
+    const p = point(event);
+    if (drag.kind === 'label') {
+      drag.label.anchor = { x: p.x - drag.dx, y: p.y - drag.dy };
+    } else {
+      drag.label.target = { x: p.x - drag.dx, y: p.y - drag.dy };
+    }
+    render();
+  });
+
+  window.addEventListener('pointerup', () => { drag = null; });
+  window.addEventListener('pointercancel', () => { drag = null; });
+
+  render();
+</script>
+</body>
+</html>
