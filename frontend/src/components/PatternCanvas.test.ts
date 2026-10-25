@@ -4181,6 +4181,12 @@ describe('containers, annotation text and move mode', () => {
     expect(wrapper.find('[data-testid="annotation-layer"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="text-t1"]').text()).toBe('velcro');
     expect(wrapper.find('[data-testid="text-leader-t1"]').exists()).toBe(true);
+
+    // A label is selected through its whole rotated box, not only its glyphs.
+    const hit = wrapper.find('[data-testid="text-hit-t1"]');
+    expect(hit.attributes('data-entity-id')).toBe('t1');
+    expect(hit.attributes('data-kind')).toBe('text');
+    expect(hit.attributes('pointer-events')).toBe('all');
     expect(wrapper.find('[data-testid="active-piece-badge"]').text()).toContain('Piece 1');
     expect(wrapper.find('[data-testid="active-piece-badge"]').text()).toContain('cut loop');
   });

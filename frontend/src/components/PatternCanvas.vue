@@ -57,6 +57,7 @@ import {
   projectPointOnLine,
   type Rect,
   resolveCutSpan,
+  type TextLayout,
   textLayout,
   textLeader,
   seamAllowancePaths,
@@ -1678,6 +1679,8 @@ interface TextView {
   fontSize: number;
   alignment: 'left' | 'center' | 'right';
   leader: Vec2[] | null;
+  /** The rotated selection box; also the label's click target. */
+  layout: TextLayout;
 }
 
 /** Annotation labels, resolved against their anchor and leader points. */
@@ -1686,7 +1689,7 @@ const textViews = computed<TextView[]>(() =>
     if (entity.kind !== 'text') return [];
     const anchor = getEntity(props.document, entity.anchor);
     if (anchor?.kind !== 'point') return [];
-    textLayout(entity, { x: anchor.x, y: anchor.y });
+    const layout = textLayout(entity, { x: anchor.x, y: anchor.y })!;
     const leaderPoint =
       entity.leader === undefined ? undefined : getEntity(props.document, entity.leader);
     return [
@@ -1697,6 +1700,7 @@ const textViews = computed<TextView[]>(() =>
         rotation: entity.rotation ?? 0,
         fontSize: entity.fontSize ?? 6,
         alignment: entity.alignment ?? 'left',
+        layout,
         leader:
           leaderPoint?.kind === 'point'
             ? textLeader(
@@ -3238,17 +3242,26 @@ watch(
           </template>
         </g>
 
-        <g class="pointer-events-none" data-testid="annotation-layer">
+        <g data-testid="annotation-layer">
           <template v-for="entry in textViews" :key="entry.id">
             <polyline
               v-if="entry.leader"
               :points="entry.leader.map((point) => `${point.x},${point.y}`).join(' ')"
               fill="none"
-              class="stroke-annotation"
+              class="pointer-events-none stroke-annotation"
               stroke-width="0.5"
               stroke-dasharray="2 2"
               vector-effect="non-scaling-stroke"
               :data-testid="`text-leader-${entry.id}`"
+            />
+            <polygon
+              :points="entry.layout.corners.map((point) => `${point.x},${point.y}`).join(' ')"
+              fill="none"
+              pointer-events="all"
+              class="cursor-pointer"
+              :data-entity-id="entry.id"
+              data-kind="text"
+              :data-testid="`text-hit-${entry.id}`"
             />
             <text
               :transform="`translate(${entry.anchor.x} ${entry.anchor.y}) rotate(${(entry.rotation * 180) / Math.PI})`"
@@ -3260,7 +3273,7 @@ watch(
                     ? 'middle'
                     : 'end'
               "
-              class="fill-annotation font-annotation italic"
+              class="pointer-events-none fill-annotation font-annotation italic"
               aria-hidden="true"
               :data-entity-id="entry.id"
               data-kind="text"
