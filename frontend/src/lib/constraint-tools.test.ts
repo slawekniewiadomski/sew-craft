@@ -1,4 +1,5 @@
 import {
+  applyCommand,
   createEmptyDocument,
   type CurveEntity,
   type Entity,
@@ -52,6 +53,13 @@ const document = doc([
   ln('bad', 'a', 'missing'),
   cv('curve', 'a', 'b', 'c', 'd'),
 ]);
+
+/** The shared fixture with the corner at `b` rounded between `ab` and `bc`. */
+const roundedDocument = applyCommand(document, {
+  id: 'r1',
+  type: 'add_corner_round',
+  params: { first: 'ab', second: 'bc', radius: 10 },
+}).document;
 
 function point(id: string): ConstraintPick {
   return { id, kind: 'point' };
@@ -345,6 +353,39 @@ describe('constraintParams', () => {
     expect(
       constraintParams('equal', [point('a'), point('b'), point('b'), point('a')], document),
     ).toBeNull();
+  });
+
+  it('maps a rounded line to its support anchors for direction relations', () => {
+    expect(constraintParams('horizontal', [line('ab')], roundedDocument)).toEqual({
+      type: 'horizontal',
+      entities: ['a', 'b'],
+    });
+    expect(constraintParams('vertical', [line('bc')], roundedDocument)).toEqual({
+      type: 'vertical',
+      entities: ['b', 'c'],
+    });
+    expect(constraintParams('point_on_line', [point('e'), line('ab')], roundedDocument)).toEqual({
+      type: 'point_on_line',
+      entities: ['e', 'a', 'b'],
+    });
+  });
+
+  it('returns null when a direction relation line has a missing endpoint', () => {
+    expect(constraintParams('horizontal', [line('bad')], document)).toBeNull();
+    expect(constraintParams('point_on_line', [point('c'), line('bad')], document)).toBeNull();
+  });
+
+  it('keeps the visible endpoints for length relations on a rounded line', () => {
+    const params = constraintParams('equal', [line('ab'), line('cd')], roundedDocument);
+
+    expect(params).toEqual({
+      type: 'equal',
+      entities: ['a', 'r1:a', 'c', 'd'],
+    });
+    expect(constraintParams('distance', [line('ab')], roundedDocument)).toEqual({
+      type: 'distance',
+      entities: ['a', 'r1:a'],
+    });
   });
 
   it('accepts a line or two points as one segment', () => {

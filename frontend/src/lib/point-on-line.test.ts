@@ -1,6 +1,8 @@
 import {
+  applyCommand,
   createEmptyDocument,
   executeCommand,
+  getEntity,
   type Command,
   type Entity,
   type EntityId,
@@ -37,6 +39,13 @@ const baseDoc = doc([
   ln('broken', 'a', 'missing'),
 ]);
 
+/** `baseDoc` with the corner at `b` rounded between `ab` and `bc`. */
+const roundedDoc = applyCommand(baseDoc, {
+  id: 'r1',
+  type: 'add_corner_round',
+  params: { first: 'ab', second: 'bc', radius: 10 },
+}).document;
+
 function idGenerator(): (prefix: string) => EntityId {
   let sequence = 0;
   return (prefix) => {
@@ -71,6 +80,29 @@ describe('buildPointOnLineCommands', () => {
       type: 'add_point',
       params: { x: 100, y: 0 },
     });
+  });
+
+  it('names the authored support anchors of a rounded line', () => {
+    const line = getEntity(roundedDoc, 'ab') as LineEntity;
+    // The round replaced the corner with a derived tangent on the stored line.
+    expect(line.end).toBe('r1:a');
+
+    const commands = buildPointOnLineCommands(roundedDoc, 'ab', { x: 70, y: 12 }, idGenerator())!;
+    expect(commands).toEqual([
+      { id: 'point-1', type: 'add_point', params: { x: 70, y: 0 } },
+      {
+        id: 'constraint-2',
+        type: 'add_constraint',
+        params: { type: 'point_on_line', entities: ['point-1', 'a', 'b'] },
+      },
+    ]);
+
+    // The batch applies to the rounded document and stores the authored pair.
+    const withPoint = executeCommand(roundedDoc, commands[0]!).document;
+    const applied = executeCommand(withPoint, commands[1]!).document;
+    expect(applied.constraints).toEqual([
+      { id: 'constraint-2', type: 'point_on_line', point: 'point-1', a: 'a', b: 'b' },
+    ]);
   });
 
   it('returns null for a missing id or a non-line entity', () => {
