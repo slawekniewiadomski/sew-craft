@@ -5,7 +5,6 @@ import {
   executeCommand,
   getEntity,
   type Command,
-  type LegacyPatternDocument,
   type PatternDocument,
   type PointEntity,
 } from '@sewcraft/geometry';
@@ -253,38 +252,17 @@ describe('editor store', () => {
     expect(store.canRedo).toBe(false);
   });
 
-  it('load upgrades a 0.1 seam chain into one piece', () => {
+  it('refuses a 0.1 seam chain instead of migrating it', () => {
     const store = useEditorStore();
-    const legacy: LegacyPatternDocument = {
+    const legacy = {
       schema: 'sewcraft.pattern/0.1',
       units: 'mm',
-      entities: [
-        point('a', 0, 0),
-        point('b', 100, 0),
-        point('c', 100, 100),
-        point('d', 0, 100),
-        { id: 'bottom', kind: 'line', start: 'a', end: 'b', construction: false },
-        { id: 'right', kind: 'line', start: 'b', end: 'c', construction: false },
-        { id: 'top', kind: 'line', start: 'c', end: 'd', construction: false },
-        { id: 'left', kind: 'line', start: 'd', end: 'a', construction: false },
-      ],
+      entities: [],
       constraints: [],
-      seams: [
-        { id: 's1', edge: 'bottom', width: 10 },
-        { id: 's2', edge: 'right', width: 10 },
-        { id: 's3', edge: 'top', width: 10 },
-        { id: 's4', edge: 'left', width: 10, side: 'right' },
-      ],
+      pieces: [],
     };
 
-    store.load(legacy as PatternDocument);
-
-    expect(store.document.schema).toBe('sewcraft.pattern/0.2');
-    expect(store.document.pieces).toHaveLength(1);
-    expect(store.document.pieces[0]!.allowances).toHaveLength(4);
-    expect(store.document.pieces[0]!.allowances.every((entry) => entry.kind === 'seam')).toBe(true);
-    expect(store.document.seams).toEqual([]);
-    expect(store.journal).toEqual([]);
+    expect(() => store.load(legacy as PatternDocument)).toThrow('Unsupported pattern schema');
   });
 
   it('undo is a no-op with no history', () => {
@@ -475,5 +453,94 @@ describe('editor store persistence', () => {
     expect(store.document.pieces).toBeUndefined();
     expect(store.journal).toEqual([]);
     expect(store.future).toEqual([]);
+  });
+});
+
+describe('active piece and loop capture', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  const square = (): Command[] => [
+    { id: 'a', type: 'add_point', params: { x: 0, y: 0, piece: 'p1' } },
+    { id: 'b', type: 'add_point', params: { x: 100, y: 0, piece: 'p1' } },
+    { id: 'c', type: 'add_point', params: { x: 100, y: 100, piece: 'p1' } },
+    { id: 'd', type: 'add_point', params: { x: 0, y: 100, piece: 'p1' } },
+    { id: 'ab', type: 'add_line', params: { start: 'a', end: 'b', piece: 'p1' } },
+    { id: 'bc', type: 'add_line', params: { start: 'b', end: 'c', piece: 'p1' } },
+    { id: 'cd', type: 'add_line', params: { start: 'c', end: 'd', piece: 'p1' } },
+    { id: 'da', type: 'add_line', params: { start: 'd', end: 'a', piece: 'p1' } },
+  ];
+
+  const emptyPiece = (): PatternDocument => ({
+    ...createEmptyDocument(),
+    pieces: [{ id: 'p1', edges: [], allowances: [] }],
+  });
+
+  it('activates only a piece that exists', () => {
+    const store = useEditorStore();
+    store.load(emptyPiece());
+
+    store.setActivePiece('p1');
+    expect(store.activePieceId).toBe('p1');
+
+    store.setActivePiece('missing');
+    expect(store.activePieceId).toBeNull();
+  });
+
+  it('activates the first piece on load and clears it for a new project', () => {
+    const store = useEditorStore();
+    store.load(emptyPiece());
+    expect(store.activePieceId).toBe('p1');
+
+    store.markNew();
+    expect(store.activePieceId).toBeNull();
+  });
+
+  it('captures one closed chain in the same journal entry', () => {
+    const store = useEditorStore();
+    store.load(emptyPiece());
+    store.setActivePiece('p1');
+
+    store.dispatchGroup(square());
+
+    const piece = store.document.pieces[0]!;
+    expect(piece.edges).toHaveLength(4);
+    expect(piece.allowances).toHaveLength(4);
+    expect(store.journal).toHaveLength(1);
+    expect(store.journal[0]!.commands?.at(-1)?.type).toBe('set_piece_loop');
+
+    store.undo();
+    expect(store.document.pieces[0]!.edges).toEqual([]);
+  });
+
+  it('does not capture an open chain or an already looped piece', () => {
+    const store = useEditorStore();
+    store.load(emptyPiece());
+    store.setActivePiece('p1');
+
+    store.dispatchGroup(square().slice(0, 7));
+    expect(store.document.pieces[0]!.edges).toEqual([]);
+
+    store.dispatchGroup([
+      { id: 'da', type: 'add_line', params: { start: 'd', end: 'a', piece: 'p1' } },
+    ]);
+    expect(store.document.pieces[0]!.edges).toHaveLength(4);
+
+    const commands = store.journal.length;
+    store.dispatchGroup([
+      { id: 'extra', type: 'add_line', params: { start: 'a', end: 'c', piece: 'p1' } },
+    ]);
+    expect(store.journal.length).toBe(commands + 1);
+    expect(store.document.pieces[0]!.edges).toHaveLength(4);
+  });
+
+  it('does not capture without an active piece', () => {
+    const store = useEditorStore();
+    store.load(emptyPiece());
+    store.setActivePiece(null);
+
+    store.dispatchGroup(square());
+    expect(store.document.pieces[0]!.edges).toEqual([]);
   });
 });

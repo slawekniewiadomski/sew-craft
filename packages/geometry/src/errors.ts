@@ -16,3 +16,17 @@ export class CommandValidationError extends Error {
     this.commandType = commandType;
   }
 }
+
+/**
+ * A stored pattern uses a schema this build does not read. The editor opens the
+ * document read-only and explains the break; it is never migrated or rewritten.
+ */
+export class UnsupportedPatternSchemaError extends Error {
+  readonly schema: string;
+
+  constructor(schema: string) {
+    super(`Unsupported pattern schema: ${schema}`);
+    this.name = 'UnsupportedPatternSchemaError';
+    this.schema = schema;
+  }
+}

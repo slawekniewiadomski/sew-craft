@@ -1,6 +1,7 @@
 import { cornerRounds, getEntity } from './document.js';
 import { CommandValidationError } from './errors.js';
 import { edgePolyline } from './offset.js';
+import { isConstruction } from './roles.js';
 import type {
   CornerRound,
   CurveEntity,
@@ -332,7 +333,7 @@ export function regenerateCornerRounds(document: PatternDocument): PatternDocume
       const line = lineEntity(document, end.line)!;
       const tangent = index === 0 ? geometry.tangentA : geometry.tangentB;
       const control = index === 0 ? geometry.control1 : geometry.control2;
-      replacePoint(end.tangent, tangent, line.construction);
+      replacePoint(end.tangent, tangent, isConstruction(line));
       replacePoint(round.controls[index]!, control, true);
 
       const current = entities.get(end.line) as LineEntity;
@@ -356,7 +357,7 @@ export function regenerateCornerRounds(document: PatternDocument): PatternDocume
       p1: round.controls[0],
       p2: round.controls[1],
       p3: round.ends[1].tangent,
-      construction: lineEntity(document, round.ends[0].line)!.construction,
+      construction: isConstruction(lineEntity(document, round.ends[0].line)!),
     });
 
     if (round.center !== undefined) {
@@ -402,7 +403,7 @@ function isPersistedRoundValid(
     const line = lines[index]!;
     const tangent = pointEntity(document, end.tangent);
     if (tangent === undefined || !tangent.fixed) return false;
-    if (tangent.construction !== line.construction) return false;
+    if (isConstruction(tangent) !== isConstruction(line)) return false;
     if (line.start !== end.tangent && line.end !== end.tangent) return false;
 
     const control = pointEntity(document, round.controls[index]!);
@@ -430,7 +431,7 @@ function isPersistedRoundValid(
   if (arc === undefined) return false;
   if (arc.p0 !== round.ends[0].tangent || arc.p3 !== round.ends[1].tangent) return false;
   if (arc.p1 !== round.controls[0] || arc.p2 !== round.controls[1]) return false;
-  if (arc.construction !== lines[0]!.construction) return false;
+  if (arc.construction !== isConstruction(lines[0]!)) return false;
 
   seenCorners.add(round.corner);
   return true;

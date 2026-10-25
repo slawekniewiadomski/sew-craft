@@ -27,6 +27,9 @@ const summary: PieceSummary = {
   ],
   uniform: null,
   metrics,
+  hasLoop: true,
+  broken: false,
+  entityCount: 4,
 };
 
 function mountPanel(overrides: Partial<PieceSummary> = {}, props: Record<string, unknown> = {}) {
@@ -271,5 +274,45 @@ describe('PiecePanel all edges', () => {
       (wrapper.find('[data-testid="entity-piece-all-apply"]').element as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+});
+
+describe('PiecePanel loop state and actions', () => {
+  it('shows the incomplete and broken loop states', () => {
+    const empty = mountPanel({ hasLoop: false, metrics: null });
+    expect(empty.find('[data-testid="entity-piece-loop-state"]').text()).toBe('No cut loop');
+    expect(empty.find('[data-testid="entity-piece-finished"]').text()).toContain('No cut loop');
+    expect(
+      empty.find('[data-testid="entity-clear-cut-loop"]').attributes('disabled'),
+    ).toBeDefined();
+
+    const broken = mountPanel({ broken: true, metrics: null });
+    expect(broken.find('[data-testid="entity-piece-loop-state"]').text()).toContain(
+      'Cut loop broken',
+    );
+  });
+
+  it('emits Set, Clear, Move and Activate', async () => {
+    const wrapper = mountPanel({}, { prefix: 'drawer' });
+
+    await wrapper.find('[data-testid="drawer-set-cut-loop"]').trigger('click');
+    await wrapper.find('[data-testid="drawer-clear-cut-loop"]').trigger('click');
+    await wrapper.find('[data-testid="drawer-piece-move-toggle"]').trigger('click');
+    await wrapper.find('[data-testid="drawer-piece-activate"]').trigger('click');
+
+    expect(wrapper.emitted('set-cut-loop')).toEqual([['p1']]);
+    expect(wrapper.emitted('clear-cut-loop')).toEqual([['p1']]);
+    expect(wrapper.emitted('toggle-move')).toEqual([['p1']]);
+    expect(wrapper.emitted('activate')).toEqual([['p1']]);
+  });
+
+  it('marks the active piece and armed Move toggle', () => {
+    const wrapper = mountPanel({}, { active: true, moveMode: true });
+
+    expect(wrapper.find('[data-testid="entity-piece"]').classes()).toContain('border-primary');
+    expect(
+      wrapper.find('[data-testid="entity-piece-move-toggle"]').attributes('aria-pressed'),
+    ).toBe('true');
+    expect(wrapper.find('[data-testid="entity-piece-activate"]').text()).toBe('Active');
   });
 });

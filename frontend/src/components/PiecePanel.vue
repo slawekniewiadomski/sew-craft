@@ -24,10 +24,16 @@ const props = withDefaults(
     prefix?: string;
     /** The project default the All edges row starts from when the edges differ. */
     defaultAllowance?: AllowanceChoice;
+    /** Whether this is the active piece every new entity belongs to. */
+    active?: boolean;
+    /** Whether the Move gesture is armed for this piece. */
+    moveMode?: boolean;
   }>(),
   {
     prefix: 'entity',
     defaultAllowance: () => ({ kind: 'seam' as const, width: 10 }),
+    active: false,
+    moveMode: false,
   },
 );
 
@@ -40,6 +46,10 @@ const emit = defineEmits<{
   ];
   'set-all-allowances': [piece: EntityId, value: { kind: AllowanceKind; width: number } | null];
   'remove-piece': [id: EntityId];
+  'set-cut-loop': [id: EntityId];
+  'clear-cut-loop': [id: EntityId];
+  'toggle-move': [id: EntityId];
+  activate: [id: EntityId];
 }>();
 
 /** Allowance kinds offered by the piece editor; `none` removes the allowance. */
@@ -158,6 +168,7 @@ function pieceQuantity(event: Event): void {
 <template>
   <section
     class="space-y-2 rounded-md border p-2.5"
+    :class="props.active ? 'border-primary ring-1 ring-primary' : ''"
     :aria-labelledby="testId('piece-heading')"
     :data-testid="testId('piece')"
   >
@@ -202,10 +213,26 @@ function pieceQuantity(event: Event): void {
         />
       </SidebarField>
       <SidebarField label="Finished" :data-testid="testId('piece-finished')">
-        {{ pieceSizeText(props.summary.metrics?.finished) }}
+        {{ props.summary.hasLoop ? pieceSizeText(props.summary.metrics?.finished) : 'No cut loop' }}
       </SidebarField>
       <SidebarField label="Cut" :data-testid="testId('piece-cut')">
-        {{ pieceSizeText(props.summary.metrics?.cut) }}
+        {{ props.summary.hasLoop ? pieceSizeText(props.summary.metrics?.cut) : 'No cut loop' }}
+      </SidebarField>
+      <SidebarField label="Cut loop">
+        <span :data-testid="testId('piece-loop-state')">
+          {{
+            props.summary.hasLoop
+              ? props.summary.broken
+                ? 'Cut loop broken · repair or clear'
+                : 'Captured'
+              : 'No cut loop'
+          }}
+        </span>
+      </SidebarField>
+      <SidebarField label="Owned">
+        <span :data-testid="testId('piece-entity-count')">
+          {{ props.summary.entityCount }} entities
+        </span>
       </SidebarField>
       <SidebarField label="Cut area" :data-testid="testId('piece-cut-area')">
         {{ areaText(props.summary.metrics?.cutArea) }}
@@ -214,6 +241,45 @@ function pieceQuantity(event: Event): void {
         {{ areaText(props.summary.metrics?.allowanceArea) }}
       </SidebarField>
     </dl>
+
+    <div class="flex flex-wrap gap-1.5 border-t pt-2">
+      <button
+        type="button"
+        class="h-7 rounded-sm border px-2 text-2xs font-medium"
+        :data-testid="testId('set-cut-loop')"
+        @click="emit('set-cut-loop', props.summary.id)"
+      >
+        Set cut loop
+      </button>
+      <button
+        type="button"
+        class="h-7 rounded-sm border px-2 text-2xs font-medium disabled:opacity-50"
+        :disabled="!props.summary.hasLoop"
+        :data-testid="testId('clear-cut-loop')"
+        @click="emit('clear-cut-loop', props.summary.id)"
+      >
+        Clear cut loop
+      </button>
+      <button
+        type="button"
+        class="h-7 rounded-sm border px-2 text-2xs font-medium"
+        :aria-pressed="props.moveMode ? 'true' : 'false'"
+        :class="props.moveMode ? 'bg-accent text-accent-foreground' : ''"
+        :data-testid="testId('piece-move-toggle')"
+        @click="emit('toggle-move', props.summary.id)"
+      >
+        Move
+      </button>
+      <button
+        type="button"
+        class="h-7 rounded-sm border px-2 text-2xs font-medium"
+        :class="props.active ? 'bg-primary text-primary-foreground' : ''"
+        :data-testid="testId('piece-activate')"
+        @click="emit('activate', props.summary.id)"
+      >
+        {{ props.active ? 'Active' : 'Make active' }}
+      </button>
+    </div>
 
     <div class="space-y-1.5 border-t pt-2" data-testid="piece-all">
       <div class="flex flex-wrap items-center gap-1.5">

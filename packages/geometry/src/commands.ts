@@ -10,6 +10,8 @@ import {
   seamForEdge,
 } from './document.js';
 import { allowanceForEdge, pieceById, pieceCutLoop, pieceForEdge, validatePiece } from './piece.js';
+import { isAnnotation, isConstruction, isCut, roleOf } from './roles.js';
+import { DEFAULT_TEXT_SIZE, MAX_TEXT_LENGTH, MAX_TEXT_SIZE, MIN_TEXT_SIZE } from './text.js';
 import {
   cornerRoundGeometry,
   cornerRoundsForEntity,
@@ -39,11 +41,13 @@ import {
   CONSTRAINT_TYPES,
   DIMENSION_ORIENTATIONS,
   SEAM_SIDES,
+  TEXT_ALIGNMENTS,
   seamSide,
   type Allowance,
   type AllowanceKind,
   type AllowancePreset,
   type ArcEntity,
+  type AssignableRole,
   type Constraint,
   type ConstraintType,
   type CornerRound,
@@ -55,12 +59,15 @@ import {
   type DistanceConstraint,
   type Entity,
   type EntityId,
+  type EntityRole,
   type LineEntity,
   type PatternDocument,
   type Piece,
   type PointEntity,
   type Seam,
   type SeamSide,
+  type TextAlignment,
+  type TextEntity,
 } from './types.js';
 
 /** Seam allowance applied to an edge when the command omits an explicit width. */
@@ -69,6 +76,11 @@ export const DEFAULT_SEAM_ALLOWANCE = 10;
 export interface AddPointParams {
   x: number;
   y: number;
+  /** The piece that contains the point. Required by schema 0.3 commands. */
+  piece?: EntityId;
+  /** Omitted means cut. */
+  role?: EntityRole;
+  /** Deprecated alias for `role: 'construction'`. */
   construction?: boolean;
 }
 
@@ -81,6 +93,8 @@ export interface MovePointParams {
 export interface AddLineParams {
   start: EntityId;
   end: EntityId;
+  piece?: EntityId;
+  role?: EntityRole;
   construction?: boolean;
 }
 
@@ -89,6 +103,8 @@ export interface AddCurveParams {
   p1: EntityId;
   p2: EntityId;
   p3: EntityId;
+  piece?: EntityId;
+  role?: EntityRole;
   construction?: boolean;
 }
 
@@ -96,12 +112,16 @@ export interface AddArcParams {
   start: EntityId;
   end: EntityId;
   through: EntityId;
+  piece?: EntityId;
+  role?: EntityRole;
   construction?: boolean;
 }
 
 export interface AddCircleParams {
   center: EntityId;
   rim: EntityId;
+  piece?: EntityId;
+  role?: EntityRole;
   construction?: boolean;
 }
 
@@ -122,6 +142,8 @@ export interface DeleteEntityParams {
 export interface AddConstraintParams {
   type: ConstraintType;
   entities: EntityId[];
+  /** The piece the constraint belongs to. Required by schema 0.3 commands. */
+  piece?: EntityId;
   value?: number;
   /** Source dimension id for a `distance` constraint; exclusive with `value`. */
   reference?: EntityId;
@@ -177,16 +199,58 @@ export interface RemoveCornerRoundParams {
 }
 
 export interface CreatePieceParams {
-  /** Ordered closed loop of cut line/curve/arc ids. */
-  edges: EntityId[];
+  /**
+   * Deprecated: an optional closed loop of cut line/curve/arc ids. Omit it to
+   * create an empty piece; the loop is captured later with `set_piece_loop`.
+   */
+  edges?: EntityId[];
   name?: string;
   quantity?: number;
   /**
-   * The allowance copied onto every loop edge: `'default'` reads the document
-   * default, `'none'` or an absent value starts with none, and an explicit
-   * preset copies that preset.
+   * Only used with the deprecated `edges` argument: the allowance copied onto
+   * every loop edge.
    */
   allowance?: 'default' | 'none' | AllowancePreset;
+}
+
+export interface SetPieceLoopParams {
+  piece: EntityId;
+  /** Ordered closed chain of cut line/curve/arc edges; empty clears the loop. */
+  edges: EntityId[];
+  /** Allowance copied onto edges that have none yet; default `'default'`. */
+  allowance?: 'default' | 'none' | AllowancePreset;
+}
+
+export interface SetRoleParams {
+  id: EntityId;
+  role: AssignableRole;
+}
+
+export interface MovePieceParams {
+  id: EntityId;
+  dx: number;
+  dy: number;
+}
+
+export interface AddTextParams {
+  piece: EntityId;
+  anchor: EntityId;
+  content: string;
+  alignment?: TextAlignment;
+  rotation?: number;
+  fontSize?: number;
+  leader?: EntityId;
+}
+
+export interface UpdateTextParams {
+  id: EntityId;
+  content?: string;
+  anchor?: EntityId;
+  alignment?: TextAlignment;
+  rotation?: number;
+  fontSize?: number;
+  /** `null` removes the leader. */
+  leader?: EntityId | null;
 }
 
 export interface UpdatePieceParams {
@@ -289,6 +353,16 @@ export type Command =
   | { id: EntityId; type: 'delete_piece'; params: DeletePieceParams; issuedAt?: string }
   | {
       id: EntityId;
+      type: 'set_piece_loop';
+      params: SetPieceLoopParams;
+      issuedAt?: string;
+    }
+  | { id: EntityId; type: 'set_role'; params: SetRoleParams; issuedAt?: string }
+  | { id: EntityId; type: 'move_piece'; params: MovePieceParams; issuedAt?: string }
+  | { id: EntityId; type: 'add_text'; params: AddTextParams; issuedAt?: string }
+  | { id: EntityId; type: 'update_text'; params: UpdateTextParams; issuedAt?: string }
+  | {
+      id: EntityId;
       type: 'set_piece_allowance';
       params: SetPieceAllowanceParams;
       issuedAt?: string;
@@ -368,9 +442,14 @@ export function applyCommand(document: PatternDocument, command: Command): Comma
     case 'move_point':
       return applyMovePoint(document, command);
     case 'add_line':
-      return applyAddLine(document, command, command.params.construction ?? false, 'add_line');
+      return applyAddLine(
+        document,
+        command,
+        roleFromParams(command.params.role, command.params.construction),
+        'add_line',
+      );
     case 'add_construction_line':
-      return applyAddLine(document, command, true, 'add_construction_line');
+      return applyAddLine(document, command, 'construction', 'add_construction_line');
     case 'set_construction':
       return applySetConstruction(document, command);
     case 'add_curve':
@@ -405,6 +484,16 @@ export function applyCommand(document: PatternDocument, command: Command): Comma
       return applyUpdatePiece(document, command);
     case 'delete_piece':
       return applyDeletePiece(document, command);
+    case 'set_piece_loop':
+      return applySetPieceLoop(document, command);
+    case 'set_role':
+      return applySetRole(document, command);
+    case 'move_piece':
+      return applyMovePiece(document, command);
+    case 'add_text':
+      return applyAddText(document, command);
+    case 'update_text':
+      return applyUpdateText(document, command);
     case 'set_piece_allowance':
       return applySetPieceAllowance(document, command);
     case 'set_default_allowance':
@@ -519,6 +608,51 @@ function radiusText(radius: number): string {
   return String(Math.round(radius * 1000) / 1000);
 }
 
+/** Resolve a command's `role`/legacy `construction` pair to the stored role. */
+function roleFromParams(
+  role: EntityRole | undefined,
+  construction: boolean | undefined,
+): EntityRole | undefined {
+  if (role === 'construction' || role === 'annotation') return role;
+  return construction === true ? 'construction' : undefined;
+}
+
+/** Copy an object without the named keys, without leaving unused bindings behind. */
+function withoutKeys<T extends object>(value: T, keys: readonly string[]): T {
+  const copy = { ...value };
+  for (const key of keys) delete (copy as Record<string, unknown>)[key];
+  return copy;
+}
+
+/** Reject a piece that does not exist; ownership validation needs it. */
+function requirePiece(document: PatternDocument, piece: EntityId, type: CommandType): Piece {
+  const found = pieceById(document, piece);
+  if (found === undefined) {
+    throw new CommandValidationError(type, `unknown piece: ${piece}`);
+  }
+  return found;
+}
+
+/**
+ * A point a label may anchor on: it must be a point, belong to the same piece and
+ * not be derived by a corner round (labels attach to authored geometry).
+ */
+function requireOwnedPoint(
+  document: PatternDocument,
+  id: EntityId,
+  piece: EntityId,
+  type: CommandType,
+): PointEntity {
+  const point = requirePoint(document, id, type);
+  if (point.piece !== undefined && point.piece !== piece) {
+    throw new CommandValidationError(type, `point ${id} belongs to another piece`);
+  }
+  if (isCornerRoundDerived(document, id)) {
+    throw new CommandValidationError(type, 'a label cannot anchor on a derived corner point');
+  }
+  return point;
+}
+
 function applyAddPoint(
   document: PatternDocument,
   command: CommandOf<'add_point'>,
@@ -527,16 +661,22 @@ function applyAddPoint(
   if (!Number.isFinite(x) || !Number.isFinite(y)) {
     throw new CommandValidationError('add_point', 'x and y must be finite numbers');
   }
+  if (command.params.piece !== undefined) {
+    requirePiece(document, command.params.piece, 'add_point');
+  }
   if (getEntity(document, command.id) !== undefined) {
     return noOp(document);
   }
 
+  const role = roleFromParams(command.params.role, command.params.construction);
   const point: PointEntity = {
     id: command.id,
     kind: 'point',
     x,
     y,
-    construction: command.params.construction ?? false,
+    ...(command.params.piece === undefined ? {} : { piece: command.params.piece }),
+    ...(role === undefined ? {} : { role }),
+    construction: role === 'construction',
     fixed: false,
   };
 
@@ -577,18 +717,29 @@ function applyMovePoint(
 
 function applyAddLine(
   document: PatternDocument,
-  command: { id: EntityId; params: AddConstructionLineParams },
-  construction: boolean,
+  command: { id: EntityId; params: AddLineParams },
+  role: EntityRole | undefined,
   type: CommandType,
 ): CommandApplication {
   const { start, end } = command.params;
   requireDraftingPoint(document, start, type);
   requireDraftingPoint(document, end, type);
+  if (command.params.piece !== undefined) {
+    requirePiece(document, command.params.piece, type);
+  }
   if (getEntity(document, command.id) !== undefined) {
     return noOp(document);
   }
 
-  const line: LineEntity = { id: command.id, kind: 'line', start, end, construction };
+  const line: LineEntity = {
+    id: command.id,
+    kind: 'line',
+    start,
+    end,
+    ...(command.params.piece === undefined ? {} : { piece: command.params.piece }),
+    ...(role === undefined ? {} : { role }),
+    construction: role === 'construction',
+  };
 
   return {
     document: { ...document, entities: [...document.entities, line] },
@@ -605,6 +756,9 @@ function applySetConstruction(
   if (entity === undefined) {
     throw new CommandValidationError('set_construction', `unknown entity: ${id}`);
   }
+  if (entity.kind === 'text') {
+    throw new CommandValidationError('set_construction', 'text is always annotation geometry');
+  }
   if (pieceForEdge(document, id) !== undefined) {
     throw new CommandValidationError(
       'set_construction',
@@ -619,20 +773,26 @@ function applySetConstruction(
   ) {
     throw new CommandValidationError('set_construction', 'Remove the corner round first.');
   }
-  if (entity.construction === construction) {
+  if (isConstruction(entity) === construction) {
     return noOp(document);
   }
 
-  const entities = document.entities.map((candidate): typeof candidate =>
-    candidate.id === id ? { ...candidate, construction } : candidate,
-  );
+  const entities = document.entities.map((candidate): Entity => {
+    if (candidate.id !== id || candidate.kind === 'text') return candidate;
+    const rest = withoutKeys(candidate, ['construction', 'role']);
+    return (
+      construction
+        ? { ...rest, role: 'construction', construction: true }
+        : { ...rest, construction: false }
+    ) as Entity;
+  });
 
   return {
     document: { ...document, entities },
     inverse: {
       id: command.id,
       type: 'set_construction',
-      params: { id, construction: entity.construction },
+      params: { id, construction: isConstruction(entity) },
     },
   };
 }
@@ -649,10 +809,14 @@ function applyAddCurve(
   for (const id of controlPoints) {
     requireDraftingPoint(document, id, 'add_curve');
   }
+  if (command.params.piece !== undefined) {
+    requirePiece(document, command.params.piece, 'add_curve');
+  }
   if (getEntity(document, command.id) !== undefined) {
     return noOp(document);
   }
 
+  const role = roleFromParams(command.params.role, command.params.construction);
   const curve: CurveEntity = {
     id: command.id,
     kind: 'curve',
@@ -660,7 +824,9 @@ function applyAddCurve(
     p1,
     p2,
     p3,
-    construction: command.params.construction ?? false,
+    ...(command.params.piece === undefined ? {} : { piece: command.params.piece }),
+    ...(role === undefined ? {} : { role }),
+    construction: role === 'construction',
   };
 
   return {
@@ -690,18 +856,24 @@ function applyAddArc(document: PatternDocument, command: CommandOf<'add_arc'>): 
       `through must be at least ${MIN_BULGE} mm off the start-end chord`,
     );
   }
+  if (command.params.piece !== undefined) {
+    requirePiece(document, command.params.piece, 'add_arc');
+  }
 
   if (getEntity(document, command.id) !== undefined) {
     return noOp(document);
   }
 
+  const role = roleFromParams(command.params.role, command.params.construction);
   const arc: ArcEntity = {
     id: command.id,
     kind: 'arc',
     start,
     end,
     through,
-    construction: command.params.construction ?? false,
+    ...(command.params.piece === undefined ? {} : { piece: command.params.piece }),
+    ...(role === undefined ? {} : { role }),
+    construction: role === 'construction',
   };
 
   return {
@@ -725,16 +897,22 @@ function applyAddCircle(
   if (!Number.isFinite(radius) || radius < MIN_RADIUS) {
     throw new CommandValidationError('add_circle', `the radius must be at least ${MIN_RADIUS} mm`);
   }
+  if (command.params.piece !== undefined) {
+    requirePiece(document, command.params.piece, 'add_circle');
+  }
   if (getEntity(document, command.id) !== undefined) {
     return noOp(document);
   }
 
+  const role = roleFromParams(command.params.role, command.params.construction);
   const circle: CircleEntity = {
     id: command.id,
     kind: 'circle',
     center,
     rim,
-    construction: command.params.construction ?? false,
+    ...(command.params.piece === undefined ? {} : { piece: command.params.piece }),
+    ...(role === undefined ? {} : { role }),
+    construction: role === 'construction',
   };
 
   return {
@@ -768,24 +946,38 @@ function applyDeleteEntity(
     }).document;
   }
 
-  const entities = working.entities.filter((entity) => entity.id !== id);
-  const removedPieceIds = new Set(
-    working.pieces.filter((piece) => piece.edges.includes(id)).map((piece) => piece.id),
+  const entities = working.entities.flatMap((entity): Entity[] => {
+    if (entity.id === id) return [];
+    if (entity.kind !== 'text') return [entity];
+    // A label whose anchor disappears goes with it; a deleted leader only
+    // detaches, so the label stays where it was placed.
+    if (entity.anchor === id) return [];
+    if (entity.leader === id) return [withoutKeys(entity, ['leader'])];
+    return [entity];
+  });
+  // An edge leaves its piece loop, but the container survives as a broken piece;
+  // deleting a whole piece is an explicit command of its own.
+  const pieces = working.pieces.map((piece) =>
+    piece.edges.includes(id)
+      ? {
+          ...piece,
+          edges: piece.edges.filter((edge) => edge !== id),
+          allowances: piece.allowances.filter((allowance) => allowance.edge !== id),
+        }
+      : piece,
   );
-  const pieces = working.pieces.filter((piece) => !removedPieceIds.has(piece.id));
   const constraints = captureBrokenDependents(
     working.constraints,
-    working.constraints.filter(
-      (constraint) =>
-        !constraintEntityIds(constraint).includes(id) &&
-        !(constraint.type === 'derived_distance' && removedPieceIds.has(constraint.piece)),
-    ),
+    working.constraints.filter((constraint) => !constraintEntityIds(constraint).includes(id)),
   );
-  const seams = documentSeams(working).filter((seam) => seam.edge !== id);
 
   // Restoring the entity plus its cascade-removed constraints and seams is not a
   // single command, so undo relies on the journal's snapshot.
-  return { document: { ...working, entities, constraints, pieces, seams }, inverse: null };
+  const next: PatternDocument = { ...working, entities, constraints, pieces };
+  if (working.seams !== undefined) {
+    next.seams = documentSeams(working).filter((seam) => seam.edge !== id);
+  }
+  return { document: next, inverse: null };
 }
 
 /**
@@ -869,9 +1061,12 @@ function applyAddConstraint(
   document: PatternDocument,
   command: CommandOf<'add_constraint'>,
 ): CommandApplication {
-  const { type, entities, value, reference, orientation, offset } = command.params;
+  const { type, entities, value, reference, orientation, offset, piece } = command.params;
   if (!CONSTRAINT_TYPES.includes(type)) {
     throw new CommandValidationError('add_constraint', `unknown constraint type: ${String(type)}`);
+  }
+  if (piece !== undefined) {
+    requirePiece(document, piece, 'add_constraint');
   }
 
   const arity = CONSTRAINT_ARITY[type];
@@ -888,6 +1083,9 @@ function applyAddConstraint(
   const drivenMeasurement = type === 'distance' && value === undefined;
   for (const id of entities) {
     const entity = getEntity(document, id);
+    if (piece !== undefined && entity?.piece !== undefined && entity.piece !== piece) {
+      throw new CommandValidationError('add_constraint', `entity ${id} belongs to another piece`);
+    }
     // A distance line anchor, missing id or unsupported kind is classified by
     // the shared issue helper below; only point anchors need the drafting rule.
     if (type === 'distance' && (entity === undefined || entity.kind !== 'point')) continue;
@@ -919,6 +1117,13 @@ function applyAddConstraint(
       throw new CommandValidationError(
         'add_constraint',
         'a distance dimension takes a value or a reference, not both',
+      );
+    }
+    const source = getConstraint(document, reference);
+    if (piece !== undefined && source?.piece !== undefined && source.piece !== piece) {
+      throw new CommandValidationError(
+        'add_constraint',
+        `reference ${reference} belongs to another piece`,
       );
     }
   }
@@ -975,6 +1180,7 @@ function applyAddConstraint(
     offset,
     reference,
     resolved,
+    piece,
   );
 
   return {
@@ -1277,7 +1483,12 @@ function applyAddSeamAllowance(
       : requireSeamSide('add_seam_allowance', command.params.side);
 
   const edgeEntity = getEntity(document, edge);
-  if (edgeEntity === undefined || edgeEntity.kind === 'point' || edgeEntity.construction) {
+  if (
+    edgeEntity === undefined ||
+    edgeEntity.kind === 'point' ||
+    edgeEntity.kind === 'text' ||
+    !isCut(edgeEntity)
+  ) {
     throw new CommandValidationError(
       'add_seam_allowance',
       `edge ${edge} is not a cut line, curve or arc`,
@@ -1446,11 +1657,11 @@ function applyAddCornerRound(
   if (cornerRounds(document).some((round) => round.corner === corner)) {
     throw new CommandValidationError('add_corner_round', 'This corner is already rounded.');
   }
-  if (lineA.construction !== lineB.construction) {
-    throw new CommandValidationError(
-      'add_corner_round',
-      'Both lines must be cut edges or both construction.',
-    );
+  if (isAnnotation(lineA) || isAnnotation(lineB)) {
+    throw new CommandValidationError('add_corner_round', 'Annotation geometry cannot be rounded.');
+  }
+  if (roleOf(lineA) !== roleOf(lineB)) {
+    throw new CommandValidationError('add_corner_round', 'Both lines must share a role.');
   }
   if (seamForEdge(document, first) !== undefined || seamForEdge(document, second) !== undefined) {
     throw new CommandValidationError('add_corner_round', 'Remove the seam allowance first.');
@@ -1473,7 +1684,7 @@ function applyAddCornerRound(
   const meeting = document.entities.filter(
     (entity) =>
       entity.kind === 'line' &&
-      entity.construction === lineA.construction &&
+      isConstruction(entity) === isConstruction(lineA) &&
       (entity.start === corner || entity.end === corner),
   );
   if (meeting.length > 2) {
@@ -1533,7 +1744,7 @@ function applyAddCornerRound(
   }
 
   const cornerEntity = requirePoint(document, corner, 'add_corner_round');
-  const construction = lineA.construction;
+  const construction = isConstruction(lineA);
   const entities: Entity[] = document.entities.map((entity) => {
     if (entity.kind === 'line' && entity.id === first) {
       return entity.start === corner
@@ -1603,7 +1814,7 @@ function applyAddCornerRound(
     },
   );
 
-  const round: CornerRound = { ...tentative, cornerConstruction: cornerEntity.construction };
+  const round: CornerRound = { ...tentative, cornerConstruction: isConstruction(cornerEntity) };
   const next: PatternDocument = {
     ...document,
     entities,
@@ -1825,27 +2036,22 @@ function effectiveKind(allowance: Allowance): AllowanceKind {
 function resolveCreateAllowance(
   document: PatternDocument,
   allowance: CreatePieceParams['allowance'],
+  type: CommandType = 'create_piece',
 ): AllowancePreset | null {
   if (allowance === undefined || allowance === 'none') return null;
   if (allowance === 'default') return effectiveDefaultAllowance(document);
 
   if (typeof allowance !== 'object' || allowance === null) {
-    throw new CommandValidationError(
-      'create_piece',
-      'allowance must be "default", "none" or a preset',
-    );
+    throw new CommandValidationError(type, 'allowance must be "default", "none" or a preset');
   }
   if (!Number.isFinite(allowance.width) || allowance.width <= 0) {
     throw new CommandValidationError(
-      'create_piece',
+      type,
       'allowance width must be a finite number greater than 0',
     );
   }
   if (allowance.kind !== undefined && !ALLOWANCE_KINDS.includes(allowance.kind)) {
-    throw new CommandValidationError(
-      'create_piece',
-      `unknown allowance kind: ${String(allowance.kind)}`,
-    );
+    throw new CommandValidationError(type, `unknown allowance kind: ${String(allowance.kind)}`);
   }
 
   return {
@@ -1879,7 +2085,7 @@ function applyCreatePiece(
   document: PatternDocument,
   command: CommandOf<'create_piece'>,
 ): CommandApplication {
-  const { edges, name, quantity } = command.params;
+  const { name, quantity } = command.params;
   if (pieceById(document, command.id) !== undefined) {
     return noOp(document);
   }
@@ -1887,9 +2093,12 @@ function applyCreatePiece(
   requireQuantity('create_piece', quantity);
   requirePieceName('create_piece', name);
 
-  const validation = validatePiece(document, edges);
-  if (!validation.ok) {
-    throw new CommandValidationError('create_piece', validation.message);
+  const edges = command.params.edges ?? [];
+  if (edges.length > 0) {
+    const validation = validatePiece(document, edges);
+    if (!validation.ok) {
+      throw new CommandValidationError('create_piece', validation.message);
+    }
   }
 
   const preset = resolveCreateAllowance(document, command.params.allowance);
@@ -1897,7 +2106,7 @@ function applyCreatePiece(
     id: command.id,
     edges: [...edges],
     allowances:
-      preset === null
+      preset === null || edges.length === 0
         ? []
         : edges.map((edge) => ({ edge, width: preset.width, kind: preset.kind ?? 'seam' })),
   };
@@ -1954,30 +2163,364 @@ function applyUpdatePiece(
   };
 }
 
-/** Delete a piece and the cut dimensions anchored to it. */
+/**
+ * Delete a piece and everything it owns: its geometry, constraints, texts,
+ * corner rounds and cut dimensions. Other pieces are untouched, and undo uses
+ * the journal snapshot because a cascade is not one command.
+ */
 function applyDeletePiece(
   document: PatternDocument,
   command: CommandOf<'delete_piece'>,
 ): CommandApplication {
   const { id } = command.params;
-  if (pieceById(document, id) === undefined) {
+  const piece = pieceById(document, id);
+  if (piece === undefined) {
     return noOp(document);
   }
+
+  const removed = new Set<EntityId>([
+    ...piece.edges,
+    ...document.entities.filter((entity) => entity.piece === id).map((entity) => entity.id),
+  ]);
+  const removedRounds = cornerRounds(document).filter((round) =>
+    [
+      round.corner,
+      round.arc,
+      ...round.controls,
+      ...(round.center === undefined ? [] : [round.center]),
+      ...round.ends.flatMap((end) => [end.line, end.anchor, end.tangent]),
+    ].some((entityId) => removed.has(entityId)),
+  );
+  for (const round of removedRounds) {
+    removed.add(round.corner);
+    removed.add(round.arc);
+    for (const control of round.controls) removed.add(control);
+    if (round.center !== undefined) removed.add(round.center);
+    for (const end of round.ends) {
+      removed.add(end.line);
+      removed.add(end.anchor);
+      removed.add(end.tangent);
+    }
+  }
+  const entities = document.entities.filter(
+    (entity) =>
+      !removed.has(entity.id) &&
+      !(
+        entity.kind === 'text' &&
+        (removed.has(entity.anchor) || (entity.leader !== undefined && removed.has(entity.leader)))
+      ),
+  );
+  const constraints = document.constraints.filter(
+    (constraint) =>
+      constraint.piece !== id &&
+      !constraintEntityIds(constraint).some((entityId) => removed.has(entityId)),
+  );
+  const rounds = cornerRounds(document).filter((round) => !removedRounds.includes(round));
 
   return {
     document: {
       ...document,
-      pieces: document.pieces.filter((piece) => piece.id !== id),
-      constraints: document.constraints.filter(
-        (constraint) => !(constraint.type === 'derived_distance' && constraint.piece === id),
-      ),
+      entities,
+      constraints,
+      pieces: document.pieces.filter((candidate) => candidate.id !== id),
+      ...(document.cornerRounds === undefined ? {} : { cornerRounds: rounds }),
+      ...(document.seams === undefined
+        ? {}
+        : { seams: documentSeams(document).filter((seam) => !removed.has(seam.edge)) }),
     },
-    // Restoring a piece together with its cut dimensions is not a single command.
+    // Restoring a piece together with its cascade is not a single command.
     inverse: null,
   };
 }
 
 /** Set, change or clear the allowance copied onto newly created pieces. */
+/**
+ * Store an ordered cut loop on a piece, or clear it. The loop is validated as one
+ * closed chain of the piece's own cut edges; the allowance preset fills edges
+ * that do not have an allowance yet, so re-setting a loop keeps its widths.
+ */
+function applySetPieceLoop(
+  document: PatternDocument,
+  command: CommandOf<'set_piece_loop'>,
+): CommandApplication {
+  const { piece: pieceId, edges } = command.params;
+  const piece = requirePiece(document, pieceId, 'set_piece_loop');
+
+  if (edges.length === 0) {
+    if (piece.edges.length === 0 && piece.allowances.length === 0) return noOp(document);
+    return {
+      document: replacePiece(document, { ...piece, edges: [], allowances: [] }),
+      inverse: null,
+    };
+  }
+
+  const validation = validatePiece(document, edges, { piece: pieceId });
+  if (!validation.ok) {
+    throw new CommandValidationError('set_piece_loop', validation.message);
+  }
+
+  const preset = resolveCreateAllowance(
+    document,
+    command.params.allowance ?? 'default',
+    'set_piece_loop',
+  );
+  const existing = new Map(piece.allowances.map((allowance) => [allowance.edge, allowance]));
+  const allowances = edges.flatMap((edge) => {
+    const current = existing.get(edge);
+    if (current !== undefined) return [current];
+    return preset === null
+      ? []
+      : [{ edge, width: preset.width, kind: preset.kind ?? ('seam' as const) }];
+  });
+
+  // The loop is the first point at which an older fixture's edges can be adopted;
+  // new documents already carry the owner from their create command.
+  const entities = document.entities.map((entity) =>
+    edges.includes(entity.id) && entity.piece === undefined
+      ? { ...entity, piece: pieceId }
+      : entity,
+  );
+
+  return {
+    document: {
+      ...replacePiece(document, { ...piece, edges: [...edges], allowances }),
+      entities,
+    },
+    inverse: null,
+  };
+}
+
+/** Change one entity's role, refusing to demote a rounded cut line. */
+function applySetRole(
+  document: PatternDocument,
+  command: CommandOf<'set_role'>,
+): CommandApplication {
+  const { id, role } = command.params;
+  const entity = getEntity(document, id);
+  if (entity === undefined) {
+    throw new CommandValidationError('set_role', `unknown entity: ${id}`);
+  }
+  if (entity.kind === 'text') {
+    throw new CommandValidationError('set_role', 'text is always annotation geometry');
+  }
+  if (role !== 'cut' && role !== 'construction' && role !== 'annotation') {
+    throw new CommandValidationError('set_role', `unknown role: ${String(role)}`);
+  }
+
+  const current = roleOf(entity);
+  if (current === role) return noOp(document);
+
+  if (
+    current === 'cut' &&
+    role !== 'cut' &&
+    entity.kind === 'line' &&
+    cornerRoundsForEntity(document, id).some((round) => round.ends.some((end) => end.line === id))
+  ) {
+    throw new CommandValidationError('set_role', 'Remove the corner round first.');
+  }
+
+  const rest = withoutKeys(entity, ['role', 'construction']);
+  const next = (role === 'cut' ? rest : { ...rest, role }) as Entity;
+  const entities = document.entities.map((candidate) => (candidate.id === id ? next : candidate));
+
+  return {
+    document: { ...document, entities },
+    inverse: { id: command.id, type: 'set_role', params: { id, role: current } },
+  };
+}
+
+/** Translate every point the piece owns, including fixed ones, in one step. */
+function applyMovePiece(
+  document: PatternDocument,
+  command: CommandOf<'move_piece'>,
+): CommandApplication {
+  const { id, dx, dy } = command.params;
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+    throw new CommandValidationError('move_piece', 'dx and dy must be finite numbers');
+  }
+  requirePiece(document, id, 'move_piece');
+  if (dx === 0 && dy === 0) return noOp(document);
+
+  const entities: Entity[] = document.entities.map((entity) =>
+    entity.kind === 'point' && entity.piece === id
+      ? { ...entity, x: entity.x + dx, y: entity.y + dy }
+      : entity,
+  );
+
+  return {
+    document: { ...document, entities },
+    inverse: { id: command.id, type: 'move_piece', params: { id, dx: -dx, dy: -dy } },
+  };
+}
+
+/** Trim and validate one line of label text. */
+function requireTextContent(commandType: CommandType, content: unknown): string {
+  if (typeof content !== 'string') {
+    throw new CommandValidationError(commandType, 'content must be a string');
+  }
+  const trimmed = content.trim();
+  if (trimmed.length < 1 || trimmed.length > MAX_TEXT_LENGTH) {
+    throw new CommandValidationError(
+      commandType,
+      `content must be 1–${MAX_TEXT_LENGTH} characters after trimming`,
+    );
+  }
+  if (/[\r\n]/.test(trimmed)) {
+    throw new CommandValidationError(commandType, 'content must be a single line');
+  }
+  return trimmed;
+}
+
+function requireTextAlignment(
+  commandType: CommandType,
+  alignment: TextAlignment | undefined,
+): TextAlignment {
+  const value = alignment ?? 'left';
+  if (!TEXT_ALIGNMENTS.includes(value)) {
+    throw new CommandValidationError(commandType, `unknown text alignment: ${String(value)}`);
+  }
+  return value;
+}
+
+function requireTextSize(commandType: CommandType, fontSize: number | undefined): number {
+  const value = fontSize ?? DEFAULT_TEXT_SIZE;
+  if (!Number.isFinite(value) || value < MIN_TEXT_SIZE || value > MAX_TEXT_SIZE) {
+    throw new CommandValidationError(
+      commandType,
+      `fontSize must be between ${MIN_TEXT_SIZE} and ${MAX_TEXT_SIZE} mm`,
+    );
+  }
+  return value;
+}
+
+function requireTextRotation(commandType: CommandType, rotation: number | undefined): number {
+  const value = rotation ?? 0;
+  if (!Number.isFinite(value)) {
+    throw new CommandValidationError(commandType, 'rotation must be a finite number');
+  }
+  return value;
+}
+
+/** Create one annotation label anchored to a point of its piece. */
+function applyAddText(
+  document: PatternDocument,
+  command: CommandOf<'add_text'>,
+): CommandApplication {
+  const { piece: pieceId, anchor, content, alignment, rotation, fontSize, leader } = command.params;
+  requirePiece(document, pieceId, 'add_text');
+  const anchorPoint = requireOwnedPoint(document, anchor, pieceId, 'add_text');
+  if (getEntity(document, command.id) !== undefined) {
+    return noOp(document);
+  }
+
+  let leaderPoint: PointEntity | undefined;
+  if (leader !== undefined) {
+    if (leader === anchorPoint.id) {
+      throw new CommandValidationError('add_text', 'the leader must differ from the anchor');
+    }
+    leaderPoint = requireOwnedPoint(document, leader, pieceId, 'add_text');
+  }
+
+  const text: TextEntity = {
+    id: command.id,
+    kind: 'text',
+    piece: pieceId,
+    anchor,
+    content: requireTextContent('add_text', content),
+    alignment: requireTextAlignment('add_text', alignment),
+    rotation: requireTextRotation('add_text', rotation),
+    fontSize: requireTextSize('add_text', fontSize),
+  };
+  if (leaderPoint !== undefined) text.leader = leaderPoint.id;
+
+  return {
+    document: { ...document, entities: [...document.entities, text] },
+    inverse: deleteEntityCommand(command.id),
+  };
+}
+
+/** Edit a label's text, anchor, presentation or leader. */
+function applyUpdateText(
+  document: PatternDocument,
+  command: CommandOf<'update_text'>,
+): CommandApplication {
+  const { id, content, anchor, alignment, rotation, fontSize, leader } = command.params;
+  const entity = getEntity(document, id);
+  if (entity === undefined) {
+    throw new CommandValidationError('update_text', `unknown entity: ${id}`);
+  }
+  if (entity.kind !== 'text') {
+    throw new CommandValidationError('update_text', `entity ${id} is not text`);
+  }
+  if (
+    content === undefined &&
+    anchor === undefined &&
+    alignment === undefined &&
+    rotation === undefined &&
+    fontSize === undefined &&
+    leader === undefined
+  ) {
+    throw new CommandValidationError('update_text', 'provide content, anchor or presentation');
+  }
+
+  const piece = entity.piece;
+  if (piece === undefined) {
+    throw new CommandValidationError('update_text', 'text is not owned by a piece');
+  }
+  const nextAnchor =
+    anchor === undefined
+      ? entity.anchor
+      : requireOwnedPoint(document, anchor, piece, 'update_text').id;
+  let nextLeader = entity.leader;
+  if (leader === null) {
+    nextLeader = undefined;
+  } else if (leader !== undefined) {
+    if (leader === nextAnchor) {
+      throw new CommandValidationError('update_text', 'the leader must differ from the anchor');
+    }
+    nextLeader = requireOwnedPoint(document, leader, piece, 'update_text').id;
+  }
+
+  const next: TextEntity = {
+    ...entity,
+    anchor: nextAnchor,
+    content: content === undefined ? entity.content : requireTextContent('update_text', content),
+    alignment:
+      alignment === undefined
+        ? (entity.alignment ?? 'left')
+        : requireTextAlignment('update_text', alignment),
+    rotation:
+      rotation === undefined
+        ? (entity.rotation ?? 0)
+        : requireTextRotation('update_text', rotation),
+    fontSize:
+      fontSize === undefined
+        ? (entity.fontSize ?? DEFAULT_TEXT_SIZE)
+        : requireTextSize('update_text', fontSize),
+  };
+  delete next.leader;
+  if (nextLeader !== undefined) next.leader = nextLeader;
+
+  const entities = document.entities.map((candidate) => (candidate.id === id ? next : candidate));
+
+  return {
+    document: { ...document, entities },
+    inverse: {
+      id: command.id,
+      type: 'update_text',
+      params: {
+        id,
+        content: entity.content,
+        anchor: entity.anchor,
+        alignment: entity.alignment ?? 'left',
+        rotation: entity.rotation ?? 0,
+        fontSize: entity.fontSize ?? DEFAULT_TEXT_SIZE,
+        leader: entity.leader ?? null,
+      },
+    },
+  };
+}
+
 function applySetDefaultAllowance(
   document: PatternDocument,
   command: CommandOf<'set_default_allowance'>,
@@ -2291,24 +2834,27 @@ function buildConstraint(
   offset: number | undefined,
   reference?: EntityId,
   resolvedReference?: number,
+  piece?: EntityId,
 ): Constraint {
   const [a, b, c, d] = entities;
+  const owner = piece === undefined ? {} : { piece };
 
   switch (type) {
     case 'coincident':
-      return { id, type, a: a!, b: b! };
+      return { id, type, a: a!, b: b!, ...owner };
     case 'horizontal':
-      return { id, type, a: a!, b: b! };
+      return { id, type, a: a!, b: b!, ...owner };
     case 'vertical':
-      return { id, type, a: a!, b: b! };
+      return { id, type, a: a!, b: b!, ...owner };
     case 'point_on_line':
-      return { id, type, point: a!, a: b!, b: c! };
+      return { id, type, point: a!, a: b!, b: c!, ...owner };
     case 'distance':
       return {
         id,
         type,
         a: a!,
         b: b!,
+        ...owner,
         ...(value === undefined ? {} : { value }),
         ...(reference === undefined ? {} : { reference }),
         ...(resolvedReference === undefined ? {} : { lastKnownValue: resolvedReference }),
@@ -2316,9 +2862,9 @@ function buildConstraint(
         ...(offset === undefined ? {} : { offset }),
       };
     case 'angle':
-      return { id, type, a: a!, b: b!, c: c!, value: value! };
+      return { id, type, a: a!, b: b!, c: c!, value: value!, ...owner };
     case 'equal':
-      return { id, type, a1: a!, a2: b!, b1: c!, b2: d! };
+      return { id, type, a1: a!, a2: b!, b1: c!, b2: d!, ...owner };
   }
 }
 

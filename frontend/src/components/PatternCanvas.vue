@@ -36,6 +36,9 @@ import {
   type EntityId,
   inferDimensionOrientation,
   inferOrientationFromSpan,
+  getEntity,
+  isAnnotation,
+  isConstruction,
   isCornerRoundDerived,
   lineEndpoints,
   type LineEntity,
@@ -46,6 +49,7 @@ import {
   type Piece,
   pieceCutLoop,
   pieceCutVertex,
+  pieceMetrics,
   pieceFoldLines,
   pieceLoop,
   pieceLoopVertex,
@@ -53,6 +57,8 @@ import {
   projectPointOnLine,
   type Rect,
   resolveCutSpan,
+  textLayout,
+  textLeader,
   seamAllowancePaths,
   svgArcCommand,
   usesCutEdgeAnchor,
@@ -120,8 +126,10 @@ import type { EditorTool } from '@/lib/editor-tools';
 import {
   anchorForEdge,
   anchorForPoint,
+  canEditEntity,
   edgeEndpoints,
   nearestLoopHandle,
+  pieceForEntity,
   pieceOwningEdge,
   piecesAtPoint,
 } from '@/lib/pieces';
@@ -319,6 +327,10 @@ const props = withDefaults(
     cornerRoundPreviewRadius?: number | null;
     /** A read-only document refuses every pointer gesture. */
     readOnly?: boolean;
+    /** The piece every new entity belongs to, and the move target. */
+    activePieceId?: EntityId | null;
+    /** True while the piece card's Move toggle arms the gesture. */
+    moveMode?: boolean;
   }>(),
   {
     selectedEntityIds: () => [],
@@ -334,6 +346,8 @@ const props = withDefaults(
     roundCornerPicks: () => ({ first: null, second: null }),
     cornerRoundPreviewRadius: null,
     readOnly: false,
+    activePieceId: null,
+    moveMode: false,
   },
 );
 
@@ -355,6 +369,10 @@ const emit = defineEmits<{
   'update-dimension': [id: EntityId, patch: DimensionPatch];
   'round-corner-pick': [id: EntityId];
   'set-corner-round-radius': [id: EntityId, radius: number];
+  'move-piece': [dx: number, dy: number];
+  'activate-piece': [id: EntityId];
+  'cross-piece': [id: EntityId];
+  'add-text': [anchor: DraftingEndpoint];
 }>();
 
 const svg = ref<SVGSVGElement | null>(null);
@@ -362,6 +380,8 @@ const viewport = ref<Viewport>({ x: -40, y: -40, scale: 1 });
 const size = ref<Size>({ width: 800, height: 600 });
 let resizeObserver: ResizeObserver | null = null;
 const dragState = ref<{ id: EntityId; x: number; y: number; origin: Vec2 } | null>(null);
+/** A move gesture: its start in world space and the live translation. */
+const moveDrag = ref<{ start: Vec2; dx: number; dy: number } | null>(null);
 const panState = ref<{ start: Vec2; origin: Viewport } | null>(null);
 const marqueeState = ref<MarqueeState | null>(null);
 const pending = ref<EntityId[]>([]);
@@ -1598,10 +1618,23 @@ function pointClass(point: PointEntity): string {
   ) {
     return 'fill-accent stroke-accent-foreground';
   }
-  return point.construction ? 'fill-muted-foreground' : 'fill-foreground';
+  if (isAnnotation(point)) return 'fill-background stroke-annotation';
+  return isConstruction(point) ? 'fill-muted-foreground' : 'fill-foreground';
 }
 
-function entityClass(entity: { id: EntityId; construction: boolean }): string {
+/** Role-driven dash: guides and sewing marks are dashed, cut geometry is solid. */
+function entityDash(entity: {
+  construction?: boolean;
+  role?: 'construction' | 'annotation';
+}): string | undefined {
+  return isAnnotation(entity) || isConstruction(entity) ? '4 4' : undefined;
+}
+
+function entityClass(entity: {
+  id: EntityId;
+  construction?: boolean;
+  role?: 'construction' | 'annotation';
+}): string {
   if (pointOnLineHover.value?.lineId === entity.id) return 'text-primary';
   if (
     dimensionPickLineIds.value.has(entity.id) ||
@@ -1618,8 +1651,64 @@ function entityClass(entity: { id: EntityId; construction: boolean }): string {
     return 'text-primary';
   }
   if (marqueeCandidates.value.has(entity.id)) return 'text-primary opacity-60';
-  return entity.construction ? 'text-muted-foreground' : 'text-foreground';
+  if (isAnnotation(entity)) return 'text-annotation';
+  return isConstruction(entity) ? 'text-muted-foreground' : 'text-foreground';
 }
+
+/** The active-piece badge's text: its label and loop state. */
+const activePieceLabel = computed(() => {
+  const piece = props.document.pieces.find((candidate) => candidate.id === props.activePieceId);
+  if (piece === undefined) return '';
+  const index = props.document.pieces.indexOf(piece);
+  const name = piece.name ?? `Piece ${index + 1}`;
+  const loop =
+    piece.edges.length === 0
+      ? 'no cut loop'
+      : pieceMetrics(props.document, piece) === null
+        ? 'cut loop broken'
+        : 'cut loop';
+  return `${name} · ${loop}`;
+});
+
+interface TextView {
+  id: EntityId;
+  content: string;
+  anchor: Vec2;
+  rotation: number;
+  fontSize: number;
+  alignment: 'left' | 'center' | 'right';
+  leader: Vec2[] | null;
+}
+
+/** Annotation labels, resolved against their anchor and leader points. */
+const textViews = computed<TextView[]>(() =>
+  props.document.entities.flatMap((entity): TextView[] => {
+    if (entity.kind !== 'text') return [];
+    const anchor = getEntity(props.document, entity.anchor);
+    if (anchor?.kind !== 'point') return [];
+    textLayout(entity, { x: anchor.x, y: anchor.y });
+    const leaderPoint =
+      entity.leader === undefined ? undefined : getEntity(props.document, entity.leader);
+    return [
+      {
+        id: entity.id,
+        content: entity.content,
+        anchor: { x: anchor.x, y: anchor.y },
+        rotation: entity.rotation ?? 0,
+        fontSize: entity.fontSize ?? 6,
+        alignment: entity.alignment ?? 'left',
+        leader:
+          leaderPoint?.kind === 'point'
+            ? textLeader(
+                entity,
+                { x: anchor.x, y: anchor.y },
+                { x: leaderPoint.x, y: leaderPoint.y },
+              )
+            : null,
+      },
+    ];
+  }),
+);
 
 function lineWidth(id: EntityId): number {
   return pointOnLineHover.value?.lineId === id ||
@@ -2178,6 +2267,25 @@ function cancelCornerRoundEdit(): void {
   editingCornerRound.value = null;
 }
 
+/** Whether a tool drafts new geometry inside the active piece. */
+const DRAFTING_TOOLS = new Set<EditorTool>([
+  'add_point',
+  'add_line',
+  'add_curve',
+  'add_arc',
+  'add_circle',
+  'add_rectangle',
+  'add_center_rectangle',
+  'add_3point_rectangle',
+  'add_text',
+]);
+
+/** The translation the active piece's cut loop previews during a move. */
+function movePreview(pieceId: EntityId): string | undefined {
+  if (moveDrag.value === null || pieceId !== props.activePieceId) return undefined;
+  return `translate(${moveDrag.value.dx} ${moveDrag.value.dy})`;
+}
+
 function onPointerDown(event: PointerEvent): void {
   if (props.readOnly) return;
 
@@ -2190,7 +2298,28 @@ function onPointerDown(event: PointerEvent): void {
   }
   if (event.button !== 0) return;
 
+  if (props.moveMode && props.activePieceId !== null) {
+    moveDrag.value = { start: screenToWorld(viewport.value, screen), dx: 0, dy: 0 };
+    addPointerListeners();
+    return;
+  }
+
   const hit = hitEntity(event);
+
+  if (
+    hit !== null &&
+    props.activePieceId !== null &&
+    DRAFTING_TOOLS.has(props.tool) &&
+    !canEditEntity(props.document, hit.id, props.activePieceId)
+  ) {
+    emit('cross-piece', pieceForEntity(props.document, hit.id)!.id);
+    return;
+  }
+
+  if (hit !== null && props.tool === 'select') {
+    const owner = pieceForEntity(props.document, hit.id);
+    if (owner !== null && owner.id !== props.activePieceId) emit('activate-piece', owner.id);
+  }
   if (props.constraintActive) {
     if (hit !== null) {
       emit('constraint-pick', { id: hit.id, kind: hit.kind as ConstraintPick['kind'] });
@@ -2257,13 +2386,30 @@ function onPointerDown(event: PointerEvent): void {
     case 'cut_dimension':
       onCutDimensionPointer(hit, pickLoopHandle(screen));
       break;
+    case 'add_text':
+      emit(
+        'add-text',
+        resolveDraftingEndpoint(
+          props.document,
+          screenToWorld(viewport.value, screen),
+          props.activePieceId,
+        ),
+      );
+      break;
   }
 }
 
 function onPointerMove(event: PointerEvent): void {
   const screen = screenPoint(event);
 
-  if (tangentDrag.value) {
+  if (moveDrag.value) {
+    const world = screenToWorld(viewport.value, screen);
+    moveDrag.value = {
+      ...moveDrag.value,
+      dx: world.x - moveDrag.value.start.x,
+      dy: world.y - moveDrag.value.start.y,
+    };
+  } else if (tangentDrag.value) {
     const drag = tangentDrag.value;
     const round = cornerRounds(props.document).find((candidate) => candidate.id === drag.id);
     if (round !== undefined) {
@@ -2375,6 +2521,7 @@ function cancelPointerInteraction(): void {
   dimensionDrag.value = null;
   derivedDrag.value = null;
   dragState.value = null;
+  moveDrag.value = null;
   panState.value = null;
   tangentDrag.value = null;
   removePointerListeners();
@@ -2385,6 +2532,12 @@ function onPointerCancel(): void {
 }
 
 function onPointerUp(): void {
+  if (moveDrag.value) {
+    const { dx, dy } = moveDrag.value;
+    moveDrag.value = null;
+    if (dx !== 0 || dy !== 0) emit('move-piece', dx, dy);
+  }
+
   if (tangentDrag.value) {
     commitTangentDrag();
   }
@@ -2560,7 +2713,11 @@ function onLinePointer(hit: Hit | null, screen: Vec2): void {
   const endpoint: DraftingEndpoint =
     hit !== null && hit.kind === 'point'
       ? { kind: 'point', id: hit.id }
-      : resolveDraftingEndpoint(props.document, screenToWorld(viewport.value, screen));
+      : resolveDraftingEndpoint(
+          props.document,
+          screenToWorld(viewport.value, screen),
+          props.activePieceId,
+        );
 
   const start = lineStart.value;
   if (start === null) {
@@ -2595,7 +2752,11 @@ function onArcPointer(hit: Hit | null, screen: Vec2): void {
   const endpoint: DraftingEndpoint =
     hit !== null && hit.kind === 'point'
       ? { kind: 'point', id: hit.id }
-      : resolveDraftingEndpoint(props.document, screenToWorld(viewport.value, screen));
+      : resolveDraftingEndpoint(
+          props.document,
+          screenToWorld(viewport.value, screen),
+          props.activePieceId,
+        );
 
   const start = arcStart.value;
   if (start === null) {
@@ -2670,7 +2831,11 @@ function onRectanglePointer(hit: Hit | null, screen: Vec2): void {
   const endpoint: DraftingEndpoint =
     hit !== null && hit.kind === 'point'
       ? { kind: 'point', id: hit.id }
-      : resolveDraftingEndpoint(props.document, screenToWorld(viewport.value, screen));
+      : resolveDraftingEndpoint(
+          props.document,
+          screenToWorld(viewport.value, screen),
+          props.activePieceId,
+        );
 
   if (rectangleClicks.value.some((click) => sameDraftingEndpoint(click, endpoint))) return;
 
@@ -2970,7 +3135,7 @@ watch(
               :x2="entry.end.x"
               :y2="entry.end.y"
               :class="entityClass(entry.line)"
-              :stroke-dasharray="entry.line.construction ? '4 4' : undefined"
+              :stroke-dasharray="entityDash(entry.line)"
               :stroke-width="lineWidth(entry.line.id)"
               stroke="currentColor"
               stroke-linecap="round"
@@ -3012,7 +3177,7 @@ watch(
             :d="entry.d"
             fill="none"
             :class="entityClass(entry.curve)"
-            :stroke-dasharray="entry.curve.construction ? '4 4' : undefined"
+            :stroke-dasharray="entityDash(entry.curve)"
             :stroke-width="lineWidth(entry.curve.id)"
             stroke="currentColor"
             vector-effect="non-scaling-stroke"
@@ -3032,7 +3197,7 @@ watch(
             :d="entry.d"
             fill="none"
             :class="entityClass(entry.arc)"
-            :stroke-dasharray="entry.arc.construction ? '4 4' : undefined"
+            :stroke-dasharray="entityDash(entry.arc)"
             :stroke-width="lineWidth(entry.arc.id)"
             stroke="currentColor"
             vector-effect="non-scaling-stroke"
@@ -3052,7 +3217,7 @@ watch(
               :r="entry.r"
               fill="none"
               :class="entityClass(entry.circle)"
-              :stroke-dasharray="entry.circle.construction ? '4 4' : undefined"
+              :stroke-dasharray="entityDash(entry.circle)"
               :stroke-width="lineWidth(entry.circle.id)"
               stroke="currentColor"
               vector-effect="non-scaling-stroke"
@@ -3073,6 +3238,39 @@ watch(
           </template>
         </g>
 
+        <g class="pointer-events-none" data-testid="annotation-layer">
+          <template v-for="entry in textViews" :key="entry.id">
+            <polyline
+              v-if="entry.leader"
+              :points="entry.leader.map((point) => `${point.x},${point.y}`).join(' ')"
+              fill="none"
+              class="stroke-annotation"
+              stroke-width="0.5"
+              stroke-dasharray="2 2"
+              vector-effect="non-scaling-stroke"
+              :data-testid="`text-leader-${entry.id}`"
+            />
+            <text
+              :transform="`translate(${entry.anchor.x} ${entry.anchor.y}) rotate(${(entry.rotation * 180) / Math.PI})`"
+              :font-size="entry.fontSize"
+              :text-anchor="
+                entry.alignment === 'left'
+                  ? 'start'
+                  : entry.alignment === 'center'
+                    ? 'middle'
+                    : 'end'
+              "
+              class="fill-annotation font-annotation italic"
+              aria-hidden="true"
+              :data-entity-id="entry.id"
+              data-kind="text"
+              :data-testid="`text-${entry.id}`"
+            >
+              {{ entry.content }}
+            </text>
+          </template>
+        </g>
+
         <g class="pointer-events-none" data-testid="piece-cut-layer">
           <path
             v-for="piece in pieceViews"
@@ -3083,6 +3281,7 @@ watch(
             :class="piece.selfIntersects ? 'stroke-destructive' : 'stroke-foreground'"
             vector-effect="non-scaling-stroke"
             :data-piece-cut="piece.id"
+            :transform="movePreview(piece.id)"
           />
         </g>
 
@@ -3921,6 +4120,16 @@ watch(
         />
       </g>
     </svg>
+
+    <div
+      v-if="props.activePieceId !== null"
+      class="pointer-events-none absolute left-2 top-2 rounded-sm bg-background/90 px-2 py-1 text-2xs shadow-sm"
+      data-testid="active-piece-badge"
+      role="status"
+      aria-live="polite"
+    >
+      {{ activePieceLabel }}
+    </div>
 
     <p
       v-if="arcHint"

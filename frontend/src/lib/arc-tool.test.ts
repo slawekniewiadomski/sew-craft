@@ -119,3 +119,17 @@ describe('buildArcCommands', () => {
     expect(applied.entities.filter((entity) => entity.kind === 'point')).toHaveLength(3);
   });
 });
+
+describe('buildArcCommands ownership', () => {
+  it('stamps the active piece on new points and the arc', () => {
+    const commands = buildArcCommands(
+      fresh(0, 0),
+      fresh(100, 0),
+      fresh(50, 50),
+      idGenerator(),
+      'p1',
+    );
+    expect(commands[0]).toMatchObject({ type: 'add_point', params: { piece: 'p1' } });
+    expect(commands[3]).toMatchObject({ type: 'add_arc', params: { piece: 'p1' } });
+  });
+});

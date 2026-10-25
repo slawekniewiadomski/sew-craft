@@ -288,7 +288,7 @@ describe('legacy documents and layers', () => {
 
   it('uses the encoded schema version in the comment', () => {
     expect(svg(documentOf())).toContain(
-      '<!-- sewcraft:svg schema="sewcraft.pattern/0.2" generated="2026-10-22T00:00:00.000Z" -->',
+      '<!-- sewcraft:svg schema="sewcraft.pattern/0.3" generated="2026-10-22T00:00:00.000Z" -->',
     );
   });
 });

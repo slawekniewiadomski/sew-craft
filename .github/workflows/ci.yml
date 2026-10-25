@@ -38,6 +38,10 @@ jobs:
   frontend:
     name: Frontend & geometry (Vitest, 100% coverage)
     runs-on: ubuntu-latest
+    env:
+      # The editor suite mounts the full SPA repeatedly; V8's default heap is
+      # tight on the runner once coverage instrumentation is loaded.
+      NODE_OPTIONS: --max-old-space-size=6144
     steps:
       - uses: actions/checkout@v4
 

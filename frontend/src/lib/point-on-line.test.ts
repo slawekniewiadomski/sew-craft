@@ -100,3 +100,17 @@ describe('buildPointOnLineCommands', () => {
     ]);
   });
 });
+
+describe('buildPointOnLineCommands ownership', () => {
+  it('stamps the active piece on the point and the constraint', () => {
+    const commands = buildPointOnLineCommands(
+      baseDoc,
+      'ab',
+      { x: 30, y: 12 },
+      idGenerator(),
+      'p1',
+    )!;
+    expect(commands[0]).toMatchObject({ type: 'add_point', params: { piece: 'p1' } });
+    expect(commands[1]).toMatchObject({ type: 'add_constraint', params: { piece: 'p1' } });
+  });
+});

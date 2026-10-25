@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://sewcraft.local/schemas/command-spec-0.12.json",
+  "$id": "https://sewcraft.local/schemas/command-spec-0.13.json",
   "title": "SewCraft Command Spec",
-  "schema": "sewcraft.command-spec/0.12",
-  "spec_version": "0.12.0",
+  "schema": "sewcraft.command-spec/0.13",
+  "spec_version": "0.13.0",
   "units": "mm",
   "envelope": {
     "id": "ULID string, client-generated, unique",
@@ -13,13 +13,22 @@
   },
   "commands": {
     "add_point": {
-      "description": "Create a free or construction point.",
-      "params": { "x": "number", "y": "number", "construction": "bool?" },
+      "description": "Create a point inside a piece. Omitted role means cut; annotation points are sewing marks.",
+      "params": {
+        "x": "number",
+        "y": "number",
+        "piece": "entity_id",
+        "role": "construction|annotation?"
+      },
       "inverse": "delete_entity"
     },
     "move_point": {
       "description": "Move an existing point to new coordinates.",
-      "params": { "id": "entity_id", "x": "number", "y": "number" },
+      "params": {
+        "id": "entity_id",
+        "x": "number",
+        "y": "number"
+      },
       "inverse": "move_point"
     },
     "add_line": {
@@ -27,18 +36,20 @@
       "params": {
         "start": "entity_id",
         "end": "entity_id",
-        "construction": "bool?"
+        "piece": "entity_id",
+        "role": "construction|annotation?"
       },
       "inverse": "delete_entity"
     },
     "add_curve": {
-      "description": "Create a cubic Bézier curve through four control points.",
+      "description": "Create a cubic B\u00e9zier curve through four control points.",
       "params": {
         "p0": "entity_id",
         "p1": "entity_id",
         "p2": "entity_id",
         "p3": "entity_id",
-        "construction": "bool?"
+        "piece": "entity_id",
+        "role": "construction|annotation?"
       },
       "inverse": "delete_entity"
     },
@@ -48,7 +59,8 @@
         "start": "entity_id",
         "end": "entity_id",
         "through": "entity_id",
-        "construction": "bool?"
+        "piece": "entity_id",
+        "role": "construction|annotation?"
       },
       "inverse": "delete_entity"
     },
@@ -57,29 +69,31 @@
       "params": {
         "center": "entity_id",
         "rim": "entity_id",
-        "construction": "bool?"
+        "piece": "entity_id",
+        "role": "construction|annotation?"
       },
       "inverse": "delete_entity"
     },
-    "add_construction_line": {
-      "description": "Create a reference-only line that never becomes a cut edge.",
-      "params": { "start": "entity_id", "end": "entity_id" },
-      "inverse": "delete_entity"
-    },
-    "set_construction": {
-      "description": "Mark an entity as construction geometry or convert it back to a cut edge.",
-      "params": { "id": "entity_id", "construction": "bool" },
-      "inverse": "set_construction"
+    "set_role": {
+      "description": "Assign an entity a cut, construction or annotation role. Text is always annotation and cannot be changed.",
+      "params": {
+        "id": "entity_id",
+        "role": "cut|construction|annotation"
+      },
+      "inverse": "set_role"
     },
     "delete_entity": {
-      "description": "Remove an entity, the constraints referencing it and any piece that uses it.",
-      "params": { "id": "entity_id" }
+      "description": "Remove an entity and its dependent constraints and texts. A loop edge leaves a broken loop; the piece survives.",
+      "params": {
+        "id": "entity_id"
+      }
     },
     "add_constraint": {
-      "description": "Attach a geometric constraint to one or more entities. A distance without a value is a driven dimension; a distance with a reference follows another dimension. A distance anchor is a point or a straight line; a line anchor is always aligned and two line anchors must be parallel.",
+      "description": "Attach a geometric constraint to one or more entities. A distance without a value is a driven dimension; a distance with a reference follows another dimension.",
       "params": {
         "type": "coincident|horizontal|vertical|point_on_line|distance|angle|equal",
         "entities": "entity_id[]",
+        "piece": "entity_id",
         "value": "number?",
         "reference": "entity_id?",
         "orientation": "aligned|horizontal|vertical?",
@@ -88,7 +102,7 @@
       "inverse": "remove_constraint"
     },
     "update_constraint": {
-      "description": "Change a dimensional constraint value, reference or dimension presentation. Null clears a distance to driven; reference null unlinks and keeps the current value. A cut dimension accepts orientation and offset only.",
+      "description": "Change a dimensional constraint value or its dimension presentation.",
       "params": {
         "id": "entity_id",
         "value": "number|null?",
@@ -99,52 +113,89 @@
       "inverse": "update_constraint"
     },
     "remove_constraint": {
-      "description": "Detach a constraint or cut dimension from the sketch.",
-      "params": { "id": "entity_id" },
+      "description": "Detach a constraint from the sketch.",
+      "params": {
+        "id": "entity_id"
+      },
       "inverse": "add_constraint"
     },
-    "add_seam_allowance": {
-      "description": "Deprecated: attach a legacy seam allowance (mm) to a cut edge outside any piece. Removed in 0.3.",
-      "params": { "edge": "entity_id", "width": "number?", "side": "left|right?" },
-      "inverse": "remove_seam_allowance"
-    },
-    "remove_seam_allowance": {
-      "description": "Deprecated: detach a legacy seam allowance from an edge. Removed in 0.3.",
-      "params": { "id": "entity_id" },
-      "inverse": "add_seam_allowance"
-    },
-    "set_seam_allowance": {
-      "description": "Deprecated: change the width or side of a legacy seam allowance (mm). Removed in 0.3.",
-      "params": { "id": "entity_id", "width": "number?", "side": "left|right?" },
-      "inverse": "set_seam_allowance"
-    },
     "add_corner_round": {
-      "description": "Round a corner between two lines, trimming both to a tangent arc while keeping the sharp corner as construction geometry.",
-      "params": { "first": "entity_id", "second": "entity_id", "radius": "number" },
+      "description": "Round a corner between two lines, trimming both to a tangent arc.",
+      "params": {
+        "first": "entity_id",
+        "second": "entity_id",
+        "radius": "number"
+      },
       "inverse": "remove_corner_round"
     },
     "set_corner_round_radius": {
       "description": "Change the radius of a corner round and regenerate its tangent points and arc.",
-      "params": { "id": "entity_id", "radius": "number" },
+      "params": {
+        "id": "entity_id",
+        "radius": "number"
+      },
       "inverse": "set_corner_round_radius"
     },
     "remove_corner_round": {
-      "description": "Restore a rounded corner: delete the arc and derived points and return both lines to the sharp corner.",
-      "params": { "id": "entity_id" },
+      "description": "Restore a rounded corner to the sharp intersection.",
+      "params": {
+        "id": "entity_id"
+      },
       "inverse": "add_corner_round"
     },
     "create_piece": {
-      "description": "Create a piece from one closed loop of cut edges. The edge order is the loop order and sets the outward direction.",
+      "description": "Create an empty piece. Its cut loop is captured later with set_piece_loop.",
       "params": {
-        "edges": "entity_id[]",
         "name": "string?",
-        "quantity": "int?",
-        "allowance": "default|none|preset?"
+        "quantity": "int?"
       },
       "inverse": "delete_piece"
     },
+    "set_piece_loop": {
+      "description": "Store an ordered closed chain of the piece's own cut edges, or clear it with an empty list.",
+      "params": {
+        "piece": "entity_id",
+        "edges": "entity_id[]",
+        "allowance": "default|none|preset?"
+      }
+    },
+    "move_piece": {
+      "description": "Translate every point the piece owns, including fixed points, as one undoable step.",
+      "params": {
+        "id": "entity_id",
+        "dx": "number",
+        "dy": "number"
+      },
+      "inverse": "move_piece"
+    },
+    "add_text": {
+      "description": "Place a one-line annotation label at a point of its piece.",
+      "params": {
+        "piece": "entity_id",
+        "anchor": "entity_id",
+        "content": "string",
+        "alignment": "left|center|right?",
+        "rotation": "number?",
+        "fontSize": "number?",
+        "leader": "entity_id?"
+      },
+      "inverse": "delete_entity"
+    },
+    "update_text": {
+      "description": "Edit a label's content, anchor, alignment, rotation, size or leader.",
+      "params": {
+        "id": "entity_id",
+        "content": "string?",
+        "anchor": "entity_id?",
+        "alignment": "left|center|right?",
+        "rotation": "number?",
+        "fontSize": "number?",
+        "leader": "entity_id|null?"
+      },
+      "inverse": "update_text"
+    },
     "update_piece": {
-      "description": "Rename a piece or change its cut quantity. Null clears either.",
+      "description": "Rename a piece or change its cut quantity.",
       "params": {
         "id": "entity_id",
         "name": "string|null?",
@@ -153,11 +204,13 @@
       "inverse": "update_piece"
     },
     "delete_piece": {
-      "description": "Remove a piece together with its cut dimensions.",
-      "params": { "id": "entity_id" }
+      "description": "Remove a piece and cascade its owned geometry, constraints, texts, rounds and cut dimensions.",
+      "params": {
+        "id": "entity_id"
+      }
     },
     "set_piece_allowance": {
-      "description": "Set, change or remove the allowance of one piece loop edge. Width is the finished width in mm; double folds cut twice it.",
+      "description": "Set, change or remove the allowance of one piece loop edge.",
       "params": {
         "piece": "entity_id",
         "edge": "entity_id",
@@ -168,7 +221,7 @@
       "inverse": "set_piece_allowance"
     },
     "set_default_allowance": {
-      "description": "Set, change or clear the allowance copied onto newly created pieces. Width is the finished width in mm; remove clears it.",
+      "description": "Set, change or clear the allowance copied onto newly created pieces.",
       "params": {
         "width": "number?",
         "kind": "seam|single|double?",
@@ -177,7 +230,7 @@
       "inverse": "set_default_allowance"
     },
     "add_derived_dimension": {
-      "description": "Add a read-only cut dimension between two corners or straight edges of one piece. Its value follows the cut loop and adds no solver equation.",
+      "description": "Add a read-only cut dimension between two corners or straight edges of one piece.",
       "params": {
         "piece": "entity_id",
         "a": "cut_anchor { edge: entity_id, at: start|end|edge, loop: stitch|cut? }",

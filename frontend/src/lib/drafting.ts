@@ -1,5 +1,6 @@
 import {
   allPoints,
+  isAnnotation,
   type Command,
   type EntityId,
   getEntity,
@@ -25,8 +26,21 @@ export type DraftingEndpoint =
  * the gesture completes. Shared by the Line, Curve, Circle and Arc tools so they
  * all snap and reuse points the same way.
  */
-export function resolveDraftingEndpoint(document: PatternDocument, world: Vec2): DraftingEndpoint {
-  const points = allPoints(document);
+export function resolveDraftingEndpoint(
+  document: PatternDocument,
+  world: Vec2,
+  activePieceId?: EntityId | null,
+): DraftingEndpoint {
+  // Annotation points are sewing marks, never drafting anchors; an active piece
+  // also keeps a gesture inside its own container.
+  const points = allPoints(document).filter(
+    (point) =>
+      !isAnnotation(point) &&
+      (activePieceId === undefined ||
+        activePieceId === null ||
+        point.piece === undefined ||
+        point.piece === activePieceId),
+  );
   const snapped = snapPoint(
     world,
     points.map((point) => ({ x: point.x, y: point.y })),
@@ -82,10 +96,15 @@ export function resolveEndpointCommands(
   endpoint: DraftingEndpoint,
   commands: Command[],
   nextId: (prefix: string) => EntityId,
+  piece?: EntityId,
 ): EntityId {
   if (endpoint.kind === 'point') return endpoint.id;
 
   const id = nextId('point');
-  commands.push({ id, type: 'add_point', params: { x: endpoint.x, y: endpoint.y } });
+  commands.push({
+    id,
+    type: 'add_point',
+    params: { x: endpoint.x, y: endpoint.y, ...(piece === undefined ? {} : { piece }) },
+  });
   return id;
 }

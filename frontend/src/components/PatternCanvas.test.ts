@@ -141,6 +141,7 @@ function mountCanvas(
       | 'add_rectangle'
       | 'add_center_rectangle'
       | 'add_3point_rectangle'
+      | 'add_text'
       | 'dimension'
       | 'cut_dimension';
     selectedEntityIds: EntityId[];
@@ -156,6 +157,8 @@ function mountCanvas(
     roundCornerPicks: CornerRoundPicks;
     cornerRoundPreviewRadius: number | null;
     readOnly: boolean;
+    activePieceId: EntityId | null;
+    moveMode: boolean;
   }> = {},
 ): VueWrapper {
   return mount(PatternCanvas, {
@@ -4138,5 +4141,198 @@ describe('dimension pick feedback', () => {
     expect(pointCircle(wrapper, 'a').attributes('data-cut-dimension-candidate')).toBeUndefined();
     expect(wrapper.find('[data-testid="cut-dimension-pick-first"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="cut-dimension-rubber-band"]').exists()).toBe(false);
+  });
+});
+
+describe('containers, annotation text and move mode', () => {
+  const containerDoc = (): PatternDocument => ({
+    ...doc([
+      pt('a', 0, 0),
+      pt('b', 100, 0),
+      pt('c', 100, 100),
+      pt('d', 0, 100),
+      ln('ab', 'a', 'b'),
+      ln('bc', 'b', 'c'),
+      ln('cd', 'c', 'd'),
+      ln('da', 'd', 'a'),
+      { id: 'mark', kind: 'line', start: 'a', end: 'b', role: 'annotation' },
+      {
+        id: 't1',
+        kind: 'text',
+        piece: 'p1',
+        anchor: 'a',
+        content: 'velcro',
+        leader: 'b',
+        rotation: 0,
+        fontSize: 6,
+      },
+    ]),
+    pieces: [{ id: 'p1', edges: ['ab', 'bc', 'cd', 'da'], allowances: [] }],
+  });
+
+  function screenIn(document: PatternDocument, world: Vec2): Vec2 {
+    return worldToScreen(fitToBounds(bounds(document)!, SIZE), world);
+  }
+
+  it('renders the label, its leader and the active-piece badge', () => {
+    const document = containerDoc();
+    const wrapper = mountCanvas({ document, activePieceId: 'p1' });
+
+    expect(wrapper.find('[data-testid="annotation-layer"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="text-t1"]').text()).toBe('velcro');
+    expect(wrapper.find('[data-testid="text-leader-t1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="active-piece-badge"]').text()).toContain('Piece 1');
+    expect(wrapper.find('[data-testid="active-piece-badge"]').text()).toContain('cut loop');
+  });
+
+  it('styles annotation geometry distinctly and keeps guides muted', () => {
+    const document = containerDoc();
+    const wrapper = mountCanvas({ document });
+
+    expect(wrapper.find('[data-entity-id="mark"]').classes()).toContain('text-annotation');
+    expect(wrapper.find('[data-entity-id="mark"]').attributes('stroke-dasharray')).toBe('4 4');
+  });
+
+  it('emits one move-piece translation on release', () => {
+    const document = containerDoc();
+    const wrapper = mountCanvas({ document, activePieceId: 'p1', moveMode: true });
+    const start = screenIn(document, { x: 0, y: 0 });
+    const end = screenIn(document, { x: 50, y: 30 });
+
+    down(wrapper.find('svg').element, start.x, start.y);
+    move(end.x, end.y);
+    up();
+
+    const [translation] = wrapper.emitted('move-piece')!;
+    expect(translation).toHaveLength(2);
+    expect(translation![0]).toBeGreaterThan(0);
+    expect(translation![1]).toBeGreaterThan(0);
+  });
+
+  it('refuses a drafting pick on another piece and activates it on select', () => {
+    const document: PatternDocument = {
+      ...containerDoc(),
+      pieces: [
+        { id: 'p1', edges: ['ab', 'bc', 'cd', 'da'], allowances: [] },
+        { id: 'p2', edges: ['xy'], allowances: [] },
+      ],
+      entities: [
+        ...containerDoc().entities,
+        pt('x', 200, 200),
+        pt('y', 300, 200),
+        ln('xy', 'x', 'y'),
+      ].map((entity) => ({
+        ...entity,
+        piece:
+          entity.kind === 'line' || entity.kind === 'point'
+            ? entity.id === 'xy' || entity.id === 'x' || entity.id === 'y'
+              ? 'p2'
+              : 'p1'
+            : entity.piece,
+      })),
+    };
+    const point = screenIn(document, { x: 200, y: 200 });
+
+    const drafting = mountCanvas({ document, tool: 'add_line', activePieceId: 'p1' });
+    down(drafting.find('[data-kind="point"][data-entity-id="x"]').element, point.x, point.y);
+    expect(drafting.emitted('cross-piece')).toEqual([['p2']]);
+
+    const selecting = mountCanvas({ document, tool: 'select', activePieceId: 'p1' });
+    down(selecting.find('[data-kind="point"][data-entity-id="x"]').element, point.x, point.y);
+    expect(selecting.emitted('activate-piece')).toEqual([['p2']]);
+  });
+
+  it('places annotation text with the Text tool', () => {
+    const document = containerDoc();
+    const wrapper = mountCanvas({ document, tool: 'add_text', activePieceId: 'p1' });
+    const point = screenIn(document, { x: 50, y: 50 });
+
+    down(wrapper.find('svg').element, point.x, point.y);
+    expect(wrapper.emitted('add-text')).toHaveLength(1);
+  });
+});
+
+describe('annotation text defaults and multi-piece move preview', () => {
+  const bareText = (overrides: Record<string, unknown> = {}): PatternDocument => ({
+    ...doc([
+      pt('a', 0, 0),
+      pt('b', 100, 0),
+      { id: 't1', kind: 'text', anchor: 'a', content: 'x', ...overrides },
+      { id: 'sorted', kind: 'text', anchor: 'a', content: 'right', alignment: 'right' },
+      { id: 'orphan', kind: 'text', anchor: 'missing', content: 'lost' },
+      { id: 'led', kind: 'text', anchor: 'b', content: 'lead', leader: 'mark' },
+      ln('mark', 'a', 'b'),
+    ]),
+  });
+
+  it('fills text defaults and skips an unresolvable anchor', () => {
+    const wrapper = mountCanvas({ document: bareText() });
+
+    expect(wrapper.find('[data-testid="text-t1"]').text()).toBe('x');
+    expect(wrapper.find('[data-testid="text-t1"]').attributes('font-size')).toBe('6');
+    expect(wrapper.find('[data-testid="text-sorted"]').attributes('text-anchor')).toBe('end');
+    expect(wrapper.find('[data-testid="text-orphan"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="text-leader-led"]').exists()).toBe(false);
+  });
+
+  it('previews only the active piece and ignores a zero-distance move', async () => {
+    const document: PatternDocument = {
+      ...doc([
+        pt('a', 0, 0),
+        pt('b', 100, 0),
+        pt('c', 100, 100),
+        pt('d', 0, 100),
+        ln('ab', 'a', 'b'),
+        ln('bc', 'b', 'c'),
+        ln('cd', 'c', 'd'),
+        ln('da', 'd', 'a'),
+        pt('e', 200, 0),
+        pt('f', 300, 0),
+        pt('g', 300, 100),
+        pt('h', 200, 100),
+        ln('ef', 'e', 'f'),
+        ln('fg', 'f', 'g'),
+        ln('gh', 'g', 'h'),
+        ln('he', 'h', 'e'),
+      ]),
+      pieces: [
+        { id: 'p1', edges: ['ab', 'bc', 'cd', 'da'], allowances: [] },
+        { id: 'p2', edges: ['ef', 'fg', 'gh', 'he'], allowances: [] },
+      ],
+    };
+    const wrapper = mountCanvas({ document, activePieceId: 'p1', moveMode: true });
+    const screen = worldToScreen(fitToBounds(bounds(document)!, SIZE), { x: 0, y: 0 });
+
+    down(wrapper.find('svg').element, screen.x, screen.y);
+    move(screen.x + 40, screen.y + 20);
+    await nextTick();
+    expect(wrapper.find('[data-piece-cut="p1"]').attributes('transform')).toContain('translate');
+    up();
+
+    down(wrapper.find('svg').element, screen.x, screen.y);
+    up();
+    expect(wrapper.emitted('move-piece')).toHaveLength(1);
+  });
+});
+
+describe('annotation defaults', () => {
+  const document = (): PatternDocument => ({
+    ...doc([
+      { id: 'a', kind: 'point', x: 0, y: 0, construction: false, fixed: false, role: 'annotation' },
+      { id: 'b', kind: 'point', x: 100, y: 0, construction: false, fixed: false },
+      { id: 'c', kind: 'text', anchor: 'b', content: 'mid', alignment: 'center' },
+    ]),
+  });
+
+  it('styles an annotation point with a hollow handle', () => {
+    const wrapper = mountCanvas({ document: document() });
+    expect(wrapper.find('[data-kind="point"][data-entity-id="a"]').classes()).toContain(
+      'stroke-annotation',
+    );
+  });
+
+  it('centres a label with text-anchor middle', () => {
+    const wrapper = mountCanvas({ document: document() });
+    expect(wrapper.find('[data-testid="text-c"]').attributes('text-anchor')).toBe('middle');
   });
 });

@@ -480,3 +480,48 @@ describe('buildRectangleCommands', () => {
     }
   });
 });
+
+describe('buildRectangleCommands ownership', () => {
+  it('stamps the active piece on every point, side and constraint', () => {
+    const commands = buildRectangleCommands(
+      empty,
+      'diagonal',
+      [fresh(0, 0), fresh(100, 50)],
+      idGenerator(),
+      'p1',
+    );
+    expect(
+      commands
+        .filter((command) => command.type === 'add_point')
+        .every((command) => command.params.piece === 'p1'),
+    ).toBe(true);
+    expect(
+      commands
+        .filter((command) => command.type === 'add_line')
+        .every((command) => command.params.piece === 'p1'),
+    ).toBe(true);
+    expect(
+      commands
+        .filter((command) => command.type === 'add_constraint')
+        .every((command) => command.params.piece === 'p1'),
+    ).toBe(true);
+  });
+});
+
+describe('buildRectangleCommands three-point ownership', () => {
+  it('stamps the piece on the angle constraints too', () => {
+    const commands = buildRectangleCommands(
+      empty,
+      'three_point',
+      [fresh(0, 0), fresh(100, 0), fresh(0, 50)],
+      idGenerator(),
+      'p1',
+    );
+    expect(commands.filter((command) => command.type === 'add_constraint')).toHaveLength(3);
+    expect(
+      commands
+        .filter((command) => command.type === 'add_constraint')
+        .every((command) => command.params.piece === 'p1'),
+    ).toBe(true);
+  });
+});

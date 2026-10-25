@@ -1,5 +1,6 @@
 import { getEntity, entityPoints, type Bounds } from './document.js';
 import { roundBridge } from './corner-round.js';
+import { isAnnotation, isCut } from './roles.js';
 import {
   edgePolyline,
   findSelfIntersections,
@@ -101,8 +102,9 @@ export function pieceEdges(document: PatternDocument, piece: Piece): PieceEdgeEn
     if (
       entity === undefined ||
       entity.kind === 'point' ||
+      entity.kind === 'text' ||
       entity.kind === 'circle' ||
-      entity.construction
+      !isCut(entity)
     ) {
       return [];
     }
@@ -146,7 +148,7 @@ function connects(a: Vec2, b: Vec2): boolean {
 export function validatePiece(
   document: PatternDocument,
   edges: readonly EntityId[],
-  options: { ignorePiece?: EntityId } = {},
+  options: { ignorePiece?: EntityId; piece?: EntityId } = {},
 ): PieceValidation {
   if (edges.length < 3) {
     return { ok: false, message: 'A piece needs at least three edges.' };
@@ -176,10 +178,27 @@ export function validatePiece(
         edge: id,
       };
     }
-    if (entity.construction) {
+    if (isAnnotation(entity)) {
+      return {
+        ok: false,
+        message: `Edge ${id} is annotation geometry and cannot be a cut edge.`,
+        edge: id,
+      };
+    }
+    if (!isCut(entity)) {
       return { ok: false, message: `Edge ${id} is construction geometry.`, edge: id };
     }
-    if (pieceForEdge(document, id, options.ignorePiece) !== undefined) {
+    if (
+      options.piece !== undefined &&
+      entity.piece !== undefined &&
+      entity.piece !== options.piece
+    ) {
+      return { ok: false, message: `Edge ${id} belongs to another piece.`, edge: id };
+    }
+    if (
+      options.piece === undefined &&
+      pieceForEdge(document, id, options.ignorePiece) !== undefined
+    ) {
       return { ok: false, message: `Edge ${id} already belongs to another piece.`, edge: id };
     }
     try {
@@ -679,7 +698,7 @@ export function basicPieceForLoops(
           (entity): entity is PieceEdgeEntity =>
             entity.kind === 'line' || entity.kind === 'curve' || entity.kind === 'arc',
         )
-        .filter((entity) => !entity.construction)
+        .filter((entity) => isCut(entity))
         .map((entity) => entity.id),
   );
 
@@ -692,7 +711,8 @@ export function basicPieceForLoops(
       entity === undefined ||
       entity.kind === 'point' ||
       entity.kind === 'circle' ||
-      entity.construction
+      entity.kind === 'text' ||
+      !isCut(entity)
     ) {
       continue;
     }

@@ -25,8 +25,15 @@ flip. Pattern drafting origin is per-piece; a global origin is not assumed.
 | `circle` | a centre and a rim point | true circle; the radius is their distance and is never stored                                                            |
 | `arc`    | three points             | true circular arc: start, end, and a through point that fixes the bulge and sweep; centre, radius and angles are derived |
 
-Every entity has an `id` (string) and a `construction: boolean`. Construction
-geometry is drawn as a guide and is **never** part of a cut edge or export.
+Every entity has an `id` (string), an owning `piece` and an optional `role`.
+The role is `cut` when absent, `construction` for a guide, and `annotation` for a
+sewing mark. Construction and annotation geometry are never part of a cut edge or
+export; annotation is styled separately and is always visible. The deprecated
+`construction: boolean` is accepted on read only. `text` is a sixth entity kind
+and is annotation by definition.
+
+`roles.ts` owns the one predicate every consumer uses: `roleOf`, `isCut`,
+`isConstruction`, `isAnnotation`, `pieceEntities` and `pieceConstraints`.
 
 ### Points
 
@@ -36,7 +43,8 @@ interface PointEntity {
   kind: 'point';
   x: number;
   y: number;
-  construction: boolean;
+  piece: EntityId;
+  role?: 'construction' | 'annotation';
   fixed: boolean; // excluded from the solver variable vector
 }
 ```
@@ -46,9 +54,11 @@ non-translating solution.
 
 ## Pieces
 
-A `piece` is a closed profile owning an ordered list of cut line, curve and arc
-edges plus one allowance per loop edge. It is not an entity: it stores no
-geometry of its own and no loop points, only references.
+A `piece` is the **container** for everything drawn on it. It owns an ordered
+list of cut line, curve and arc edges plus one allowance per loop edge. It is not
+an entity: it stores no geometry of its own and no loop points, only references.
+A piece may be empty; its loop is captured later with `set_piece_loop` when one
+simple closed chain of its cut edges exists.
 
 ```ts
 interface Allowance {
@@ -71,11 +81,27 @@ interface Piece {
 There is no stored side: the outward direction follows from the walk's winding,
 so a piece keeps offsetting outward when its edges are reversed.
 
-`validatePiece` accepts only cut line/curve/arc edges, at least three of them,
-each unused by another piece, forming one closed chain: every edge continues at
-the vertex where the previous edge ended and the last closes back to the first.
-A star selection that only shares one common vertex is rejected. Circles are not
-supported as piece edges in v0.2.
+`validatePiece` accepts only cut line/curve/arc edges owned by the piece, at
+least three of them, forming one closed chain: every edge continues at the vertex
+where the previous edge ended and the last closes back to the first. Annotation
+and construction edges are refused, as is an edge owned by another piece. A star
+selection that only shares one common vertex is rejected. Circles are not
+supported as piece edges in v0.3.
+
+### Annotation text
+
+`TextEntity` stores one line of content, an anchor point, alignment, rotation,
+cap height in millimetres and an optional leader point. It is never a solver
+variable. `text.ts` derives the rotated selection box (`textLayout`) and the
+leader polyline (`textLeader`) without a DOM, using `MONO_ADVANCE_RATIO = 0.6`.
+Text is canvas-only in this change; export is unchanged.
+
+### Ownership rules
+
+Every create names an existing piece, and a constraint may reference only
+entities of its own piece. `delete_entity` removes the id from any loop and keeps
+the piece (which then reports a broken loop); `delete_piece` cascades everything
+the piece owns. `move_piece` translates all owned points, fixed ones included.
 
 ### Rounded piece corners
 

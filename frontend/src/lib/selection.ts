@@ -52,7 +52,7 @@ export function orphanedEdges(document: PatternDocument, ids: EntityId[]): Entit
   const orphans: EntityId[] = [];
 
   for (const entity of document.entities) {
-    if (entity.kind === 'point' || selected.has(entity.id)) continue;
+    if (entity.kind === 'point' || entity.kind === 'text' || selected.has(entity.id)) continue;
     const points =
       entity.kind === 'line'
         ? [entity.start, entity.end]

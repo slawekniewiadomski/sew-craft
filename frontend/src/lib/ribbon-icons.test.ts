@@ -32,6 +32,7 @@ describe('RIBBON_ICONS', () => {
       'redo',
       'round-corner',
       'select',
+      'text',
       'undo',
       'vertical',
     ]);

@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.12.0',
+    'spec_version' => '0.13.0',
 
     /*
     |--------------------------------------------------------------------------
@@ -36,11 +36,12 @@ return [
     */
     'commands' => [
         'add_point' => [
-            'description' => 'Create a free or construction point.',
+            'description' => 'Create a point inside a piece. Omitted role means cut; annotation points are sewing marks.',
             'params' => [
                 'x' => 'number',
                 'y' => 'number',
-                'construction' => 'bool?',
+                'piece' => 'entity_id',
+                'role' => 'construction|annotation?',
             ],
             'inverse' => 'delete_entity',
         ],
@@ -58,7 +59,8 @@ return [
             'params' => [
                 'start' => 'entity_id',
                 'end' => 'entity_id',
-                'construction' => 'bool?',
+                'piece' => 'entity_id',
+                'role' => 'construction|annotation?',
             ],
             'inverse' => 'delete_entity',
         ],
@@ -69,7 +71,8 @@ return [
                 'p1' => 'entity_id',
                 'p2' => 'entity_id',
                 'p3' => 'entity_id',
-                'construction' => 'bool?',
+                'piece' => 'entity_id',
+                'role' => 'construction|annotation?',
             ],
             'inverse' => 'delete_entity',
         ],
@@ -79,7 +82,8 @@ return [
                 'start' => 'entity_id',
                 'end' => 'entity_id',
                 'through' => 'entity_id',
-                'construction' => 'bool?',
+                'piece' => 'entity_id',
+                'role' => 'construction|annotation?',
             ],
             'inverse' => 'delete_entity',
         ],
@@ -88,28 +92,21 @@ return [
             'params' => [
                 'center' => 'entity_id',
                 'rim' => 'entity_id',
-                'construction' => 'bool?',
+                'piece' => 'entity_id',
+                'role' => 'construction|annotation?',
             ],
             'inverse' => 'delete_entity',
         ],
-        'add_construction_line' => [
-            'description' => 'Create a reference-only line that never becomes a cut edge.',
-            'params' => [
-                'start' => 'entity_id',
-                'end' => 'entity_id',
-            ],
-            'inverse' => 'delete_entity',
-        ],
-        'set_construction' => [
-            'description' => 'Mark an entity as construction geometry or convert it back to a cut edge.',
+        'set_role' => [
+            'description' => 'Assign an entity a cut, construction or annotation role. Text is always annotation and cannot be changed.',
             'params' => [
                 'id' => 'entity_id',
-                'construction' => 'bool',
+                'role' => 'cut|construction|annotation',
             ],
-            'inverse' => 'set_construction',
+            'inverse' => 'set_role',
         ],
         'delete_entity' => [
-            'description' => 'Remove an entity, the constraints referencing it and any piece that uses it.',
+            'description' => 'Remove an entity and its dependent constraints and texts. A loop edge leaves a broken loop; the piece survives.',
             'params' => [
                 'id' => 'entity_id',
             ],
@@ -119,6 +116,7 @@ return [
             'params' => [
                 'type' => 'coincident|horizontal|vertical|point_on_line|distance|angle|equal',
                 'entities' => 'entity_id[]',
+                'piece' => 'entity_id',
                 'value' => 'number?',
                 'reference' => 'entity_id?',
                 'orientation' => 'aligned|horizontal|vertical?',
@@ -143,31 +141,6 @@ return [
                 'id' => 'entity_id',
             ],
             'inverse' => 'add_constraint',
-        ],
-        'add_seam_allowance' => [
-            'description' => 'Deprecated: attach a legacy seam allowance (mm) to a cut edge outside any piece. Removed in 0.3.',
-            'params' => [
-                'edge' => 'entity_id',
-                'width' => 'number?',
-                'side' => 'left|right?',
-            ],
-            'inverse' => 'remove_seam_allowance',
-        ],
-        'remove_seam_allowance' => [
-            'description' => 'Deprecated: detach a legacy seam allowance from an edge. Removed in 0.3.',
-            'params' => [
-                'id' => 'entity_id',
-            ],
-            'inverse' => 'add_seam_allowance',
-        ],
-        'set_seam_allowance' => [
-            'description' => 'Deprecated: change the width or side of a legacy seam allowance (mm). Removed in 0.3.',
-            'params' => [
-                'id' => 'entity_id',
-                'width' => 'number?',
-                'side' => 'left|right?',
-            ],
-            'inverse' => 'set_seam_allowance',
         ],
         'add_corner_round' => [
             'description' => 'Round a corner between two lines, trimming both to a tangent arc while keeping the sharp corner as construction geometry.',
@@ -194,14 +167,55 @@ return [
             'inverse' => 'add_corner_round',
         ],
         'create_piece' => [
-            'description' => 'Create a piece from one closed loop of cut edges. The edge order is the loop order and sets the outward direction.',
+            'description' => 'Create an empty piece. Its cut loop is captured later with set_piece_loop.',
             'params' => [
-                'edges' => 'entity_id[]',
                 'name' => 'string?',
                 'quantity' => 'int?',
-                'allowance' => 'default|none|preset?',
             ],
             'inverse' => 'delete_piece',
+        ],
+        'set_piece_loop' => [
+            'description' => 'Store an ordered closed chain of the piece’s own cut line/curve/arc edges, or clear it with an empty list. The allowance preset fills edges that have none yet.',
+            'params' => [
+                'piece' => 'entity_id',
+                'edges' => 'entity_id[]',
+                'allowance' => 'default|none|preset?',
+            ],
+        ],
+        'move_piece' => [
+            'description' => 'Translate every point the piece owns, including fixed points, as one undoable step.',
+            'params' => [
+                'id' => 'entity_id',
+                'dx' => 'number',
+                'dy' => 'number',
+            ],
+            'inverse' => 'move_piece',
+        ],
+        'add_text' => [
+            'description' => 'Place a one-line annotation label at a point of its piece, with alignment, rotation, size and an optional leader point.',
+            'params' => [
+                'piece' => 'entity_id',
+                'anchor' => 'entity_id',
+                'content' => 'string',
+                'alignment' => 'left|center|right?',
+                'rotation' => 'number?',
+                'fontSize' => 'number?',
+                'leader' => 'entity_id?',
+            ],
+            'inverse' => 'delete_entity',
+        ],
+        'update_text' => [
+            'description' => 'Edit a label’s content, anchor, alignment, rotation, size or leader. Null removes the leader.',
+            'params' => [
+                'id' => 'entity_id',
+                'content' => 'string?',
+                'anchor' => 'entity_id?',
+                'alignment' => 'left|center|right?',
+                'rotation' => 'number?',
+                'fontSize' => 'number?',
+                'leader' => 'entity_id|null?',
+            ],
+            'inverse' => 'update_text',
         ],
         'update_piece' => [
             'description' => 'Rename a piece or change its cut quantity. Null clears either.',

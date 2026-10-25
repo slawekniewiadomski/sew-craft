@@ -7,7 +7,8 @@ Read this before making changes. Companion docs live in `docs/` and `.ai/specs/`
 
 SewCraft is a self-hosted web app for drafting 2D sewing patterns. Users create
 projects containing patterns, edit them on a constrained 2D canvas, and export
-them (SVG, later PDF and DXF). Inspired by [SolidCraft](https://bherbruck.github.io/solidcraft/):
+them (SVG, later PDF and DXF). A **piece** is the container for everything drawn
+on it: its geometry, dimensions, annotations and text. Inspired by [SolidCraft](https://bherbruck.github.io/solidcraft/):
 a command-based core, a parametric sketch/constraint model, and an agent-friendly
 interface.
 

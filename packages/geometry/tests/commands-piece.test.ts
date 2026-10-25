@@ -1010,7 +1010,7 @@ describe('add_derived_dimension', () => {
     expect(derivedDimensionValue(deleted, constraint)).toBeNull();
   });
 
-  it('removes the cut dimension with its piece when an anchored edge is deleted', () => {
+  it('keeps the piece and reports a broken cut dimension when an anchored edge is deleted', () => {
     const document = applyCommand(withPiece(), addDerived()).document;
     const deleted = applyCommand(document, {
       id: 'delete-bottom',
@@ -1018,9 +1018,11 @@ describe('add_derived_dimension', () => {
       params: { id: 'bottom' },
     }).document;
 
-    // Deleting an anchored edge deletes its piece, so the dimension goes too.
-    expect(pieceById(deleted, 'piece-1')).toBeUndefined();
-    expect(getConstraint(deleted, 'cut-width')).toBeUndefined();
+    // D15: the edge leaves the loop but the container and its dimension survive.
+    expect(pieceById(deleted, 'piece-1')).toBeDefined();
+    expect(pieceById(deleted, 'piece-1')?.edges).not.toContain('bottom');
+    const constraint = derivedOf(deleted, 'cut-width');
+    expect(derivedDimensionState(deleted, constraint)).toBe('broken');
   });
 
   it('adds a corner-to-edge cut dimension in either order', () => {
@@ -1497,7 +1499,7 @@ describe('corner-round cascades', () => {
 });
 
 describe('piece deletion cascades', () => {
-  it('deletes a piece when one of its edges is deleted, with its cut dimensions', () => {
+  it('keeps a piece when one of its edges is deleted, with its cut dimensions', () => {
     const document = applyCommand(withPiece(), addDerived()).document;
     const result = applyCommand(document, {
       id: 'delete-edge',
@@ -1505,8 +1507,8 @@ describe('piece deletion cascades', () => {
       params: { id: 'bottom' },
     });
 
-    expect(result.document.pieces).toEqual([]);
-    expect(result.document.constraints).toEqual([]);
+    expect(result.document.pieces).toHaveLength(1);
+    expect(result.document.constraints).toHaveLength(1);
     expect(result.document.entities.some((entity) => entity.id === 'bottom')).toBe(false);
   });
 

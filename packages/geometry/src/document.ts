@@ -1,5 +1,6 @@
 import { arcExtents, arcGeometry } from './arc.js';
 import { DEFAULT_ALLOWANCE_PRESET } from './defaults.js';
+import { isCut } from './roles.js';
 import {
   PATTERN_SCHEMA,
   type ArcEntity,
@@ -28,7 +29,6 @@ export function createEmptyDocument(): PatternDocument {
     entities: [],
     constraints: [],
     pieces: [],
-    seams: [],
     defaults: { allowance: { ...DEFAULT_ALLOWANCE_PRESET } },
   };
 }
@@ -66,7 +66,7 @@ export function allPoints(document: PatternDocument): PointEntity[] {
 
 /**
  * Every line, curve, circle or arc that is part of the cut pattern, in document
- * order. Construction entities are guides and are never cut or exported, so
+ * order. Construction and annotation entities are never cut or exported, so
  * exports and the cut-edge layer both derive their contents from this selector.
  */
 export function cutEdges(
@@ -74,7 +74,7 @@ export function cutEdges(
 ): (LineEntity | CurveEntity | CircleEntity | ArcEntity)[] {
   return document.entities.filter(
     (entity): entity is LineEntity | CurveEntity | CircleEntity | ArcEntity =>
-      entity.kind !== 'point' && !entity.construction,
+      entity.kind !== 'point' && entity.kind !== 'text' && isCut(entity),
   );
 }
 
@@ -124,13 +124,15 @@ export function entityPoints(document: PatternDocument, entity: Entity): PointEn
   }
 
   const ids: EntityId[] =
-    entity.kind === 'line'
-      ? [entity.start, entity.end]
-      : entity.kind === 'arc'
-        ? [entity.start, entity.through, entity.end]
-        : entity.kind === 'circle'
-          ? [entity.center, entity.rim]
-          : [entity.p0, entity.p1, entity.p2, entity.p3];
+    entity.kind === 'text'
+      ? [entity.anchor]
+      : entity.kind === 'line'
+        ? [entity.start, entity.end]
+        : entity.kind === 'arc'
+          ? [entity.start, entity.through, entity.end]
+          : entity.kind === 'circle'
+            ? [entity.center, entity.rim]
+            : [entity.p0, entity.p1, entity.p2, entity.p3];
 
   return ids.map((id) => {
     const referenced = getEntity(document, id);

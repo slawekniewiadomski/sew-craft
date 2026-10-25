@@ -2,6 +2,7 @@ import {
   allowanceDistance,
   allowanceForEdge,
   getEntity,
+  pieceEntities,
   pieceMetrics,
   validatePiece,
   type AllowanceKind,
@@ -38,6 +39,12 @@ export interface PieceSummary {
   /** The allowance every edge shares, or `null` when the edges differ. */
   uniform: AllowanceChoice | null;
   metrics: PieceMetrics | null;
+  /** Whether the piece has captured a cut loop at all. */
+  hasLoop: boolean;
+  /** Whether a captured loop no longer resolves (a deleted or re-roled edge). */
+  broken: boolean;
+  /** How many entities the piece owns, including annotations and text. */
+  entityCount: number;
 }
 
 /** The allowance editor rows for a piece, one per loop edge. */
@@ -58,6 +65,8 @@ export function pieceAllowanceRows(piece: Piece): PieceAllowanceRow[] {
 
 /** The inspector's piece card for a piece, with derived measurements. */
 export function pieceSummary(document: PatternDocument, piece: Piece): PieceSummary {
+  const metrics = pieceMetrics(document, piece);
+  const hasLoop = piece.edges.length > 0;
   return {
     id: piece.id,
     name: piece.name ?? null,
@@ -65,7 +74,10 @@ export function pieceSummary(document: PatternDocument, piece: Piece): PieceSumm
     edges: [...piece.edges],
     allowances: pieceAllowanceRows(piece),
     uniform: uniformAllowance(piece),
-    metrics: pieceMetrics(document, piece),
+    metrics,
+    hasLoop,
+    broken: hasLoop && metrics === null,
+    entityCount: pieceEntities(document, piece.id).length,
   };
 }
 
@@ -101,6 +113,30 @@ export function pieceOwningEdge(document: PatternDocument, edge: EntityId): Piec
   return document.pieces.find((piece) => piece.edges.includes(edge)) ?? null;
 }
 
+/** The piece that contains an entity: its owner field, or its loop edge. */
+export function pieceForEntity(document: PatternDocument, id: EntityId): Piece | null {
+  const entity = getEntity(document, id);
+  if (entity !== undefined && entity.piece !== undefined) {
+    return document.pieces.find((piece) => piece.id === entity.piece) ?? null;
+  }
+  return pieceOwningEdge(document, id);
+}
+
+/**
+ * Whether the active piece may edit an entity. An entity with no owner stays
+ * editable, so a legacy document is not locked; an entity owned by another
+ * piece is refused and the UI explains which piece to switch to.
+ */
+export function canEditEntity(
+  document: PatternDocument,
+  id: EntityId,
+  activePieceId: EntityId | null,
+): boolean {
+  if (activePieceId === null) return true;
+  const owner = pieceForEntity(document, id);
+  return owner === null || owner.id === activePieceId;
+}
+
 /** The two point ids a line, curve or arc joins, in its own direction. */
 function endpointIds(entity: Entity): [EntityId, EntityId] | null {
   switch (entity.kind) {
@@ -112,6 +148,7 @@ function endpointIds(entity: Entity): [EntityId, EntityId] | null {
       return [entity.start, entity.end];
     case 'point':
     case 'circle':
+    case 'text':
       return null;
   }
 }
@@ -158,6 +195,7 @@ export type PieceCreation = { ok: true; edges: EntityId[] } | { ok: false; messa
 export function pieceCreationFromSelection(
   document: PatternDocument,
   ids: readonly EntityId[],
+  piece?: EntityId,
 ): PieceCreation {
   if (ids.length < 3) {
     return { ok: false, message: 'Select at least three cut edges to create a piece.' };
@@ -206,7 +244,7 @@ export function pieceCreationFromSelection(
     };
   }
 
-  const validation = validatePiece(document, ordered);
+  const validation = validatePiece(document, ordered, piece === undefined ? {} : { piece });
   return validation.ok ? { ok: true, edges: ordered } : { ok: false, message: validation.message };
 }
 

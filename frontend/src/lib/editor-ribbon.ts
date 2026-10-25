@@ -2,7 +2,8 @@ import { CONSTRAINT_TOOLS } from './constraint-tools';
 import { EDITOR_TOOLS, type EditorTool } from './editor-tools';
 import type { RibbonIconName } from './ribbon-icons';
 
-export type RibbonAction = 'undo' | 'redo' | 'delete' | 'fit' | 'create_piece' | 'download_svg';
+export type RibbonAction =
+  'undo' | 'redo' | 'delete' | 'fit' | 'create_piece' | 'set_cut_loop' | 'download_svg';
 
 export interface RibbonConstraintItem {
   kind: 'constraint';
@@ -61,6 +62,7 @@ const TOOL_ICONS: Record<EditorTool, RibbonIconName> = {
   add_curve: 'curve',
   add_arc: 'arc',
   add_circle: 'circle',
+  add_text: 'text',
   add_rectangle: 'rectangle',
   add_center_rectangle: 'rectangle-center',
   add_3point_rectangle: 'rectangle-aligned',
@@ -119,7 +121,8 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
     label: 'Tools',
     items: [
       toolItem('select'),
-      actionItem('create-piece', 'Create piece', 'create_piece', 'piece'),
+      actionItem('create-piece', 'New piece', 'create_piece', 'piece'),
+      actionItem('set-cut-loop', 'Set cut loop', 'set_cut_loop', 'piece'),
       actionItem('undo', 'Undo', 'undo', 'undo'),
       actionItem('redo', 'Redo', 'redo', 'redo'),
       actionItem('delete', 'Delete', 'delete', 'delete'),
@@ -130,6 +133,11 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
     id: 'features',
     label: 'Features',
     items: [toolItem('round_corner')],
+  },
+  {
+    id: 'annotation',
+    label: 'Annotation',
+    items: [toolItem('add_text')],
   },
   {
     id: 'sketching',

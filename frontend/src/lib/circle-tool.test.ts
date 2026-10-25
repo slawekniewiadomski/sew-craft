@@ -115,3 +115,11 @@ describe('buildCircleCommands', () => {
     expect(applied.entities.filter((entity) => entity.kind === 'point')).toHaveLength(5);
   });
 });
+
+describe('buildCircleCommands ownership', () => {
+  it('stamps the active piece on new points and the circle', () => {
+    const commands = buildCircleCommands(fresh(0, 0), fresh(30, 40), idGenerator(), 'p1');
+    expect(commands[0]).toMatchObject({ type: 'add_point', params: { piece: 'p1' } });
+    expect(commands[2]).toMatchObject({ type: 'add_circle', params: { piece: 'p1' } });
+  });
+});

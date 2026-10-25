@@ -8,6 +8,8 @@ import {
   dimensionState,
   dimensionValue,
   getEntity,
+  isConstruction,
+  roleOf,
   measureLinearDimension,
   type CircleEntity,
   type Constraint,
@@ -21,7 +23,7 @@ import {
 } from '@sewcraft/geometry';
 
 import { constraintLabel } from './constraint-view';
-import { pieceOwningEdge, pieceSummary, type PieceSummary } from './pieces';
+import { pieceForEntity, pieceSummary, type PieceSummary } from './pieces';
 
 const RADIANS_TO_DEGREES = 180 / Math.PI;
 
@@ -51,8 +53,11 @@ export type ArcGeometry = {
 /** Geometry a circle contributes to the inspector. */
 export type CircleGeometry = { kind: 'circle'; center: EntityId; rim: EntityId };
 
+/** A label's anchor and content, shown as read-only metadata. */
+export type TextGeometry = { kind: 'text'; anchor: EntityId; content: string };
+
 export type EntityGeometry =
-  PointGeometry | LineGeometry | CurveGeometry | CircleGeometry | ArcGeometry;
+  PointGeometry | LineGeometry | CurveGeometry | CircleGeometry | ArcGeometry | TextGeometry;
 
 /**
  * The derived circle measurements of an arc, all recomputed from its three
@@ -109,11 +114,24 @@ export type CutDimensionSummary = {
   anchors: [string, string];
 };
 
+/** The editable fields of an annotation label. */
+export type TextSummary = {
+  content: string;
+  alignment: 'left' | 'center' | 'right';
+  rotation: number;
+  fontSize: number;
+  leader: EntityId | null;
+};
+
 /** Everything the Properties inspector shows for one selected entity. */
 export type EntityProperties = {
   id: EntityId;
   kind: Entity['kind'];
+  /** The assignable role; text is always annotation. */
+  role: 'cut' | 'construction' | 'annotation';
   construction: boolean;
+  /** Annotation text only; `null` for every other kind. */
+  text: TextSummary | null;
   /** Points only; lines and curves have no fixed flag. */
   fixed: boolean | null;
   geometry: EntityGeometry;
@@ -158,6 +176,8 @@ function geometryOf(entity: Entity): EntityGeometry {
       return { kind: 'arc', start: entity.start, end: entity.end, through: entity.through };
     case 'circle':
       return { kind: 'circle', center: entity.center, rim: entity.rim };
+    case 'text':
+      return { kind: 'text', anchor: entity.anchor, content: entity.content };
   }
 }
 
@@ -229,6 +249,8 @@ function constraintActsOnEntity(
     return constraintEntityIds(constraint).some((id) => referencePoints.includes(id));
   }
 
+  if (entity.kind === 'text') return false;
+
   switch (constraint.type) {
     case 'distance':
       // A line matches its endpoint pair or is itself an anchor of the dimension.
@@ -298,7 +320,7 @@ export function entityProperties(
     });
   }
 
-  const owningPiece = entity.kind === 'point' ? null : pieceOwningEdge(document, entity.id);
+  const owningPiece = entity.kind === 'point' ? null : pieceForEntity(document, entity.id);
   const cutDimensions: CutDimensionSummary[] =
     entity.kind === 'point'
       ? []
@@ -345,7 +367,18 @@ export function entityProperties(
   return {
     id: entity.id,
     kind: entity.kind,
-    construction: entity.construction,
+    role: roleOf(entity),
+    construction: isConstruction(entity),
+    text:
+      entity.kind === 'text'
+        ? {
+            content: entity.content,
+            alignment: entity.alignment ?? 'left',
+            rotation: entity.rotation ?? 0,
+            fontSize: entity.fontSize ?? 6,
+            leader: entity.leader ?? null,
+          }
+        : null,
     fixed: entity.kind === 'point' ? entity.fixed : null,
     geometry: geometryOf(entity),
     length:

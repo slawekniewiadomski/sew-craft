@@ -71,7 +71,9 @@ describe('entityProperties', () => {
     expect(properties).toEqual({
       id: 'b',
       kind: 'point',
+      role: 'cut',
       construction: false,
+      text: null,
       fixed: true,
       geometry: { kind: 'point', x: 100, y: 0 },
       length: null,
@@ -550,5 +552,60 @@ describe('entityProperties', () => {
     expect(properties?.constraints).toEqual([
       { id: 'angle', type: 'angle', label: 'Angle 90°', entities: ['a', 'b', 'c'] },
     ]);
+  });
+});
+
+describe('annotation text view model', () => {
+  const text = {
+    id: 't',
+    kind: 'text' as const,
+    piece: 'p1',
+    anchor: 'a',
+    content: 'velcro',
+    alignment: 'center' as const,
+    rotation: 0.5,
+    fontSize: 8,
+    leader: 'b',
+  };
+
+  it('describes a label and marks it as annotation', () => {
+    const document = doc({
+      entities: [...entities, text],
+      pieces: [{ id: 'p1', edges: [], allowances: [] }],
+    });
+    const properties = entityProperties(document, 't')!;
+
+    expect(properties).toMatchObject({
+      id: 't',
+      kind: 'text',
+      role: 'annotation',
+      construction: false,
+      geometry: { kind: 'text', anchor: 'a', content: 'velcro' },
+      text: {
+        content: 'velcro',
+        alignment: 'center',
+        rotation: 0.5,
+        fontSize: 8,
+        leader: 'b',
+      },
+      piece: { id: 'p1' },
+    });
+  });
+
+  it('fills defaults for a hand-written label', () => {
+    const bare = {
+      id: 't2',
+      kind: 'text' as const,
+      anchor: 'a',
+      content: 'x',
+    };
+    const document = doc({ entities: [...entities, bare] });
+    expect(entityProperties(document, 't2')!.text).toEqual({
+      content: 'x',
+      alignment: 'left',
+      rotation: 0,
+      fontSize: 6,
+      leader: null,
+    });
   });
 });

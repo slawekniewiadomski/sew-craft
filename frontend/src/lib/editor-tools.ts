@@ -5,6 +5,7 @@ export type EditorTool =
   | 'add_curve'
   | 'add_arc'
   | 'add_circle'
+  | 'add_text'
   | 'add_rectangle'
   | 'add_center_rectangle'
   | 'add_3point_rectangle'
@@ -24,6 +25,7 @@ export const EDITOR_TOOLS: EditorToolDefinition[] = [
   { id: 'add_curve', label: 'Curve' },
   { id: 'add_arc', label: 'Arc' },
   { id: 'add_circle', label: 'Circle' },
+  { id: 'add_text', label: 'Text' },
   { id: 'add_rectangle', label: 'Rectangle' },
   { id: 'add_center_rectangle', label: 'Centre rectangle' },
   { id: 'add_3point_rectangle', label: '3-point rectangle' },

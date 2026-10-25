@@ -1861,14 +1861,14 @@ describe('EditorView', () => {
     entityDown(wrapper, 'line', 'l1');
     await nextTick();
 
-    const construction = wrapper.find('[data-testid="entity-construction"]');
-    expect((construction.element as HTMLInputElement).checked).toBe(false);
+    const role = wrapper.find('[data-testid="entity-role"]');
+    expect((role.element as HTMLSelectElement).value).toBe('cut');
 
-    await construction.setValue(true);
+    await role.setValue('construction');
     await flushPromises();
 
     expect(store.document.entities.find((entity) => entity.id === 'l1')).toMatchObject({
-      construction: true,
+      role: 'construction',
     });
   });
 
@@ -2476,16 +2476,16 @@ describe('EditorView', () => {
     expect(store.document.pieces).toHaveLength(0);
   });
 
-  it('explains why a selection cannot become a piece', async () => {
-    const { wrapper } = await mountLoaded(lineDoc);
+  it('creates an empty piece even when the selection is not a loop', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
 
     entityDown(wrapper, 'line', 'ab');
     await nextTick();
     wrapper.findComponent(EditorRibbon).vm.$emit('action', 'create_piece');
     await flushPromises();
 
-    expect(wrapper.text()).toContain('Select at least three cut edges to create a piece.');
-    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(true);
+    expect(store.document.pieces).toHaveLength(1);
+    expect(store.document.pieces[0]!.edges).toEqual([]);
   });
 
   it('creates a distance between two piece corners, not a cut dimension', async () => {
@@ -2937,13 +2937,12 @@ describe('EditorView pieces drawer', () => {
     expect(wrapper.find('[data-testid="pieces-empty"]').exists()).toBe(true);
   });
 
-  it('shows the empty state with a disabled Create piece button', async () => {
+  it('shows the empty state with an enabled New piece button', async () => {
     const { wrapper } = await mountLoaded(lineDoc);
 
     expect(wrapper.find('[data-testid="pieces-empty"]').text()).toBe('No pieces yet.');
     const create = wrapper.find('[data-testid="pieces-create"]');
-    expect(create.attributes('disabled')).toBeDefined();
-    expect(create.attributes('title')).toBe('Select at least three cut edges to create a piece.');
+    expect(create.attributes('disabled')).toBeUndefined();
   });
 
   it('creates a piece from the drawer once a closed chain is selected', async () => {
@@ -3723,57 +3722,37 @@ describe('EditorView persistence', () => {
     expect(wrapper.find('[data-testid="save-status"]').text()).toContain('Saved');
   });
 
-  it('upgrades an older document through the modal and archives it on save', async () => {
+  it('opens a 0.2 document read-only with the unsupported-format dialog', async () => {
     loadedDocument = {
       ...createEmptyDocument(),
-      schema: 'sewcraft.pattern/0.1',
+      schema: 'sewcraft.pattern/0.2',
     } as unknown as PatternDocument;
     const pinia = createPinia();
     const wrapper = await mountEditor(pinia);
     const store = useEditorStore(pinia);
 
     expect(wrapper.find('[data-testid="upgrade-dialog"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="saved-schema"]').text()).toBe('sewcraft.pattern/0.1');
-    expect(wrapper.find('[data-testid="editor-schema"]').text()).toBe('sewcraft.pattern/0.2');
+    expect(wrapper.find('[data-testid="upgrade-dialog-title"]').text()).toBe(
+      'Unsupported project format',
+    );
+    expect(wrapper.find('[data-testid="saved-schema"]').text()).toBe('sewcraft.pattern/0.2');
+    expect(wrapper.find('[data-testid="editor-schema"]').text()).toBe('sewcraft.pattern/0.3');
     expect(wrapper.find('[data-testid="read-only-pill"]').exists()).toBe(true);
     expect(store.readOnly).toBe(true);
 
-    await wrapper.find('[data-testid="upgrade-update"]').trigger('click');
-    await flushPromises();
-
-    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledWith(1, {
-      document: store.document,
-      expected_version: 1,
-      expected_schema: 'sewcraft.pattern/0.1',
-    });
-    expect(store.readOnly).toBe(false);
-    expect(store.saveState).toBe('saved');
-    expect(wrapper.find('[data-testid="upgrade-dialog"]').exists()).toBe(false);
-  });
-
-  it('stays read-only on the unmigrated document when the upgrade save fails', async () => {
-    loadedDocument = {
-      ...createEmptyDocument(),
-      schema: 'sewcraft.pattern/0.1',
-    } as unknown as PatternDocument;
-    vi.mocked(projectsApi.savePattern).mockRejectedValueOnce(new Error('Upgrade refused'));
-    const pinia = createPinia();
-    const wrapper = await mountEditor(pinia);
-    const store = useEditorStore(pinia);
-
-    await wrapper.find('[data-testid="upgrade-update"]').trigger('click');
+    await wrapper.find('[data-testid="upgrade-readonly"]').trigger('click');
     await flushPromises();
 
     expect(store.readOnly).toBe(true);
-    expect(store.document.schema).toBe('sewcraft.pattern/0.1');
+    expect(store.document.schema).toBe('sewcraft.pattern/0.2');
+    expect(vi.mocked(projectsApi.savePattern)).not.toHaveBeenCalled();
     expect(wrapper.find('[data-testid="upgrade-dialog"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed — retrying');
   });
 
   it('opens an older document read-only without saving and keeps export', async () => {
     const readOnlyDoc: PatternDocument = {
       ...cutDimensionDoc,
-      schema: 'sewcraft.pattern/0.1',
+      schema: 'sewcraft.pattern/0.2',
       constraints: [
         {
           id: 'w',
@@ -3839,17 +3818,17 @@ describe('EditorView persistence', () => {
     expect(store.document.constraints.some((entry) => entry.id === 'cut')).toBe(true);
   });
 
-  it('never migrates an unknown schema and offers read-only or cancel', async () => {
+  it('never migrates a newer schema and offers read-only or cancel', async () => {
     loadedDocument = {
       ...createEmptyDocument(),
-      schema: 'sewcraft.pattern/0.3',
+      schema: 'sewcraft.pattern/0.4',
     } as unknown as PatternDocument;
     const pinia = createPinia();
     const wrapper = await mountEditor(pinia);
     const store = useEditorStore(pinia);
 
     expect(wrapper.find('[data-testid="upgrade-dialog"]').text()).toContain(
-      'newer version of SewCraft',
+      'Unsupported project format',
     );
     expect(wrapper.find('[data-testid="upgrade-update"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="save-status"]').text()).toContain('Saved');
@@ -3866,35 +3845,14 @@ describe('EditorView persistence', () => {
     await flushPromises();
 
     expect(store.readOnly).toBe(true);
-    expect(store.document.schema).toBe('sewcraft.pattern/0.3');
+    expect(store.document.schema).toBe('sewcraft.pattern/0.4');
     expect(vi.mocked(projectsApi.savePattern)).not.toHaveBeenCalled();
   });
 
-  it('keeps the upgrade modal when the version conflict blocks it', async () => {
+  it('returns to Projects when the unsupported-format dialog is cancelled', async () => {
     loadedDocument = {
       ...createEmptyDocument(),
-      schema: 'sewcraft.pattern/0.1',
-    } as unknown as PatternDocument;
-    vi.mocked(projectsApi.savePattern).mockRejectedValueOnce(
-      new ApiError(409, { current_version: 4, saved_at: null }),
-    );
-    const pinia = createPinia();
-    const wrapper = await mountEditor(pinia);
-    const store = useEditorStore(pinia);
-
-    await wrapper.find('[data-testid="upgrade-update"]').trigger('click');
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="upgrade-dialog"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="conflict-dialog"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('Reload the project to upgrade it.');
-    expect(store.readOnly).toBe(true);
-  });
-
-  it('returns to Projects when the upgrade is cancelled', async () => {
-    loadedDocument = {
-      ...createEmptyDocument(),
-      schema: 'sewcraft.pattern/0.1',
+      schema: 'sewcraft.pattern/0.2',
     } as unknown as PatternDocument;
     const wrapper = await mountEditor(createPinia());
 
@@ -3966,38 +3924,10 @@ describe('EditorView persistence', () => {
     expect(wrapper.find('[data-testid="save-status"]').text()).toBe('Save failed — retrying');
   });
 
-  it('ignores a repeated upgrade action while the save is in flight', async () => {
-    loadedDocument = {
-      ...createEmptyDocument(),
-      schema: 'sewcraft.pattern/0.1',
-    } as unknown as PatternDocument;
-    let resolveSave: (value: unknown) => void = () => {};
-    vi.mocked(projectsApi.savePattern).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveSave = resolve as (value: unknown) => void;
-        }),
-    );
-    const wrapper = await mountEditor(createPinia());
-    const dialog = wrapper.findComponent({ name: 'UpgradeDocumentDialog' });
-
-    dialog.vm.$emit('update');
-    dialog.vm.$emit('update');
-    await nextTick();
-
-    expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
-
-    resolveSave({
-      data: { id: 1, version: 2, saved_at: '2026-10-23T16:00:00.000Z', created: false },
-    });
-    await flushPromises();
-    expect(wrapper.find('[data-testid="upgrade-dialog"]').exists()).toBe(false);
-  });
-
   it('ignores a stale read-only choice once the dialog is closed', async () => {
     loadedDocument = {
       ...createEmptyDocument(),
-      schema: 'sewcraft.pattern/0.1',
+      schema: 'sewcraft.pattern/0.2',
     } as unknown as PatternDocument;
     const wrapper = await mountEditor(createPinia());
     const dialog = wrapper.findComponent({ name: 'UpgradeDocumentDialog' });
@@ -4431,5 +4361,415 @@ describe('EditorView autosave', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(vi.mocked(projectsApi.savePattern)).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('EditorView containers and annotation text', () => {
+  const owned = (document: PatternDocument): PatternDocument => ({
+    ...document,
+    entities: document.entities.map((entity) => ({ ...entity, piece: 'p1' })),
+  });
+
+  it('creates an empty piece and makes it active', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    await wrapper.find('[data-testid="pieces-create"]').trigger('click');
+    await flushPromises();
+
+    expect(store.document.pieces).toHaveLength(1);
+    expect(store.document.pieces[0]!.edges).toEqual([]);
+    expect(store.activePieceId).toBe(store.document.pieces[0]!.id);
+  });
+
+  it('captures and clears a cut loop from the piece card', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...owned(lineDoc),
+      pieces: [{ id: 'p1', edges: [], allowances: [] }],
+    });
+
+    for (const id of ['ab', 'bc', 'cd', 'da']) {
+      entityDown(wrapper, 'line', id, { ctrlKey: id !== 'ab' });
+      await nextTick();
+    }
+    wrapper.findComponent(EditorRibbon).vm.$emit('action', 'set_cut_loop');
+    await flushPromises();
+    expect(store.document.pieces[0]!.edges).toEqual(['ab', 'bc', 'cd', 'da']);
+
+    await wrapper.find('[data-testid="piece-row-p1"]').trigger('click');
+
+    await wrapper.find('[data-testid="piece-drawer-clear-cut-loop"]').trigger('click');
+    await flushPromises();
+    expect(store.document.pieces[0]!.edges).toEqual([]);
+  });
+
+  it('arms Move and dispatches one move_piece on release', async () => {
+    const { wrapper, store } = await mountLoaded(owned(pieceDoc));
+
+    await wrapper.find('[data-testid="piece-row-p1"]').trigger('click');
+    await wrapper.find('[data-testid="piece-drawer-piece-move-toggle"]').trigger('click');
+    expect(
+      wrapper.find('[data-testid="piece-drawer-piece-move-toggle"]').attributes('aria-pressed'),
+    ).toBe('true');
+    await wrapper.find('[data-testid="piece-drawer-piece-move-toggle"]').trigger('click');
+    expect(
+      wrapper.find('[data-testid="piece-drawer-piece-move-toggle"]').attributes('aria-pressed'),
+    ).toBe('false');
+    await wrapper.find('[data-testid="piece-drawer-piece-move-toggle"]').trigger('click');
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('move-piece', 5, -7);
+    await flushPromises();
+
+    expect(store.document.entities.find((entity) => entity.id === 'a')).toMatchObject({
+      x: 5,
+      y: -7,
+    });
+    expect(store.journal.at(-1)?.command.type).toBe('move_piece');
+  });
+
+  it('coalesces arrow-key nudges into one journal entry', async () => {
+    const { wrapper, store } = await mountLoaded(owned(pieceDoc));
+
+    keydown('ArrowRight');
+    keydown('ArrowRight');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    await nextTick();
+
+    const moves = store.journal.filter((entry) => entry.command.type === 'move_piece');
+    expect(moves).toHaveLength(1);
+    expect(store.document.entities.find((entity) => entity.id === 'a')).toMatchObject({
+      x: 2,
+      y: 0,
+    });
+    expect(wrapper.find('[data-testid="save-status"]').text()).toContain('Unsaved');
+  });
+
+  it('places a label with the Text tool and edits it in the inspector', async () => {
+    const { wrapper, store } = await mountLoaded(owned(pieceDoc));
+
+    await wrapper.find('[data-testid="tool-add_text"]').trigger('click');
+    wrapper.findComponent(PatternCanvas).vm.$emit('add-text', { kind: 'point', id: 'a' });
+    await flushPromises();
+
+    const text = store.document.entities.find((entity) => entity.kind === 'text')!;
+    expect(text).toMatchObject({ anchor: 'a', content: 'Text', piece: 'p1' });
+
+    await wrapper.find('[data-testid="tool-select"]').trigger('click');
+    wrapper
+      .find(`[data-kind="text"][data-entity-id="${text.id}"]`)
+      .element.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100, button: 0 }),
+      );
+    await nextTick();
+
+    await wrapper.find('[data-testid="text-content"]').setValue('snap');
+    await flushPromises();
+    expect(store.document.entities.find((entity) => entity.id === text.id)).toMatchObject({
+      content: 'snap',
+    });
+
+    await wrapper.find('[data-testid="text-leader-pick"]').trigger('click');
+    await flushPromises();
+    expect(store.document.entities.find((entity) => entity.id === text.id)).toHaveProperty(
+      'leader',
+    );
+  });
+
+  it('assigns an annotation role from the inspector', async () => {
+    const { wrapper, store } = await mountLoaded(pieceDoc);
+
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+    await wrapper.find('[data-testid="entity-role"]').setValue('annotation');
+    await flushPromises();
+
+    expect(store.document.entities.find((entity) => entity.id === 'ab')).toMatchObject({
+      role: 'annotation',
+    });
+  });
+
+  it('explains a cross-piece pick', async () => {
+    const { wrapper } = await mountLoaded({
+      ...pieceDoc,
+      pieces: [...pieceDoc.pieces, { id: 'p2', name: 'Sleeve', edges: [], allowances: [] }],
+    });
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('cross-piece', 'p2');
+    await nextTick();
+
+    expect(wrapper.text()).toContain('Switch to Sleeve to edit it.');
+  });
+
+  it('reports a leader that cannot be chosen and ignores an update on a non-text id', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...pieceDoc,
+      entities: pieceDoc.entities.filter((entity) => !['b', 'c', 'd', 'e'].includes(entity.id)),
+      pieces: [{ id: 'p1', edges: [], allowances: [] }],
+    });
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('add-text', { kind: 'point', id: 'a' });
+    await flushPromises();
+    const text = store.document.entities.find((entity) => entity.kind === 'text')!;
+    await wrapper.find('[data-testid="tool-select"]').trigger('click');
+    wrapper
+      .find(`[data-kind="text"][data-entity-id="${text.id}"]`)
+      .element.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100, button: 0 }),
+      );
+    await nextTick();
+    await wrapper.find('[data-testid="text-leader-pick"]').trigger('click');
+    await nextTick();
+    expect(wrapper.text()).toContain('Add another point to the piece');
+  });
+});
+
+describe('EditorView container escape hatches', () => {
+  it('explains a missing piece for Set cut loop and annotation text', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    wrapper.findComponent(EditorRibbon).vm.$emit('action', 'set_cut_loop');
+    await nextTick();
+    expect(wrapper.text()).toContain('Create or select a piece first.');
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('add-text', { kind: 'point', id: 'a' });
+    await nextTick();
+    expect(wrapper.text()).toContain('Create or select a piece before placing annotation text.');
+    expect(store.journal).toHaveLength(0);
+  });
+
+  it('explains an invalid loop selection and activates a picked piece', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      pieces: [
+        { id: 'p1', edges: [], allowances: [] },
+        { id: 'p2', edges: [], allowances: [] },
+      ],
+    });
+
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+    wrapper.findComponent(EditorRibbon).vm.$emit('action', 'set_cut_loop');
+    await nextTick();
+    expect(wrapper.text()).toContain('Select at least three cut edges');
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('activate-piece', 'p2');
+    await nextTick();
+    expect(store.activePieceId).toBe('p2');
+  });
+
+  it('ignores a move without an active piece and reports invalid label content', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+    wrapper.findComponent(PatternCanvas).vm.$emit('move-piece', 4, 4);
+    await nextTick();
+    expect(store.journal).toHaveLength(0);
+
+    const textStore = await mountLoaded({
+      ...pieceDoc,
+      entities: [
+        ...pieceDoc.entities,
+        { id: 't1', kind: 'text', piece: 'p1', anchor: 'a', content: 'x' },
+      ],
+    });
+    await textStore.wrapper.find('[data-testid="tool-select"]').trigger('click');
+    textStore.wrapper
+      .find('[data-kind="text"][data-entity-id="t1"]')
+      .element.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100, button: 0 }),
+      );
+    await nextTick();
+    await textStore.wrapper.find('[data-testid="text-content"]').setValue('   ');
+    await nextTick();
+    expect(textStore.wrapper.text()).toContain('Enter some text.');
+  });
+});
+
+describe('EditorView remaining container branches', () => {
+  it('names an unknown piece and ignores a leader on a non-text id', async () => {
+    const { wrapper, store } = await mountLoaded(pieceDoc);
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('cross-piece', 'missing');
+    await nextTick();
+    expect(wrapper.text()).toContain('Switch to the owning piece to edit it.');
+
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+    wrapper.findComponent(EntityPropertiesPanel).vm.$emit('create-leader', 'ab');
+    await nextTick();
+    expect(store.journal).toHaveLength(0);
+  });
+
+  it('adds unowned points, curves and constraints when no piece is active', async () => {
+    const { wrapper, store } = await mountLoaded(edgeDoc);
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('add-point', 10, 10);
+    await flushPromises();
+    expect(
+      store.document.entities.find((entity) => entity.kind === 'point' && entity.x === 10),
+    ).not.toHaveProperty('piece');
+
+    await wrapper.find('[data-testid="constraint-horizontal"]').trigger('click');
+    wrapper.findComponent(PatternCanvas).vm.$emit('constraint-pick', { id: 'p', kind: 'point' });
+    wrapper.findComponent(PatternCanvas).vm.$emit('constraint-pick', { id: 'q', kind: 'point' });
+    await flushPromises();
+    expect(store.document.constraints.at(-1)?.type).toBe('horizontal');
+  });
+
+  it('nudges left and up with Shift and coalesces a cancelling pair', async () => {
+    const { store } = await mountLoaded({
+      ...pieceDoc,
+      entities: pieceDoc.entities.map((entity) => ({ ...entity, piece: 'p1' })),
+    });
+
+    keydown('ArrowLeft');
+    keydown('ArrowUp', { shiftKey: true });
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    await nextTick();
+    expect(store.journal.at(-1)?.command).toMatchObject({
+      type: 'move_piece',
+      params: { dx: -1, dy: -10 },
+    });
+
+    keydown('ArrowDown');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    await nextTick();
+    expect(store.journal.at(-1)?.command).toMatchObject({ params: { dx: 0, dy: 1 } });
+
+    const before = store.journal.length;
+    keydown('ArrowRight');
+    keydown('ArrowLeft');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    await nextTick();
+    expect(store.journal).toHaveLength(before);
+  });
+});
+
+describe('EditorView unowned curve', () => {
+  it('adds a curve without a piece owner when none is active', async () => {
+    const { wrapper, store } = await mountLoaded(curveDoc);
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('add-curve', ['a', 'b', 'c', 'd']);
+    await flushPromises();
+
+    const curve = store.document.entities.filter((entity) => entity.kind === 'curve').at(-1)!;
+    expect(curve).not.toHaveProperty('piece');
+  });
+});
+
+describe('EditorView active-piece defaults and teardown', () => {
+  it('stamps the active piece on points, curves and constraints', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...curveDoc,
+      pieces: [{ id: 'p1', edges: [], allowances: [] }],
+    });
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('add-point', 10, 10);
+    await flushPromises();
+    expect(
+      store.document.entities.find((entity) => entity.kind === 'point' && entity.x === 10),
+    ).toMatchObject({ piece: 'p1' });
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('add-curve', ['a', 'b', 'c', 'd']);
+    await flushPromises();
+    expect(
+      store.document.entities.filter((entity) => entity.kind === 'curve').at(-1),
+    ).toMatchObject({
+      piece: 'p1',
+    });
+
+    await wrapper.find('[data-testid="constraint-horizontal"]').trigger('click');
+    wrapper.findComponent(PatternCanvas).vm.$emit('constraint-pick', { id: 'a', kind: 'point' });
+    wrapper.findComponent(PatternCanvas).vm.$emit('constraint-pick', { id: 'b', kind: 'point' });
+    await flushPromises();
+    expect(store.document.constraints.at(-1)).toMatchObject({ piece: 'p1' });
+  });
+
+  it('drops a pending nudge when the view unmounts', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const store = useEditorStore();
+    store.load({
+      ...pieceDoc,
+      entities: pieceDoc.entities.map((entity) => ({ ...entity, piece: 'p1' })),
+    });
+    loadedDocument = store.document;
+    const wrapper = await mountEditor(pinia);
+
+    keydown('ArrowRight');
+    wrapper.unmount();
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(store.journal).toHaveLength(0);
+  });
+
+  it('chooses a leader across unowned text and points', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...createEmptyDocument(),
+      entities: [
+        { id: 'a', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+        { id: 'b', kind: 'point', x: 100, y: 0, construction: false, fixed: false, piece: 'p1' },
+        { id: 't1', kind: 'text', piece: 'p1', anchor: 'a', content: 'x' },
+      ],
+      pieces: [{ id: 'p1', edges: [], allowances: [] }],
+    });
+
+    await wrapper.find('[data-testid="tool-select"]').trigger('click');
+    wrapper
+      .find('[data-kind="text"][data-entity-id="t1"]')
+      .element.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100, button: 0 }),
+      );
+    await nextTick();
+    await wrapper.find('[data-testid="text-leader-pick"]').trigger('click');
+    await flushPromises();
+
+    expect(store.document.entities.find((entity) => entity.id === 't1')).toMatchObject({
+      leader: 'b',
+    });
+  });
+});
+
+describe('EditorView toggle and nudge edges', () => {
+  it('arms Move for a different piece and drops a nudge after deactivation', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...pieceDoc,
+      pieces: [...pieceDoc.pieces, { id: 'p2', edges: [], allowances: [] }],
+      entities: pieceDoc.entities.map((entity) => ({ ...entity, piece: 'p1' })),
+    });
+
+    store.setActivePiece('p2');
+    await nextTick();
+    await wrapper.find('[data-testid="piece-row-p1"]').trigger('click');
+    await wrapper.find('[data-testid="piece-drawer-piece-move-toggle"]').trigger('click');
+    expect(
+      wrapper.find('[data-testid="piece-drawer-piece-move-toggle"]').attributes('aria-pressed'),
+    ).toBe('true');
+  });
+
+  it('drops a pending nudge when the active piece disappears', async () => {
+    const { store } = await mountLoaded({
+      ...pieceDoc,
+      entities: pieceDoc.entities.map((entity) => ({ ...entity, piece: 'p1' })),
+    });
+
+    keydown('ArrowRight');
+    store.setActivePiece(null);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    await nextTick();
+    expect(store.journal).toHaveLength(0);
+  });
+});
+
+describe('EditorView cancelling nudge', () => {
+  it('does not dispatch when opposite nudges cancel out', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...pieceDoc,
+      entities: pieceDoc.entities.map((entity) => ({ ...entity, piece: 'p1' })),
+    });
+
+    keydown('ArrowRight');
+    keydown('ArrowLeft');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    await nextTick();
+
+    expect(store.journal).toHaveLength(0);
+    expect(wrapper.find('[data-testid="save-status"]').text()).toContain('Saved');
   });
 });

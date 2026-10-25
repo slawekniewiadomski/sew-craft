@@ -1,9 +1,13 @@
 import {
+  basicPieceForLoops,
   createEmptyDocument,
   executeCommand,
+  isCut,
   normalizeCornerRounds,
   normalizeDocument,
+  pieceEntities,
   type Command,
+  type EntityId,
   type PatternDocument,
 } from '@sewcraft/geometry';
 import { defineStore } from 'pinia';
@@ -56,6 +60,8 @@ export const useEditorStore = defineStore('editor', () => {
   const lastSaveOrigin = ref<SaveOrigin | null>(null);
   /** Read-only documents reject every mutation, including undo and redo. */
   const readOnly = ref(false);
+  /** The piece every new entity belongs to; `null` in a document with no piece. */
+  const activePieceId = ref<EntityId | null>(null);
 
   const canUndo = computed(() => past.value.length > 0);
   const canRedo = computed(() => future.value.length > 0);
@@ -78,20 +84,59 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   /**
+   * The loop-capture command a committed batch earns: when the active piece has
+   * no loop yet and its own cut edges now form exactly one simple closed chain,
+   * store it as an explicit `set_piece_loop` in the same journal entry. Ambiguous
+   * or open geometry never captures.
+   */
+  function autoLoopCommand(next: PatternDocument): Command | null {
+    const pieceId = activePieceId.value;
+    if (pieceId === null) return null;
+    const piece = next.pieces.find((candidate) => candidate.id === pieceId);
+    if (piece === undefined || piece.edges.length > 0) return null;
+
+    const owned = pieceEntities(next, pieceId)
+      .filter(
+        (entity) =>
+          (entity.kind === 'line' || entity.kind === 'curve' || entity.kind === 'arc') &&
+          isCut(entity),
+      )
+      .map((entity) => entity.id);
+    const loops = basicPieceForLoops(next, owned);
+    if (loops.length !== 1) return null;
+
+    return {
+      id: `${pieceId}:auto-loop`,
+      type: 'set_piece_loop',
+      params: { piece: pieceId, edges: loops[0]!, allowance: 'default' },
+    };
+  }
+
+  /**
    * Apply several commands as one gesture. The batch runs on a local document
    * and is assigned only when every command succeeds, so a failure leaves both
-   * the document and the history untouched. An empty batch is a no-op.
+   * the document and the history untouched. An empty batch is a no-op. A batch
+   * that closes the active piece's loop also stores the loop in the same entry.
    */
   function dispatchGroup(commands: Command[]): void {
     if (readOnly.value || commands.length === 0) return;
 
     const before = document.value;
     let next = before;
+    const applied = [...commands];
     const inverses: (Command | null)[] = [];
 
-    for (const command of commands) {
+    for (const command of applied) {
       const result = executeCommand(next, command);
       next = result.document;
+      inverses.push(result.inverse);
+    }
+
+    const capture = autoLoopCommand(next);
+    if (capture !== null) {
+      const result = executeCommand(next, capture);
+      next = result.document;
+      applied.push(capture);
       inverses.push(result.inverse);
     }
 
@@ -99,9 +144,9 @@ export const useEditorStore = defineStore('editor', () => {
     past.value = [
       ...past.value,
       {
-        command: commands[commands.length - 1]!,
+        command: applied[applied.length - 1]!,
         inverse: inverses[inverses.length - 1]!,
-        commands,
+        commands: applied,
         inverses,
         before,
       },
@@ -132,10 +177,8 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function load(next: PatternDocument): void {
-    // Upgrade an older document before normalising rounds: the 0.2 migration
-    // adopts closed seam chains as pieces, and a hand-edited document may carry
-    // an inconsistent round the load path drops once.
     document.value = normalizeCornerRounds(normalizeDocument(next));
+    activePieceId.value = document.value.pieces[0]?.id ?? null;
     past.value = [];
     future.value = [];
   }
@@ -143,6 +186,7 @@ export const useEditorStore = defineStore('editor', () => {
   /** Replace the document without normalising it; only unknown schemas use this. */
   function loadRaw(next: PatternDocument): void {
     document.value = next;
+    activePieceId.value = next.pieces?.[0]?.id ?? null;
     past.value = [];
     future.value = [];
   }
@@ -150,6 +194,7 @@ export const useEditorStore = defineStore('editor', () => {
   /** Start an unsaved project: an empty document with no stored copy. */
   function markNew(): void {
     load(createEmptyDocument());
+    activePieceId.value = null;
     savedDocument.value = document.value;
     newProject.value = true;
     savedVersion.value = 0;
@@ -233,6 +278,12 @@ export const useEditorStore = defineStore('editor', () => {
     readOnly.value = value;
   }
 
+  /** Activate one piece; an id that is not in the document clears the selection. */
+  function setActivePiece(id: EntityId | null): void {
+    activePieceId.value =
+      id !== null && document.value.pieces.some((piece) => piece.id === id) ? id : null;
+  }
+
   return {
     document,
     journal: past,
@@ -245,6 +296,7 @@ export const useEditorStore = defineStore('editor', () => {
     saveState,
     lastSaveOrigin,
     readOnly,
+    activePieceId,
     isDirty,
     isNew,
     dispatch,
@@ -263,5 +315,6 @@ export const useEditorStore = defineStore('editor', () => {
     markSaveError,
     clearSaveError,
     setReadOnly,
+    setActivePiece,
   };
 });

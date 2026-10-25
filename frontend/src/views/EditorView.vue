@@ -11,12 +11,11 @@ import {
   dimensionValue,
   findDistanceConstraint,
   getEntity,
+  isConstruction,
   isDrivenDimension,
-  isKnownPatternSchema,
   isLineAnchor,
   measureDistanceDimension,
   measureLinearDimension,
-  normalizeDocument,
   ALLOWANCE_KIND_LABELS,
   PATTERN_SCHEMA,
   seamForEdge,
@@ -114,11 +113,14 @@ import { entityProperties } from '@/lib/entity-properties';
 import { buildLineCommands, type LineEndpoint } from '@/lib/line-tool';
 import { buildPointOnLineCommands } from '@/lib/point-on-line';
 import { buildRectangleCommands, type RectangleMode } from '@/lib/rectangle-tool';
+import { buildTextCommands, textContentError } from '@/lib/text-tool';
 import {
   edgeLabel,
   canonicalCutAnchors,
+  canEditEntity,
   findDerivedDimension,
   pieceCreationFromSelection,
+  pieceForEntity,
   pieceLabel,
   pieceSizeLine,
   pieceSummaries,
@@ -169,6 +171,16 @@ const selectedDimensionIds = ref<EntityId[]>([]);
  * loop by accident.
  */
 const selectedPieceId = ref<EntityId | null>(null);
+/** The piece every new entity belongs to, mirrored from the store. */
+const activePieceId = computed(() => editor.activePieceId);
+const activePiece = computed(
+  () => pattern.value.pieces.find((piece) => piece.id === activePieceId.value) ?? null,
+);
+/** The Move toggle's target; cleared by Escape, a tool change or another piece. */
+const moveMode = ref(false);
+/** Arrow-key nudges coalesce into one journal entry instead of one per keypress. */
+const nudge = ref<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
+let nudgeTimer: ReturnType<typeof setTimeout> | null = null;
 /** True while a marquee owns the pointer, so Delete/Escape defer to the canvas. */
 const marqueeActive = ref(false);
 const fitToken = ref(0);
@@ -196,14 +208,14 @@ const visibleDocument = computed(() =>
     ? pattern.value
     : {
         ...pattern.value,
-        entities: pattern.value.entities.filter((entity) => !entity.construction),
+        entities: pattern.value.entities.filter((entity) => !isConstruction(entity)),
       },
 );
 
 /** Every line, curve, arc and circle, so any edge can be converted between guide and cut. */
 const edges = computed(() =>
   pattern.value.entities
-    .filter((entity) => entity.kind !== 'point')
+    .filter((entity) => entity.kind !== 'point' && entity.kind !== 'text')
     .map((entity) => {
       const seam = seamForEdge(pattern.value, entity.id);
       const piece = pattern.value.pieces.find((candidate) => candidate.edges.includes(entity.id));
@@ -212,7 +224,7 @@ const edges = computed(() =>
         id: entity.id,
         kind: entity.kind,
         label: edgeLabel(pattern.value, entity.id),
-        construction: entity.construction,
+        construction: isConstruction(entity),
         seamWidth: seam?.width ?? null,
         pieceId: piece?.id ?? null,
         allowanceKind: allowance === undefined ? null : (allowance.kind ?? 'seam'),
@@ -604,24 +616,101 @@ function downloadSvg(): void {
 }
 
 /** Create one piece from the selected closed chain, or explain the first break. */
-function createPiece(): void {
-  const result = pieceCreation.value;
+function newPiece(): void {
+  const id = nextCommandId('piece');
+  const name = `Piece ${pattern.value.pieces.length + 1}`;
+  const loop = pieceCreationFromSelection(pattern.value, selectedEntityIds.value, id);
+  const commands: Command[] = [{ id, type: 'create_piece', params: { name } }];
+  if (loop.ok) {
+    commands.push({
+      id: nextCommandId('loop'),
+      type: 'set_piece_loop',
+      params: { piece: id, edges: loop.edges, allowance: 'default' },
+    });
+  }
+
+  if (run(() => dispatchGroup(commands))) {
+    editor.setActivePiece(id);
+    selectedEntityIds.value = [];
+    selectedDimensionIds.value = [];
+    selectedPieceId.value = id;
+    activeTool.value = 'select';
+    moveMode.value = false;
+  }
+}
+
+/** Capture the selected closed chain as this piece's loop. */
+function setCutLoop(pieceId: EntityId): void {
+  const result = pieceCreationFromSelection(pattern.value, selectedEntityIds.value, pieceId);
   if (!result.ok) {
     error.value = result.message;
     return;
   }
-
   if (
     run(() =>
       dispatch({
-        id: nextCommandId('piece'),
-        type: 'create_piece',
-        params: { edges: result.edges, allowance: 'default' },
+        id: nextCommandId('loop'),
+        type: 'set_piece_loop',
+        params: { piece: pieceId, edges: result.edges, allowance: 'default' },
       }),
     )
   ) {
+    editor.setActivePiece(pieceId);
     selectedEntityIds.value = [];
   }
+}
+
+function clearCutLoop(pieceId: EntityId): void {
+  run(() =>
+    dispatch({
+      id: nextCommandId('loop'),
+      type: 'set_piece_loop',
+      params: { piece: pieceId, edges: [] },
+    }),
+  );
+}
+
+function activatePiece(pieceId: EntityId): void {
+  editor.setActivePiece(pieceId);
+  selectedPieceId.value = pieceId;
+  moveMode.value = false;
+}
+
+function toggleMove(pieceId: EntityId): void {
+  const wasActive = activePieceId.value === pieceId;
+  editor.setActivePiece(pieceId);
+  selectedPieceId.value = pieceId;
+  moveMode.value = wasActive ? !moveMode.value : true;
+  if (moveMode.value) activeTool.value = 'select';
+}
+
+function onMovePiece(dx: number, dy: number): void {
+  const pieceId = activePieceId.value;
+  if (pieceId === null) return;
+  run(() =>
+    dispatch({
+      id: nextCommandId('move-piece'),
+      type: 'move_piece',
+      params: { id: pieceId, dx, dy },
+    }),
+  );
+  moveMode.value = false;
+}
+
+function onActivatePiece(pieceId: EntityId): void {
+  activatePiece(pieceId);
+}
+
+function onCrossPiece(pieceId: EntityId): void {
+  const piece = pattern.value.pieces.find((candidate) => candidate.id === pieceId);
+  error.value = `Switch to ${
+    piece === undefined
+      ? 'the owning piece'
+      : pieceLabel(
+          pieceSummaries(pattern.value).find((summary) => summary.id === pieceId)!,
+          pattern.value.pieces.indexOf(piece),
+        )
+  } to edit it.`;
 }
 
 /** Change the default kind; None clears the default. */
@@ -687,6 +776,42 @@ function onSetAllAllowances(
         : { piece: pieceId, edge, width: value.width, kind: value.kind },
   }));
   run(() => dispatchGroup(commands));
+}
+
+function onSetRole(id: EntityId, role: 'cut' | 'construction' | 'annotation'): void {
+  run(() => dispatch({ id: nextCommandId('role'), type: 'set_role', params: { id, role } }));
+}
+
+function onUpdateText(id: EntityId, patch: Record<string, unknown>): void {
+  if (typeof patch.content === 'string') {
+    const issue = textContentError(patch.content);
+    if (issue !== null) {
+      error.value = issue;
+      return;
+    }
+  }
+  run(() =>
+    dispatch({
+      id: nextCommandId('text'),
+      type: 'update_text',
+      params: { id, ...patch } as { id: EntityId },
+    }),
+  );
+}
+
+function onCreateLeader(id: EntityId): void {
+  const text = getEntity(pattern.value, id);
+  if (text?.kind !== 'text') return;
+  // The first other point of the same piece is a predictable default; the user
+  // can then drag the label or clear the leader from the inspector.
+  const leader = pattern.value.entities.find(
+    (entity) => entity.kind === 'point' && entity.id !== text.anchor && entity.piece === text.piece,
+  );
+  if (leader === undefined) {
+    error.value = 'Add another point to the piece before choosing a leader.';
+    return;
+  }
+  onUpdateText(id, { leader: leader.id });
 }
 
 watch(selectedEntityIds, (ids) => {
@@ -790,8 +915,17 @@ function onRibbonAction(action: RibbonAction): void {
       fit();
       break;
     case 'create_piece':
-      createPiece();
+      newPiece();
       break;
+    case 'set_cut_loop': {
+      const pieceId = activePieceId.value ?? selectedPieceId.value;
+      if (pieceId === null) {
+        error.value = 'Create or select a piece first.';
+      } else {
+        setCutLoop(pieceId);
+      }
+      break;
+    }
     case 'download_svg':
       downloadSvg();
       break;
@@ -803,7 +937,14 @@ function onMovePoint(id: EntityId, x: number, y: number): void {
 }
 
 function onAddPoint(x: number, y: number): void {
-  run(() => dispatch({ id: nextCommandId('point'), type: 'add_point', params: { x, y } }));
+  const piece = activePieceId.value;
+  run(() =>
+    dispatch({
+      id: nextCommandId('point'),
+      type: 'add_point',
+      params: { x, y, ...(piece === null ? {} : { piece }) },
+    }),
+  );
 }
 
 /**
@@ -812,24 +953,40 @@ function onAddPoint(x: number, y: number): void {
  * nothing is dispatched.
  */
 function onAddPointOnLine(lineId: EntityId, x: number, y: number): void {
-  const commands = buildPointOnLineCommands(pattern.value, lineId, { x, y }, nextCommandId);
+  const commands = buildPointOnLineCommands(
+    pattern.value,
+    lineId,
+    { x, y },
+    nextCommandId,
+    activePieceId.value ?? undefined,
+  );
   if (commands === null) return;
   run(() => dispatchGroup(commands));
 }
 
 /** One gesture: new endpoints become points, then the line, as a single entry. */
 function onAddLine(start: LineEndpoint, end: LineEndpoint): void {
-  run(() => dispatchGroup(buildLineCommands(start, end, nextCommandId)));
+  run(() =>
+    dispatchGroup(buildLineCommands(start, end, nextCommandId, activePieceId.value ?? undefined)),
+  );
 }
 
 /** One gesture: new endpoints become points, then the arc, as a single entry. */
 function onAddArc(start: ArcEndpoint, end: ArcEndpoint, through: ArcEndpoint): void {
-  run(() => dispatchGroup(buildArcCommands(start, end, through, nextCommandId)));
+  run(() =>
+    dispatchGroup(
+      buildArcCommands(start, end, through, nextCommandId, activePieceId.value ?? undefined),
+    ),
+  );
 }
 
 /** One gesture: new endpoints become points, then the circle, as a single entry. */
 function onAddCircle(center: CircleEndpoint, rim: CircleEndpoint): void {
-  run(() => dispatchGroup(buildCircleCommands(center, rim, nextCommandId)));
+  run(() =>
+    dispatchGroup(
+      buildCircleCommands(center, rim, nextCommandId, activePieceId.value ?? undefined),
+    ),
+  );
 }
 
 /**
@@ -837,16 +994,43 @@ function onAddCircle(center: CircleEndpoint, rim: CircleEndpoint): void {
  * constraints, as a single entry and a single undo.
  */
 function onAddRectangle(mode: RectangleMode, clicks: DraftingEndpoint[]): void {
-  run(() => dispatchGroup(buildRectangleCommands(pattern.value, mode, clicks, nextCommandId)));
+  run(() =>
+    dispatchGroup(
+      buildRectangleCommands(
+        pattern.value,
+        mode,
+        clicks,
+        nextCommandId,
+        activePieceId.value ?? undefined,
+      ),
+    ),
+  );
+}
+
+function onAddText(anchor: DraftingEndpoint): void {
+  const pieceId = activePieceId.value;
+  if (pieceId === null) {
+    error.value = 'Create or select a piece before placing annotation text.';
+    return;
+  }
+  run(() => dispatchGroup(buildTextCommands(anchor, pieceId, nextCommandId)));
 }
 
 function onAddCurve(points: [EntityId, EntityId, EntityId, EntityId]): void {
   run(() =>
-    dispatch({
-      id: nextCommandId('curve'),
-      type: 'add_curve',
-      params: { p0: points[0], p1: points[1], p2: points[2], p3: points[3] },
-    }),
+    dispatchGroup([
+      {
+        id: nextCommandId('curve'),
+        type: 'add_curve',
+        params: {
+          p0: points[0],
+          p1: points[1],
+          p2: points[2],
+          p3: points[3],
+          ...(activePieceId.value === null ? {} : { piece: activePieceId.value }),
+        },
+      },
+    ]),
   );
 }
 
@@ -891,6 +1075,7 @@ function onAddDimension(placement: DimensionPlacement): void {
         entities: [placement.a, placement.b],
         orientation,
         offset: placement.offset,
+        ...(activePieceId.value === null ? {} : { piece: activePieceId.value }),
       },
     }),
   );
@@ -1035,7 +1220,16 @@ function onRemovePiece(id: EntityId): void {
 }
 
 function dispatchConstraint(params: AddConstraintParams): boolean {
-  return run(() => dispatch({ id: nextCommandId('constraint'), type: 'add_constraint', params }));
+  return run(() =>
+    dispatch({
+      id: nextCommandId('constraint'),
+      type: 'add_constraint',
+      params: {
+        ...params,
+        ...(activePieceId.value === null ? {} : { piece: activePieceId.value }),
+      },
+    }),
+  );
 }
 
 function onConstraintPick(pick: ConstraintPick): void {
@@ -1201,6 +1395,39 @@ function onKeyDown(event: KeyboardEvent): void {
 
   if (isEditing(event.target)) return;
 
+  if (
+    activePieceId.value !== null &&
+    activeTool.value === 'select' &&
+    !moveMode.value &&
+    event.key.startsWith('Arrow')
+  ) {
+    event.preventDefault();
+    const step = event.shiftKey ? 10 : 1;
+    nudge.value = {
+      dx:
+        nudge.value.dx +
+        (event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0),
+      dy: nudge.value.dy + (event.key === 'ArrowDown' ? step : event.key === 'ArrowUp' ? -step : 0),
+    };
+    if (nudgeTimer !== null) clearTimeout(nudgeTimer);
+    nudgeTimer = setTimeout(() => {
+      const { dx, dy } = nudge.value;
+      nudge.value = { dx: 0, dy: 0 };
+      nudgeTimer = null;
+      if (dx === 0 && dy === 0) return;
+      const pieceId = activePieceId.value;
+      if (pieceId === null) return;
+      run(() =>
+        dispatch({
+          id: nextCommandId('move-piece'),
+          type: 'move_piece',
+          params: { id: pieceId, dx, dy },
+        }),
+      );
+    }, 300);
+    return;
+  }
+
   if (event.key === 'Delete' || event.key === 'Backspace') {
     event.preventDefault();
     deleteSelected();
@@ -1264,8 +1491,6 @@ type SaveOutcome = 'saved' | 'retry' | 'stop';
 
 interface SaveOptions {
   origin?: SaveOrigin;
-  /** The schema the stored document had, so the server archives it first. */
-  expectedSchema?: string;
   /** Keep the request alive when the page is hidden or unloading. */
   keepalive?: boolean;
 }
@@ -1343,8 +1568,8 @@ async function loadPattern(): Promise<void> {
 }
 
 /**
- * Adopt a stored pattern. An older known schema is migrated only through the
- * upgrade modal; an unknown schema is rendered read-only and never normalised.
+ * Adopt a stored pattern. This build reads schema 0.3 only; anything else is
+ * rendered read-only and never migrated, copied or rewritten.
  */
 function applySnapshot(snapshot: Pattern): void {
   patternName.value = snapshot.name;
@@ -1358,24 +1583,6 @@ function applySnapshot(snapshot: Pattern): void {
   if (stored.schema === PATTERN_SCHEMA) {
     if (!isRenderableDocument(stored)) throw new Error(unreadableMessage(snapshot.name));
     editor.markLoaded(stored, snapshot.version, snapshot.saved_at);
-    return;
-  }
-
-  if (isKnownPatternSchema(stored.schema)) {
-    if (!Array.isArray(stored.entities) || !Array.isArray(stored.constraints)) {
-      throw new Error(unreadableMessage(snapshot.name));
-    }
-    const migrated = normalizeDocument(stored);
-    editor.markLoaded(migrated, snapshot.version, snapshot.saved_at);
-    editor.setReadOnly(true);
-    pendingUpgrade.value = {
-      stored,
-      document: migrated,
-      schema: stored.schema,
-      version: snapshot.version,
-      savedAt: snapshot.saved_at,
-      unknown: false,
-    };
     return;
   }
 
@@ -1398,7 +1605,7 @@ function applySnapshot(snapshot: Pattern): void {
  */
 async function persist(
   expectedVersion: number | null,
-  { origin = 'manual', expectedSchema, keepalive = false }: SaveOptions = {},
+  { origin = 'manual', keepalive = false }: SaveOptions = {},
 ): Promise<SaveOutcome> {
   const snapshot = pattern.value;
   editor.markSaving();
@@ -1407,7 +1614,6 @@ async function persist(
     const payload = {
       document: snapshot,
       expected_version: expectedVersion,
-      ...(expectedSchema === undefined ? {} : { expected_schema: expectedSchema }),
       ...(origin === 'autosave' ? { origin } : {}),
     };
 
@@ -1479,40 +1685,11 @@ function overwrite(): void {
   });
 }
 
-async function updateDocument(): Promise<void> {
-  const pending = pendingUpgrade.value;
-  if (pending === null || editor.saveState === 'saving') return;
-
-  if ((await persist(pending.version, { expectedSchema: pending.schema })) !== 'saved') {
-    // A stale version during an upgrade must reload, not run the generic
-    // overwrite path: that path would write the migrated document without
-    // archiving the stored one.
-    if (conflict.value !== null) {
-      conflict.value = null;
-      editor.markSaveFailed();
-      error.value = 'The project changed elsewhere. Reload the project to upgrade it.';
-      return;
-    }
-
-    editor.loadRaw(pending.stored);
-    editor.setReadOnly(true);
-  } else {
-    editor.setReadOnly(false);
-  }
-
-  pendingUpgrade.value = null;
-}
-
 function openReadOnlyDocument(): void {
   const pending = pendingUpgrade.value;
   if (pending === null) return;
 
-  if (pending.unknown) {
-    editor.markReadOnlyLoaded(pending.stored, pending.version, pending.savedAt);
-  } else {
-    editor.markLoaded(pending.document, pending.version, pending.savedAt);
-  }
-
+  editor.markReadOnlyLoaded(pending.stored, pending.version, pending.savedAt);
   editor.setReadOnly(true);
   pendingUpgrade.value = null;
 }
@@ -1575,6 +1752,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  if (nudgeTimer !== null) clearTimeout(nudgeTimer);
   autosave.cancel();
   window.removeEventListener('keydown', onKeyDown);
   window.removeEventListener('beforeunload', onBeforeUnload);
@@ -1671,7 +1849,13 @@ onBeforeUnmount(() => {
             :round-corner-picks="cornerRoundPicks"
             :corner-round-preview-radius="cornerRoundPreviewRadius"
             :read-only="editor.readOnly"
+            :active-piece-id="activePieceId"
+            :move-mode="moveMode"
             @move-point="onMovePoint"
+            @move-piece="onMovePiece"
+            @activate-piece="onActivatePiece"
+            @cross-piece="onCrossPiece"
+            @add-text="onAddText"
             @add-point="onAddPoint"
             @add-point-on-line="onAddPointOnLine"
             @add-line="onAddLine"
@@ -1721,6 +1905,9 @@ onBeforeUnmount(() => {
               @set-piece-allowance="onSetPieceAllowance"
               @set-all-allowances="onSetAllAllowances"
               @remove-piece="onRemovePiece"
+              @set-role="onSetRole"
+              @update-text="onUpdateText"
+              @create-leader="onCreateLeader"
             />
 
             <SidebarEmpty
@@ -1795,7 +1982,7 @@ onBeforeUnmount(() => {
                         <Pill tone="neutral">×{{ piece.quantity }}</Pill>
                       </span>
                       <span class="block text-2xs leading-snug text-muted-foreground">
-                        {{ pieceSizeLine(piece.metrics) }}
+                        {{ piece.hasLoop ? pieceSizeLine(piece.metrics) : 'No cut loop' }}
                       </span>
                     </span>
                     <span aria-hidden="true" class="shrink-0 text-muted-foreground">
@@ -1813,6 +2000,12 @@ onBeforeUnmount(() => {
                       @set-piece-allowance="onSetPieceAllowance"
                       @set-all-allowances="onSetAllAllowances"
                       @remove-piece="onRemovePiece"
+                      @set-cut-loop="setCutLoop"
+                      @clear-cut-loop="clearCutLoop"
+                      @toggle-move="toggleMove"
+                      @activate="activatePiece"
+                      :active="piece.id === activePieceId"
+                      :move-mode="moveMode && piece.id === activePieceId"
                     />
                   </div>
                 </li>
@@ -1823,12 +2016,11 @@ onBeforeUnmount(() => {
               <Button
                 variant="outline"
                 size="sm"
-                :disabled="!canCreatePiece"
-                :title="pieceCreation.ok ? undefined : pieceCreation.message"
+                :disabled="editor.readOnly"
                 data-testid="pieces-create"
-                @click="createPiece"
+                @click="newPiece"
               >
-                Create piece
+                New piece
               </Button>
               <p
                 class="text-2xs leading-snug text-muted-foreground"
@@ -2165,8 +2357,6 @@ onBeforeUnmount(() => {
         v-if="pendingUpgrade"
         :saved-schema="pendingUpgrade.schema"
         :editor-schema="PATTERN_SCHEMA"
-        :unknown="pendingUpgrade.unknown"
-        @update="updateDocument"
         @readonly="openReadOnlyDocument"
         @cancel="cancelUpgrade"
       />
