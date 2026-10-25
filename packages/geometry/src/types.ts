@@ -107,7 +107,7 @@ export interface TextEntity {
   alignment?: TextAlignment;
   /** Radians, counter-clockwise; omitted means 0. */
   rotation?: number;
-  /** Cap height in millimetres; omitted means 6, range 1–100. */
+  /** Cap height in millimetres; omitted means 10, range 1–100. */
   fontSize?: number;
   /** Optional point the leader line runs to; same piece, not the anchor. */
   leader?: EntityId;

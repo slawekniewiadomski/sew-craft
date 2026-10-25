@@ -5,11 +5,18 @@ import type { Vec2 } from './vector.js';
 export const MONO_ADVANCE_RATIO = 0.6;
 
 /** Default cap height in millimetres. */
-export const DEFAULT_TEXT_SIZE = 6;
+export const DEFAULT_TEXT_SIZE = 10;
 
 export const MIN_TEXT_SIZE = 1;
 export const MAX_TEXT_SIZE = 100;
 export const MAX_TEXT_LENGTH = 120;
+
+/** The leader's rule sits this fraction of a cap height below the baseline. */
+export const LEADER_RULE_GAP_RATIO = 0.12;
+/** Arrow head length as a fraction of the cap height. */
+export const LEADER_HEAD_LENGTH_RATIO = 0.3;
+/** Arrow head width as a fraction of the cap height. */
+export const LEADER_HEAD_WIDTH_RATIO = 0.15;
 
 /** The rotated bounds of a label, used for drawing and hit-testing. */
 export interface TextLayout {
@@ -18,6 +25,22 @@ export interface TextLayout {
   width: number;
   height: number;
   rotation: number;
+}
+
+/** A straight line between two points. */
+export interface Segment {
+  start: Vec2;
+  end: Vec2;
+}
+
+/** The derived parts of a leader: the rule, its shaft and the filled arrow head. */
+export interface LeaderGeometry {
+  /** The rule under the label, spanning its width. */
+  underline: Segment;
+  /** The shaft from the nearer rule end to the head base; `null` when the head fills it. */
+  shaft: Segment | null;
+  /** The filled triangle's corners: the tip first, then the two base corners. */
+  head: Vec2[];
 }
 
 function rotate(point: Vec2, angle: number): Vec2 {
@@ -72,42 +95,78 @@ export function textLayout(entity: TextEntity, anchor: Vec2 | null): TextLayout 
   };
 }
 
-function nearestOnSegment(point: Vec2, a: Vec2, b: Vec2): Vec2 {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  // Guard the division without a branch: a degenerate (zero-length) edge simply
-  // resolves to its start point.
-  const lengthSquared = Math.max(dx * dx + dy * dy, Number.EPSILON);
-  const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared));
-  return { x: a.x + t * dx, y: a.y + t * dy };
+function midpoint(a: Vec2, b: Vec2): Vec2 {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
+/** Two distances this close to each other count as a tie. */
+const TIE_EPSILON = 1e-6;
+
 /**
- * The leader polyline from the label's nearest edge to the leader point, or
- * `null` when there is no leader or either endpoint is missing. The label edge
- * is picked from the laid-out box, so a rotated label leads from its turned edge.
+ * The leader's derived geometry, or `null` when there is no leader or either
+ * endpoint is missing. The rule spans the label width just below its baseline;
+ * the shaft leaves from whichever rule end is nearer the target and stops at
+ * the base of a filled head whose tip is the target. A leader shorter than the
+ * head shrinks the head proportionally, so the head never inverts.
  */
-export function textLeader(
+export function textLeaderGeometry(
   entity: TextEntity,
   anchor: Vec2 | null,
   leader: Vec2 | null,
-): Vec2[] | null {
-  if (leader === null || entity.leader === undefined) return null;
+): LeaderGeometry | null {
+  if (entity.leader === undefined || anchor === null || leader === null) return null;
   const layout = textLayout(entity, anchor);
   if (layout === null) return null;
 
-  let best = layout.corners[0]!;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  for (let index = 0; index < layout.corners.length; index += 1) {
-    const a = layout.corners[index]!;
-    const b = layout.corners[(index + 1) % layout.corners.length]!;
-    const candidate = nearestOnSegment(leader, a, b);
-    const distance = Math.hypot(candidate.x - leader.x, candidate.y - leader.y);
-    if (distance < bestDistance) {
-      best = candidate;
-      bestDistance = distance;
-    }
+  const size = entity.fontSize ?? DEFAULT_TEXT_SIZE;
+  const gap = size * LEADER_RULE_GAP_RATIO;
+  const down = rotate({ x: 0, y: 1 }, layout.rotation);
+  const underline: Segment = {
+    start: { x: layout.corners[0]!.x + down.x * gap, y: layout.corners[0]!.y + down.y * gap },
+    end: { x: layout.corners[1]!.x + down.x * gap, y: layout.corners[1]!.y + down.y * gap },
+  };
+
+  const fromStart = Math.hypot(leader.x - underline.start.x, leader.y - underline.start.y);
+  const fromEnd = Math.hypot(leader.x - underline.end.x, leader.y - underline.end.y);
+  let start = underline.start;
+  if (Math.abs(fromStart - fromEnd) > TIE_EPSILON) {
+    start = fromStart < fromEnd ? underline.start : underline.end;
+  } else {
+    // A tie follows the target's side of the label centre along the rule, and
+    // falls back to the right end when the target sits on the centre line.
+    const centre = midpoint(underline.start, underline.end);
+    const along =
+      (leader.x - centre.x) * (underline.end.x - underline.start.x) +
+      (leader.y - centre.y) * (underline.end.y - underline.start.y);
+    start = along < 0 ? underline.start : underline.end;
   }
 
-  return [best, leader];
+  const dx = leader.x - start.x;
+  const dy = leader.y - start.y;
+  const length = Math.hypot(dx, dy);
+  if (length === 0) {
+    return { underline, shaft: null, head: [leader, leader, leader] };
+  }
+
+  const ux = dx / length;
+  const uy = dy / length;
+  const headLength = size * LEADER_HEAD_LENGTH_RATIO;
+  const halfWidth = (size * LEADER_HEAD_WIDTH_RATIO) / 2;
+  const scale = Math.min(1, length / headLength);
+  const base = {
+    x: leader.x - ux * headLength * scale,
+    y: leader.y - uy * headLength * scale,
+  };
+  const offsetX = -uy * halfWidth * scale;
+  const offsetY = ux * halfWidth * scale;
+
+  return {
+    underline,
+    shaft: length > headLength ? { start, end: base } : null,
+    head: [
+      leader,
+      { x: base.x + offsetX, y: base.y + offsetY },
+      { x: base.x - offsetX, y: base.y - offsetY },
+    ],
+  };
 }
