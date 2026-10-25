@@ -152,10 +152,6 @@ function pointMap(document: PatternDocument): Map<EntityId, PointEntity> {
 }
 
 /**
- * Resolve the picked slots to the point ids `add_constraint` expects. Returns
- * `null` for an incomplete tuple, a missing reference or a degenerate one.
- */
-/**
  * Whether a relation names the line's supporting line rather than its visible
  * span. `point_on_line`, `horizontal` and `vertical` are direction relations;
  * `distance` and `equal` measure length and keep the raw endpoints.
@@ -164,6 +160,10 @@ function usesSupportAnchors(type: ConstraintType): boolean {
   return type === 'point_on_line' || type === 'horizontal' || type === 'vertical';
 }
 
+/**
+ * Resolve the picked slots to the point ids `add_constraint` expects. Returns
+ * `null` for an incomplete tuple, a missing reference or a degenerate one.
+ */
 export function constraintParams(
   type: ConstraintType,
   picks: ConstraintPick[],
