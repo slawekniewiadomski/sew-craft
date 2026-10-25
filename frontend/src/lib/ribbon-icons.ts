@@ -14,6 +14,7 @@ export type RibbonIconName =
   | 'arc'
   | 'circle'
   | 'text'
+  | 'text-leader'
   | 'rectangle'
   | 'rectangle-center'
   | 'rectangle-aligned'
@@ -42,6 +43,15 @@ const ACTION_ICONS: Record<ActionIconName, RibbonIcon> = {
   arc: { paths: ['M2.2 9.6 A 7.3 7.3 0 0 1 9.8 2.4'] },
   circle: { paths: ['M1.5 6 A4.5 4.5 0 0 1 10.5 6 A4.5 4.5 0 0 1 1.5 6'] },
   text: { paths: ['M2.5 2.5 H9.5', 'M6 2.5 V9.5', 'M4 9.5 H8'] },
+  'text-leader': {
+    paths: [
+      'M1.8 2.5 H7',
+      'M4.4 2.5 V9.5',
+      'M3 9.5 H5.8',
+      'M7.6 7.5 H10.6',
+      'M9.4 6.3 L10.8 7.5 L9.4 8.7',
+    ],
+  },
   rectangle: { paths: ['M2 3.5 H10 V8.5 H2 Z'] },
   'rectangle-center': {
     paths: ['M2 3.5 H10 V8.5 H2 Z'],

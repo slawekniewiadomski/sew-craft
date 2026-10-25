@@ -1,6 +1,9 @@
 import {
+  allPoints,
   createEmptyDocument,
+  executeCommand,
   type Entity,
+  isCornerRoundDerived,
   type LineEntity,
   type PatternDocument,
   type PointEntity,
@@ -11,6 +14,8 @@ import {
   endpointMissing,
   endpointPosition,
   resolveDraftingEndpoint,
+  resolveLeaderEndpoint,
+  resolveTextAnchorEndpoint,
   type DraftingEndpoint,
 } from './drafting';
 
@@ -113,6 +118,130 @@ describe('resolveDraftingEndpoint container rules', () => {
       id: 'other',
     });
     expect(resolveDraftingEndpoint(document, { x: 300, y: 100 })).toMatchObject({
+      kind: 'new',
+    });
+  });
+});
+
+describe('text endpoints', () => {
+  const breaks = (
+    id: string,
+    x: number,
+    y: number,
+    role?: 'annotation',
+    piece?: string,
+  ): PointEntity => ({
+    id,
+    kind: 'point',
+    x,
+    y,
+    construction: false,
+    fixed: false,
+    ...(role === undefined ? {} : { role }),
+    ...(piece === undefined ? {} : { piece }),
+  });
+
+  const document = doc([
+    breaks('own', 100, 100, undefined, 'p1'),
+    breaks('mark', 140, 100, 'annotation', 'p1'),
+    breaks('other', 200, 100, undefined, 'p2'),
+  ]);
+
+  it('snaps the anchor to a point but never reuses it', () => {
+    expect(resolveTextAnchorEndpoint(document, { x: 101, y: 101 }, 'p1')).toEqual({
+      kind: 'new',
+      x: 100,
+      y: 100,
+    });
+    expect(resolveTextAnchorEndpoint(document, { x: 44, y: 46 }, 'p1')).toEqual({
+      kind: 'new',
+      x: 40,
+      y: 50,
+    });
+  });
+
+  it('keeps the anchor out of another piece', () => {
+    expect(resolveTextAnchorEndpoint(document, { x: 200, y: 100 }, 'p1')).toEqual({
+      kind: 'new',
+      x: 200,
+      y: 100,
+    });
+  });
+
+  it('reuses an annotation point and an ordinary point as the target', () => {
+    expect(resolveLeaderEndpoint(document, { x: 141, y: 99 }, 'p1')).toEqual({
+      kind: 'point',
+      id: 'mark',
+    });
+    expect(resolveLeaderEndpoint(document, { x: 100, y: 100 }, 'p1')).toEqual({
+      kind: 'point',
+      id: 'own',
+    });
+  });
+
+  it('creates a target when nothing snaps, and ignores another piece', () => {
+    expect(resolveLeaderEndpoint(document, { x: 44, y: 46 }, 'p1')).toEqual({
+      kind: 'new',
+      x: 40,
+      y: 50,
+    });
+    expect(resolveLeaderEndpoint(document, { x: 200, y: 100 }, 'p1')).toEqual({
+      kind: 'new',
+      x: 200,
+      y: 100,
+    });
+  });
+
+  it('uses every point when no piece is active', () => {
+    expect(resolveLeaderEndpoint(document, { x: 200, y: 100 })).toEqual({
+      kind: 'point',
+      id: 'other',
+    });
+  });
+
+  it('never snaps a target to a corner-round-derived point', () => {
+    const square = doc([
+      breaks('a', 0, 0),
+      breaks('b', 100, 0),
+      breaks('c', 100, 100),
+      breaks('d', 0, 100),
+      {
+        id: 'ab',
+        kind: 'line',
+        start: 'a',
+        end: 'b',
+        construction: false,
+      } as LineEntity,
+      {
+        id: 'bc',
+        kind: 'line',
+        start: 'b',
+        end: 'c',
+        construction: false,
+      } as LineEntity,
+      {
+        id: 'cd',
+        kind: 'line',
+        start: 'c',
+        end: 'd',
+        construction: false,
+      } as LineEntity,
+      {
+        id: 'da',
+        kind: 'line',
+        start: 'd',
+        end: 'a',
+        construction: false,
+      } as LineEntity,
+    ]);
+    const rounded = executeCommand(square, {
+      id: 'r1',
+      type: 'add_corner_round',
+      params: { first: 'ab', second: 'bc', radius: 10 },
+    }).document;
+    const derived = allPoints(rounded).find((point) => isCornerRoundDerived(rounded, point.id))!;
+
+    expect(resolveLeaderEndpoint(rounded, { x: derived.x, y: derived.y })).toMatchObject({
       kind: 'new',
     });
   });

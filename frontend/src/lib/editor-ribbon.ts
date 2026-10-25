@@ -63,6 +63,7 @@ const TOOL_ICONS: Record<EditorTool, RibbonIconName> = {
   add_arc: 'arc',
   add_circle: 'circle',
   add_text: 'text',
+  add_text_leader: 'text-leader',
   add_rectangle: 'rectangle',
   add_center_rectangle: 'rectangle-center',
   add_3point_rectangle: 'rectangle-aligned',
@@ -137,7 +138,7 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
   {
     id: 'annotation',
     label: 'Annotation',
-    items: [toolItem('add_text')],
+    items: [toolGroup('text', 'Text', [toolItem('add_text'), toolItem('add_text_leader')])],
   },
   {
     id: 'sketching',
