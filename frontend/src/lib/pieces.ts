@@ -244,11 +244,7 @@ export function pieceCreationFromSelection(
     };
   }
 
-  const validation = validatePiece(
-    document,
-    ordered,
-    piece === undefined ? {} : { piece },
-  );
+  const validation = validatePiece(document, ordered, piece === undefined ? {} : { piece });
   return validation.ok ? { ok: true, edges: ordered } : { ok: false, message: validation.message };
 }
 

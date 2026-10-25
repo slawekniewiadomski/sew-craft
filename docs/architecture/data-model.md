@@ -75,91 +75,69 @@ can be written when it changes.
 
 ```jsonc
 {
-  "schema": "sewcraft.pattern/0.2",
+  "schema": "sewcraft.pattern/0.3",
   "units": "mm",
   "entities": [
-    { "id": "p1", "kind": "point", "x": 0, "y": 0, "construction": true, "fixed": true },
-    { "id": "p2", "kind": "point", "x": 120, "y": 0, "construction": false, "fixed": false },
-    { "id": "l1", "kind": "line", "start": "p1", "end": "p2", "construction": false },
-    { "id": "p3", "kind": "point", "x": 120, "y": 90, "construction": false, "fixed": false },
-    { "id": "l2", "kind": "line", "start": "p2", "end": "p3", "construction": false },
-    { "id": "p4", "kind": "point", "x": 130, "y": 40, "construction": false, "fixed": false },
-    { "id": "p5", "kind": "point", "x": 110, "y": 50, "construction": false, "fixed": false },
+    // Every entity names its piece; role absent means cut.
+    { "id": "p1", "kind": "point", "x": 0, "y": 0, "piece": "pc1", "fixed": true },
+    { "id": "p2", "kind": "point", "x": 120, "y": 0, "piece": "pc1", "fixed": false },
+    { "id": "l1", "kind": "line", "start": "p1", "end": "p2", "piece": "pc1" },
+    { "id": "p3", "kind": "point", "x": 120, "y": 90, "piece": "pc1", "fixed": false },
+    { "id": "l2", "kind": "line", "start": "p2", "end": "p3", "piece": "pc1" },
     {
-      "id": "ar1",
-      "kind": "arc",
-      "start": "p2",
-      "end": "p4",
-      "through": "p5",
-      "construction": false,
+      "id": "g1",
+      "kind": "line",
+      "start": "p1",
+      "end": "p3",
+      "piece": "pc1",
+      "role": "construction",
     },
-    { "id": "p6", "kind": "point", "x": 130, "y": 0, "construction": false, "fixed": false },
-    { "id": "ci1", "kind": "circle", "center": "p2", "rim": "p6", "construction": false },
+    { "id": "mark", "kind": "point", "x": 60, "y": 20, "piece": "pc1", "role": "annotation" },
+    {
+      "id": "t1",
+      "kind": "text", // always annotation; never a solver variable
+      "piece": "pc1",
+      "anchor": "mark",
+      "content": "rivet",
+      "alignment": "left",
+      "rotation": 0,
+      "fontSize": 6,
+    },
   ],
   "constraints": [
-    { "id": "c1", "type": "horizontal", "a": "p1", "b": "p2" },
+    { "id": "c1", "type": "horizontal", "a": "p1", "b": "p2", "piece": "pc1" },
     {
       "id": "c2",
       "type": "distance",
       "a": "p1",
       "b": "p2",
-      "value": 120, // omitted makes the dimension driven (measurement only)
-      "orientation": "horizontal", // aligned (default) | horizontal | vertical
-      "offset": 20, // dimension line offset in mm; presentation only
-    },
-    {
-      "id": "c3",
-      "type": "distance",
-      "a": "p2",
-      "b": "p3",
-      "reference": "c2", // effective value is resolved through c2
+      "piece": "pc1",
+      "value": 120,
+      "orientation": "horizontal",
+      "offset": 20,
     },
     {
       "id": "c4",
-      "type": "derived_distance", // read-only cut dimension; no solver equation
+      "type": "derived_distance",
       "piece": "pc1",
       "a": { "edge": "l1", "at": "start" },
       "b": { "edge": "l1", "at": "end" },
-    },
-    {
-      "id": "c5",
-      "type": "derived_distance", // corner-to-edge and edge-to-edge anchors are allowed
-      "piece": "pc1",
-      "a": { "edge": "l1", "at": "edge" },
-      "b": { "edge": "l2", "at": "edge" },
     },
   ],
   "pieces": [
     {
       "id": "pc1",
       "name": "Front",
-      "edges": ["l1", "l2"], // ordered closed loop of cut edges
+      "edges": ["l1", "l2"], // the captured cut loop; may be empty
       "allowances": [
-        { "edge": "l1", "width": 10, "kind": "double" }, // finished width 10 mm, cuts 20 mm
-        { "edge": "l2", "width": 10 }, // kind omitted means "seam"
+        { "edge": "l1", "width": 10, "kind": "double" },
+        { "edge": "l2", "width": 10 },
       ],
       "quantity": 2,
     },
   ],
-  "defaults": {
-    "allowance": { "width": 10, "kind": "seam" }, // copied onto each new piece
-  },
-  "seams": [{ "id": "s1", "edge": "l1", "width": 10 }], // deprecated: edges outside any piece
-  "cornerRounds": [
-    {
-      "id": "r1",
-      "corner": "p2",
-      "ends": [
-        { "line": "l1", "anchor": "p1", "tangent": "r1:a" },
-        { "line": "l2", "anchor": "p3", "tangent": "r1:b" },
-      ],
-      "radius": 8,
-      "arc": "r1:arc",
-      "controls": ["r1:c1", "r1:c2"],
-      "center": "r1:center",
-      "cornerConstruction": false,
-    },
-  ],
+  "defaults": { "allowance": { "width": 10, "kind": "seam" } },
+  "cornerRounds": [],
 }
 ```
 
@@ -169,7 +147,7 @@ built-in **10 mm seam** preset, and `normalizeDocument` fills the field on load
 copies onto every loop edge; `null` means new pieces start with no allowance.
 Changing or clearing it never rewrites an existing piece's allowances. An invalid
 stored width or kind falls back to the built-in preset; the pattern schema string
-stays `sewcraft.pattern/0.2`.
+is `sewcraft.pattern/0.3`.
 
 `cornerRounds` is optional, so documents written before the feature load
 unchanged. A round is a live feature: it stores the sharp corner, both line
@@ -179,7 +157,7 @@ anchors and the radius, while its derived entities (tangent points `r1:a`,
 are trimmed to the tangent points, and `p2` stays as a construction point.
 `center` is optional and additive — it points at a fixed construction point, is
 minted once on load for rounds written before feature points, and never joins a
-piece loop or the SVG export. The schema string stays `sewcraft.pattern/0.2`.
+piece loop or the SVG export. The schema string is `sewcraft.pattern/0.3`.
 
 An `arc` entity is a true circular arc referencing three ordinary points: `start`
 and `end` bound it and `through` lies on it between them, fixing both the bulge
@@ -209,11 +187,11 @@ adds a fold line at `width`. `name` and `quantity` are optional (quantity omitte
 means 1). Derived geometry is never stored: the stitch loop, cut loop, fold lines,
 metrics and cut bounds are recomputed from the document on read.
 
-The schema is `sewcraft.pattern/0.2`. `normalizeDocument` in
+The schema is `sewcraft.pattern/0.3`. `normalizeDocument` in
 `packages/geometry/src/migration.ts` brings a document up to it on load and is
 one-way and idempotent. A 0.1 document's closed seam chains become one piece each,
-with those seams as `kind: 'seam'` allowances at the stored width and `side`
-discarded. Seams on edges that close no loop stay in the deprecated `seams` field,
+with those allowances as `kind: 'seam'` allowances at the stored width and `side`
+discarded. This migration is removed in 0.3: a stored 0.2 document is refused.
 which is read-only after load and keeps its legacy dashed rendering until it is
 removed in 0.3. The editor has no legacy-allowance authoring surface: allowances
 are edited per piece, through the Pieces drawer or the entity inspector. Documents without `pieces` gain an empty list, and an
@@ -225,7 +203,7 @@ name a point **or a straight line**; the entity kind selects the anchor. A point
 and a line measure the perpendicular to the line's infinite supporting line; two
 parallel lines measure from the canonical first midpoint (lower id) to the second
 line. A line-anchored dimension is always aligned and carries no extra stored
-field, so the schema string stays `sewcraft.pattern/0.2`. A `reference` links
+field, so the schema string is `sewcraft.pattern/0.3`. A `reference` links
 one dimension to another; the effective value is derived, so the constraint
 stores no duplicate `value`. When the source disappears, the dependent keeps its
 `reference`, stores the last resolved number in `lastKnownValue` and renders as
@@ -263,8 +241,9 @@ resolve keeps its references but has no reading to show, so it renders as broken
 without a number. Deleting a loop **point** leaves the piece in place, so the
 dimension stays and becomes broken; only the piece/edge cascade removes it.
 
-**Schema decision (Q4).** The schema string stays `sewcraft.pattern/0.2`: `0.3`
-is reserved for removing the legacy `seams` field, so this feature does not
+**Schema decision (Q4).** The schema string is `sewcraft.pattern/0.3`: every
+entity and constraint names its piece, `role` replaces `construction`, text joins
+the entity union and the legacy `seams` field is gone. This feature does not
 consume it. An older build reads `at: 'edge'` as `end` (its anchor resolver only
 knows two values), renders the wrong vertex and can edit and save that misread.
 That is the accepted shipping-now trade-off, documented in

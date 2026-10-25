@@ -29,6 +29,10 @@ meaning depends on whether the document has pieces:
   double-fold allowance, at the finished width inside the cut line. A `seam` or
   `single` allowance emits no fold line.
 - `construction` (off by default): the guide layer, as before.
+- **Annotation geometry and text are not exported in this change.** They stay
+  canvas-only until the export follow-up adds a print preset; the cut, stitch and
+  fold layers are unchanged, and a document whose entities are all annotations
+  still exports an empty cut layer rather than falling back to every entity.
 - `seam-allowance`: only the legacy per-edge outlines passed in `seamAllowance`
   for edges outside any piece. A piece's allowances never take this path.
 - `width`/`height` in `mm`, and a `viewBox` from the union of the pieces' **cut**

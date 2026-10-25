@@ -356,9 +356,9 @@ describe('entitiesInRect text', () => {
     expect(
       entitiesInRect(document, { minX: 20, minY: 5, maxX: 30, maxY: 9 }, 'crossing'),
     ).toContain('t');
-    expect(
-      entitiesInRect(document, { minX: 0, minY: 0, maxX: 40, maxY: 20 }, 'window'),
-    ).toContain('t');
+    expect(entitiesInRect(document, { minX: 0, minY: 0, maxX: 40, maxY: 20 }, 'window')).toContain(
+      't',
+    );
     expect(
       entitiesInRect(document, { minX: 0, minY: 0, maxX: 12, maxY: 5 }, 'window'),
     ).not.toContain('t');

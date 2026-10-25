@@ -78,10 +78,7 @@ function nearestOnSegment(point: Vec2, a: Vec2, b: Vec2): Vec2 {
   // Guard the division without a branch: a degenerate (zero-length) edge simply
   // resolves to its start point.
   const lengthSquared = Math.max(dx * dx + dy * dy, Number.EPSILON);
-  const t = Math.max(
-    0,
-    Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared),
-  );
+  const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared));
   return { x: a.x + t * dx, y: a.y + t * dy };
 }
 

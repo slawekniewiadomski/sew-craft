@@ -3,13 +3,7 @@ import { EDITOR_TOOLS, type EditorTool } from './editor-tools';
 import type { RibbonIconName } from './ribbon-icons';
 
 export type RibbonAction =
-  | 'undo'
-  | 'redo'
-  | 'delete'
-  | 'fit'
-  | 'create_piece'
-  | 'set_cut_loop'
-  | 'download_svg';
+  'undo' | 'redo' | 'delete' | 'fit' | 'create_piece' | 'set_cut_loop' | 'download_svg';
 
 export interface RibbonConstraintItem {
   kind: 'constraint';

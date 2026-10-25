@@ -11,7 +11,7 @@ describe('EDITOR_TOOLS', () => {
       'add_curve',
       'add_arc',
       'add_circle',
-    'add_text',
+      'add_text',
       'add_rectangle',
       'add_center_rectangle',
       'add_3point_rectangle',

@@ -209,7 +209,11 @@ export function buildRectangleCommands(
     commands.push({
       id: nextId('line'),
       type: 'add_line',
-      params: { start, end: ids[(index + 1) % ids.length]!, ...(piece === undefined ? {} : { piece }) },
+      params: {
+        start,
+        end: ids[(index + 1) % ids.length]!,
+        ...(piece === undefined ? {} : { piece }),
+      },
     });
   });
 

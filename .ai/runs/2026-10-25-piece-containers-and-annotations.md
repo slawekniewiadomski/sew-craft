@@ -56,42 +56,42 @@ leader. Schema `sewcraft.pattern/0.3`; export is deliberately unchanged.
 
 ### Phase 1: Document model
 
-- [ ] 1.1 Schema 0.3 types: role, ownership, text entity, constraint piece, legacy deprecations
-- [ ] 1.2 `roles.ts` helpers and their tests
-- [ ] 1.3 `text.ts` layout/leader helpers and their tests
-- [ ] 1.4 Adapt document, piece, selection, export and offset to roles and text
-- [ ] 1.5 0.3-only migration with a typed unsupported-schema error
-- [ ] 1.6 Command surface: piece/role params, same-piece validation, text commands, legacy aliases
-- [ ] 1.7 Geometry fixtures and tests updated; package exports verified
+- [x] 1.1 Schema 0.3 types: role, ownership, text entity, constraint piece, legacy deprecations
+- [x] 1.2 `roles.ts` helpers and their tests
+- [x] 1.3 `text.ts` layout/leader helpers and their tests
+- [x] 1.4 Adapt document, piece, selection, export and offset to roles and text
+- [x] 1.5 0.3-only migration with a typed unsupported-schema error
+- [x] 1.6 Command surface: piece/role params, same-piece validation, text commands, legacy aliases
+- [x] 1.7 Geometry fixtures and tests updated; package exports verified
 
 ### Phase 2: Piece lifecycle commands
 
-- [ ] 2.1 `create_piece` empty and `set_piece_loop` with allowance preset
-- [ ] 2.2 `delete_entity` loop repair and `delete_piece` cascade
-- [ ] 2.3 `move_piece` and `set_role`
-- [ ] 2.4 `add_text` / `update_text` validation and inverses
+- [x] 2.1 `create_piece` empty and `set_piece_loop` with allowance preset
+- [x] 2.2 `delete_entity` loop repair and `delete_piece` cascade
+- [x] 2.3 `move_piece` and `set_role`
+- [x] 2.4 `add_text` / `update_text` validation and inverses
 
 ### Phase 3: Data layer
 
-- [ ] 3.1 `activePieceId` in the editor store
-- [ ] 3.2 Tool builders pass the active piece; missing-piece guard
-- [ ] 3.3 Text tool and automatic loop capture
-- [ ] 3.4 Cross-piece pick and snap guard
+- [x] 3.1 `activePieceId` in the editor store
+- [x] 3.2 Tool builders pass the active piece; missing-piece guard
+- [x] 3.3 Text tool and automatic loop capture
+- [x] 3.4 Cross-piece pick and snap guard
 
 ### Phase 4: Canvas
 
-- [ ] 4.1 Role styling, annotation and text layers with test ids
-- [ ] 4.2 Move mode preview, arrow-key nudging and coalescing
+- [x] 4.1 Role styling, annotation and text layers with test ids
+- [x] 4.2 Move mode preview, arrow-key nudging and coalescing
 
 ### Phase 5: Panels and ribbon
 
-- [ ] 5.1 Piece card: incomplete/broken loop, Set/Clear, Move toggle, active highlight
-- [ ] 5.2 Ribbon: New piece and Text tool
-- [ ] 5.3 Properties panel: role select and text editor
-- [ ] 5.4 Unsupported-schema dialog copy
+- [x] 5.1 Piece card: incomplete/broken loop, Set/Clear, Move toggle, active highlight
+- [x] 5.2 Ribbon: New piece and Text tool
+- [x] 5.3 Properties panel: role select and text editor
+- [x] 5.4 Unsupported-schema dialog copy
 
 ### Phase 6: Consolidation
 
-- [ ] 6.1 Command spec trio at 0.13.0 and the migration section
-- [ ] 6.2 Glossary, architecture docs, compatibility exemption and AGENTS update
-- [ ] 6.3 Full validation gate and authoritative review pass
+- [x] 6.1 Command spec trio at 0.13.0 and the migration section
+- [x] 6.2 Glossary, architecture docs, compatibility exemption and AGENTS update
+- [x] 6.3 Full validation gate and authoritative review pass

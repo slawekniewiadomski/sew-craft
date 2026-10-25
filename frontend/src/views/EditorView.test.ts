@@ -4370,24 +4370,6 @@ describe('EditorView containers and annotation text', () => {
     entities: document.entities.map((entity) => ({ ...entity, piece: 'p1' })),
   });
 
-  const textDoc = (): PatternDocument => ({
-    ...pieceDoc,
-    entities: [
-      ...pieceDoc.entities,
-      {
-        id: 't1',
-        kind: 'text',
-        piece: 'p1',
-        anchor: 'a',
-        content: 'velcro',
-        alignment: 'center',
-        rotation: 0.5,
-        fontSize: 8,
-        leader: 'b',
-      },
-    ],
-  });
-
   it('creates an empty piece and makes it active', async () => {
     const { wrapper, store } = await mountLoaded(lineDoc);
 
@@ -4425,15 +4407,22 @@ describe('EditorView containers and annotation text', () => {
 
     await wrapper.find('[data-testid="piece-row-p1"]').trigger('click');
     await wrapper.find('[data-testid="piece-drawer-piece-move-toggle"]').trigger('click');
-    expect(wrapper.find('[data-testid="piece-drawer-piece-move-toggle"]').attributes('aria-pressed')).toBe('true');
+    expect(
+      wrapper.find('[data-testid="piece-drawer-piece-move-toggle"]').attributes('aria-pressed'),
+    ).toBe('true');
     await wrapper.find('[data-testid="piece-drawer-piece-move-toggle"]').trigger('click');
-    expect(wrapper.find('[data-testid="piece-drawer-piece-move-toggle"]').attributes('aria-pressed')).toBe('false');
+    expect(
+      wrapper.find('[data-testid="piece-drawer-piece-move-toggle"]').attributes('aria-pressed'),
+    ).toBe('false');
     await wrapper.find('[data-testid="piece-drawer-piece-move-toggle"]').trigger('click');
 
     wrapper.findComponent(PatternCanvas).vm.$emit('move-piece', 5, -7);
     await flushPromises();
 
-    expect(store.document.entities.find((entity) => entity.id === 'a')).toMatchObject({ x: 5, y: -7 });
+    expect(store.document.entities.find((entity) => entity.id === 'a')).toMatchObject({
+      x: 5,
+      y: -7,
+    });
     expect(store.journal.at(-1)?.command.type).toBe('move_piece');
   });
 
@@ -4447,7 +4436,10 @@ describe('EditorView containers and annotation text', () => {
 
     const moves = store.journal.filter((entry) => entry.command.type === 'move_piece');
     expect(moves).toHaveLength(1);
-    expect(store.document.entities.find((entity) => entity.id === 'a')).toMatchObject({ x: 2, y: 0 });
+    expect(store.document.entities.find((entity) => entity.id === 'a')).toMatchObject({
+      x: 2,
+      y: 0,
+    });
     expect(wrapper.find('[data-testid="save-status"]').text()).toContain('Unsaved');
   });
 
@@ -4462,18 +4454,24 @@ describe('EditorView containers and annotation text', () => {
     expect(text).toMatchObject({ anchor: 'a', content: 'Text', piece: 'p1' });
 
     await wrapper.find('[data-testid="tool-select"]').trigger('click');
-    wrapper.find(`[data-kind="text"][data-entity-id="${text.id}"]`).element.dispatchEvent(
-      new MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100, button: 0 }),
-    );
+    wrapper
+      .find(`[data-kind="text"][data-entity-id="${text.id}"]`)
+      .element.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100, button: 0 }),
+      );
     await nextTick();
 
     await wrapper.find('[data-testid="text-content"]').setValue('snap');
     await flushPromises();
-    expect(store.document.entities.find((entity) => entity.id === text.id)).toMatchObject({ content: 'snap' });
+    expect(store.document.entities.find((entity) => entity.id === text.id)).toMatchObject({
+      content: 'snap',
+    });
 
     await wrapper.find('[data-testid="text-leader-pick"]').trigger('click');
     await flushPromises();
-    expect(store.document.entities.find((entity) => entity.id === text.id)).toHaveProperty('leader');
+    expect(store.document.entities.find((entity) => entity.id === text.id)).toHaveProperty(
+      'leader',
+    );
   });
 
   it('assigns an annotation role from the inspector', async () => {
@@ -4484,7 +4482,9 @@ describe('EditorView containers and annotation text', () => {
     await wrapper.find('[data-testid="entity-role"]').setValue('annotation');
     await flushPromises();
 
-    expect(store.document.entities.find((entity) => entity.id === 'ab')).toMatchObject({ role: 'annotation' });
+    expect(store.document.entities.find((entity) => entity.id === 'ab')).toMatchObject({
+      role: 'annotation',
+    });
   });
 
   it('explains a cross-piece pick', async () => {
@@ -4510,9 +4510,11 @@ describe('EditorView containers and annotation text', () => {
     await flushPromises();
     const text = store.document.entities.find((entity) => entity.kind === 'text')!;
     await wrapper.find('[data-testid="tool-select"]').trigger('click');
-    wrapper.find(`[data-kind="text"][data-entity-id="${text.id}"]`).element.dispatchEvent(
-      new MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100, button: 0 }),
-    );
+    wrapper
+      .find(`[data-kind="text"][data-entity-id="${text.id}"]`)
+      .element.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100, button: 0 }),
+      );
     await nextTick();
     await wrapper.find('[data-testid="text-leader-pick"]').trigger('click');
     await nextTick();
@@ -4600,8 +4602,9 @@ describe('EditorView remaining container branches', () => {
 
     wrapper.findComponent(PatternCanvas).vm.$emit('add-point', 10, 10);
     await flushPromises();
-    expect(store.document.entities.find((entity) => entity.kind === 'point' && entity.x === 10))
-      .not.toHaveProperty('piece');
+    expect(
+      store.document.entities.find((entity) => entity.kind === 'point' && entity.x === 10),
+    ).not.toHaveProperty('piece');
 
     await wrapper.find('[data-testid="constraint-horizontal"]').trigger('click');
     wrapper.findComponent(PatternCanvas).vm.$emit('constraint-pick', { id: 'p', kind: 'point' });
@@ -4611,7 +4614,7 @@ describe('EditorView remaining container branches', () => {
   });
 
   it('nudges left and up with Shift and coalesces a cancelling pair', async () => {
-    const { wrapper, store } = await mountLoaded({
+    const { store } = await mountLoaded({
       ...pieceDoc,
       entities: pieceDoc.entities.map((entity) => ({ ...entity, piece: 'p1' })),
     });
@@ -4660,12 +4663,15 @@ describe('EditorView active-piece defaults and teardown', () => {
 
     wrapper.findComponent(PatternCanvas).vm.$emit('add-point', 10, 10);
     await flushPromises();
-    expect(store.document.entities.find((entity) => entity.kind === 'point' && entity.x === 10))
-      .toMatchObject({ piece: 'p1' });
+    expect(
+      store.document.entities.find((entity) => entity.kind === 'point' && entity.x === 10),
+    ).toMatchObject({ piece: 'p1' });
 
     wrapper.findComponent(PatternCanvas).vm.$emit('add-curve', ['a', 'b', 'c', 'd']);
     await flushPromises();
-    expect(store.document.entities.filter((entity) => entity.kind === 'curve').at(-1)).toMatchObject({
+    expect(
+      store.document.entities.filter((entity) => entity.kind === 'curve').at(-1),
+    ).toMatchObject({
       piece: 'p1',
     });
 
@@ -4694,17 +4700,15 @@ describe('EditorView active-piece defaults and teardown', () => {
   });
 
   it('chooses a leader across unowned text and points', async () => {
-    const { wrapper, store } = await mountLoaded(
-      {
-        ...createEmptyDocument(),
-        entities: [
-          { id: 'a', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
-          { id: 'b', kind: 'point', x: 100, y: 0, construction: false, fixed: false, piece: 'p1' },
-          { id: 't1', kind: 'text', piece: 'p1', anchor: 'a', content: 'x' },
-        ],
-        pieces: [{ id: 'p1', edges: [], allowances: [] }],
-      },
-    );
+    const { wrapper, store } = await mountLoaded({
+      ...createEmptyDocument(),
+      entities: [
+        { id: 'a', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+        { id: 'b', kind: 'point', x: 100, y: 0, construction: false, fixed: false, piece: 'p1' },
+        { id: 't1', kind: 'text', piece: 'p1', anchor: 'a', content: 'x' },
+      ],
+      pieces: [{ id: 'p1', edges: [], allowances: [] }],
+    });
 
     await wrapper.find('[data-testid="tool-select"]').trigger('click');
     wrapper
@@ -4734,8 +4738,9 @@ describe('EditorView toggle and nudge edges', () => {
     await nextTick();
     await wrapper.find('[data-testid="piece-row-p1"]').trigger('click');
     await wrapper.find('[data-testid="piece-drawer-piece-move-toggle"]').trigger('click');
-    expect(wrapper.find('[data-testid="piece-drawer-piece-move-toggle"]').attributes('aria-pressed')).toBe('true');
-
+    expect(
+      wrapper.find('[data-testid="piece-drawer-piece-move-toggle"]').attributes('aria-pressed'),
+    ).toBe('true');
   });
 
   it('drops a pending nudge when the active piece disappears', async () => {

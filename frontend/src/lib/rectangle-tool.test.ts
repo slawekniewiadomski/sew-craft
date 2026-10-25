@@ -490,9 +490,21 @@ describe('buildRectangleCommands ownership', () => {
       idGenerator(),
       'p1',
     );
-    expect(commands.filter((command) => command.type === 'add_point').every((command) => command.params.piece === 'p1')).toBe(true);
-    expect(commands.filter((command) => command.type === 'add_line').every((command) => command.params.piece === 'p1')).toBe(true);
-    expect(commands.filter((command) => command.type === 'add_constraint').every((command) => command.params.piece === 'p1')).toBe(true);
+    expect(
+      commands
+        .filter((command) => command.type === 'add_point')
+        .every((command) => command.params.piece === 'p1'),
+    ).toBe(true);
+    expect(
+      commands
+        .filter((command) => command.type === 'add_line')
+        .every((command) => command.params.piece === 'p1'),
+    ).toBe(true);
+    expect(
+      commands
+        .filter((command) => command.type === 'add_constraint')
+        .every((command) => command.params.piece === 'p1'),
+    ).toBe(true);
   });
 });
 
@@ -506,6 +518,10 @@ describe('buildRectangleCommands three-point ownership', () => {
       'p1',
     );
     expect(commands.filter((command) => command.type === 'add_constraint')).toHaveLength(3);
-    expect(commands.filter((command) => command.type === 'add_constraint').every((command) => command.params.piece === 'p1')).toBe(true);
+    expect(
+      commands
+        .filter((command) => command.type === 'add_constraint')
+        .every((command) => command.params.piece === 'p1'),
+    ).toBe(true);
   });
 });

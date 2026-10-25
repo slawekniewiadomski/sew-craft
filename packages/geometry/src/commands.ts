@@ -11,12 +11,7 @@ import {
 } from './document.js';
 import { allowanceForEdge, pieceById, pieceCutLoop, pieceForEdge, validatePiece } from './piece.js';
 import { isAnnotation, isConstruction, isCut, roleOf } from './roles.js';
-import {
-  DEFAULT_TEXT_SIZE,
-  MAX_TEXT_LENGTH,
-  MAX_TEXT_SIZE,
-  MIN_TEXT_SIZE,
-} from './text.js';
+import { DEFAULT_TEXT_SIZE, MAX_TEXT_LENGTH, MAX_TEXT_SIZE, MIN_TEXT_SIZE } from './text.js';
 import {
   cornerRoundGeometry,
   cornerRoundsForEntity,
@@ -630,11 +625,7 @@ function withoutKeys<T extends object>(value: T, keys: readonly string[]): T {
 }
 
 /** Reject a piece that does not exist; ownership validation needs it. */
-function requirePiece(
-  document: PatternDocument,
-  piece: EntityId,
-  type: CommandType,
-): Piece {
+function requirePiece(document: PatternDocument, piece: EntityId, type: CommandType): Piece {
   const found = pieceById(document, piece);
   if (found === undefined) {
     throw new CommandValidationError(type, `unknown piece: ${piece}`);
@@ -789,9 +780,11 @@ function applySetConstruction(
   const entities = document.entities.map((candidate): Entity => {
     if (candidate.id !== id || candidate.kind === 'text') return candidate;
     const rest = withoutKeys(candidate, ['construction', 'role']);
-    return (construction
-      ? { ...rest, role: 'construction', construction: true }
-      : { ...rest, construction: false }) as Entity;
+    return (
+      construction
+        ? { ...rest, role: 'construction', construction: true }
+        : { ...rest, construction: false }
+    ) as Entity;
   });
 
   return {
@@ -1665,10 +1658,7 @@ function applyAddCornerRound(
     throw new CommandValidationError('add_corner_round', 'This corner is already rounded.');
   }
   if (isAnnotation(lineA) || isAnnotation(lineB)) {
-    throw new CommandValidationError(
-      'add_corner_round',
-      'Annotation geometry cannot be rounded.',
-    );
+    throw new CommandValidationError('add_corner_round', 'Annotation geometry cannot be rounded.');
   }
   if (roleOf(lineA) !== roleOf(lineB)) {
     throw new CommandValidationError('add_corner_round', 'Both lines must share a role.');
@@ -2052,10 +2042,7 @@ function resolveCreateAllowance(
   if (allowance === 'default') return effectiveDefaultAllowance(document);
 
   if (typeof allowance !== 'object' || allowance === null) {
-    throw new CommandValidationError(
-      type,
-      'allowance must be "default", "none" or a preset',
-    );
+    throw new CommandValidationError(type, 'allowance must be "default", "none" or a preset');
   }
   if (!Number.isFinite(allowance.width) || allowance.width <= 0) {
     throw new CommandValidationError(
@@ -2218,9 +2205,10 @@ function applyDeletePiece(
   const entities = document.entities.filter(
     (entity) =>
       !removed.has(entity.id) &&
-      !(entity.kind === 'text' &&
-        (removed.has(entity.anchor) ||
-          (entity.leader !== undefined && removed.has(entity.leader)))),
+      !(
+        entity.kind === 'text' &&
+        (removed.has(entity.anchor) || (entity.leader !== undefined && removed.has(entity.leader)))
+      ),
   );
   const constraints = document.constraints.filter(
     (constraint) =>
@@ -2271,7 +2259,11 @@ function applySetPieceLoop(
     throw new CommandValidationError('set_piece_loop', validation.message);
   }
 
-  const preset = resolveCreateAllowance(document, command.params.allowance ?? 'default', 'set_piece_loop');
+  const preset = resolveCreateAllowance(
+    document,
+    command.params.allowance ?? 'default',
+    'set_piece_loop',
+  );
   const existing = new Map(piece.allowances.map((allowance) => [allowance.edge, allowance]));
   const allowances = edges.flatMap((edge) => {
     const current = existing.get(edge);
@@ -2476,7 +2468,9 @@ function applyUpdateText(
     throw new CommandValidationError('update_text', 'text is not owned by a piece');
   }
   const nextAnchor =
-    anchor === undefined ? entity.anchor : requireOwnedPoint(document, anchor, piece, 'update_text').id;
+    anchor === undefined
+      ? entity.anchor
+      : requireOwnedPoint(document, anchor, piece, 'update_text').id;
   let nextLeader = entity.leader;
   if (leader === null) {
     nextLeader = undefined;
@@ -2492,10 +2486,17 @@ function applyUpdateText(
     anchor: nextAnchor,
     content: content === undefined ? entity.content : requireTextContent('update_text', content),
     alignment:
-      alignment === undefined ? (entity.alignment ?? 'left') : requireTextAlignment('update_text', alignment),
-    rotation: rotation === undefined ? (entity.rotation ?? 0) : requireTextRotation('update_text', rotation),
+      alignment === undefined
+        ? (entity.alignment ?? 'left')
+        : requireTextAlignment('update_text', alignment),
+    rotation:
+      rotation === undefined
+        ? (entity.rotation ?? 0)
+        : requireTextRotation('update_text', rotation),
     fontSize:
-      fontSize === undefined ? (entity.fontSize ?? DEFAULT_TEXT_SIZE) : requireTextSize('update_text', fontSize),
+      fontSize === undefined
+        ? (entity.fontSize ?? DEFAULT_TEXT_SIZE)
+        : requireTextSize('update_text', fontSize),
   };
   delete next.leader;
   if (nextLeader !== undefined) next.leader = nextLeader;

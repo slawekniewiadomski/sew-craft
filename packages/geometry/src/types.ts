@@ -113,13 +113,7 @@ export interface TextEntity {
   leader?: EntityId;
 }
 
-export type Entity =
-  | PointEntity
-  | LineEntity
-  | CurveEntity
-  | CircleEntity
-  | ArcEntity
-  | TextEntity;
+export type Entity = PointEntity | LineEntity | CurveEntity | CircleEntity | ArcEntity | TextEntity;
 
 export const CONSTRAINT_TYPES = [
   'coincident',

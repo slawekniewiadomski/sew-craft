@@ -7,7 +7,12 @@ import {
 } from '@sewcraft/geometry';
 import { describe, expect, it } from 'vitest';
 
-import { endpointMissing, endpointPosition, resolveDraftingEndpoint, type DraftingEndpoint } from './drafting';
+import {
+  endpointMissing,
+  endpointPosition,
+  resolveDraftingEndpoint,
+  type DraftingEndpoint,
+} from './drafting';
 
 function pt(id: string, x: number, y: number): PointEntity {
   return { id, kind: 'point', x, y, construction: false, fixed: false };
@@ -63,7 +68,13 @@ describe('endpointMissing', () => {
 });
 
 describe('resolveDraftingEndpoint container rules', () => {
-  const breaks = (id: string, x: number, y: number, role?: 'annotation', piece?: string): PointEntity => ({
+  const breaks = (
+    id: string,
+    x: number,
+    y: number,
+    role?: 'annotation',
+    piece?: string,
+  ): PointEntity => ({
     id,
     kind: 'point',
     x,

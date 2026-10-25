@@ -188,7 +188,11 @@ export function validatePiece(
     if (!isCut(entity)) {
       return { ok: false, message: `Edge ${id} is construction geometry.`, edge: id };
     }
-    if (options.piece !== undefined && entity.piece !== undefined && entity.piece !== options.piece) {
+    if (
+      options.piece !== undefined &&
+      entity.piece !== undefined &&
+      entity.piece !== options.piece
+    ) {
       return { ok: false, message: `Edge ${id} belongs to another piece.`, edge: id };
     }
     if (

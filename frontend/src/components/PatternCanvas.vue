@@ -1623,11 +1623,18 @@ function pointClass(point: PointEntity): string {
 }
 
 /** Role-driven dash: guides and sewing marks are dashed, cut geometry is solid. */
-function entityDash(entity: { construction?: boolean; role?: 'construction' | 'annotation' }): string | undefined {
+function entityDash(entity: {
+  construction?: boolean;
+  role?: 'construction' | 'annotation';
+}): string | undefined {
   return isAnnotation(entity) || isConstruction(entity) ? '4 4' : undefined;
 }
 
-function entityClass(entity: { id: EntityId; construction?: boolean; role?: 'construction' | 'annotation' }): string {
+function entityClass(entity: {
+  id: EntityId;
+  construction?: boolean;
+  role?: 'construction' | 'annotation';
+}): string {
   if (pointOnLineHover.value?.lineId === entity.id) return 'text-primary';
   if (
     dimensionPickLineIds.value.has(entity.id) ||
@@ -1654,7 +1661,12 @@ const activePieceLabel = computed(() => {
   if (piece === undefined) return '';
   const index = props.document.pieces.indexOf(piece);
   const name = piece.name ?? `Piece ${index + 1}`;
-  const loop = piece.edges.length === 0 ? 'no cut loop' : pieceMetrics(props.document, piece) === null ? 'cut loop broken' : 'cut loop';
+  const loop =
+    piece.edges.length === 0
+      ? 'no cut loop'
+      : pieceMetrics(props.document, piece) === null
+        ? 'cut loop broken'
+        : 'cut loop';
   return `${name} · ${loop}`;
 });
 
@@ -1675,7 +1687,8 @@ const textViews = computed<TextView[]>(() =>
     const anchor = getEntity(props.document, entity.anchor);
     if (anchor?.kind !== 'point') return [];
     textLayout(entity, { x: anchor.x, y: anchor.y });
-    const leaderPoint = entity.leader === undefined ? undefined : getEntity(props.document, entity.leader);
+    const leaderPoint =
+      entity.leader === undefined ? undefined : getEntity(props.document, entity.leader);
     return [
       {
         id: entity.id,
@@ -1686,7 +1699,11 @@ const textViews = computed<TextView[]>(() =>
         alignment: entity.alignment ?? 'left',
         leader:
           leaderPoint?.kind === 'point'
-            ? textLeader(entity, { x: anchor.x, y: anchor.y }, { x: leaderPoint.x, y: leaderPoint.y })
+            ? textLeader(
+                entity,
+                { x: anchor.x, y: anchor.y },
+                { x: leaderPoint.x, y: leaderPoint.y },
+              )
             : null,
       },
     ];
@@ -2372,7 +2389,11 @@ function onPointerDown(event: PointerEvent): void {
     case 'add_text':
       emit(
         'add-text',
-        resolveDraftingEndpoint(props.document, screenToWorld(viewport.value, screen), props.activePieceId),
+        resolveDraftingEndpoint(
+          props.document,
+          screenToWorld(viewport.value, screen),
+          props.activePieceId,
+        ),
       );
       break;
   }
@@ -2692,7 +2713,11 @@ function onLinePointer(hit: Hit | null, screen: Vec2): void {
   const endpoint: DraftingEndpoint =
     hit !== null && hit.kind === 'point'
       ? { kind: 'point', id: hit.id }
-      : resolveDraftingEndpoint(props.document, screenToWorld(viewport.value, screen), props.activePieceId);
+      : resolveDraftingEndpoint(
+          props.document,
+          screenToWorld(viewport.value, screen),
+          props.activePieceId,
+        );
 
   const start = lineStart.value;
   if (start === null) {
@@ -2727,7 +2752,11 @@ function onArcPointer(hit: Hit | null, screen: Vec2): void {
   const endpoint: DraftingEndpoint =
     hit !== null && hit.kind === 'point'
       ? { kind: 'point', id: hit.id }
-      : resolveDraftingEndpoint(props.document, screenToWorld(viewport.value, screen), props.activePieceId);
+      : resolveDraftingEndpoint(
+          props.document,
+          screenToWorld(viewport.value, screen),
+          props.activePieceId,
+        );
 
   const start = arcStart.value;
   if (start === null) {
@@ -2802,7 +2831,11 @@ function onRectanglePointer(hit: Hit | null, screen: Vec2): void {
   const endpoint: DraftingEndpoint =
     hit !== null && hit.kind === 'point'
       ? { kind: 'point', id: hit.id }
-      : resolveDraftingEndpoint(props.document, screenToWorld(viewport.value, screen), props.activePieceId);
+      : resolveDraftingEndpoint(
+          props.document,
+          screenToWorld(viewport.value, screen),
+          props.activePieceId,
+        );
 
   if (rectangleClicks.value.some((click) => sameDraftingEndpoint(click, endpoint))) return;
 
@@ -3220,7 +3253,13 @@ watch(
             <text
               :transform="`translate(${entry.anchor.x} ${entry.anchor.y}) rotate(${(entry.rotation * 180) / Math.PI})`"
               :font-size="entry.fontSize"
-              :text-anchor="entry.alignment === 'left' ? 'start' : entry.alignment === 'center' ? 'middle' : 'end'"
+              :text-anchor="
+                entry.alignment === 'left'
+                  ? 'start'
+                  : entry.alignment === 'center'
+                    ? 'middle'
+                    : 'end'
+              "
               class="fill-annotation font-annotation italic"
               aria-hidden="true"
               :data-entity-id="entry.id"

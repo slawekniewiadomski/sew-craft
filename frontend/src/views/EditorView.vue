@@ -688,7 +688,11 @@ function onMovePiece(dx: number, dy: number): void {
   const pieceId = activePieceId.value;
   if (pieceId === null) return;
   run(() =>
-    dispatch({ id: nextCommandId('move-piece'), type: 'move_piece', params: { id: pieceId, dx, dy } }),
+    dispatch({
+      id: nextCommandId('move-piece'),
+      type: 'move_piece',
+      params: { id: pieceId, dx, dy },
+    }),
   );
   moveMode.value = false;
 }
@@ -699,7 +703,14 @@ function onActivatePiece(pieceId: EntityId): void {
 
 function onCrossPiece(pieceId: EntityId): void {
   const piece = pattern.value.pieces.find((candidate) => candidate.id === pieceId);
-  error.value = `Switch to ${piece === undefined ? 'the owning piece' : pieceLabel(pieceSummaries(pattern.value).find((summary) => summary.id === pieceId)!, pattern.value.pieces.indexOf(piece))} to edit it.`;
+  error.value = `Switch to ${
+    piece === undefined
+      ? 'the owning piece'
+      : pieceLabel(
+          pieceSummaries(pattern.value).find((summary) => summary.id === pieceId)!,
+          pattern.value.pieces.indexOf(piece),
+        )
+  } to edit it.`;
 }
 
 /** Change the default kind; None clears the default. */
@@ -794,8 +805,7 @@ function onCreateLeader(id: EntityId): void {
   // The first other point of the same piece is a predictable default; the user
   // can then drag the label or clear the leader from the inspector.
   const leader = pattern.value.entities.find(
-    (entity) =>
-      entity.kind === 'point' && entity.id !== text.anchor && entity.piece === text.piece,
+    (entity) => entity.kind === 'point' && entity.id !== text.anchor && entity.piece === text.piece,
   );
   if (leader === undefined) {
     error.value = 'Add another point to the piece before choosing a leader.';
@@ -956,20 +966,26 @@ function onAddPointOnLine(lineId: EntityId, x: number, y: number): void {
 
 /** One gesture: new endpoints become points, then the line, as a single entry. */
 function onAddLine(start: LineEndpoint, end: LineEndpoint): void {
-  run(() => dispatchGroup(buildLineCommands(start, end, nextCommandId, activePieceId.value ?? undefined)));
+  run(() =>
+    dispatchGroup(buildLineCommands(start, end, nextCommandId, activePieceId.value ?? undefined)),
+  );
 }
 
 /** One gesture: new endpoints become points, then the arc, as a single entry. */
 function onAddArc(start: ArcEndpoint, end: ArcEndpoint, through: ArcEndpoint): void {
   run(() =>
-    dispatchGroup(buildArcCommands(start, end, through, nextCommandId, activePieceId.value ?? undefined)),
+    dispatchGroup(
+      buildArcCommands(start, end, through, nextCommandId, activePieceId.value ?? undefined),
+    ),
   );
 }
 
 /** One gesture: new endpoints become points, then the circle, as a single entry. */
 function onAddCircle(center: CircleEndpoint, rim: CircleEndpoint): void {
   run(() =>
-    dispatchGroup(buildCircleCommands(center, rim, nextCommandId, activePieceId.value ?? undefined)),
+    dispatchGroup(
+      buildCircleCommands(center, rim, nextCommandId, activePieceId.value ?? undefined),
+    ),
   );
 }
 
@@ -980,7 +996,13 @@ function onAddCircle(center: CircleEndpoint, rim: CircleEndpoint): void {
 function onAddRectangle(mode: RectangleMode, clicks: DraftingEndpoint[]): void {
   run(() =>
     dispatchGroup(
-      buildRectangleCommands(pattern.value, mode, clicks, nextCommandId, activePieceId.value ?? undefined),
+      buildRectangleCommands(
+        pattern.value,
+        mode,
+        clicks,
+        nextCommandId,
+        activePieceId.value ?? undefined,
+      ),
     ),
   );
 }
@@ -1380,7 +1402,9 @@ function onKeyDown(event: KeyboardEvent): void {
     event.preventDefault();
     const step = event.shiftKey ? 10 : 1;
     nudge.value = {
-      dx: nudge.value.dx + (event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0),
+      dx:
+        nudge.value.dx +
+        (event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0),
       dy: nudge.value.dy + (event.key === 'ArrowDown' ? step : event.key === 'ArrowUp' ? -step : 0),
     };
     if (nudgeTimer !== null) clearTimeout(nudgeTimer);
@@ -1392,7 +1416,11 @@ function onKeyDown(event: KeyboardEvent): void {
       const pieceId = activePieceId.value;
       if (pieceId === null) return;
       run(() =>
-        dispatch({ id: nextCommandId('move-piece'), type: 'move_piece', params: { id: pieceId, dx, dy } }),
+        dispatch({
+          id: nextCommandId('move-piece'),
+          type: 'move_piece',
+          params: { id: pieceId, dx, dy },
+        }),
       );
     }, 300);
     return;

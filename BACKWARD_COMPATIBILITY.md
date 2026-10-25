@@ -8,6 +8,20 @@ The guiding rule from `docs/architecture/standards.md`: where a **contract doc**
 defines a rule, that doc wins. The surfaces below are the ones other code, users,
 or the geometry package depend on.
 
+## Development-stage exemptions
+
+### 2026-10-25 — pattern schema 0.3 (piece containers)
+
+Schema `sewcraft.pattern/0.2` is **not read** by this build. Stored projects are
+refused with `UnsupportedPatternSchemaError` and the unsupported-format dialog;
+they are never migrated, rewritten or overwritten. Every entity and constraint
+now names its `piece`, `role` replaces `construction`, text is a new entity kind,
+and the legacy `seams` field and its commands retire. This is a deliberate
+development-stage break while the document model is still moving: existing
+projects must be recreated, and the protected surface returns once the format is
+standardised. Details: `.ai/specs/2026-10-25-piece-containers-and-annotations.md`
+(D10) and `docs/domain/command-spec.md` (Migration from spec 0.12.0).
+
 ## Protected surfaces
 
 ### 1. HTTP API (`/api`)

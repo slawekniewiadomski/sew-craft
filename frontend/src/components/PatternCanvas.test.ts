@@ -4221,7 +4221,15 @@ describe('containers, annotation text and move mode', () => {
         pt('x', 200, 200),
         pt('y', 300, 200),
         ln('xy', 'x', 'y'),
-      ].map((entity) => ({ ...entity, piece: entity.kind === 'line' || entity.kind === 'point' ? (entity.id === 'xy' || entity.id === 'x' || entity.id === 'y' ? 'p2' : 'p1') : entity.piece })),
+      ].map((entity) => ({
+        ...entity,
+        piece:
+          entity.kind === 'line' || entity.kind === 'point'
+            ? entity.id === 'xy' || entity.id === 'x' || entity.id === 'y'
+              ? 'p2'
+              : 'p1'
+            : entity.piece,
+      })),
     };
     const point = screenIn(document, { x: 200, y: 200 });
 

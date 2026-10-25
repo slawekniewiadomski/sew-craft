@@ -220,9 +220,7 @@ describe('add_corner_round', () => {
       line('l1', 'c', 'a'),
       line('l2', 'c', 'b', true),
     );
-    expect(() => applyCommand(mixed, addRound())).toThrow(
-      'Both lines must share a role.',
-    );
+    expect(() => applyCommand(mixed, addRound())).toThrow('Both lines must share a role.');
 
     const third = documentOf(
       point('c', 0, 0),

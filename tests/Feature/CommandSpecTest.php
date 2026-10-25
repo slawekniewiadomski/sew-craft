@@ -3,7 +3,7 @@
 it('exposes the command spec', function () {
     $this->getJson('/api/commands')
         ->assertOk()
-        ->assertJsonPath('version', '0.12.0')
+        ->assertJsonPath('version', '0.13.0')
         ->assertJsonStructure([
             'version',
             'commands' => [
@@ -19,28 +19,11 @@ it('exposes dimension presentation and update params', function () {
         ->assertOk()
         ->assertJsonPath('commands.add_constraint.params.orientation', 'aligned|horizontal|vertical?')
         ->assertJsonPath('commands.add_constraint.params.offset', 'number?')
+        ->assertJsonPath('commands.add_constraint.params.piece', 'entity_id')
         ->assertJsonPath('commands.add_constraint.params.value', 'number?')
         ->assertJsonPath('commands.update_constraint.params.id', 'entity_id')
         ->assertJsonPath('commands.update_constraint.params.value', 'number|null?')
         ->assertJsonPath('commands.update_constraint.inverse', 'update_constraint');
-});
-
-it('exposes the seam allowance update command', function () {
-    $this->getJson('/api/commands')
-        ->assertOk()
-        ->assertJsonPath('commands.add_seam_allowance.params.side', 'left|right?')
-        ->assertJsonPath('commands.set_seam_allowance.params.id', 'entity_id')
-        ->assertJsonPath('commands.set_seam_allowance.params.width', 'number?')
-        ->assertJsonPath('commands.set_seam_allowance.params.side', 'left|right?')
-        ->assertJsonPath('commands.set_seam_allowance.inverse', 'set_seam_allowance');
-});
-
-it('exposes the construction commands', function () {
-    $this->getJson('/api/commands')
-        ->assertOk()
-        ->assertJsonPath('commands.add_construction_line.params.start', 'entity_id')
-        ->assertJsonPath('commands.set_construction.params.construction', 'bool')
-        ->assertJsonPath('commands.set_construction.inverse', 'set_construction');
 });
 
 it('exposes the corner round commands', function () {
@@ -63,7 +46,8 @@ it('exposes the arc command', function () {
         ->assertJsonPath('commands.add_arc.params.start', 'entity_id')
         ->assertJsonPath('commands.add_arc.params.end', 'entity_id')
         ->assertJsonPath('commands.add_arc.params.through', 'entity_id')
-        ->assertJsonPath('commands.add_arc.params.construction', 'bool?')
+        ->assertJsonPath('commands.add_arc.params.piece', 'entity_id')
+        ->assertJsonPath('commands.add_arc.params.role', 'construction|annotation?')
         ->assertJsonPath('commands.add_arc.inverse', 'delete_entity');
 });
 
@@ -72,18 +56,27 @@ it('exposes the circle command', function () {
         ->assertOk()
         ->assertJsonPath('commands.add_circle.params.center', 'entity_id')
         ->assertJsonPath('commands.add_circle.params.rim', 'entity_id')
-        ->assertJsonPath('commands.add_circle.params.construction', 'bool?')
+        ->assertJsonPath('commands.add_circle.params.piece', 'entity_id')
+        ->assertJsonPath('commands.add_circle.params.role', 'construction|annotation?')
         ->assertJsonPath('commands.add_circle.inverse', 'delete_entity');
 });
 
 it('exposes the piece commands', function () {
     $this->getJson('/api/commands')
         ->assertOk()
-        ->assertJsonPath('commands.create_piece.params.edges', 'entity_id[]')
         ->assertJsonPath('commands.create_piece.params.name', 'string?')
         ->assertJsonPath('commands.create_piece.params.quantity', 'int?')
-        ->assertJsonPath('commands.create_piece.params.allowance', 'default|none|preset?')
         ->assertJsonPath('commands.create_piece.inverse', 'delete_piece')
+        ->assertJsonPath('commands.set_piece_loop.params.piece', 'entity_id')
+        ->assertJsonPath('commands.set_piece_loop.params.edges', 'entity_id[]')
+        ->assertJsonPath('commands.set_piece_loop.params.allowance', 'default|none|preset?')
+        ->assertJsonPath('commands.set_role.params.role', 'cut|construction|annotation')
+        ->assertJsonPath('commands.set_role.inverse', 'set_role')
+        ->assertJsonPath('commands.move_piece.params.dx', 'number')
+        ->assertJsonPath('commands.move_piece.inverse', 'move_piece')
+        ->assertJsonPath('commands.add_text.params.content', 'string')
+        ->assertJsonPath('commands.add_text.params.leader', 'entity_id?')
+        ->assertJsonPath('commands.update_text.params.leader', 'entity_id|null?')
         ->assertJsonPath('commands.update_piece.params.name', 'string|null?')
         ->assertJsonPath('commands.update_piece.params.quantity', 'int|null?')
         ->assertJsonPath('commands.update_piece.inverse', 'update_piece')

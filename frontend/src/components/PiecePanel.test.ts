@@ -282,10 +282,14 @@ describe('PiecePanel loop state and actions', () => {
     const empty = mountPanel({ hasLoop: false, metrics: null });
     expect(empty.find('[data-testid="entity-piece-loop-state"]').text()).toBe('No cut loop');
     expect(empty.find('[data-testid="entity-piece-finished"]').text()).toContain('No cut loop');
-    expect(empty.find('[data-testid="entity-clear-cut-loop"]').attributes('disabled')).toBeDefined();
+    expect(
+      empty.find('[data-testid="entity-clear-cut-loop"]').attributes('disabled'),
+    ).toBeDefined();
 
     const broken = mountPanel({ broken: true, metrics: null });
-    expect(broken.find('[data-testid="entity-piece-loop-state"]').text()).toContain('Cut loop broken');
+    expect(broken.find('[data-testid="entity-piece-loop-state"]').text()).toContain(
+      'Cut loop broken',
+    );
   });
 
   it('emits Set, Clear, Move and Activate', async () => {
@@ -306,9 +310,9 @@ describe('PiecePanel loop state and actions', () => {
     const wrapper = mountPanel({}, { active: true, moveMode: true });
 
     expect(wrapper.find('[data-testid="entity-piece"]').classes()).toContain('border-primary');
-    expect(wrapper.find('[data-testid="entity-piece-move-toggle"]').attributes('aria-pressed')).toBe(
-      'true',
-    );
+    expect(
+      wrapper.find('[data-testid="entity-piece-move-toggle"]').attributes('aria-pressed'),
+    ).toBe('true');
     expect(wrapper.find('[data-testid="entity-piece-activate"]').text()).toBe('Active');
   });
 });

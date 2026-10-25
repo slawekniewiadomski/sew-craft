@@ -175,10 +175,7 @@ describe('create_piece and set_piece_loop', () => {
   });
 
   it('clears the loop and its allowances', () => {
-    const document = documentOf(
-      [],
-      [piece({ allowances: [{ edge: 'bottom', width: 4 }] })],
-    );
+    const document = documentOf([], [piece({ allowances: [{ edge: 'bottom', width: 4 }] })]);
     const added = apply(document, setLoop([]));
 
     expect(pieceById(added, 'p1')).toEqual({ id: 'p1', edges: [], allowances: [] });
@@ -213,11 +210,7 @@ describe('create_piece and set_piece_loop', () => {
     expect(() => applyCommand(circle, setLoop(['circle', 'bottom', 'right']))).toThrow('circle');
 
     const foreign = documentOf(
-      [
-        point('x', 0, 0, 'p2'),
-        point('y', 10, 0, 'p2'),
-        line('other-bottom', 'x', 'y', 'p2'),
-      ],
+      [point('x', 0, 0, 'p2'), point('y', 10, 0, 'p2'), line('other-bottom', 'x', 'y', 'p2')],
       [piece(), piece({ id: 'p2', edges: ['other-bottom'], allowances: [] })],
     );
     expect(() => applyCommand(foreign, setLoop(['bottom', 'right', 'other-bottom']))).toThrow(
@@ -338,10 +331,17 @@ describe('move_piece', () => {
 
   it('no-ops at zero and rejects non-finite deltas and an unknown piece', () => {
     const document = documentOf();
-    expect(applyCommand(document, { id: 'm', type: 'move_piece', params: { id: 'p1', dx: 0, dy: 0 } }).document).toBe(document);
+    expect(
+      applyCommand(document, { id: 'm', type: 'move_piece', params: { id: 'p1', dx: 0, dy: 0 } })
+        .document,
+    ).toBe(document);
 
     expect(() =>
-      applyCommand(document, { id: 'm', type: 'move_piece', params: { id: 'p1', dx: Number.NaN, dy: 0 } }),
+      applyCommand(document, {
+        id: 'm',
+        type: 'move_piece',
+        params: { id: 'p1', dx: Number.NaN, dy: 0 },
+      }),
     ).toThrow('finite');
     expect(() =>
       applyCommand(document, { id: 'm', type: 'move_piece', params: { id: 'p2', dx: 1, dy: 1 } }),
@@ -368,7 +368,13 @@ describe('add_text and update_text', () => {
   it('trims content and accepts a leader', () => {
     const added = apply(
       documentOf(),
-      addText({ content: '  rivet 2×  ', alignment: 'center', rotation: 1, fontSize: 8, leader: 'b' }),
+      addText({
+        content: '  rivet 2×  ',
+        alignment: 'center',
+        rotation: 1,
+        fontSize: 8,
+        leader: 'b',
+      }),
     );
 
     expect(getEntity(added, 't1')).toMatchObject({
@@ -393,9 +399,14 @@ describe('add_text and update_text', () => {
     expect(() => applyCommand(document, addText({ piece: 'missing' }))).toThrow('unknown piece');
     expect(() => applyCommand(document, addText({ anchor: 'missing' }))).toThrow('unknown entity');
     expect(() =>
-      applyCommand(documentOf([point('x', 0, 0, 'p2')], [piece(), piece({ id: 'p2' })]), addText({ anchor: 'x' })),
+      applyCommand(
+        documentOf([point('x', 0, 0, 'p2')], [piece(), piece({ id: 'p2' })]),
+        addText({ anchor: 'x' }),
+      ),
     ).toThrow('belongs to another piece');
-    expect(() => applyCommand(document, addText({ leader: 'a' }))).toThrow('differ from the anchor');
+    expect(() => applyCommand(document, addText({ leader: 'a' }))).toThrow(
+      'differ from the anchor',
+    );
   });
 
   it('rejects an anchor derived by a corner round', () => {
@@ -448,13 +459,19 @@ describe('add_text and update_text', () => {
 
   it('rejects an edit with no fields, a missing or non-text entity and an invalid leader', () => {
     const withText = apply(documentOf(), addText());
-    const document = documentOf(withText.entities.filter((entity) => entity.id !== 't1') as Entity[]);
+    const document = documentOf(
+      withText.entities.filter((entity) => entity.id !== 't1') as Entity[],
+    );
     // Reuse the applied document so text exists, but mutate the selected id.
     expect(() =>
       applyCommand(withText, { id: 'u', type: 'update_text', params: { id: 't1' } }),
     ).toThrow('provide content');
     expect(() =>
-      applyCommand(withText, { id: 'u', type: 'update_text', params: { id: 'missing', content: 'x' } }),
+      applyCommand(withText, {
+        id: 'u',
+        type: 'update_text',
+        params: { id: 'missing', content: 'x' },
+      }),
     ).toThrow('unknown entity');
     expect(() =>
       applyCommand(document, { id: 'u', type: 'update_text', params: { id: 'a', content: 'x' } }),
@@ -557,12 +574,7 @@ describe('delete_piece cascade', () => {
 describe('remaining ownership guards', () => {
   it('stores the piece on curves, arcs and circles and rejects an unknown piece', () => {
     const base = documentOf(
-      [
-        point('e', 10, 10),
-        point('f', 20, 20),
-        point('g', 30, 10),
-        point('h', 40, 20),
-      ],
+      [point('e', 10, 10), point('f', 20, 20), point('g', 30, 10), point('h', 40, 20)],
       [piece({ edges: [] })],
     );
 
@@ -630,10 +642,10 @@ describe('remaining ownership guards', () => {
   });
 
   it('accepts an explicit none allowance on a new loop', () => {
-    const added = apply(documentOf([], [piece({ edges: [], allowances: [] })]), setLoop(
-      ['bottom', 'right', 'top', 'left'],
-      'none',
-    ));
+    const added = apply(
+      documentOf([], [piece({ edges: [], allowances: [] })]),
+      setLoop(['bottom', 'right', 'top', 'left'], 'none'),
+    );
     expect(pieceById(added, 'p1')?.allowances).toEqual([]);
   });
 
@@ -662,7 +674,10 @@ describe('remaining ownership guards', () => {
     ).toThrow('unknown entity');
 
     const twoPieces = apply(
-      documentOf([point('other', 0, 0, 'p2')], [piece(), piece({ id: 'p2', edges: [], allowances: [] })]),
+      documentOf(
+        [point('other', 0, 0, 'p2')],
+        [piece(), piece({ id: 'p2', edges: [], allowances: [] })],
+      ),
       addText(),
     );
     expect(() =>
@@ -709,19 +724,20 @@ describe('cascade and preset details', () => {
   });
 
   it('uses an explicit allowance preset on a new loop', () => {
-    const added = apply(
-      documentOf([], [piece({ edges: [], allowances: [] })]),
-      {
-        id: 'loop',
-        type: 'set_piece_loop',
-        params: {
-          piece: 'p1',
-          edges: ['bottom', 'right', 'top', 'left'],
-          allowance: { width: 5 },
-        },
+    const added = apply(documentOf([], [piece({ edges: [], allowances: [] })]), {
+      id: 'loop',
+      type: 'set_piece_loop',
+      params: {
+        piece: 'p1',
+        edges: ['bottom', 'right', 'top', 'left'],
+        allowance: { width: 5 },
       },
-    );
-    expect(pieceById(added, 'p1')?.allowances[0]).toEqual({ edge: 'bottom', width: 5, kind: 'seam' });
+    });
+    expect(pieceById(added, 'p1')?.allowances[0]).toEqual({
+      edge: 'bottom',
+      width: 5,
+      kind: 'seam',
+    });
   });
 
   it('edits only the content of a label that uses defaults', () => {
@@ -761,7 +777,11 @@ describe('empty and unfiltered branches', () => {
 
   it('no-ops clearing an already empty loop', () => {
     const empty = documentOf([], [piece({ edges: [], allowances: [] })]);
-    const command = { id: 'loop', type: 'set_piece_loop', params: { piece: 'p1', edges: [] } } as Command;
+    const command = {
+      id: 'loop',
+      type: 'set_piece_loop',
+      params: { piece: 'p1', edges: [] },
+    } as Command;
     expect(applyCommand(empty, command).document).toBe(empty);
   });
 

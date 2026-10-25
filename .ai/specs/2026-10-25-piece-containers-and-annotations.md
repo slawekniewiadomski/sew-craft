@@ -1,7 +1,8 @@
 # Piece containers, annotation geometry and annotation text
 
-Status: **ready for implementation** — Q1–Q4 were settled with the maintainer and
-are recorded as D12–D15 below.
+Status: **implemented** — schema 0.3, ownership, roles, text, loop capture,
+movement and the editor surfaces shipped on PR #88 (2026-10-25). Q1–Q4 were
+settled with the maintainer and are recorded as D12–D15 below.
 Builds on: 2026-10-22-pieces-and-allowance, 2026-10-23-pieces-sidebar-and-selection,
 2026-10-23-cut-dimension-tool, 2026-10-23-project-save-and-upgrades,
 2026-10-23-default-piece-seam-allowance, 006-construction-geometry

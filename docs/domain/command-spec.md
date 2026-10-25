@@ -10,19 +10,23 @@ runtime source of truth is `config/geometry.php`, exposed at `GET /api/commands`
 {
   "id": "01J9Z...", // ULID, client-generated, makes commands idempotent
   "type": "add_point",
-  "params": { "x": 0, "y": 0, "construction": true },
+  "params": { "x": 0, "y": 0, "piece": "piece-1" },
   "issuedAt": "2026-10-14T11:00:00Z",
 }
 ```
 
-## Commands (v0.12)
+## Commands (v0.13)
 
 ### `add_point`
 
-Create a point. `construction` defaults to `false`. Points may later be marked
-`fixed` (via a subsequent constraint/param) to anchor the sketch.
+Create a point inside a piece. An omitted `role` means **cut**;
+`construction` is a guide and `annotation` is a sewing mark. Points may later be
+marked `fixed` by a corner round to anchor derived geometry.
 
-- params: `x: number`, `y: number`, `construction?: bool`
+- params: `x: number`, `y: number`, `piece: entity_id`,
+  `role?: 'construction' | 'annotation'`
+- The piece must exist. The deprecated `construction?: bool` alias is accepted
+  on read but new callers send `role`.
 - inverse: `delete_entity`
 
 ### `move_point`
@@ -37,14 +41,16 @@ this command is what makes a dragged point keep its constraints.
 
 Segment between two existing points.
 
-- params: `start: entity_id`, `end: entity_id`, `construction?: bool`
+- params: `start: entity_id`, `end: entity_id`, `piece: entity_id`,
+  `role?: 'construction' | 'annotation'`
 - inverse: `delete_entity`
 
 ### `add_curve`
 
 Cubic Bézier through four control points `p0..p3`.
 
-- params: `p0..p3: entity_id`, `construction?: bool`
+- params: `p0..p3: entity_id`, `piece: entity_id`,
+  `role?: 'construction' | 'annotation'`
 - inverse: `delete_entity`
 
 ### `add_arc`
@@ -55,7 +61,7 @@ and the sweep direction. The circle, centre, radius, angles and extents are all
 derived and never stored, so the solver keeps operating on points only.
 
 - params: `start: entity_id`, `end: entity_id`, `through: entity_id`,
-  `construction?: bool`
+  `piece: entity_id`, `role?: 'construction' | 'annotation'`
 - All three ids must resolve to drafting points distinct from each other and not
   derived by a corner round, and `start` must differ from `end`.
 - `through` must lie at least `MIN_BULGE` (`0.001` mm) off the `start`→`end`
@@ -72,7 +78,8 @@ Create a circle from two existing points: the centre and a point on the rim. The
 radius is derived as the distance between them and is never stored, so the solver
 keeps operating on points only.
 
-- params: `center: entity_id`, `rim: entity_id`, `construction?: bool`
+- params: `center: entity_id`, `rim: entity_id`, `piece: entity_id`,
+  `role?: 'construction' | 'annotation'`
 - Both ids must resolve to drafting points, distinct from each other and not
   derived by a corner round.
 - `center` and `rim` must differ and their distance must be at least `MIN_RADIUS`
@@ -82,32 +89,30 @@ keeps operating on points only.
 - A seam allowance cannot be added to a circle in v1; `add_seam_allowance`
   rejects it with "seam allowances need a line, curve or arc edge".
 
-### `add_construction_line`
+### `set_role`
 
-Reference-only segment that is never a cut edge.
+Assign one entity a **cut**, **construction** or **annotation** role. Cut is the
+default role and is stored as an absent `role`; the deprecated `construction`
+boolean is never written by this command.
 
-- params: `start: entity_id`, `end: entity_id`
-- inverse: `delete_entity`
-
-### `set_construction`
-
-Convert an entity between construction geometry (a guide) and a cut edge. A
-no-op when the entity already has the requested value, so it is idempotent.
-
-- params: `id: entity_id`, `construction: bool`
-- inverse: `set_construction` (restores the entity's previous value)
+- params: `id: entity_id`, `role: 'cut' | 'construction' | 'annotation'`
+- Text is always annotation and is rejected. Demoting a cut line that carries a
+  corner round is refused ("Remove the corner round first.").
+- Re-applying the current role is a no-op with `inverse: null`.
+- inverse: `set_role` with the previous role.
 
 ### `delete_entity`
 
-Remove an entity and cascade-remove constraints that reference it, legacy seams on
-it and any piece that uses it (a piece edge must exist). Removing a piece also
-removes its cut dimensions.
+Remove an entity and cascade-remove constraints that reference it and labels
+anchored to it. A loop edge leaves the piece and a **broken** loop (D15); a label
+whose leader disappears keeps its place and loses the leader.
 
 - params: `id: entity_id`
+- inverse: `null`; undo uses the journal snapshot for the cascade.
 
 ### `add_constraint`
 
-- params: `type` (§ solver), `entities: entity_id[]`, `value?: number`,
+- params: `type` (§ solver), `entities: entity_id[]`, `piece: entity_id`, `value?: number`,
   `reference?: entity_id`,
   `orientation?: 'aligned' | 'horizontal' | 'vertical'`, `offset?: number`
 - `value` is required for `angle` (radians). For `distance` it is optional: a
@@ -281,26 +286,68 @@ Restore a rounded corner.
 
 ### `create_piece`
 
-Create a **piece**: one closed loop of existing cut edges that is cut from
-fabric. The edge order is the loop order and is the single source of truth for
-"outward", which is why no side is ever requested.
+Create an **empty piece** — the container every new entity belongs to. The cut
+loop is captured later by `set_piece_loop`, normally automatically when the first
+closed chain of the piece's cut edges appears.
 
-- params: `edges: entity_id[]` (ordered, closed), `name?: string`,
-  `quantity?: int` (≥ 1), `allowance?: 'default' | 'none' | { width, kind? }`
-- `allowance: 'default'` copies the document's effective default onto every loop
-  edge, one entry per edge; `'none'` or an omitted param keeps today's empty list;
-  an object copies that preset. A preset `width` is a finite number greater than
-  `0`, and an unknown `kind` is a validation error. An omitted preset `kind`
-  copies as `seam`.
-- Validation: at least three edges; every edge is an existing non-construction
-  `line`, `curve` or `arc`; no duplicate edge; each edge's end is the next edge's
-  start and the last connects back to the first; no edge already belongs to
-  another piece. A `circle` cannot be a loop edge in v1.
-- A rejected loop names the first edge that fails to connect.
+- params: `name?: string`, `quantity?: int` (≥ 1)
 - `name` is trimmed and must be non-empty; `quantity` must be an integer of at
   least 1. Both are optional; an omitted quantity means 1.
+- The deprecated pre-0.3 `edges` and `allowance` params are still accepted by the
+  command core for stored plans, but the UI never sends them.
 - Re-applying a command whose piece id already exists is a no-op.
 - inverse: `delete_piece` for the new piece.
+
+### `set_piece_loop`
+
+Store the piece's **cut loop**, or clear it with an empty list.
+
+- params: `piece: entity_id`, `edges: entity_id[]`,
+  `allowance?: 'default' | 'none' | { width, kind? }`
+- `edges` is an ordered, closed chain of at least three distinct cut
+  `line`/`curve`/`arc` edges owned by the piece. Circles, construction and
+  annotation edges are refused, as is an edge owned by another piece.
+- `allowance` defaults to `'default'`: it fills edges that have no allowance yet
+  from the document default and keeps existing widths. `'none'` adds none; an
+  object copies that preset. Clearing removes the loop and its allowances.
+- A loop is stored rather than derived so corner rounds keep working; editing a
+  loop edge later leaves the loop **broken** until it is repaired or cleared.
+- inverse: `null`; the journal snapshot restores the previous loop and allowances.
+
+### `move_piece`
+
+Translate every point the piece owns, including fixed ones, as one undoable step.
+
+- params: `id: entity_id`, `dx: number`, `dy: number`
+- `dx` and `dy` must be finite; `(0, 0)` is a no-op.
+- Constraints are translation-invariant in the current model, so no re-solve is
+  needed; a future world-anchored constraint would have to refuse or re-solve.
+- inverse: `move_piece` with `-dx`, `-dy`.
+
+### `add_text`
+
+Place a one-line annotation label at a point of its piece.
+
+- params: `piece: entity_id`, `anchor: entity_id`, `content: string`,
+  `alignment?: 'left' | 'center' | 'right'`, `rotation?: number` (radians),
+  `fontSize?: number` (mm), `leader?: entity_id`
+- `content` is trimmed, 1–120 characters, single-line. `fontSize` is 1–100 mm
+  (default 6), `rotation` finite (default 0), `alignment` default `left`.
+- Anchor and leader must be ordinary points of the same piece; the leader must
+  differ from the anchor and must not be corner-round-derived.
+- Text is annotation by kind and never a solver variable.
+- inverse: `delete_entity`.
+
+### `update_text`
+
+Edit a label's content, anchor, presentation or leader.
+
+- params: `id: entity_id`, `content?: string`, `anchor?: entity_id`,
+  `alignment?: 'left' | 'center' | 'right'`, `rotation?: number`,
+  `fontSize?: number`, `leader?: entity_id | null`
+- At least one field is required. `leader: null` removes the leader; same-piece
+  validation and content rules match `add_text`.
+- inverse: `update_text` with the previous values.
 
 ### `update_piece`
 
@@ -316,13 +363,13 @@ Rename a piece or change its cut quantity.
 
 ### `delete_piece`
 
-Remove a piece and cascade-remove its cut dimensions.
+Remove a piece and cascade its owned geometry, constraints, texts, corner rounds
+and cut dimensions. Other pieces are untouched.
 
 - params: `id: entity_id`
 - Deleting an already-missing piece is a no-op.
-- inverse: `null`; restoring a piece together with its cut dimensions is not a
-  single command, so undo uses the journal's document snapshot (as
-  `delete_entity` does).
+- inverse: `null`; restoring a piece together with its cascade is not a single
+  command, so undo uses the journal's document snapshot.
 
 ### `set_piece_allowance`
 
@@ -532,3 +579,22 @@ Request a solver rebuild. Typically emitted after a batch of geometry commands.
 3. Implement `applyCommand` handling in `@sewcraft/geometry` with tests.
 4. Wire any UI affordance. Emit it from the command bus — never mutate state
    directly.
+
+## Migration from spec 0.12.0
+
+`spec_version` is **0.13.0** and the pattern schema is
+`sewcraft.pattern/0.3`. This is a breaking development-stage change:
+
+- Every entity and constraint now names its `piece`; geometry has no
+  document-level layer.
+- `construction: bool` becomes `role?: 'construction' | 'annotation'`; absent
+  means cut. `add_construction_line` and `set_construction` retire in favour of
+  `add_line`/`set_role`.
+- `create_piece` creates an empty piece; the loop moves to `set_piece_loop`.
+- New commands: `set_piece_loop`, `set_role`, `move_piece`, `add_text`,
+  `update_text`.
+- `delete_entity` keeps a piece with a broken loop instead of deleting it.
+- Legacy seam commands and `PatternDocument.seams` retire; piece allowances are
+  the only allowance path.
+- Stored `0.2` documents are refused with `UnsupportedPatternSchemaError` and the
+  unsupported-format dialog. There is no load-time migration.

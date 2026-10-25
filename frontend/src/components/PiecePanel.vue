@@ -49,7 +49,7 @@ const emit = defineEmits<{
   'set-cut-loop': [id: EntityId];
   'clear-cut-loop': [id: EntityId];
   'toggle-move': [id: EntityId];
-  'activate': [id: EntityId];
+  activate: [id: EntityId];
 }>();
 
 /** Allowance kinds offered by the piece editor; `none` removes the allowance. */

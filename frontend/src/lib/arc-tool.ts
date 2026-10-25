@@ -57,7 +57,12 @@ export function buildArcCommands(
   commands.push({
     id: nextId('arc'),
     type: 'add_arc',
-    params: { start: startId, end: endId, through: throughId, ...(piece === undefined ? {} : { piece }) },
+    params: {
+      start: startId,
+      end: endId,
+      through: throughId,
+      ...(piece === undefined ? {} : { piece }),
+    },
   });
 
   return commands;
