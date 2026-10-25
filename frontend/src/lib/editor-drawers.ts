@@ -1,14 +1,7 @@
 import type { RibbonIconName } from './ribbon-icons';
 
 export type DrawerId =
-  | 'properties'
-  | 'pieces'
-  | 'pattern'
-  | 'assembly'
-  | 'outline'
-  | 'dimensions'
-  | 'constraints'
-  | 'view';
+  'properties' | 'pieces' | 'pattern' | 'assembly' | 'outline' | 'dimensions' | 'constraints';
 
 export interface DrawerDefinition {
   id: DrawerId;
@@ -26,18 +19,17 @@ export const EDITOR_DRAWERS: DrawerDefinition[] = [
   { id: 'outline', label: 'Outline', defaultOpen: true, icon: 'line' },
   { id: 'dimensions', label: 'Dimensions', defaultOpen: false, icon: 'dimension' },
   { id: 'constraints', label: 'Constraints', defaultOpen: false, icon: 'constraints' },
-  { id: 'view', label: 'View', defaultOpen: false, icon: 'eye' },
 ];
 
 /**
  * The drawers a tab kind shows. A piece tab keeps the sketch surfaces; an
- * assembly tab replaces them with its own inspector and keeps View.
+ * assembly tab replaces them with its own inspector.
  */
 export function drawersFor(mode: 'piece' | 'assembly'): DrawerDefinition[] {
   const ids: DrawerId[] =
     mode === 'assembly'
-      ? ['assembly', 'view']
-      : ['properties', 'pieces', 'pattern', 'outline', 'dimensions', 'constraints', 'view'];
+      ? ['assembly']
+      : ['properties', 'pieces', 'pattern', 'outline', 'dimensions', 'constraints'];
   return EDITOR_DRAWERS.filter((drawer) => ids.includes(drawer.id));
 }
 

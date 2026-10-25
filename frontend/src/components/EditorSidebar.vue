@@ -13,7 +13,7 @@ const props = defineProps<{
   collapsed: boolean;
   /** Per-drawer row counts, forwarded to the drawer header badges. */
   counts?: Partial<Record<DrawerId, number>>;
-  /** Mutating drawer controls are disabled; the View drawer keeps export toggles. */
+  /** Mutating drawer controls are disabled; display settings live on the canvas. */
   readOnly?: boolean;
   /** The active tab kind selects which drawers exist. */
   mode?: 'piece' | 'assembly';
@@ -111,7 +111,7 @@ onBeforeUnmount(removeResizeListeners);
             :count="props.counts?.[drawer.id]"
             @update:open="(value: boolean) => setOpen(drawer.id, value)"
           >
-            <fieldset class="contents" :disabled="readOnly && drawer.id !== 'view'">
+            <fieldset class="contents" :disabled="readOnly">
               <slot :name="drawer.id" />
             </fieldset>
           </SidebarDrawer>

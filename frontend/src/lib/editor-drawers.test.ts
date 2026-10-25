@@ -12,13 +12,12 @@ describe('EDITOR_DRAWERS', () => {
       { id: 'outline', label: 'Outline', defaultOpen: true, icon: 'line' },
       { id: 'dimensions', label: 'Dimensions', defaultOpen: false, icon: 'dimension' },
       { id: 'constraints', label: 'Constraints', defaultOpen: false, icon: 'constraints' },
-      { id: 'view', label: 'View', defaultOpen: false, icon: 'eye' },
     ]);
   });
 });
 
 describe('initialDrawerState', () => {
-  it('opens properties, pieces and outline and collapses dimensions, constraints and view', () => {
+  it('opens properties, pieces and outline and collapses dimensions and constraints', () => {
     expect(initialDrawerState()).toEqual({
       properties: true,
       pieces: true,
@@ -27,7 +26,6 @@ describe('initialDrawerState', () => {
       outline: true,
       dimensions: false,
       constraints: false,
-      view: false,
     });
   });
 
@@ -39,8 +37,7 @@ describe('initialDrawerState', () => {
       'outline',
       'dimensions',
       'constraints',
-      'view',
     ]);
-    expect(drawersFor('assembly').map((drawer) => drawer.id)).toEqual(['assembly', 'view']);
+    expect(drawersFor('assembly').map((drawer) => drawer.id)).toEqual(['assembly']);
   });
 });

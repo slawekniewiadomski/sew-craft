@@ -30,8 +30,24 @@ const props = withDefaults(
     /** Bumped by the Fit action and by activating the tab. */
     fitToken?: number;
     readOnly?: boolean;
+    /** Layer visibility; every layer is drawn unless the display menu hides it. */
+    showCutShapes?: boolean;
+    showAllowances?: boolean;
+    showStitch?: boolean;
+    showFolds?: boolean;
+    showLabels?: boolean;
   }>(),
-  { selectedInstanceId: null, pickerOpen: false, fitToken: 0, readOnly: false },
+  {
+    selectedInstanceId: null,
+    pickerOpen: false,
+    fitToken: 0,
+    readOnly: false,
+    showCutShapes: true,
+    showAllowances: true,
+    showStitch: true,
+    showFolds: true,
+    showLabels: true,
+  },
 );
 
 const emit = defineEmits<{
@@ -365,6 +381,7 @@ watch(
         <template v-if="loopsFor(instance) !== null">
           <template v-if="loopsFor(instance)!.cut.length > 0">
             <path
+              v-if="props.showCutShapes"
               :d="pathOf(loopsFor(instance)!.cut)"
               :fill="fillOf(instance)"
               :fill-opacity="0.18"
@@ -372,6 +389,7 @@ watch(
               data-testid="instance-cut-fill"
             />
             <path
+              v-if="props.showAllowances"
               :d="`${pathOf(loopsFor(instance)!.cut)} ${pathOf(loopsFor(instance)!.stitch)}`"
               :fill="fillOf(instance)"
               :fill-opacity="0.28"
@@ -387,6 +405,7 @@ watch(
               data-testid="instance-cut-line"
             />
             <path
+              v-if="props.showStitch"
               :d="pathOf(loopsFor(instance)!.stitch)"
               fill="none"
               stroke="currentColor"
@@ -395,7 +414,7 @@ watch(
               data-testid="instance-stitch-line"
             />
             <path
-              v-for="(fold, index) in loopsFor(instance)!.folds"
+              v-for="(fold, index) in props.showFolds ? loopsFor(instance)!.folds : []"
               :key="index"
               :d="pathOf(fold)"
               fill="none"
@@ -439,6 +458,7 @@ watch(
         </g>
 
         <text
+          v-if="props.showLabels"
           :x="labelPosition(instance).x"
           :y="labelPosition(instance).y"
           text-anchor="middle"

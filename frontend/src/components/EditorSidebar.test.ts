@@ -24,7 +24,7 @@ function mountSidebar(width = 320, collapsed = false, extras: Extras = {}): VueW
       properties: '<p data-testid="slot-properties">Props</p>',
       pieces: '<p data-testid="slot-pieces">Pieces</p>',
       outline: '<p data-testid="slot-outline">Outline</p>',
-      view: '<p data-testid="slot-view">View</p>',
+      dimensions: '<p data-testid="slot-dimensions">Dimensions</p>',
       ...(extras.stats === true
         ? {
             stats:
@@ -50,24 +50,24 @@ function up(): void {
 }
 
 describe('EditorSidebar', () => {
-  it('opens properties, pieces and outline by default and collapses view', () => {
+  it('opens properties, pieces and outline by default and collapses dimensions', () => {
     const wrapper = mountSidebar();
 
     expect(wrapper.find('[data-testid="drawer-content-properties"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="drawer-content-pieces"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="slot-pieces"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="drawer-content-outline"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="drawer-content-view"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="drawer-content-dimensions"]').exists()).toBe(false);
   });
 
   it('opens a collapsed drawer when its trigger is clicked', async () => {
     const wrapper = mountSidebar();
 
-    await wrapper.find('[data-testid="drawer-toggle-view"]').trigger('click');
+    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
     await nextTick();
 
-    expect(wrapper.find('[data-testid="drawer-content-view"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="slot-view"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="drawer-content-dimensions"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="slot-dimensions"]').exists()).toBe(true);
   });
 
   it('forwards per-drawer counts as header badges and hides a zero', () => {
@@ -108,18 +108,18 @@ describe('EditorSidebar', () => {
 
     const collapsed = mountSidebar(320, true);
     expect(collapsed.find('[data-testid="sidebar-resize"]').exists()).toBe(false);
-    expect(collapsed.find('[data-testid="drawer-toggle-view"]').exists()).toBe(false);
+    expect(collapsed.find('[data-testid="drawer-toggle-dimensions"]').exists()).toBe(false);
     await collapsed.find('[data-testid="sidebar-expand"]').trigger('click');
     expect(collapsed.emitted('update:collapsed')).toEqual([[false]]);
   });
 
-  it('shows only the assembly inspector and view on an assembly tab', () => {
+  it('shows only the assembly inspector on an assembly tab', () => {
     const wrapper = mount(EditorSidebar, {
       props: { width: 320, collapsed: false, mode: 'assembly' },
     });
 
     expect(wrapper.find('[data-testid="drawer-toggle-assembly"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="drawer-toggle-view"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="drawer-toggle-dimensions"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="drawer-toggle-pieces"]').exists()).toBe(false);
   });
 
@@ -133,7 +133,6 @@ describe('EditorSidebar', () => {
       ['outline', 'Outline'],
       ['dimensions', 'Dimensions'],
       ['constraints', 'Constraints'],
-      ['view', 'View'],
     ] as const) {
       const button = wrapper.find(`[data-testid="sidebar-rail-${id}"]`);
       expect(button.exists()).toBe(true);
@@ -144,12 +143,12 @@ describe('EditorSidebar', () => {
   it('expands and opens the chosen drawer from the rail', async () => {
     const wrapper = mountSidebar(320, true);
 
-    await wrapper.find('[data-testid="sidebar-rail-view"]').trigger('click');
+    await wrapper.find('[data-testid="sidebar-rail-dimensions"]').trigger('click');
     expect(wrapper.emitted('update:collapsed')).toEqual([[false]]);
 
     await wrapper.setProps({ collapsed: false });
     await nextTick();
-    expect(wrapper.find('[data-testid="drawer-content-view"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="drawer-content-dimensions"]').exists()).toBe(true);
   });
 
   it('leaves an already-open drawer open when its rail button is used', async () => {

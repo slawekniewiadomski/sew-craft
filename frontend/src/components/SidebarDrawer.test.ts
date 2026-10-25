@@ -8,7 +8,12 @@ enableAutoUnmount(afterEach);
 
 function mountDrawer(open: boolean, count?: number) {
   return mount(SidebarDrawer, {
-    props: { id: 'view', label: 'View', open, ...(count === undefined ? {} : { count }) },
+    props: {
+      id: 'constraints',
+      label: 'Constraints',
+      open,
+      ...(count === undefined ? {} : { count }),
+    },
     slots: { default: '<p data-testid="drawer-body">Body</p>' },
   });
 }
@@ -16,12 +21,14 @@ function mountDrawer(open: boolean, count?: number) {
 describe('SidebarDrawer', () => {
   it('renders an open drawer with its content, count and rotated chevron', () => {
     const wrapper = mountDrawer(true, 4);
-    const trigger = wrapper.find('[data-testid="drawer-toggle-view"]');
+    const trigger = wrapper.find('[data-testid="drawer-toggle-constraints"]');
 
-    expect(trigger.text()).toContain('View');
-    expect(trigger.find('[data-testid="drawer-chevron-view"]').classes()).toContain('rotate-90');
+    expect(trigger.text()).toContain('Constraints');
+    expect(trigger.find('[data-testid="drawer-chevron-constraints"]').classes()).toContain(
+      'rotate-90',
+    );
     expect(wrapper.find('[data-testid="drawer-count"]').text()).toBe('4');
-    expect(wrapper.find('[data-testid="drawer-content-view"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="drawer-content-constraints"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="drawer-body"]').exists()).toBe(true);
     expect(trigger.classes()).toContain('sticky');
   });
@@ -29,10 +36,10 @@ describe('SidebarDrawer', () => {
   it('hides the content and points the chevron right when collapsed', () => {
     const wrapper = mountDrawer(false);
 
-    expect(wrapper.find('[data-testid="drawer-chevron-view"]').classes()).not.toContain(
+    expect(wrapper.find('[data-testid="drawer-chevron-constraints"]').classes()).not.toContain(
       'rotate-90',
     );
-    expect(wrapper.find('[data-testid="drawer-content-view"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="drawer-content-constraints"]').exists()).toBe(false);
   });
 
   it('renders no count badge at zero', () => {
@@ -42,7 +49,7 @@ describe('SidebarDrawer', () => {
   it('emits update:open when the trigger is clicked', async () => {
     const wrapper = mountDrawer(false);
 
-    await wrapper.find('[data-testid="drawer-toggle-view"]').trigger('click');
+    await wrapper.find('[data-testid="drawer-toggle-constraints"]').trigger('click');
     await nextTick();
 
     expect(wrapper.emitted('update:open')).toEqual([[true]]);

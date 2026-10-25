@@ -178,10 +178,21 @@ async function mountEditor(pinia: Pinia): Promise<VueWrapper> {
   return wrapper;
 }
 
-/** The View drawer is collapsed by default; open it before driving its inputs. */
-async function openViewDrawer(wrapper: VueWrapper): Promise<void> {
-  await wrapper.find('[data-testid="drawer-toggle-view"]').trigger('click');
-  await nextTick();
+/** Open the canvas display menu and toggle one layer by its key. */
+async function toggleDisplay(wrapper: VueWrapper, key: string): Promise<void> {
+  if (document.querySelector(`[data-testid="display-${key}"]`) === null) {
+    await wrapper.find('[data-testid="display-menu-trigger"]').trigger('click');
+    await flushPromises();
+  }
+  const item = document.querySelector<HTMLElement>(`[data-testid="display-${key}"]`);
+  item!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await flushPromises();
+}
+
+/** Open the export dialog from the ribbon. */
+async function openExport(wrapper: VueWrapper): Promise<void> {
+  await wrapper.find('[data-testid="download-svg"]').trigger('click');
+  await flushPromises();
 }
 
 function canvasDown(wrapper: VueWrapper, x: number, y: number, button = 0): void {
@@ -1090,7 +1101,8 @@ describe('EditorView', () => {
   it('downloads the pattern as an SVG with construction hidden by default', async () => {
     const wrapper = await mountEditor(createPinia());
 
-    await wrapper.find('[data-testid="download-svg"]').trigger('click');
+    await openExport(wrapper);
+    await wrapper.find('[data-testid="export-download"]').trigger('click');
 
     expect(downloadSvgFile).toHaveBeenCalledTimes(1);
     const [filename, svg] = vi.mocked(downloadSvgFile).mock.calls[0]!;
@@ -1140,9 +1152,9 @@ describe('EditorView', () => {
 
     const wrapper = await mountEditor(pinia);
 
-    await openViewDrawer(wrapper);
-    await wrapper.find('[data-testid="toggle-construction"]').setValue(true);
-    await wrapper.find('[data-testid="download-svg"]').trigger('click');
+    await openExport(wrapper);
+    await wrapper.find('[data-testid="export-construction"]').setValue(true);
+    await wrapper.find('[data-testid="export-download"]').trigger('click');
 
     const [, svg] = vi.mocked(downloadSvgFile).mock.calls[0]!;
     expect(svg).toContain('data-layer="construction"');
@@ -1175,15 +1187,16 @@ describe('EditorView', () => {
 
     const wrapper = await mountEditor(pinia);
 
-    await wrapper.find('[data-testid="download-svg"]').trigger('click');
+    await openExport(wrapper);
+    await wrapper.find('[data-testid="export-download"]').trigger('click');
     const [, initial] = vi.mocked(downloadSvgFile).mock.calls[0]!;
     expect(initial).toContain('data-layer="stitch"');
     expect(initial).toContain('data-layer="fold"');
 
-    await openViewDrawer(wrapper);
-    await wrapper.find('[data-testid="toggle-stitch"]').setValue(false);
-    await wrapper.find('[data-testid="toggle-fold"]').setValue(false);
-    await wrapper.find('[data-testid="download-svg"]').trigger('click');
+    await openExport(wrapper);
+    await wrapper.find('[data-testid="export-stitch"]').setValue(false);
+    await wrapper.find('[data-testid="export-fold"]').setValue(false);
+    await wrapper.find('[data-testid="export-download"]').trigger('click');
 
     const [, svg] = vi.mocked(downloadSvgFile).mock.calls[1]!;
     expect(svg).toContain('data-layer="cut"');
@@ -1210,12 +1223,42 @@ describe('EditorView', () => {
     const wrapper = await mountEditor(pinia);
     expect(wrapper.findAll('[data-kind="line"]')).toHaveLength(4);
 
-    await openViewDrawer(wrapper);
-    await wrapper.find('[data-testid="show-construction"]').setValue(false);
+    await toggleDisplay(wrapper, 'construction');
 
     expect(wrapper.findAll('[data-kind="line"]')).toHaveLength(2);
     expect(wrapper.find('line').attributes('stroke-dasharray')).toBeUndefined();
     expect(store.journal).toHaveLength(0);
+  });
+
+  it('persists display choices per project and restores them on mount', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useEditorStore().load(
+      withPiece({
+        ...createEmptyDocument(),
+        entities: [
+          { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+          { id: 'q', kind: 'point', x: 10, y: 0, construction: false, fixed: false },
+          { id: 'cut', kind: 'line', start: 'p', end: 'q', construction: false },
+          { id: 'guide', kind: 'line', start: 'p', end: 'q', construction: true },
+        ],
+      }),
+    );
+
+    const wrapper = await mountEditor(pinia);
+    expect(wrapper.findAll('[data-kind="line"]')).toHaveLength(4);
+
+    await toggleDisplay(wrapper, 'construction');
+    expect(wrapper.findAll('[data-kind="line"]')).toHaveLength(2);
+
+    const stored = JSON.parse(window.localStorage.getItem('sewcraft:display:1')!) as {
+      piece: { construction: boolean };
+    };
+    expect(stored.piece.construction).toBe(false);
+
+    wrapper.unmount();
+    const remounted = await mountEditor(createPinia());
+    expect(remounted.findAll('[data-kind="line"]')).toHaveLength(2);
   });
 
   it('converts a cut edge to construction and undoes it', async () => {
@@ -1319,8 +1362,7 @@ describe('EditorView', () => {
     const wrapper = await mountEditor(pinia);
     expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(true);
 
-    await openViewDrawer(wrapper);
-    await wrapper.find('[data-testid="show-allowances"]').setValue(false);
+    await toggleDisplay(wrapper, 'allowances');
     await nextTick();
 
     expect(wrapper.find('[data-seam-edge="l1"]').exists()).toBe(false);
@@ -1346,8 +1388,7 @@ describe('EditorView', () => {
     const wrapper = await mountEditor(pinia);
     expect(wrapper.find('[data-constraint-id="h"]').exists()).toBe(true);
 
-    await openViewDrawer(wrapper);
-    await wrapper.find('[data-testid="show-constraints"]').setValue(false);
+    await toggleDisplay(wrapper, 'constraints');
     await nextTick();
 
     expect(wrapper.find('[data-constraint-id="h"]').exists()).toBe(false);
@@ -2229,8 +2270,7 @@ describe('EditorView', () => {
 
     expect(wrapper.find('[data-testid="dimension-lines-w"]').exists()).toBe(true);
 
-    await openViewDrawer(wrapper);
-    await wrapper.find('[data-testid="show-dimensions"]').setValue(false);
+    await toggleDisplay(wrapper, 'dimensions');
     await nextTick();
 
     expect(wrapper.find('[data-testid="dimension-lines-w"]').exists()).toBe(false);
@@ -2238,7 +2278,7 @@ describe('EditorView', () => {
     expect(store.document.constraints).toHaveLength(1);
     expect(store.journal).toHaveLength(0);
 
-    await wrapper.find('[data-testid="show-dimensions"]').setValue(true);
+    await toggleDisplay(wrapper, 'dimensions');
     await nextTick();
 
     expect(wrapper.find('[data-testid="dimension-lines-w"]').exists()).toBe(true);
@@ -3437,8 +3477,7 @@ describe('EditorView dimension selection', () => {
     await wrapper.find('[data-testid="select-dimension-width"]').trigger('click');
     await nextTick();
 
-    await openViewDrawer(wrapper);
-    await wrapper.find('[data-testid="show-dimensions"]').setValue(false);
+    await toggleDisplay(wrapper, 'dimensions');
     await nextTick();
 
     expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
@@ -3577,6 +3616,23 @@ describe('EditorView assembly tab', () => {
 
     expect(store.document.assemblies[0]!.instances).toHaveLength(3);
     expect(wrapper.find('[data-testid="add-piece-picker"]').exists()).toBe(false);
+  });
+
+  it('hides assembly layers from the canvas display menu', async () => {
+    const { wrapper } = await mountAssembly();
+    expect(wrapper.findAll('[data-testid="instance-label"]')).toHaveLength(2);
+    expect(wrapper.findAll('[data-testid="instance-cut-fill"]')).toHaveLength(2);
+
+    await toggleDisplay(wrapper, 'labels');
+    expect(wrapper.findAll('[data-testid="instance-label"]')).toHaveLength(0);
+
+    await toggleDisplay(wrapper, 'cutShapes');
+    expect(wrapper.findAll('[data-testid="instance-cut-fill"]')).toHaveLength(0);
+
+    const stored = JSON.parse(window.localStorage.getItem('sewcraft:display:1')!) as {
+      assembly: { labels: boolean; cutShapes: boolean };
+    };
+    expect(stored.assembly).toMatchObject({ labels: false, cutShapes: false });
   });
 
   it('mirrors and rotates the selected instance', async () => {
@@ -4286,14 +4342,15 @@ describe('EditorView persistence', () => {
     expect(wrapper.find('[data-testid="tool-add_point"]').attributes('disabled')).toBeDefined();
     expect(wrapper.find('[data-testid="download-svg"]').attributes('disabled')).toBeUndefined();
 
-    await wrapper.find('[data-testid="download-svg"]').trigger('click');
+    await openExport(wrapper);
+    await wrapper.find('[data-testid="export-download"]').trigger('click');
     expect(vi.mocked(downloadSvgFile)).toHaveBeenCalledTimes(1);
 
     expect(wrapper.find('[data-testid="tabs-new"]').attributes('disabled')).toBeDefined();
 
-    await wrapper.find('[data-testid="drawer-toggle-view"]').trigger('click');
-    await nextTick();
-    expect(wrapper.find('[data-testid="toggle-stitch"]').attributes('disabled')).toBeUndefined();
+    await openExport(wrapper);
+    expect(wrapper.find('[data-testid="export-stitch"]').attributes('disabled')).toBeUndefined();
+    await wrapper.find('[data-testid="export-cancel"]').trigger('click');
 
     const before = points(wrapper).length;
     canvasDown(wrapper, 400, 300);

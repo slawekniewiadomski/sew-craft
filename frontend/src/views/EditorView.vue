@@ -46,6 +46,7 @@ import { onBeforeRouteLeave, RouterLink, useRouter } from 'vue-router';
 import { ApiError, projectsApi, type Pattern } from '@/api/projects';
 import AssemblyCanvas from '@/components/AssemblyCanvas.vue';
 import AssemblyPanel from '@/components/AssemblyPanel.vue';
+import CanvasDisplayMenu from '@/components/CanvasDisplayMenu.vue';
 import ConstraintPromptBar from '@/components/ConstraintPromptBar.vue';
 import CornerRoundPromptBar from '@/components/CornerRoundPromptBar.vue';
 import DimensionReferencePicker from '@/components/DimensionReferencePicker.vue';
@@ -54,6 +55,7 @@ import EditorSaveBar from '@/components/EditorSaveBar.vue';
 import EditorSidebar from '@/components/EditorSidebar.vue';
 import EditorTabs from '@/components/EditorTabs.vue';
 import EntityPropertiesPanel from '@/components/EntityPropertiesPanel.vue';
+import ExportDialog from '@/components/ExportDialog.vue';
 import PatternCanvas from '@/components/PatternCanvas.vue';
 import PiecePanel from '@/components/PiecePanel.vue';
 import RibbonIcon from '@/components/RibbonIcon.vue';
@@ -114,6 +116,15 @@ import {
 import { buildArcCommands, type ArcEndpoint } from '@/lib/arc-tool';
 import { createAutosave, fitsKeepaliveBudget, type SaveOrigin } from '@/lib/autosave';
 import { downloadSvgFile } from '@/lib/download';
+import {
+  readDisplaySettings,
+  writeDisplaySettings,
+  type AssemblyDisplaySettings,
+  type CanvasDisplayItem,
+  type DisplaySettings,
+  type ExportSettings,
+  type PieceDisplaySettings,
+} from '@/lib/display-settings';
 import type { DraftingEndpoint } from '@/lib/drafting';
 import type { RibbonAction } from '@/lib/editor-ribbon';
 import type { DrawerId } from '@/lib/editor-drawers';
@@ -142,6 +153,7 @@ import {
   nextPieceColor,
   pieceTab,
   readPersistedTab,
+  tabLabel,
   writePersistedTab,
 } from '@/lib/tabs';
 import { useEditorStore } from '@/stores/editor';
@@ -219,13 +231,54 @@ watch(activeTab, (tab) => writePersistedTab(window.localStorage, props.id, tab))
 /** True while a marquee owns the pointer, so Delete/Escape defer to the canvas. */
 const marqueeActive = ref(false);
 const fitToken = ref(0);
-const showConstruction = ref(true);
-const includeConstruction = ref(false);
-const showAllowances = ref(true);
-const showConstraints = ref(true);
-const showDimensions = ref(true);
-const exportStitch = ref(true);
-const exportFold = ref(true);
+/**
+ * Canvas and export preferences, persisted per project. The document never
+ * records them: hiding a layer is presentation, not a command.
+ */
+const display = ref<DisplaySettings>(readDisplaySettings(window.localStorage, props.id));
+watch(display, (value) => writeDisplaySettings(window.localStorage, props.id, value), {
+  deep: true,
+});
+
+const PIECE_DISPLAY_ITEMS: CanvasDisplayItem[] = [
+  { key: 'construction', label: 'Construction' },
+  { key: 'allowances', label: 'Allowances' },
+  { key: 'constraints', label: 'Constraints' },
+  { key: 'dimensions', label: 'Dimensions' },
+];
+
+const ASSEMBLY_DISPLAY_ITEMS: CanvasDisplayItem[] = [
+  { key: 'cutShapes', label: 'Cut shapes' },
+  { key: 'allowances', label: 'Allowances' },
+  { key: 'stitch', label: 'Stitch lines' },
+  { key: 'folds', label: 'Fold lines' },
+  { key: 'labels', label: 'Piece labels' },
+];
+
+const displayItems = computed(() =>
+  isAssemblyTab.value ? ASSEMBLY_DISPLAY_ITEMS : PIECE_DISPLAY_ITEMS,
+);
+const displayValues = computed<Record<string, boolean>>(() =>
+  isAssemblyTab.value ? { ...display.value.assembly } : { ...display.value.piece },
+);
+
+function toggleDisplay(key: string, value: boolean): void {
+  if (isAssemblyTab.value) {
+    const assembly: AssemblyDisplaySettings = { ...display.value.assembly, [key]: value };
+    display.value = { ...display.value, assembly };
+    return;
+  }
+  const piece: PieceDisplaySettings = { ...display.value.piece, [key]: value };
+  display.value = { ...display.value, piece };
+}
+
+function updateExportSettings(settings: ExportSettings): void {
+  display.value = { ...display.value, export: settings };
+}
+
+/** The export dialog is a deliberate step: the ribbon opens it, Download confirms. */
+const exportOpen = ref(false);
+
 const activeConstraint = ref<ConstraintType | null>(null);
 const constraintPicks = ref<ConstraintPick[]>([]);
 const pendingConstraint = ref<AddConstraintParams | null>(null);
@@ -250,7 +303,7 @@ const pieceDocument = computed(() => {
 });
 
 const visibleDocument = computed(() =>
-  showConstruction.value
+  display.value.piece.construction
     ? pieceDocument.value
     : {
         ...pieceDocument.value,
@@ -622,6 +675,13 @@ function fit(): void {
   fitToken.value += 1;
 }
 
+/** Open the export dialog, which confirms with the stored layer choices. */
+function openExport(): void {
+  /* v8 ignore next -- the ribbon action is disabled without a piece loop */
+  if (!canExport.value) return;
+  exportOpen.value = true;
+}
+
 /** Export the active piece only; an assembly tab or a broken loop refuses. */
 function downloadSvg(): void {
   /* v8 ignore next -- export is disabled without an active piece */
@@ -629,12 +689,19 @@ function downloadSvg(): void {
   downloadSvgFile(
     `pattern-${props.id}.svg`,
     toSvgPiece(pattern.value, activePiece.value, {
-      construction: includeConstruction.value,
-      stitch: exportStitch.value,
-      fold: exportFold.value,
+      construction: display.value.export.construction,
+      stitch: display.value.export.stitch,
+      fold: display.value.export.fold,
     }),
   );
+  exportOpen.value = false;
 }
+
+/** The piece name shown in the export dialog. */
+const activePieceLabel = computed(() =>
+  /* v8 ignore next -- the dialog renders only while a piece tab is active */
+  activeTab.value === null ? '' : tabLabel(pattern.value, activeTab.value),
+);
 
 /** Whether the Export action can run on the current tab. */
 const canExport = computed(
@@ -1069,7 +1136,7 @@ function onRibbonAction(action: RibbonAction): void {
       break;
     }
     case 'download_svg':
-      downloadSvg();
+      openExport();
       break;
     case 'add_instance':
       assemblyPickerOpen.value = !assemblyPickerOpen.value;
@@ -2014,7 +2081,7 @@ onBeforeUnmount(() => {
       </p>
 
       <div class="flex min-h-0 flex-1">
-        <div class="min-h-0 flex-1 p-2">
+        <div class="relative min-h-0 flex-1 p-2">
           <p
             v-if="pattern.tabs.length === 0"
             class="flex h-full items-center justify-center text-sm text-muted-foreground"
@@ -2031,6 +2098,11 @@ onBeforeUnmount(() => {
             :picker-open="assemblyPickerOpen"
             :fit-token="fitToken"
             :read-only="editor.readOnly"
+            :show-cut-shapes="display.assembly.cutShapes"
+            :show-allowances="display.assembly.allowances"
+            :show-stitch="display.assembly.stitch"
+            :show-folds="display.assembly.folds"
+            :show-labels="display.assembly.labels"
             @select="selectInstance"
             @move="onMoveInstance"
             @nudge="onNudgeInstance"
@@ -2045,9 +2117,9 @@ onBeforeUnmount(() => {
             :document="visibleDocument"
             :tool="activeTool"
             :fit-token="fitToken"
-            :show-allowances="showAllowances"
-            :show-constraints="showConstraints"
-            :show-dimensions="showDimensions"
+            :show-allowances="display.piece.allowances"
+            :show-constraints="display.piece.constraints"
+            :show-dimensions="display.piece.dimensions"
             :constraint-active="activeConstraint !== null"
             :constraint-picks="constraintPicks"
             :round-corner-active="cornerRoundActive"
@@ -2072,6 +2144,13 @@ onBeforeUnmount(() => {
             @update-dimension="onUpdateDimension"
             @marquee-change="marqueeActive = $event"
           />
+          <div v-if="pattern.tabs.length > 0" class="absolute bottom-3 right-3 z-20">
+            <CanvasDisplayMenu
+              :items="displayItems"
+              :values="displayValues"
+              @toggle="toggleDisplay"
+            />
+          </div>
         </div>
 
         <EditorSidebar
@@ -2469,62 +2548,6 @@ onBeforeUnmount(() => {
             </ul>
             <SidebarEmpty v-else message="No constraints yet." />
           </template>
-
-          <template #view>
-            <div class="space-y-3">
-              <section aria-label="Display">
-                <SidebarHeading label="Display" />
-                <div class="space-y-1.5">
-                  <label class="flex items-center gap-2 text-[13px]">
-                    <input
-                      v-model="showConstruction"
-                      type="checkbox"
-                      data-testid="show-construction"
-                    />
-                    Show construction
-                  </label>
-                  <label class="flex items-center gap-2 text-[13px]">
-                    <input v-model="showAllowances" type="checkbox" data-testid="show-allowances" />
-                    Show allowances
-                  </label>
-                  <label class="flex items-center gap-2 text-[13px]">
-                    <input
-                      v-model="showConstraints"
-                      type="checkbox"
-                      data-testid="show-constraints"
-                    />
-                    Show constraints
-                  </label>
-                  <label class="flex items-center gap-2 text-[13px]">
-                    <input v-model="showDimensions" type="checkbox" data-testid="show-dimensions" />
-                    Show dimensions
-                  </label>
-                </div>
-              </section>
-
-              <section aria-label="Export">
-                <SidebarHeading label="Export" />
-                <div class="space-y-1.5">
-                  <label class="flex items-center gap-2 text-[13px]">
-                    <input
-                      v-model="includeConstruction"
-                      type="checkbox"
-                      data-testid="toggle-construction"
-                    />
-                    Include construction
-                  </label>
-                  <label class="flex items-center gap-2 text-[13px]">
-                    <input v-model="exportStitch" type="checkbox" data-testid="toggle-stitch" />
-                    Include stitch layer
-                  </label>
-                  <label class="flex items-center gap-2 text-[13px]">
-                    <input v-model="exportFold" type="checkbox" data-testid="toggle-fold" />
-                    Include fold lines
-                  </label>
-                </div>
-              </section>
-            </div>
-          </template>
         </EditorSidebar>
       </div>
 
@@ -2536,6 +2559,15 @@ onBeforeUnmount(() => {
         @new-piece="newPiece"
         @new-assembly="newAssembly"
         @reorder="onReorderTabs"
+      />
+
+      <ExportDialog
+        v-if="exportOpen && activePiece"
+        :piece-label="activePieceLabel"
+        :settings="display.export"
+        @update:settings="updateExportSettings"
+        @download="downloadSvg"
+        @cancel="exportOpen = false"
       />
 
       <SaveConflictDialog

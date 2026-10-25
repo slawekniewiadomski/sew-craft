@@ -82,6 +82,24 @@ describe('AssemblyCanvas rendering', () => {
     ]);
   });
 
+  it('hides every layer the display menu turns off', () => {
+    const wrapper = mountCanvas({
+      showCutShapes: false,
+      showAllowances: false,
+      showStitch: false,
+      showFolds: false,
+      showLabels: false,
+    });
+
+    expect(wrapper.findAll('[data-testid="instance-cut-fill"]')).toHaveLength(0);
+    expect(wrapper.findAll('[data-testid="instance-allowance-band"]')).toHaveLength(0);
+    expect(wrapper.findAll('[data-testid="instance-stitch-line"]')).toHaveLength(0);
+    expect(wrapper.findAll('[data-testid="instance-fold-line"]')).toHaveLength(0);
+    expect(wrapper.findAll('[data-testid="instance-label"]')).toHaveLength(0);
+    // The cut outline and the selection affordance are not display layers.
+    expect(wrapper.findAll('[data-testid="instance-cut-line"]')).toHaveLength(1);
+  });
+
   it('marks a mirrored instance in its label', () => {
     const document = documentOf();
     document.assemblies[0]!.instances[0]!.mirrored = true;
