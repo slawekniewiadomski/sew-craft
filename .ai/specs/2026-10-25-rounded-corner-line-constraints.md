@@ -1,7 +1,7 @@
 # Direction constraints on rounded-corner lines
 
-Status: draft — design review (autonomous defaults; no ⚠ items). This PR ships
-the design only; the implementation plan below is for its follow-on PR.
+Status: implemented (autonomous defaults; no ⚠ items). The design was reviewed on
+this PR; the implementation landed on the same branch.
 Pattern schema: unchanged
 Command spec: unchanged
 Geometry package: 0.14.0 (additive `lineEndpointAnchor` and `lineSupportAnchors`)
@@ -222,9 +222,8 @@ visual state to design.
 - **Coverage (medium).** The helper, both creation paths and the inspector
   branch each add a branch. Tests must exercise the plain, one-end rounded and
   both-ends rounded cases, plus the `null` guards, to hold the 100 % gate.
-- **Delivery (low).** This PR is design-only and `skip-qa`; the implementation
-  follows on its own PR via `om-auto-implement-spec`, where the interaction is
-  user-facing and needs QA.
+- **Delivery (low).** The design and the implementation ship on one combined PR;
+  the change touches a user-facing gesture, so the PR carries `needs-qa`.
 
 ## 🧭 Resolved assumptions (autonomous defaults)
 
@@ -236,7 +235,7 @@ visual state to design.
 | R4  | `lineSupportAnchors` returns `null` for an unresolvable line or a non-point endpoint; callers treat that as "nothing to build"                                             | Keeps the helper total and its contract unit-testable without defensive code at every call site.                                                    | Yes         |
 | R5  | The constraint marker keeps the existing centroid rule; no canvas or inspector styling changes                                                                             | Keeps the slice focused on the broken relation; the icon remains a status glyph and the drawer is the durable record.                               | Yes         |
 | R6  | No schema, command, solver, HTTP API or database change; the geometry package moves to 0.14.0 for the additive exports                                                     | Everything needed already exists; the defect is which authored ids are named, not a missing capability.                                             | Yes         |
-| R7  | This PR ships the design only; the implementation plan is the brief for the follow-on implementation PR, which carries QA                                                                                     | Per the requester's "create spec PR". The design-only PR changes no runtime behavior, so it carries `skip-qa`; the implementation touches user-facing interaction and needs QA.                                        | Yes         |
+| R7  | The design and the implementation ship on one branch; the implementation plan below is the execution brief                                                                                                        | The design was reviewed on this PR and `spec-ready` applied by a human; the combined PR then implements it. The implementation touches user-facing interaction, so the PR carries `needs-qa`.                        | Yes         |
 
 ## 📋 Phasing
 
@@ -285,7 +284,7 @@ visual state to design.
    `horizontal` and `vertical` against either the endpoint pair or the support
    pair. Unit-test a constraint created before a round and one created after it,
    and confirm an unrelated line still does not list it.
-6. **Document and verify (in the follow-on implementation PR).** Add the two
+6. **Document and verify.** Add the two
    helpers and the rounded-line reference rule to
    `docs/architecture/geometry-core.md`, run the repository gate
    (`npm run format`, `typecheck`, `lint`, `format:check`, `test:coverage`,
@@ -295,25 +294,25 @@ visual state to design.
 
 ## ✅ Acceptance criteria
 
-- [ ] With the Point tool, clicking a line rounded at the clicked end, at the
+- [x] With the Point tool, clicking a line rounded at the clicked end, at the
       opposite end or at both ends creates a point at the projection and a
       `point_on_line` constraint referencing the authored support anchors, as one
       journal entry with no error banner.
-- [ ] Clicking a plain line produces the same constraint ids as before this
+- [x] Clicking a plain line produces the same constraint ids as before this
       change.
-- [ ] The constraint ribbon accepts a rounded line for `point_on_line`,
+- [x] The constraint ribbon accepts a rounded line for `point_on_line`,
       `horizontal` and `vertical`; `equal` and two-point `distance` keep their
       current rejection on rounded lines.
-- [ ] A direction constraint created before a round remains listed on its line in
+- [x] A direction constraint created before a round remains listed on its line in
       the inspector after the round, and a new one is listed too.
-- [ ] `lineSupportAnchors` returns `null` for a missing line or a non-point
+- [x] `lineSupportAnchors` returns `null` for a missing line or a non-point
       endpoint; the builders dispatch nothing and the inspector resolves no line
       pair, rather than sending dangling ids.
-- [ ] Removing the round leaves the constraint untouched and still satisfied;
+- [x] Removing the round leaves the constraint untouched and still satisfied;
       undo restores the round without rewriting the constraint.
-- [ ] `docs/architecture/geometry-core.md` documents the two helpers and the
+- [x] `docs/architecture/geometry-core.md` documents the two helpers and the
       rounded-line reference rule.
-- [ ] `npm run format`, `typecheck`, `lint`, `format:check`, `test:coverage` and
+- [x] `npm run format`, `typecheck`, `lint`, `format:check`, `test:coverage` and
       `build` pass with statements, branches, functions and lines at 100 %.
 
 ## Out of scope

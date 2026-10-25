@@ -9,6 +9,7 @@ import {
   dimensionValue,
   getEntity,
   isConstruction,
+  lineSupportAnchors,
   roleOf,
   measureLinearDimension,
   type CircleEntity,
@@ -225,10 +226,15 @@ function samePair(a: EntityId, b: EntityId, s: EntityId, e: EntityId): boolean {
  * rule (an arc is defined by all three of its points). Matching reads the stored
  * ids without resolving them, so a dangling reference still lists on the line
  * that stores it and never throws.
+ *
+ * A direction relation may also name a rounded line's support anchors — the
+ * sharp corner behind a trimmed tangent — so a constraint created before or
+ * after a round still lists on that line.
  */
 function constraintActsOnEntity(
   constraint: Exclude<Constraint, { type: 'derived_distance' }>,
   entity: Entity,
+  document: PatternDocument,
 ): boolean {
   if (entity.kind === 'point') {
     return constraintEntityIds(constraint).includes(entity.id);
@@ -260,10 +266,14 @@ function constraintActsOnEntity(
         constraint.b === entity.id
       );
     case 'coincident':
+      return samePair(constraint.a, constraint.b, entity.start, entity.end);
     case 'horizontal':
     case 'vertical':
-    case 'point_on_line':
-      return samePair(constraint.a, constraint.b, entity.start, entity.end);
+    case 'point_on_line': {
+      if (samePair(constraint.a, constraint.b, entity.start, entity.end)) return true;
+      const anchors = lineSupportAnchors(document, entity.id);
+      return anchors !== null && samePair(constraint.a, constraint.b, anchors.start, anchors.end);
+    }
     case 'angle':
       return (
         samePair(constraint.a, constraint.b, entity.start, entity.end) ||
@@ -297,7 +307,7 @@ export function entityProperties(
 
   for (const constraint of document.constraints) {
     if (constraint.type === 'derived_distance') continue;
-    if (!constraintActsOnEntity(constraint, entity)) continue;
+    if (!constraintActsOnEntity(constraint, entity, document)) continue;
     const entities = constraintEntityIds(constraint);
 
     if (constraint.type === 'distance') {
