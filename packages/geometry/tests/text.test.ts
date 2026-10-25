@@ -113,7 +113,7 @@ describe('textLeaderGeometry', () => {
   });
 
   it('leaves from the left end for a target on the left', () => {
-    const withLeader = text({ leader: 'b', content: 'x' });
+    const withLeader = text({ leader: 'b', content: 'x', fontSize: 12 });
     const geometry = textLeaderGeometry(withLeader, anchor, { x: -100, y: 100 })!;
 
     expect(geometry.shaft!.start).toEqual(geometry.underline.start);

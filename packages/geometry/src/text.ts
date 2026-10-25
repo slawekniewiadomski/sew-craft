@@ -115,8 +115,8 @@ export function textLeaderGeometry(
   leader: Vec2 | null,
 ): LeaderGeometry | null {
   if (entity.leader === undefined || anchor === null || leader === null) return null;
-  const layout = textLayout(entity, anchor);
-  if (layout === null) return null;
+  // `anchor` is present, so the layout always resolves.
+  const layout = textLayout(entity, anchor)!;
 
   const size = entity.fontSize ?? DEFAULT_TEXT_SIZE;
   const gap = size * LEADER_RULE_GAP_RATIO;
