@@ -29,12 +29,14 @@ function mountRibbon(
 
 const RIBBON_LABELS = [
   'Select',
-  'Create piece',
+  'New piece',
+  'Set cut loop',
   'Undo',
   'Redo',
   'Delete',
   'Fit',
   'Round corner',
+  'Text',
   'Point',
   'Line',
   'Curve',
@@ -65,7 +67,7 @@ describe('EditorRibbon', () => {
     const wrapper = mountRibbon();
 
     const buttons = wrapper.findAll('button');
-    expect(buttons).toHaveLength(24);
+    expect(buttons).toHaveLength(26);
     expect(buttons.every((button) => button.find('svg').exists())).toBe(true);
     expect(buttons.map((button) => button.attributes('aria-label'))).toEqual(RIBBON_LABELS);
 
@@ -84,6 +86,7 @@ describe('EditorRibbon', () => {
     expect(captions.map((caption) => caption.text())).toEqual([
       'Tools',
       'Features',
+      'Annotation',
       'Sketching',
       'Constraints',
       'Export',
@@ -94,6 +97,7 @@ describe('EditorRibbon', () => {
     expect(groups.map((group) => group.attributes('aria-label'))).toEqual([
       'Tools',
       'Features',
+      'Annotation',
       'Sketching',
       'Constraints',
       'Export',

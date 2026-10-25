@@ -19,6 +19,9 @@
   --dimension-reference: oklch(0.488 0.243 264.376);
   /* Amber-700: cut dimensions keep their own colour, distinct from set/driven. */
   --dimension-derived: oklch(0.555 0.163 48.998);
+  /* Violet-700: annotation marks are visible but never read as cut geometry. */
+  --annotation: oklch(0.55 0.2 300);
+  --font-annotation: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.627 0.194 149.214);
@@ -46,6 +49,8 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-dimension-reference: var(--dimension-reference);
   --color-dimension-derived: var(--dimension-derived);
+  --color-annotation: var(--annotation);
+  --font-annotation: var(--font-annotation);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);

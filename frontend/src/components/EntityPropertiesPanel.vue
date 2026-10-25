@@ -52,7 +52,9 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  'set-construction': [id: EntityId, construction: boolean];
+  'set-role': [id: EntityId, role: 'cut' | 'construction' | 'annotation'];
+  'update-text': [id: EntityId, patch: Record<string, unknown>];
+  'create-leader': [id: EntityId];
   'update-dimension': [id: EntityId, patch: DimensionPatch];
   'remove-constraint': [id: EntityId];
   'set-corner-round-radius': [id: EntityId, radius: number];
@@ -224,8 +226,33 @@ function lengthText(length: number | null): string {
   return length === null ? '—' : `${formatDimensionValue(length)} mm`;
 }
 
-function onConstructionChange(event: Event): void {
-  emit('set-construction', props.entity.id, (event.target as HTMLInputElement).checked);
+function onRoleChange(event: Event): void {
+  emit(
+    'set-role',
+    props.entity.id,
+    (event.target as HTMLSelectElement).value as 'cut' | 'construction' | 'annotation',
+  );
+}
+
+function onTextContent(event: Event): void {
+  emit('update-text', props.entity.id, { content: (event.target as HTMLInputElement).value });
+}
+
+function onTextAlignment(event: Event): void {
+  emit('update-text', props.entity.id, {
+    alignment: (event.target as HTMLSelectElement).value,
+  });
+}
+
+function onTextNumber(field: 'rotation' | 'fontSize', event: Event): void {
+  const text = props.entity.text!;
+  const input = event.target as HTMLInputElement;
+  const value = Number(input.value.trim());
+  if (input.value.trim() === '' || !Number.isFinite(value)) {
+    input.value = String(field === 'rotation' ? text.rotation : text.fontSize);
+    return;
+  }
+  emit('update-text', props.entity.id, { [field]: value });
 }
 
 /** The value field's text: `#source` for a live link, its number otherwise. */
@@ -429,22 +456,107 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
           </SidebarField>
         </template>
 
-        <div class="flex items-center justify-between gap-2">
-          <label
-            :for="`entity-construction-${props.entity.id}`"
-            class="text-2xs text-muted-foreground"
+        <SidebarField v-if="props.entity.kind !== 'text'" label="Role">
+          <select
+            class="h-7 rounded-sm border px-1.5 text-2xs"
+            :value="props.entity.role"
+            :aria-label="`Role for ${props.entity.id}`"
+            data-testid="entity-role"
+            @change="onRoleChange"
           >
-            Construction
-          </label>
+            <option value="cut">Cut</option>
+            <option value="construction">Construction</option>
+            <option value="annotation">Annotation</option>
+          </select>
+        </SidebarField>
+      </dl>
+    </section>
+
+    <section
+      v-if="props.entity.text"
+      aria-labelledby="entity-text-heading"
+      data-testid="entity-text"
+    >
+      <SidebarHeading id="entity-text-heading" label="Annotation text" />
+      <dl class="space-y-1">
+        <SidebarField label="Content">
           <input
-            :id="`entity-construction-${props.entity.id}`"
-            type="checkbox"
-            :checked="props.entity.construction"
-            :aria-label="`Construction for ${props.entity.id}`"
-            data-testid="entity-construction"
-            @change="onConstructionChange"
+            type="text"
+            maxlength="120"
+            class="h-7 w-44 rounded-sm border px-2 text-[13px]"
+            :value="props.entity.text.content"
+            aria-label="Label content"
+            data-testid="text-content"
+            @change="onTextContent"
           />
-        </div>
+        </SidebarField>
+        <SidebarField label="Alignment">
+          <select
+            class="h-7 rounded-sm border px-1.5 text-2xs"
+            :value="props.entity.text.alignment"
+            aria-label="Label alignment"
+            data-testid="text-alignment"
+            @change="onTextAlignment"
+          >
+            <option value="left">Left</option>
+            <option value="center">Centre</option>
+            <option value="right">Right</option>
+          </select>
+        </SidebarField>
+        <SidebarField label="Rotation">
+          <span class="inline-flex items-center gap-1">
+            <input
+              type="number"
+              step="0.1"
+              class="h-7 w-20 rounded-sm border px-2 text-[13px] tabular-nums"
+              :value="props.entity.text.rotation"
+              aria-label="Label rotation in radians"
+              data-testid="text-rotation"
+              @change="onTextNumber('rotation', $event)"
+            />
+            <span class="text-2xs text-muted-foreground">rad</span>
+          </span>
+        </SidebarField>
+        <SidebarField label="Size">
+          <span class="inline-flex items-center gap-1">
+            <input
+              type="number"
+              min="1"
+              max="100"
+              step="0.5"
+              class="h-7 w-20 rounded-sm border px-2 text-[13px] tabular-nums"
+              :value="props.entity.text.fontSize"
+              aria-label="Label size in millimetres"
+              data-testid="text-size"
+              @change="onTextNumber('fontSize', $event)"
+            />
+            <span class="text-2xs text-muted-foreground">mm</span>
+          </span>
+        </SidebarField>
+        <SidebarField label="Leader">
+          <span class="inline-flex items-center gap-1">
+            <span class="font-mono text-2xs text-muted-foreground" data-testid="text-leader">
+              {{ props.entity.text.leader ?? 'None' }}
+            </span>
+            <button
+              type="button"
+              class="h-7 rounded-sm border px-2 text-2xs font-medium"
+              data-testid="text-leader-pick"
+              @click="emit('create-leader', props.entity.id)"
+            >
+              Use selected point
+            </button>
+            <button
+              v-if="props.entity.text.leader"
+              type="button"
+              class="h-7 rounded-sm border px-2 text-2xs font-medium"
+              data-testid="text-leader-clear"
+              @click="emit('update-text', props.entity.id, { leader: null })"
+            >
+              Clear
+            </button>
+          </span>
+        </SidebarField>
       </dl>
     </section>
 

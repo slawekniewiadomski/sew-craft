@@ -29,6 +29,7 @@ export function buildCircleCommands(
   center: CircleEndpoint,
   rim: CircleEndpoint,
   nextId: (prefix: string) => EntityId,
+  piece?: EntityId,
 ): Command[] {
   if (sameCircleEndpoint(center, rim)) return [];
 
@@ -38,7 +39,11 @@ export function buildCircleCommands(
     if (endpoint.kind === 'point') return endpoint.id;
 
     const id = nextId('point');
-    commands.push({ id, type: 'add_point', params: { x: endpoint.x, y: endpoint.y } });
+    commands.push({
+      id,
+      type: 'add_point',
+      params: { x: endpoint.x, y: endpoint.y, ...(piece === undefined ? {} : { piece }) },
+    });
     return id;
   };
 
@@ -47,7 +52,7 @@ export function buildCircleCommands(
   commands.push({
     id: nextId('circle'),
     type: 'add_circle',
-    params: { center: centerId, rim: rimId },
+    params: { center: centerId, rim: rimId, ...(piece === undefined ? {} : { piece }) },
   });
 
   return commands;

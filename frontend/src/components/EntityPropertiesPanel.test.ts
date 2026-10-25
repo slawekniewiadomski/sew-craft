@@ -210,18 +210,20 @@ describe('EntityPropertiesPanel', () => {
     expect(wrapper.emitted('set-circle-radius')).toBeUndefined();
   });
 
-  it('shows the construction badge and toggles it', async () => {
+  it('shows the construction badge and assigns a role', async () => {
     const { wrapper } = panel(doc(), 'guide');
 
     expect(wrapper.text()).toContain('Construction');
+    const select = wrapper.find('[data-testid="entity-role"]');
+    expect((select.element as HTMLSelectElement).value).toBe('construction');
 
-    await wrapper.find('[data-testid="entity-construction"]').setValue(false);
-    expect(wrapper.emitted('set-construction')).toEqual([['guide', false]]);
+    await select.setValue('cut');
+    expect(wrapper.emitted('set-role')).toEqual([['guide', 'cut']]);
 
-    await wrapper.find('[data-testid="entity-construction"]').setValue(true);
-    expect(wrapper.emitted('set-construction')).toEqual([
-      ['guide', false],
-      ['guide', true],
+    await select.setValue('annotation');
+    expect(wrapper.emitted('set-role')).toEqual([
+      ['guide', 'cut'],
+      ['guide', 'annotation'],
     ]);
   });
 
@@ -786,5 +788,82 @@ describe('EntityPropertiesPanel piece card all edges', () => {
       'p1',
       { kind: 'seam', width: 10 },
     ]);
+  });
+});
+
+describe('annotation text editor', () => {
+  const textDoc = (): PatternDocument =>
+    doc({
+      entities: [
+        ...doc().entities,
+        {
+          id: 't1',
+          kind: 'text',
+          piece: 'p1',
+          anchor: 'a',
+          content: 'velcro',
+          alignment: 'center',
+          rotation: 0.5,
+          fontSize: 8,
+          leader: 'b',
+        },
+      ],
+      pieces: [{ id: 'p1', edges: [], allowances: [] }],
+    });
+
+  it('shows the label fields and hides the role select', () => {
+    const { wrapper } = panel(textDoc(), 't1');
+
+    expect(wrapper.find('[data-testid="entity-role"]').exists()).toBe(false);
+    expect((wrapper.find('[data-testid="text-content"]').element as HTMLInputElement).value).toBe(
+      'velcro',
+    );
+    expect(
+      (wrapper.find('[data-testid="text-alignment"]').element as HTMLSelectElement).value,
+    ).toBe('center');
+    expect((wrapper.find('[data-testid="text-rotation"]').element as HTMLInputElement).value).toBe(
+      '0.5',
+    );
+    expect((wrapper.find('[data-testid="text-size"]').element as HTMLInputElement).value).toBe('8');
+    expect(wrapper.find('[data-testid="text-leader"]').text()).toBe('b');
+  });
+
+  it('emits each text edit', async () => {
+    const { wrapper } = panel(textDoc(), 't1');
+
+    await wrapper.find('[data-testid="text-content"]').setValue('snap');
+    await wrapper.find('[data-testid="text-alignment"]').setValue('right');
+    await wrapper.find('[data-testid="text-rotation"]').setValue('1.5');
+    await wrapper.find('[data-testid="text-size"]').setValue('12');
+
+    expect(wrapper.emitted('update-text')).toEqual([
+      ['t1', { content: 'snap' }],
+      ['t1', { alignment: 'right' }],
+      ['t1', { rotation: 1.5 }],
+      ['t1', { fontSize: 12 }],
+    ]);
+  });
+
+  it('picks and clears a leader', async () => {
+    const { wrapper } = panel(textDoc(), 't1');
+
+    await wrapper.find('[data-testid="text-leader-pick"]').trigger('click');
+    await wrapper.find('[data-testid="text-leader-clear"]').trigger('click');
+
+    expect(wrapper.emitted('create-leader')).toEqual([['t1']]);
+    expect(wrapper.emitted('update-text')).toEqual([['t1', { leader: null }]]);
+  });
+
+  it('snaps an invalid rotation back to the stored value', async () => {
+    const { wrapper } = panel(textDoc(), 't1');
+    const rotation = wrapper.find('[data-testid="text-rotation"]');
+
+    await rotation.setValue('');
+    expect((rotation.element as HTMLInputElement).value).toBe('0.5');
+
+    const size = wrapper.find('[data-testid="text-size"]');
+    await size.setValue('');
+    expect((size.element as HTMLInputElement).value).toBe('8');
+    expect(wrapper.emitted('update-text')).toBeUndefined();
   });
 });

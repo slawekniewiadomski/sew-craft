@@ -18,8 +18,10 @@ import {
   edgeEndpoints,
   edgeLabel,
   findDerivedDimension,
+  canEditEntity,
   pieceAllowanceRows,
   pieceCreationFromSelection,
+  pieceForEntity,
   pieceLabel,
   pieceOwningEdge,
   pieceSizeLine,
@@ -573,5 +575,74 @@ describe('drawer row helpers', () => {
     expect(edgeLabel(document, 'ab')).toBe('a → b');
     expect(edgeLabel(document, 'missing')).toBe('missing');
     expect(edgeLabel(document, 'k1')).toBe('k1');
+  });
+});
+
+describe('container helpers', () => {
+  const document = squareDocument();
+
+  it('reports the loop state, ownership count and derived metrics', () => {
+    const owned = {
+      ...document,
+      entities: document.entities.map((entity) => ({ ...entity, piece: 'p1' })),
+    };
+    const summary = pieceSummary(owned, owned.pieces[0]!);
+
+    expect(summary.hasLoop).toBe(true);
+    expect(summary.broken).toBe(false);
+    expect(summary.entityCount).toBe(owned.entities.length);
+  });
+
+  it('reports a piece without a loop and a broken loop', () => {
+    const empty = { ...createEmptyDocument(), pieces: [{ id: 'p1', edges: [], allowances: [] }] };
+    expect(pieceSummary(empty, empty.pieces[0]!).hasLoop).toBe(false);
+    expect(pieceSummary(empty, empty.pieces[0]!).broken).toBe(false);
+
+    const broken = {
+      ...document,
+      pieces: [{ id: 'p1', edges: ['missing'], allowances: [] }],
+    };
+    expect(pieceSummary(broken, broken.pieces[0]!).broken).toBe(true);
+  });
+
+  it('finds an entity owner by field or by loop edge', () => {
+    const owned = {
+      ...document,
+      entities: document.entities.map((entity) =>
+        entity.kind === 'point' ? { ...entity, piece: 'p1' } : entity,
+      ),
+    };
+    expect(pieceForEntity(owned, 'a')?.id).toBe('p1');
+    expect(pieceForEntity(document, 'ab')?.id).toBe('p1');
+    expect(pieceForEntity(document, 'missing')).toBeNull();
+    expect(pieceForEntity(document, 'also-missing')).toBeNull();
+  });
+
+  it('allows unowned entities and refuses another piece', () => {
+    const owned = {
+      ...document,
+      pieces: [...document.pieces, { id: 'p2', edges: [], allowances: [] }],
+      entities: document.entities.map((entity) =>
+        entity.kind === 'point' ? { ...entity, piece: 'p2' } : entity,
+      ),
+    };
+    expect(canEditEntity(owned, 'a', null)).toBe(true);
+    expect(canEditEntity(owned, 'a', 'p2')).toBe(true);
+    expect(canEditEntity(owned, 'a', 'p1')).toBe(false);
+  });
+});
+
+describe('pieceForEntity free geometry', () => {
+  it('returns null for an entity that is neither owned nor a loop edge', () => {
+    const document = squareDocument();
+    expect(pieceForEntity(document, 'k1')).toBeNull();
+
+    const orphanOwner = {
+      ...document,
+      entities: document.entities.map((entity) =>
+        entity.kind === 'point' ? { ...entity, piece: 'missing' } : entity,
+      ),
+    };
+    expect(pieceForEntity(orphanOwner, 'a')).toBeNull();
   });
 });

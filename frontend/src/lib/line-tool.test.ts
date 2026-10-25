@@ -137,3 +137,14 @@ describe('buildLineCommands', () => {
     expect(applied.entities.filter((entity) => entity.kind === 'point')).toHaveLength(5);
   });
 });
+
+describe('buildLineCommands ownership', () => {
+  it('stamps the active piece on new points and the line', () => {
+    const commands = buildLineCommands(fresh(10, 20), fresh(30, 40), idGenerator(), 'p1');
+    expect(commands).toEqual([
+      { id: 'point-1', type: 'add_point', params: { x: 10, y: 20, piece: 'p1' } },
+      { id: 'point-2', type: 'add_point', params: { x: 30, y: 40, piece: 'p1' } },
+      { id: 'line-3', type: 'add_line', params: { start: 'point-1', end: 'point-2', piece: 'p1' } },
+    ]);
+  });
+});

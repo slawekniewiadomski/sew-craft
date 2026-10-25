@@ -47,16 +47,17 @@ export function buildArcCommands(
   end: ArcEndpoint,
   through: ArcEndpoint,
   nextId: (prefix: string) => EntityId,
+  piece?: EntityId,
 ): Command[] {
   const commands: Command[] = [];
 
-  const startId = resolveEndpointCommands(start, commands, nextId);
-  const endId = resolveEndpointCommands(end, commands, nextId);
-  const throughId = resolveEndpointCommands(through, commands, nextId);
+  const startId = resolveEndpointCommands(start, commands, nextId, piece);
+  const endId = resolveEndpointCommands(end, commands, nextId, piece);
+  const throughId = resolveEndpointCommands(through, commands, nextId, piece);
   commands.push({
     id: nextId('arc'),
     type: 'add_arc',
-    params: { start: startId, end: endId, through: throughId },
+    params: { start: startId, end: endId, through: throughId, ...(piece === undefined ? {} : { piece }) },
   });
 
   return commands;

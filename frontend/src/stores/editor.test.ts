@@ -455,3 +455,92 @@ describe('editor store persistence', () => {
     expect(store.future).toEqual([]);
   });
 });
+
+describe('active piece and loop capture', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  const square = (): Command[] => [
+    { id: 'a', type: 'add_point', params: { x: 0, y: 0, piece: 'p1' } },
+    { id: 'b', type: 'add_point', params: { x: 100, y: 0, piece: 'p1' } },
+    { id: 'c', type: 'add_point', params: { x: 100, y: 100, piece: 'p1' } },
+    { id: 'd', type: 'add_point', params: { x: 0, y: 100, piece: 'p1' } },
+    { id: 'ab', type: 'add_line', params: { start: 'a', end: 'b', piece: 'p1' } },
+    { id: 'bc', type: 'add_line', params: { start: 'b', end: 'c', piece: 'p1' } },
+    { id: 'cd', type: 'add_line', params: { start: 'c', end: 'd', piece: 'p1' } },
+    { id: 'da', type: 'add_line', params: { start: 'd', end: 'a', piece: 'p1' } },
+  ];
+
+  const emptyPiece = (): PatternDocument => ({
+    ...createEmptyDocument(),
+    pieces: [{ id: 'p1', edges: [], allowances: [] }],
+  });
+
+  it('activates only a piece that exists', () => {
+    const store = useEditorStore();
+    store.load(emptyPiece());
+
+    store.setActivePiece('p1');
+    expect(store.activePieceId).toBe('p1');
+
+    store.setActivePiece('missing');
+    expect(store.activePieceId).toBeNull();
+  });
+
+  it('activates the first piece on load and clears it for a new project', () => {
+    const store = useEditorStore();
+    store.load(emptyPiece());
+    expect(store.activePieceId).toBe('p1');
+
+    store.markNew();
+    expect(store.activePieceId).toBeNull();
+  });
+
+  it('captures one closed chain in the same journal entry', () => {
+    const store = useEditorStore();
+    store.load(emptyPiece());
+    store.setActivePiece('p1');
+
+    store.dispatchGroup(square());
+
+    const piece = store.document.pieces[0]!;
+    expect(piece.edges).toHaveLength(4);
+    expect(piece.allowances).toHaveLength(4);
+    expect(store.journal).toHaveLength(1);
+    expect(store.journal[0]!.commands?.at(-1)?.type).toBe('set_piece_loop');
+
+    store.undo();
+    expect(store.document.pieces[0]!.edges).toEqual([]);
+  });
+
+  it('does not capture an open chain or an already looped piece', () => {
+    const store = useEditorStore();
+    store.load(emptyPiece());
+    store.setActivePiece('p1');
+
+    store.dispatchGroup(square().slice(0, 7));
+    expect(store.document.pieces[0]!.edges).toEqual([]);
+
+    store.dispatchGroup([
+      { id: 'da', type: 'add_line', params: { start: 'd', end: 'a', piece: 'p1' } },
+    ]);
+    expect(store.document.pieces[0]!.edges).toHaveLength(4);
+
+    const commands = store.journal.length;
+    store.dispatchGroup([
+      { id: 'extra', type: 'add_line', params: { start: 'a', end: 'c', piece: 'p1' } },
+    ]);
+    expect(store.journal.length).toBe(commands + 1);
+    expect(store.document.pieces[0]!.edges).toHaveLength(4);
+  });
+
+  it('does not capture without an active piece', () => {
+    const store = useEditorStore();
+    store.load(emptyPiece());
+    store.setActivePiece(null);
+
+    store.dispatchGroup(square());
+    expect(store.document.pieces[0]!.edges).toEqual([]);
+  });
+});

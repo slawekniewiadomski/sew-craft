@@ -3,10 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { RIBBON_GROUPS, type RibbonToolGroupItem } from './editor-ribbon';
 
 describe('RIBBON_GROUPS', () => {
-  it('groups controls into tools, features, sketching, constraints and export', () => {
+  it('groups controls into tools, features, annotation, sketching, constraints and export', () => {
     expect(RIBBON_GROUPS.map((group) => group.id)).toEqual([
       'tools',
       'features',
+      'annotation',
       'sketching',
       'constraints',
       'export',
@@ -14,6 +15,7 @@ describe('RIBBON_GROUPS', () => {
     expect(RIBBON_GROUPS.map((group) => group.label)).toEqual([
       'Tools',
       'Features',
+      'Annotation',
       'Sketching',
       'Constraints',
       'Export',
@@ -26,9 +28,16 @@ describe('RIBBON_GROUPS', () => {
       {
         kind: 'action',
         id: 'create-piece',
-        label: 'Create piece',
+        label: 'New piece',
         icon: 'piece',
         action: 'create_piece',
+      },
+      {
+        kind: 'action',
+        id: 'set-cut-loop',
+        label: 'Set cut loop',
+        icon: 'piece',
+        action: 'set_cut_loop',
       },
       { kind: 'action', id: 'undo', label: 'Undo', icon: 'undo', action: 'undo' },
       { kind: 'action', id: 'redo', label: 'Redo', icon: 'redo', action: 'redo' },
@@ -49,8 +58,14 @@ describe('RIBBON_GROUPS', () => {
     ]);
   });
 
-  it('exposes the sketching tools with distinct icons', () => {
+  it('offers annotation text in its own group', () => {
     expect(RIBBON_GROUPS[2]!.items).toEqual([
+      { kind: 'tool', id: 'tool-add_text', label: 'Text', icon: 'text', tool: 'add_text' },
+    ]);
+  });
+
+  it('exposes the sketching tools with distinct icons', () => {
+    expect(RIBBON_GROUPS[3]!.items).toEqual([
       { kind: 'tool', id: 'tool-add_point', label: 'Point', icon: 'point', tool: 'add_point' },
       { kind: 'tool', id: 'tool-add_line', label: 'Line', icon: 'line', tool: 'add_line' },
       { kind: 'tool', id: 'tool-add_curve', label: 'Curve', icon: 'curve', tool: 'add_curve' },
@@ -109,7 +124,7 @@ describe('RIBBON_GROUPS', () => {
   });
 
   it('offers the three rectangle gestures as one group, diagonal first', () => {
-    const group = RIBBON_GROUPS[2]!.items.find(
+    const group = RIBBON_GROUPS[3]!.items.find(
       (item): item is RibbonToolGroupItem => item.kind === 'tool-group',
     )!;
 
@@ -124,7 +139,7 @@ describe('RIBBON_GROUPS', () => {
   });
 
   it('exposes every constraint type as an icon button', () => {
-    const constraints = RIBBON_GROUPS[3]!.items;
+    const constraints = RIBBON_GROUPS[4]!.items;
     expect(constraints.map((item) => item.id)).toEqual([
       'constraint-coincident',
       'constraint-horizontal',
@@ -144,7 +159,7 @@ describe('RIBBON_GROUPS', () => {
   });
 
   it('exposes the SVG export action on its own', () => {
-    expect(RIBBON_GROUPS[4]!.items).toEqual([
+    expect(RIBBON_GROUPS[5]!.items).toEqual([
       {
         kind: 'action',
         id: 'download-svg',

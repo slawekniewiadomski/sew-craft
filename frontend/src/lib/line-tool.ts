@@ -26,12 +26,17 @@ export function buildLineCommands(
   start: LineEndpoint,
   end: LineEndpoint,
   nextId: (prefix: string) => EntityId,
+  piece?: EntityId,
 ): Command[] {
   const commands: Command[] = [];
 
-  const startId = resolveEndpointCommands(start, commands, nextId);
-  const endId = resolveEndpointCommands(end, commands, nextId);
-  commands.push({ id: nextId('line'), type: 'add_line', params: { start: startId, end: endId } });
+  const startId = resolveEndpointCommands(start, commands, nextId, piece);
+  const endId = resolveEndpointCommands(end, commands, nextId, piece);
+  commands.push({
+    id: nextId('line'),
+    type: 'add_line',
+    params: { start: startId, end: endId, ...(piece === undefined ? {} : { piece }) },
+  });
 
   return commands;
 }

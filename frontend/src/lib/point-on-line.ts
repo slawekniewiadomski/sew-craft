@@ -19,6 +19,7 @@ export function buildPointOnLineCommands(
   lineId: EntityId,
   pointer: Vec2,
   nextId: (prefix: string) => EntityId,
+  piece?: EntityId,
 ): Command[] | null {
   const line = getEntity(document, lineId);
   if (line === undefined || line.kind !== 'line') return null;
@@ -31,11 +32,19 @@ export function buildPointOnLineCommands(
 
   const pointId = nextId('point');
   return [
-    { id: pointId, type: 'add_point', params: { x: projected.x, y: projected.y } },
+    {
+      id: pointId,
+      type: 'add_point',
+      params: { x: projected.x, y: projected.y, ...(piece === undefined ? {} : { piece }) },
+    },
     {
       id: nextId('constraint'),
       type: 'add_constraint',
-      params: { type: 'point_on_line', entities: [pointId, line.start, line.end] },
+      params: {
+        type: 'point_on_line',
+        entities: [pointId, line.start, line.end],
+        ...(piece === undefined ? {} : { piece }),
+      },
     },
   ];
 }

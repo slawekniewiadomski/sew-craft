@@ -182,6 +182,7 @@ export function buildRectangleCommands(
   mode: RectangleMode,
   clicks: DraftingEndpoint[],
   nextId: (prefix: string) => EntityId,
+  piece?: EntityId,
 ): Command[] {
   const corners = rectangleCorners(document, mode, clicks);
   if (corners === null) return [];
@@ -196,7 +197,11 @@ export function buildRectangleCommands(
     }
 
     const id = nextId('point');
-    commands.push({ id, type: 'add_point', params: { x: corner.x, y: corner.y } });
+    commands.push({
+      id,
+      type: 'add_point',
+      params: { x: corner.x, y: corner.y, ...(piece === undefined ? {} : { piece }) },
+    });
     return id;
   });
 
@@ -204,7 +209,7 @@ export function buildRectangleCommands(
     commands.push({
       id: nextId('line'),
       type: 'add_line',
-      params: { start, end: ids[(index + 1) % ids.length]! },
+      params: { start, end: ids[(index + 1) % ids.length]!, ...(piece === undefined ? {} : { piece }) },
     });
   });
 
@@ -222,6 +227,7 @@ export function buildRectangleCommands(
         params: {
           type: 'angle',
           entities: [previous, vertex, next],
+          ...(piece === undefined ? {} : { piece }),
           value: rightAngle(corners[(index + 3) % 4]!, corners[index]!, corners[(index + 1) % 4]!),
         },
       });
@@ -233,7 +239,7 @@ export function buildRectangleCommands(
     commands.push({
       id: nextId('constraint'),
       type: 'add_constraint',
-      params: { type, entities: [ids[from]!, ids[to]!] },
+      params: { type, entities: [ids[from]!, ids[to]!], ...(piece === undefined ? {} : { piece }) },
     });
   }
 

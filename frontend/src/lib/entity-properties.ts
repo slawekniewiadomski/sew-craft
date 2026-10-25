@@ -9,6 +9,7 @@ import {
   dimensionValue,
   getEntity,
   isConstruction,
+  roleOf,
   measureLinearDimension,
   type CircleEntity,
   type Constraint,
@@ -22,7 +23,7 @@ import {
 } from '@sewcraft/geometry';
 
 import { constraintLabel } from './constraint-view';
-import { pieceOwningEdge, pieceSummary, type PieceSummary } from './pieces';
+import { pieceForEntity, pieceSummary, type PieceSummary } from './pieces';
 
 const RADIANS_TO_DEGREES = 180 / Math.PI;
 
@@ -113,11 +114,24 @@ export type CutDimensionSummary = {
   anchors: [string, string];
 };
 
+/** The editable fields of an annotation label. */
+export type TextSummary = {
+  content: string;
+  alignment: 'left' | 'center' | 'right';
+  rotation: number;
+  fontSize: number;
+  leader: EntityId | null;
+};
+
 /** Everything the Properties inspector shows for one selected entity. */
 export type EntityProperties = {
   id: EntityId;
   kind: Entity['kind'];
+  /** The assignable role; text is always annotation. */
+  role: 'cut' | 'construction' | 'annotation';
   construction: boolean;
+  /** Annotation text only; `null` for every other kind. */
+  text: TextSummary | null;
   /** Points only; lines and curves have no fixed flag. */
   fixed: boolean | null;
   geometry: EntityGeometry;
@@ -306,7 +320,7 @@ export function entityProperties(
     });
   }
 
-  const owningPiece = entity.kind === 'point' ? null : pieceOwningEdge(document, entity.id);
+  const owningPiece = entity.kind === 'point' ? null : pieceForEntity(document, entity.id);
   const cutDimensions: CutDimensionSummary[] =
     entity.kind === 'point'
       ? []
@@ -353,7 +367,18 @@ export function entityProperties(
   return {
     id: entity.id,
     kind: entity.kind,
+    role: roleOf(entity),
     construction: isConstruction(entity),
+    text:
+      entity.kind === 'text'
+        ? {
+            content: entity.content,
+            alignment: entity.alignment ?? 'left',
+            rotation: entity.rotation ?? 0,
+            fontSize: entity.fontSize ?? 6,
+            leader: entity.leader ?? null,
+          }
+        : null,
     fixed: entity.kind === 'point' ? entity.fixed : null,
     geometry: geometryOf(entity),
     length:

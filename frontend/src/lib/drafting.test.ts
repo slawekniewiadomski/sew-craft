@@ -7,7 +7,7 @@ import {
 } from '@sewcraft/geometry';
 import { describe, expect, it } from 'vitest';
 
-import { endpointMissing, endpointPosition, type DraftingEndpoint } from './drafting';
+import { endpointMissing, endpointPosition, resolveDraftingEndpoint, type DraftingEndpoint } from './drafting';
 
 function pt(id: string, x: number, y: number): PointEntity {
   return { id, kind: 'point', x, y, construction: false, fixed: false };
@@ -59,5 +59,50 @@ describe('endpointMissing', () => {
 
   it('is true once the referenced point is gone', () => {
     expect(endpointMissing(baseDoc, existing('missing'))).toBe(true);
+  });
+});
+
+describe('resolveDraftingEndpoint container rules', () => {
+  const breaks = (id: string, x: number, y: number, role?: 'annotation', piece?: string): PointEntity => ({
+    id,
+    kind: 'point',
+    x,
+    y,
+    construction: false,
+    fixed: false,
+    ...(role === undefined ? {} : { role }),
+    ...(piece === undefined ? {} : { piece }),
+  });
+
+  const document = doc([
+    breaks('own', 100, 100, undefined, 'p1'),
+    breaks('other', 200, 100, undefined, 'p2'),
+    breaks('mark', 300, 100, 'annotation', 'p1'),
+  ]);
+
+  it('reuses a point of the active piece', () => {
+    expect(resolveDraftingEndpoint(document, { x: 100, y: 100 }, 'p1')).toEqual({
+      kind: 'point',
+      id: 'own',
+    });
+  });
+
+  it('ignores annotation and other-piece points', () => {
+    expect(resolveDraftingEndpoint(document, { x: 200, y: 100 }, 'p1')).toMatchObject({
+      kind: 'new',
+    });
+    expect(resolveDraftingEndpoint(document, { x: 300, y: 100 }, 'p1')).toMatchObject({
+      kind: 'new',
+    });
+  });
+
+  it('keeps the legacy behaviour without an active piece', () => {
+    expect(resolveDraftingEndpoint(document, { x: 200, y: 100 })).toEqual({
+      kind: 'point',
+      id: 'other',
+    });
+    expect(resolveDraftingEndpoint(document, { x: 300, y: 100 })).toMatchObject({
+      kind: 'new',
+    });
   });
 });
