@@ -43,6 +43,12 @@ export interface RibbonToolGroupItem {
   primary: RibbonToolItem;
   /** Modes offered by the menu, `primary` included. */
   items: RibbonToolItem[];
+  /**
+   * Whether the icon half keeps the last armed mode after the group loses the
+   * active tool. Defaults to true; a group whose primary must stay primary sets
+   * it false.
+   */
+  rememberLast?: boolean;
 }
 
 export type RibbonItem =
@@ -138,7 +144,13 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
   {
     id: 'annotation',
     label: 'Annotation',
-    items: [toolGroup('text', 'Text', [toolItem('add_text'), toolItem('add_text_leader')])],
+    items: [
+      {
+        ...toolGroup('text', 'Text', [toolItem('add_text'), toolItem('add_text_leader')]),
+        // Text stays the primary: the split control never remembers the variant.
+        rememberLast: false,
+      },
+    ],
   },
   {
     id: 'sketching',

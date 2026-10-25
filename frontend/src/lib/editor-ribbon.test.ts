@@ -87,6 +87,7 @@ describe('RIBBON_GROUPS', () => {
             tool: 'add_text_leader',
           },
         ],
+        rememberLast: false,
       },
     ]);
   });
