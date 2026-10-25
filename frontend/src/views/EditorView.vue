@@ -1018,17 +1018,19 @@ function onAddText(anchor: DraftingEndpoint): void {
 
 function onAddCurve(points: [EntityId, EntityId, EntityId, EntityId]): void {
   run(() =>
-    dispatch({
-      id: nextCommandId('curve'),
-      type: 'add_curve',
-      params: {
-        p0: points[0],
-        p1: points[1],
-        p2: points[2],
-        p3: points[3],
-        ...(activePieceId.value === null ? {} : { piece: activePieceId.value }),
+    dispatchGroup([
+      {
+        id: nextCommandId('curve'),
+        type: 'add_curve',
+        params: {
+          p0: points[0],
+          p1: points[1],
+          p2: points[2],
+          p3: points[3],
+          ...(activePieceId.value === null ? {} : { piece: activePieceId.value }),
+        },
       },
-    }),
+    ]),
   );
 }
 
