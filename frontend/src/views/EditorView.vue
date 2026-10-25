@@ -2026,6 +2026,7 @@ onBeforeUnmount(() => {
             v-else-if="isAssemblyTab && activeAssembly"
             :document="assemblyDocument"
             :assembly-id="activeAssembly.id"
+            :pieces="pattern.pieces"
             :selected-instance-id="selectedInstanceId"
             :picker-open="assemblyPickerOpen"
             :fit-token="fitToken"

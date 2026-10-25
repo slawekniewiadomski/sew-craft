@@ -7,8 +7,9 @@ import {
   type EntityId,
   type PatternDocument,
   type Piece,
+  type Vec2,
 } from '@sewcraft/geometry';
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 import { Button } from '@/components/ui/button';
 import { tabColor } from '@/lib/tabs';
@@ -20,6 +21,12 @@ const props = withDefaults(
     selectedInstanceId?: EntityId | null;
     /** Whether the Add piece picker is open (the ribbon toggles it). */
     pickerOpen?: boolean;
+    /**
+     * Every piece the Add piece picker offers. The canvas document is the
+     * assembly slice and only holds pieces an instance already places, so the
+     * picker is fed the pattern's full piece list instead.
+     */
+    pieces?: Piece[];
     /** Bumped by the Fit action and by activating the tab. */
     fitToken?: number;
     readOnly?: boolean;
@@ -37,30 +44,69 @@ const emit = defineEmits<{
 }>();
 
 const svg = ref<SVGSVGElement | null>(null);
-const drag = ref<{ x: number; y: number; dx: number; dy: number } | null>(null);
+const drag = ref<{ id: EntityId; x: number; y: number; dx: number; dy: number } | null>(null);
 
 const assembly = computed<Assembly | null>(
   () => props.document.assemblies.find((candidate) => candidate.id === props.assemblyId) ?? null,
 );
 
 /** Every piece the picker offers, in document order. */
-const pieces = computed(() => props.document.pieces);
+const pieces = computed(() => props.pieces ?? props.document.pieces);
+
+/** The palette position of a piece, used to name unnamed pieces. */
+function pieceIndex(id: EntityId): number {
+  return pieces.value.findIndex((candidate) => candidate.id === id);
+}
 
 const padding = 20;
+/** How far the wheel may magnify or shrink the fitted view. */
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 40;
 
-const box = computed(() => {
+interface ViewRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** The fitted world rectangle: the assembly plus its padding, snapshotted on fit. */
+const fitBox = ref<ViewRect>({ x: 0, y: 0, width: 100, height: 100 });
+
+/** The assembled bounds plus padding; never applied while the maker is working. */
+function fittedBox(): ViewRect {
   const bounds = assembly.value === null ? null : assemblyBounds(props.document, assembly.value);
-  if (bounds === null) return { minX: 0, minY: 0, width: 100, height: 100 };
+  if (bounds === null) return { x: 0, y: 0, width: 100, height: 100 };
   return {
-    minX: bounds.min.x - padding,
-    minY: bounds.min.y - padding,
+    x: bounds.min.x - padding,
+    y: bounds.min.y - padding,
     width: bounds.max.x - bounds.min.x + padding * 2,
     height: bounds.max.y - bounds.min.y + padding * 2,
+  };
+}
+
+/** The zoomed view's centre in world space; `null` while fitted. */
+const centre = ref<Vec2 | null>(null);
+/** Zoom relative to the fitted view; 1 is fit, larger magnifies. */
+const zoom = ref(1);
+
+/** The world rectangle the SVG shows. */
+const view = computed(() => {
+  const base = fitBox.value;
+  /* v8 ignore next -- a fitted view is the only alternative to a centred one */
+  if (centre.value === null) return base;
+  const width = base.width / zoom.value;
+  const height = base.height / zoom.value;
+  return {
+    x: centre.value.x - width / 2,
+    y: centre.value.y - height / 2,
+    width,
+    height,
   };
 });
 
 const viewBox = computed(
-  () => `${box.value.minX} ${box.value.minY} ${box.value.width} ${box.value.height}`,
+  () => `${view.value.x} ${view.value.y} ${view.value.width} ${view.value.height}`,
 );
 
 function pieceOf(instance: { piece: EntityId }): Piece | undefined {
@@ -95,7 +141,7 @@ function fillOf(instance: { piece: EntityId }): string {
 
 function labelOf(instance: { piece: EntityId; mirrored?: boolean }): string {
   const piece = pieceOf(instance);
-  const index = props.document.pieces.findIndex((candidate) => candidate.id === instance.piece);
+  const index = pieceIndex(instance.piece);
   const name = piece?.name?.trim() || (index < 0 ? 'Piece' : `Piece ${index + 1}`);
   return instance.mirrored === true ? `${name} · mirrored` : name;
 }
@@ -125,13 +171,96 @@ function select(instance: EntityId): void {
   emit('select', instance);
 }
 
-/** The mm-per-pixel factor of the current fitted viewBox. */
+/** The mm-per-pixel factor of the current viewBox. */
 function unitPerPixel(): number {
   const element = svg.value;
   /* v8 ignore next -- the SVG exists for every pointer event */
   if (element === null || element.clientWidth === 0) return 1;
-  return box.value.width / element.clientWidth;
+  return view.value.width / element.clientWidth;
 }
+
+/** Screen pixels per world millimetre; `null` before the canvas has a size. */
+function pixelsPerMillimetre(): number | null {
+  const element = svg.value;
+  /* v8 ignore next -- the SVG exists for every pointer event */
+  if (element === null || element.clientWidth === 0) return null;
+  return element.clientWidth / view.value.width;
+}
+
+/** The world point under a pointer, or `null` before the canvas has a size. */
+function pointerWorld(pointer: { clientX: number; clientY: number }): Vec2 | null {
+  const element = svg.value;
+  const scale = pixelsPerMillimetre();
+  /* v8 ignore next -- the SVG exists for every pointer event */
+  if (element === null || scale === null) return null;
+  const rect = element.getBoundingClientRect();
+  return {
+    x: view.value.x + (pointer.clientX - rect.left) / scale,
+    y: view.value.y + (pointer.clientY - rect.top) / scale,
+  };
+}
+
+/** Wheel zoom keeps the world point under the pointer fixed. */
+function onWheel(event: WheelEvent): void {
+  const world = pointerWorld(event);
+  if (world === null) return;
+  const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
+  const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom.value * factor));
+  const ratio = next / zoom.value;
+  const current = view.value;
+  const cx = current.x + current.width / 2;
+  const cy = current.y + current.height / 2;
+  centre.value = {
+    x: world.x + (cx - world.x) / ratio,
+    y: world.y + (cy - world.y) / ratio,
+  };
+  zoom.value = next;
+}
+
+/** A middle-button pan: its screen origin, the view centre and the mm-per-pixel. */
+const pan = ref<{ clientX: number; clientY: number; centre: Vec2; scale: number } | null>(null);
+
+function onCanvasPointerDown(event: PointerEvent): void {
+  if (event.button === 1) {
+    event.preventDefault();
+    beginPan(event);
+    return;
+  }
+  if (event.button === 0) emit('select', null);
+}
+
+function beginPan(event: PointerEvent): void {
+  const scale = pixelsPerMillimetre();
+  if (scale === null) return;
+  const current = view.value;
+  pan.value = {
+    clientX: event.clientX,
+    clientY: event.clientY,
+    centre: { x: current.x + current.width / 2, y: current.y + current.height / 2 },
+    scale,
+  };
+  (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
+  window.addEventListener('pointermove', onPanMove);
+  window.addEventListener('pointerup', endPan);
+  window.addEventListener('pointercancel', endPan);
+}
+
+function onPanMove(event: PointerEvent): void {
+  const current = pan.value!;
+  centre.value = {
+    x: current.centre.x - (event.clientX - current.clientX) / current.scale,
+    y: current.centre.y - (event.clientY - current.clientY) / current.scale,
+  };
+}
+
+function endPan(): void {
+  pan.value = null;
+  window.removeEventListener('pointermove', onPanMove);
+  window.removeEventListener('pointerup', endPan);
+  window.removeEventListener('pointercancel', endPan);
+}
+
+onBeforeUnmount(endPan);
 
 function onPointerDown(
   instance: { id: EntityId; x: number; y: number },
@@ -139,7 +268,7 @@ function onPointerDown(
 ): void {
   select(instance.id);
   if (props.readOnly) return;
-  drag.value = { x: event.clientX, y: event.clientY, dx: 0, dy: 0 };
+  drag.value = { id: instance.id, x: event.clientX, y: event.clientY, dx: 0, dy: 0 };
   (event.target as Element).setPointerCapture?.(event.pointerId);
 }
 
@@ -185,18 +314,23 @@ function onKeydown(instance: { id: EntityId }, event: KeyboardEvent): void {
   }
 }
 
-/** Drag preview offset for the active instance, in millimetres. */
+/** Drag preview offset for the pressed instance, in millimetres. */
 function previewOffset(instance: { id: EntityId }): string {
   const current = drag.value;
-  if (current === null) return '';
+  if (current === null || current.id !== instance.id) return '';
   return `translate(${round(current.dx)} ${round(current.dy)})`;
 }
 
+/** Fit on mount, tab change or the Fit action — never on a document edit. */
 watch(
   () => [props.assemblyId, props.fitToken],
   () => {
     drag.value = null;
+    centre.value = null;
+    zoom.value = 1;
+    fitBox.value = fittedBox();
   },
+  { immediate: true },
 );
 </script>
 
@@ -209,7 +343,9 @@ watch(
       role="application"
       :aria-label="`Assembly ${props.assemblyId}`"
       data-testid="assembly-svg"
-      @pointerdown.self="emit('select', null)"
+      @pointerdown="onCanvasPointerDown"
+      @mousedown.middle.prevent
+      @wheel.prevent="onWheel"
     >
       <g
         v-for="instance in assembly?.instances ?? []"
@@ -220,7 +356,7 @@ watch(
         role="button"
         tabindex="0"
         :aria-label="labelOf(instance)"
-        @pointerdown.stop="onPointerDown(instance, $event)"
+        @pointerdown.left.stop="onPointerDown(instance, $event)"
         @pointermove="onPointerMove(instance, $event)"
         @pointerup="onPointerUp(instance)"
         @pointercancel="drag = null"
@@ -348,7 +484,7 @@ watch(
           :style="{ backgroundColor: piece.color ?? 'transparent' }"
           aria-hidden="true"
         />
-        {{ piece.name?.trim() || `Piece ${props.document.pieces.indexOf(piece) + 1}` }}
+        {{ piece.name?.trim() || `Piece ${pieceIndex(piece.id) + 1}` }}
       </button>
       <Button
         v-if="props.pickerOpen"

@@ -149,7 +149,9 @@ Existing components stay where they are; new modules are labelled by their role:
 - `packages/geometry/src/document.ts` — `documentForPiece` returns a valid
   document containing only the active piece's entities, constraints and corner
   rounds (with empty `assemblies`/`tabs`), so the piece canvas never sees another
-  piece; `documentForAssembly` keeps the pieces an assembly references;
+  piece. A kept round brings its derived arc, controls, centre, tangents and
+  anchors with it, so the piece loop and its cut line still resolve inside the
+  slice; `documentForAssembly` keeps the pieces an assembly references;
   `pieceBounds` (stitch bounds with an owned-points fallback) is shared by the
   piece tab fit and the anchor.
 - `packages/geometry/src/types.ts`, `migration.ts` — schema 0.4 and tab
@@ -164,7 +166,11 @@ Existing components stay where they are; new modules are labelled by their role:
 - `frontend/src/components/EditorTabs.vue` — the bottom bar, `+` menu, drag
   reorder, keyboard.
 - `frontend/src/components/AssemblyCanvas.vue` — instance rendering, selection,
-  drag, nudge, delete, Add piece picker, fit.
+  drag, nudge, delete, Add piece picker, fit. The picker is fed the pattern's
+  full piece list through `pieces` (the canvas document is the assembly slice and
+  only holds placed pieces); a drag previews only the pressed instance. The view
+  fits on mount, on an assembly/tab change and on Fit — never on an instance
+  edit — and the wheel zooms around the pointer while the middle button pans.
 - `frontend/src/components/AssemblyPanel.vue` — assembly name, instance transform
   fields, selected piece parameters and the "Open piece tab" action.
 - `frontend/src/components/PiecePanel.vue` — the active piece's parameters; the

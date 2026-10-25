@@ -2346,6 +2346,21 @@ describe('EditorView', () => {
     expect(store.document.cornerRounds).toHaveLength(1);
     expect(store.document.cornerRounds?.[0]).toMatchObject({ radius: 10 });
     expect(store.document.cornerRounds?.[0]?.id).toMatch(/^corner-round-/);
+
+    // The piece canvas draws the rounded corner, not a gap: every derived entity
+    // of the round survives the active-piece slice.
+    const round = store.document.cornerRounds![0]!;
+    const canvasIds = (
+      wrapper.findComponent(PatternCanvas).props('document') as PatternDocument
+    ).entities.map((entity) => entity.id);
+    expect(canvasIds).toEqual(
+      expect.arrayContaining([
+        round.arc,
+        round.center!,
+        ...round.controls,
+        ...round.ends.map((end) => end.tangent),
+      ]),
+    );
     expect(wrapper.find('[data-testid="corner-round-value"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="corner-round-prompt"]').text()).toBe(
       'Round corner — pick two lines or a corner.',
@@ -3530,6 +3545,24 @@ describe('EditorView assembly tab', () => {
     expect(store.journal.filter((entry) => entry.command.type === 'update_instance')).toHaveLength(
       2,
     );
+  });
+
+  it('adds the first piece to an assembly that has no instances yet', async () => {
+    const document = assemblyDoc();
+    document.assemblies[0]!.instances = [];
+    const { wrapper, store } = await mountLoaded(document);
+    await wrapper.find('[data-testid="tab-assembly-a1"]').trigger('click');
+    await flushPromises();
+
+    await wrapper.find('[data-testid="add-instance"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="add-piece-p1"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="add-piece-p1"]').trigger('click');
+    await flushPromises();
+
+    expect(store.document.assemblies[0]!.instances).toHaveLength(1);
+    expect(store.document.assemblies[0]!.instances[0]).toMatchObject({ piece: 'p1' });
   });
 
   it('adds a piece through the ribbon picker', async () => {

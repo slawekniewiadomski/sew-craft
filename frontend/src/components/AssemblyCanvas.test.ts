@@ -1,5 +1,6 @@
 import { createEmptyDocument, type PatternDocument } from '@sewcraft/geometry';
 import { mount } from '@vue/test-utils';
+import { nextTick } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 
 import AssemblyCanvas from './AssemblyCanvas.vue';
@@ -58,6 +59,11 @@ function withWidth(wrapper: ReturnType<typeof mountCanvas>, width = 1000): void 
     configurable: true,
     value: width,
   });
+}
+
+/** The SVG viewBox as numbers: `x y width height`. */
+function viewBoxOf(wrapper: ReturnType<typeof mountCanvas>): number[] {
+  return wrapper.find('[data-testid="assembly-svg"]').attributes('viewBox')!.split(' ').map(Number);
 }
 
 describe('AssemblyCanvas rendering', () => {
@@ -126,7 +132,7 @@ describe('AssemblyCanvas interaction', () => {
     await instance.trigger('pointerdown', { clientX: 0, clientY: 0 });
     expect(wrapper.emitted('select')).toEqual([['i1']]);
 
-    await wrapper.find('[data-testid="assembly-svg"]').trigger('pointerdown');
+    await wrapper.find('[data-testid="assembly-svg"]').trigger('pointerdown', { button: 0 });
     expect(wrapper.emitted('select')?.at(-1)).toEqual([null]);
   });
 
@@ -146,6 +152,22 @@ describe('AssemblyCanvas interaction', () => {
     expect(id).toBe('i1');
     expect(x).toBeGreaterThan(100);
     expect(y).toBeGreaterThan(100);
+  });
+
+  it('previews the drag on the pressed instance only', async () => {
+    const wrapper = mountCanvas();
+    withWidth(wrapper, 1000);
+    const first = wrapper.find('[data-testid="assembly-instance-i1"]');
+    const second = wrapper.find('[data-testid="assembly-instance-i2"]');
+
+    await first.trigger('pointerdown', { clientX: 0, clientY: 0 });
+    await first.trigger('pointermove', { clientX: 10, clientY: 5 });
+    await nextTick();
+
+    expect(first.attributes('transform')).toContain('translate(');
+    expect(second.attributes('transform')).toBe('');
+
+    await first.trigger('pointerup');
   });
 
   it('does not commit a drag with no movement or while read-only', async () => {
@@ -203,6 +225,125 @@ describe('AssemblyCanvas interaction', () => {
       clientY: 1,
       pointerId: 7,
     });
+
+    expect(capture).toHaveBeenCalledWith(7);
+  });
+
+  it('zooms the fitted view around the pointer with the wheel', async () => {
+    const wrapper = mountCanvas();
+    withWidth(wrapper, 1000);
+    const svg = wrapper.find('[data-testid="assembly-svg"]');
+    const before = viewBoxOf(wrapper);
+
+    svg.element.dispatchEvent(
+      new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 500,
+        clientY: 0,
+        deltaY: -100,
+      }),
+    );
+    await nextTick();
+
+    expect(viewBoxOf(wrapper)[2]).toBeCloseTo(before[2]! / 1.15);
+    expect(viewBoxOf(wrapper)[0]).toBeGreaterThan(before[0]!);
+
+    svg.element.dispatchEvent(
+      new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 500,
+        clientY: 0,
+        deltaY: 100,
+      }),
+    );
+    await nextTick();
+
+    expect(viewBoxOf(wrapper)[2]).toBeCloseTo(before[2]!);
+  });
+
+  it('pans with the middle button, even from an instance', async () => {
+    const wrapper = mountCanvas();
+    withWidth(wrapper, 1000);
+    const svg = wrapper.find('[data-testid="assembly-svg"]');
+    const before = viewBoxOf(wrapper);
+
+    // The browser's middle-click autoscroll never starts over the canvas.
+    const middleDown = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      button: 1,
+    });
+    svg.element.dispatchEvent(middleDown);
+    expect(middleDown.defaultPrevented).toBe(true);
+
+    // A middle press on an instance pans rather than dragging or selecting it.
+    svg.element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 2 }));
+    expect(wrapper.emitted('select')).toBeUndefined();
+    wrapper
+      .find('[data-testid="assembly-instance-i1"]')
+      .element.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, button: 1, clientX: 0, clientY: 0 }),
+      );
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 100, clientY: 0 }));
+    await nextTick();
+    window.dispatchEvent(new MouseEvent('pointerup'));
+
+    expect(viewBoxOf(wrapper)[0]).toBeCloseTo(before[0]! - (100 * before[2]!) / 1000);
+    expect(wrapper.emitted('select')).toBeUndefined();
+    expect(wrapper.emitted('move')).toBeUndefined();
+  });
+
+  it('ignores the wheel and a middle drag before the canvas has a size', async () => {
+    const wrapper = mountCanvas();
+    const svg = wrapper.find('[data-testid="assembly-svg"]');
+    const before = svg.attributes('viewBox');
+
+    svg.element.dispatchEvent(
+      new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 10, deltaY: -100 }),
+    );
+    svg.element.dispatchEvent(
+      new MouseEvent('pointerdown', { bubbles: true, button: 1, clientX: 0, clientY: 0 }),
+    );
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 50, clientY: 0 }));
+    window.dispatchEvent(new MouseEvent('pointerup'));
+    await nextTick();
+
+    expect(svg.attributes('viewBox')).toBe(before);
+  });
+
+  it('resets zoom and pan when the tab is fitted again', async () => {
+    const wrapper = mountCanvas();
+    withWidth(wrapper, 1000);
+    const svg = wrapper.find('[data-testid="assembly-svg"]');
+
+    svg.element.dispatchEvent(
+      new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        clientX: 0,
+        clientY: 0,
+        deltaY: -100,
+      }),
+    );
+    await nextTick();
+    expect(viewBoxOf(wrapper)[2]).toBeLessThan(160);
+
+    await wrapper.setProps({ fitToken: 1 });
+
+    expect(viewBoxOf(wrapper)).toEqual([30, 45, 160, 100]);
+  });
+
+  it('captures the pointer for a middle-button pan', async () => {
+    const wrapper = mountCanvas();
+    withWidth(wrapper, 1000);
+    const svg = wrapper.find('[data-testid="assembly-svg"]');
+    const capture = vi.fn();
+    Object.defineProperty(svg.element, 'setPointerCapture', { configurable: true, value: capture });
+
+    await svg.trigger('pointerdown', { button: 1, clientX: 0, clientY: 0, pointerId: 7 });
+    window.dispatchEvent(new MouseEvent('pointerup'));
 
     expect(capture).toHaveBeenCalledWith(7);
   });
@@ -279,6 +420,26 @@ describe('AssemblyCanvas Add piece picker', () => {
 
     expect(wrapper.find('[data-testid="add-piece-p2"]').text()).toBe('Piece 2');
   });
+
+  it('offers pieces the assembly slice does not contain yet', async () => {
+    const full = documentOf();
+    // A fresh assembly's slice holds no piece: nothing is placed yet.
+    const document: PatternDocument = {
+      ...full,
+      pieces: [],
+      assemblies: [{ id: 'a1', name: 'Shell', instances: [] }],
+    };
+    const wrapper = mount(AssemblyCanvas, {
+      props: { document, assemblyId: 'a1', pickerOpen: true, pieces: full.pieces },
+    });
+
+    expect(wrapper.text()).not.toContain('No pieces yet');
+    expect(wrapper.find('[data-testid="add-piece-p1"]').text()).toBe('Front');
+    expect(wrapper.find('[data-testid="add-piece-p2"]').text()).toBe('Sleeve');
+
+    await wrapper.find('[data-testid="add-piece-p2"]').trigger('click');
+    expect(wrapper.emitted('add-piece')).toEqual([['p2']]);
+  });
 });
 
 describe('AssemblyCanvas cancel and fit', () => {
@@ -307,5 +468,22 @@ describe('AssemblyCanvas cancel and fit', () => {
 
     await wrapper.setProps({ assemblyId: 'missing' });
     expect(wrapper.find('[data-testid="assembly-svg"]').attributes('viewBox')).toBe('0 0 100 100');
+  });
+
+  it('keeps the view fixed when an instance moves and refits only on fit', async () => {
+    const wrapper = mountCanvas();
+    const before = viewBoxOf(wrapper);
+
+    const moved = documentOf();
+    moved.assemblies[0]!.instances[0]!.x = 1000;
+    const reference = mountCanvas({ document: moved });
+    const fitted = viewBoxOf(reference);
+    reference.unmount();
+
+    await wrapper.setProps({ document: moved });
+    expect(viewBoxOf(wrapper)).toEqual(before);
+
+    await wrapper.setProps({ fitToken: 1 });
+    expect(viewBoxOf(wrapper)).toEqual(fitted);
   });
 });
