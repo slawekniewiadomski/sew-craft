@@ -1725,17 +1725,16 @@ const textViews = computed<TextView[]>(() =>
 );
 
 /** The synthetic label a pending leader gesture previews. */
-const textPreviewEntity = computed<TextEntity>(() => ({
+const TEXT_PREVIEW_ENTITY: TextEntity = {
   id: 'text-preview',
   kind: 'text',
-  ...(props.activePieceId === null ? {} : { piece: props.activePieceId }),
   anchor: 'text-preview-anchor',
   content: DEFAULT_TEXT_CONTENT,
   alignment: 'left',
   rotation: 0,
   fontSize: DEFAULT_TEXT_SIZE,
   leader: 'text-preview-target',
-}));
+};
 
 interface TextLeaderPreview {
   entity: TextEntity;
@@ -1752,7 +1751,7 @@ interface TextLeaderPreview {
  */
 const textPreview = computed<TextLeaderPreview | null>(() => {
   if (props.tool !== 'add_text_leader' || textAnchor.value === null) return null;
-  const entity = textPreviewEntity.value;
+  const entity = TEXT_PREVIEW_ENTITY;
   const anchor = endpointPosition(props.document, textAnchor.value)!;
   const target = textPointer.value;
   return {
@@ -2362,7 +2361,7 @@ function onTextLeaderPointer(screen: Vec2): void {
   const anchor = endpointPosition(props.document, textAnchor.value)!;
   const target = endpointPosition(props.document, leader)!;
   textPointer.value = target;
-  if (leaderTargetIssue(textPreviewEntity.value, anchor, target) !== null) return;
+  if (leaderTargetIssue(TEXT_PREVIEW_ENTITY, anchor, target) !== null) return;
 
   emit('add-text', textAnchor.value, leader);
   textAnchor.value = null;
