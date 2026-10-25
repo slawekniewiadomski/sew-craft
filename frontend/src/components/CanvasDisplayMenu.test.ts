@@ -64,4 +64,38 @@ describe('CanvasDisplayMenu', () => {
     expect(menuItems()[0]!.getAttribute('aria-checked')).toBe('false');
     expect(menuItems()[1]!.getAttribute('aria-checked')).toBe('true');
   });
+
+  it('closes when the trigger is clicked again', async () => {
+    const wrapper = await mountMenu();
+
+    await wrapper.find('[data-testid="display-menu-trigger"]').trigger('click');
+
+    expect(wrapper.find('[data-testid="display-menu"]').exists()).toBe(false);
+  });
+
+  it('closes on Escape and returns focus to the trigger', async () => {
+    const wrapper = await mountMenu();
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="display-menu"]').exists()).toBe(false);
+    expect(document.activeElement).toBe(
+      wrapper.find('[data-testid="display-menu-trigger"]').element,
+    );
+  });
+
+  it('closes on an outside pointer press but keeps a press inside', async () => {
+    const wrapper = await mountMenu();
+
+    wrapper
+      .find('[data-testid="display-menu"]')
+      .element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="display-menu"]').exists()).toBe(true);
+
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="display-menu"]').exists()).toBe(false);
+  });
 });
