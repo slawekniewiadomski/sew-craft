@@ -35,12 +35,18 @@ const MAX_DAMPING = 1e12;
  * `entities` is optional and only needed when a distance anchors to a straight
  * line instead of a point: the residual reads that line's two endpoints. Legacy
  * point-only call sites stay valid.
+ *
+ * `supportAnchors` maps a corner-round tangent to the sharp corner it was
+ * trimmed from. A rounded line's stored endpoints are fixed derived points, so a
+ * line anchor must read its supporting line through those authored anchors;
+ * otherwise the equations have no gradient and the solve cannot converge.
  */
 export function solve(
   points: PointEntity[],
   constraints: Constraint[],
   options: SolveOptions = {},
   entities: readonly Entity[] = [],
+  supportAnchors: ReadonlyMap<EntityId, EntityId> = new Map(),
 ): SolveResult {
   const maxIterations = options.maxIterations ?? DEFAULT_MAX_ITERATIONS;
   const tolerance = options.tolerance ?? DEFAULT_TOLERANCE;
@@ -56,6 +62,9 @@ export function solve(
   );
   const isLineAnchor = (id: EntityId): boolean => lineById.has(id);
   const variableIds: EntityId[] = [];
+
+  /** The authored point a line endpoint still lies on, or the endpoint itself. */
+  const supportAnchor = (id: EntityId): EntityId => supportAnchors.get(id) ?? id;
 
   for (const point of points) {
     if (!point.fixed) variableIds.push(point.id);
@@ -80,9 +89,10 @@ export function solve(
       for (const id of constraintEntityIds(constraint).filter(isLineAnchor)) {
         const line = lineById.get(id)!;
         for (const endpoint of [line.start, line.end]) {
-          if (!pointIds.has(endpoint)) {
+          const anchor = supportAnchor(endpoint);
+          if (!pointIds.has(anchor)) {
             throw new Error(
-              `Constraint "${constraint.id}" line anchor ${id} references unknown point: ${endpoint}`,
+              `Constraint "${constraint.id}" line anchor ${id} references unknown point: ${anchor}`,
             );
           }
         }
@@ -125,7 +135,11 @@ export function solve(
     ): { kind: 'point'; point: Vec2 } | { kind: 'line'; start: Vec2; end: Vec2 } => {
       const line = lineById.get(id);
       if (line === undefined) return { kind: 'point', point: readPoint(id) };
-      return { kind: 'line', start: readPoint(line.start), end: readPoint(line.end) };
+      return {
+        kind: 'line',
+        start: readPoint(supportAnchor(line.start)),
+        end: readPoint(supportAnchor(line.end)),
+      };
     };
     return residuals(constraints, drivingValues, readPoint, readAnchor);
   };

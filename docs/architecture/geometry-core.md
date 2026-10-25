@@ -430,6 +430,11 @@ and `<id>:center` (the radius centre). The centre is an ordinary fixed
 construction point entity, so it can be selected, snapped to and measured; it is
 never added to a piece loop and is not exported.
 
+The derived entities carry the selected lines' `piece`. A per-piece document
+slice (`documentForPiece`) also keeps every derived entity of a round whose
+lines it contains, so a round written before ownership — or one shared by two
+pieces — still yields a resolvable loop and cut line inside the slice.
+
 ### Math
 
 With `uA` and `uB` the unit directions from the sharp corner to the two

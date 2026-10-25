@@ -613,7 +613,19 @@ export function solveDocument(
   const constraints = document.constraints.filter(
     (constraint) => constraint.type !== 'derived_distance',
   );
-  const result = solve(allPoints(document), constraints, options, document.entities);
+  // A trimmed line ends at a fixed tangent; its support anchor is the sharp
+  // corner, so line-anchored dimensions still see a line that can move.
+  const supportAnchors = new Map<EntityId, EntityId>();
+  for (const round of cornerRounds(document)) {
+    for (const end of round.ends) supportAnchors.set(end.tangent, round.corner);
+  }
+  const result = solve(
+    allPoints(document),
+    constraints,
+    options,
+    document.entities,
+    supportAnchors,
+  );
   if (!result.converged) {
     return { document, result };
   }
@@ -1837,6 +1849,10 @@ function applyAddCornerRound(
 
   const cornerEntity = requirePoint(document, corner, 'add_corner_round');
   const construction = isConstruction(lineA);
+  // The derived geometry belongs to the same piece as the selected lines; an
+  // unowned legacy document stays unowned rather than inventing a piece.
+  const owner = lineA.piece ?? lineB.piece;
+  const ownership = owner === undefined ? {} : { piece: owner };
   const entities: Entity[] = document.entities.map((entity) => {
     if (entity.kind === 'line' && entity.id === first) {
       return entity.start === corner
@@ -1860,6 +1876,7 @@ function applyAddCornerRound(
       kind: 'point',
       x: geometry.geometry.center.x,
       y: geometry.geometry.center.y,
+      ...ownership,
       construction: true,
       fixed: true,
     },
@@ -1868,6 +1885,7 @@ function applyAddCornerRound(
       kind: 'point',
       x: geometry.geometry.tangentA.x,
       y: geometry.geometry.tangentA.y,
+      ...ownership,
       construction,
       fixed: true,
     },
@@ -1876,6 +1894,7 @@ function applyAddCornerRound(
       kind: 'point',
       x: geometry.geometry.tangentB.x,
       y: geometry.geometry.tangentB.y,
+      ...ownership,
       construction,
       fixed: true,
     },
@@ -1884,6 +1903,7 @@ function applyAddCornerRound(
       kind: 'point',
       x: geometry.geometry.control1.x,
       y: geometry.geometry.control1.y,
+      ...ownership,
       construction: true,
       fixed: true,
     },
@@ -1892,6 +1912,7 @@ function applyAddCornerRound(
       kind: 'point',
       x: geometry.geometry.control2.x,
       y: geometry.geometry.control2.y,
+      ...ownership,
       construction: true,
       fixed: true,
     },
@@ -1902,6 +1923,7 @@ function applyAddCornerRound(
       p1: tentative.controls[0],
       p2: tentative.controls[1],
       p3: tentative.ends[1].tangent,
+      ...ownership,
       construction,
     },
   );

@@ -7,8 +7,11 @@ import {
   effectiveDefaultAllowance,
   derivedDimensionState,
   derivedDimensionValue,
+  executeCommand,
   getConstraint,
+  getEntity,
   measureCutDimension,
+  measureDistanceDimension,
   pieceById,
   pieceCutLoop,
   pieceLoop,
@@ -1663,6 +1666,37 @@ describe('corner rounds on piece corners', () => {
     expect(pieceCutLoop(after, piece)?.selfIntersections).toEqual([]);
   });
 
+  it('leaves the derived geometry unowned when the lines carry no piece', () => {
+    const base = applyCommand(documentOf(), createPiece()).document;
+
+    const rounded = applyCommand(base, roundCorner()).document;
+
+    expect(getEntity(rounded, 'round-1:arc')?.piece).toBeUndefined();
+    expect(getEntity(rounded, 'round-1:center')?.piece).toBeUndefined();
+    expect(getEntity(rounded, 'round-1:a')?.piece).toBeUndefined();
+  });
+
+  it('owns the derived geometry with the piece of the rounded lines', () => {
+    const base = withPiece();
+    const owned: PatternDocument = {
+      ...base,
+      entities: base.entities.map((entity) => ({ ...entity, piece: 'piece-1' })),
+    };
+
+    const rounded = applyCommand(owned, roundCorner()).document;
+    const round = rounded.cornerRounds![0]!;
+    const derived = [
+      round.arc,
+      round.center!,
+      ...round.controls,
+      ...round.ends.map((end) => end.tangent),
+    ];
+
+    for (const id of derived) {
+      expect(getEntity(rounded, id)).toMatchObject({ piece: 'piece-1' });
+    }
+  });
+
   it('rejects two edges whose piece allowances differ', () => {
     // `bottom` has no allowance, `right` has 10 mm single.
     expect(() =>
@@ -1755,6 +1789,38 @@ describe('corner rounds on piece corners', () => {
 
     const value = measureCutDimension(withDimension, getConstraint(withDimension, 'cut-width')!);
     expect(value).toBeCloseTo(220);
+  });
+
+  it('keeps a line-anchored dimension driving after every corner is rounded', () => {
+    let document = executeCommand(withLoop('none'), {
+      id: 'height',
+      type: 'add_constraint',
+      params: { type: 'distance', entities: ['bottom', 'top'], value: 200 },
+    }).document;
+
+    const corners = [
+      ['bottom', 'right'],
+      ['right', 'top'],
+      ['top', 'left'],
+      ['left', 'bottom'],
+    ] as const;
+    for (const [index, [first, second]] of corners.entries()) {
+      document = executeCommand(document, {
+        id: `round-${index}`,
+        type: 'add_corner_round',
+        params: { first, second, radius: 10 },
+      }).document;
+    }
+
+    // A trimmed line's stored endpoints are fixed tangents; the dimension must
+    // still move the sharp corners or the solve has no gradient.
+    const resized = executeCommand(document, {
+      id: 'resize',
+      type: 'update_constraint',
+      params: { id: 'height', value: 190 },
+    }).document;
+
+    expect(measureDistanceDimension(resized, getConstraint(resized, 'height')!)).toBeCloseTo(190);
   });
 
   it('updates the loop when the radius changes', () => {

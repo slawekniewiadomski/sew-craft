@@ -55,6 +55,14 @@ is an unknown point, a missing endpoint is a clear error, and a curve/arc/circle
 anchor is rejected up front. See
 `.ai/specs/2026-10-23-dimension-point-and-line-anchors.md`.
 
+A corner round re-points each trimmed line from the sharp corner to a derived
+tangent, which is fixed. `solve` therefore takes an optional fifth
+`supportAnchors` map (tangent point → sharp corner) and resolves a line
+endpoint through it before reading the anchor; `solveDocument` builds that map
+from `document.cornerRounds`. The tangent, the corner and the far endpoint stay
+collinear, so the supporting line — and the measured perpendicular — is
+unchanged, while the constraint keeps a movable point to act on.
+
 Further types (parallel, perpendicular, tangent, symmetry, radius, point-on-circle)
 are deferred; see `specs/003-constraint-solver-core.md`.
 
@@ -91,6 +99,8 @@ function solve(
   points: PointEntity[],
   constraints: Constraint[],
   options?: SolveOptions,
+  entities?: readonly Entity[],
+  supportAnchors?: ReadonlyMap<EntityId, EntityId>,
 ): SolveResult;
 ```
 

@@ -255,14 +255,30 @@ function documentForPieces(
     }
   }
 
+  const rounds = cornerRounds(document).filter(
+    (round) =>
+      kept.has(round.corner) || kept.has(round.arc) || round.ends.some((end) => kept.has(end.line)),
+  );
+
+  // A round's arc, controls, centre, tangents and anchors are derived geometry:
+  // no loop edge names them, and documents written before per-entity ownership
+  // leave them untagged. Keep them with their round, or the slice loses the
+  // bridge and both the piece loop and its cut line stop resolving.
+  for (const round of rounds) {
+    kept.add(round.corner);
+    kept.add(round.arc);
+    if (round.center !== undefined) kept.add(round.center);
+    for (const control of round.controls) kept.add(control);
+    for (const end of round.ends) {
+      kept.add(end.tangent);
+      kept.add(end.anchor);
+    }
+  }
+
   const constraints = document.constraints.filter((constraint) =>
     constraint.piece !== undefined
       ? pieceIds.has(constraint.piece)
       : constraintEntityIds(constraint).every((id) => kept.has(id)),
-  );
-  const rounds = cornerRounds(document).filter(
-    (round) =>
-      kept.has(round.corner) || kept.has(round.arc) || round.ends.some((end) => kept.has(end.line)),
   );
 
   return {

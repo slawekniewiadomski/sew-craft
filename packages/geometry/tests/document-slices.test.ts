@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  applyCommand,
   createEmptyDocument,
   documentForAssembly,
   documentForPiece,
   pieceBounds,
+  pieceCutLoop,
+  pieceLoop,
   type ArcEntity,
   type CircleEntity,
   type CurveEntity,
@@ -333,6 +336,70 @@ describe('documentForPiece', () => {
     };
 
     expect(documentForPiece(document, 'p1').cornerRounds).toHaveLength(1);
+  });
+
+  it('keeps the derived entities of a round so the piece loops still resolve', () => {
+    let document: PatternDocument = {
+      ...documentOf([piece()]),
+      entities: square(),
+    };
+    document = applyCommand(document, {
+      id: 'loop',
+      type: 'set_piece_loop',
+      params: { piece: 'p1', edges: ['bottom', 'right', 'top', 'left'], allowance: 'none' },
+    }).document;
+    document = applyCommand(document, {
+      id: 'r1',
+      type: 'add_corner_round',
+      params: { first: 'bottom', second: 'right', radius: 10 },
+    }).document;
+
+    const sliced = documentForPiece(document, 'p1');
+    const round = document.cornerRounds![0]!;
+
+    expect(sliced.entities.map((entity) => entity.id)).toEqual(
+      expect.arrayContaining([
+        round.corner,
+        round.arc,
+        round.center!,
+        ...round.controls,
+        ...round.ends.map((end) => end.tangent),
+        ...round.ends.map((end) => end.anchor),
+      ]),
+    );
+    expect(pieceLoop(sliced, piece())).not.toBeNull();
+    expect(pieceCutLoop(sliced, piece())).not.toBeNull();
+  });
+
+  it("leaves another piece's round out of the slice", () => {
+    let document: PatternDocument = {
+      ...documentOf([piece(), piece('p2', '2')]),
+      entities: [...square(), ...square('2', 'p2')],
+    };
+    for (const [id, suffix] of [
+      ['p1', ''],
+      ['p2', '2'],
+    ] as const) {
+      document = applyCommand(document, {
+        id: `loop-${id}`,
+        type: 'set_piece_loop',
+        params: {
+          piece: id,
+          edges: ['bottom', 'right', 'top', 'left'].map((edge) => `${suffix}${edge}`),
+          allowance: 'none',
+        },
+      }).document;
+      document = applyCommand(document, {
+        id: `round-${id}`,
+        type: 'add_corner_round',
+        params: { first: `${suffix}bottom`, second: `${suffix}right`, radius: 10 },
+      }).document;
+    }
+
+    const sliced = documentForPiece(document, 'p1');
+
+    expect(sliced.cornerRounds?.map((round) => round.id)).toEqual(['round-p1']);
+    expect(sliced.entities.some((entity) => entity.id === 'round-p2:arc')).toBe(false);
   });
 });
 
