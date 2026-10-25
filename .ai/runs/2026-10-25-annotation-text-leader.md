@@ -57,9 +57,9 @@ dragging the target moves only that point. Pure derived geometry in
 
 ### Phase 1: Geometry and rendering
 
-- [ ] 1.1 Default 10 mm and `textLeaderGeometry` with underline, shaft and head
-- [ ] 1.2 Canvas rule, shaft and filled head rendering with the new test ids
-- [ ] 1.3 Docs and command contract at `spec_version` 0.14.0
+- [x] 1.1 Default 10 mm and `textLeaderGeometry` with underline, shaft and head — c2a318d
+- [x] 1.2 Canvas rule, shaft and filled head rendering with the new test ids — 4307b28
+- [x] 1.3 Docs and command contract at `spec_version` 0.14.0 — 38e5449
 
 ### Phase 2: Creation and cleanup
 
