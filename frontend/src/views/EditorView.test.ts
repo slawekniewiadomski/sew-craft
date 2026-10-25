@@ -178,14 +178,19 @@ async function mountEditor(pinia: Pinia): Promise<VueWrapper> {
   return wrapper;
 }
 
+/** Switch the sidebar to one section. */
+async function openPanel(wrapper: VueWrapper, id: string): Promise<void> {
+  await wrapper.find(`[data-testid="sidebar-tab-${id}"]`).trigger('click');
+  await nextTick();
+}
+
 /** Open the canvas display menu and toggle one layer by its key. */
 async function toggleDisplay(wrapper: VueWrapper, key: string): Promise<void> {
-  if (document.querySelector(`[data-testid="display-${key}"]`) === null) {
+  if (!wrapper.find(`[data-testid="display-${key}"]`).exists()) {
     await wrapper.find('[data-testid="display-menu-trigger"]').trigger('click');
     await flushPromises();
   }
-  const item = document.querySelector<HTMLElement>(`[data-testid="display-${key}"]`);
-  item!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await wrapper.find(`[data-testid="display-${key}"]`).trigger('click');
   await flushPromises();
 }
 
@@ -1277,6 +1282,7 @@ describe('EditorView', () => {
     );
 
     const wrapper = await mountEditor(pinia);
+    await openPanel(wrapper, 'outline');
     expect(wrapper.text()).toContain('1 cut edge(s)');
 
     await wrapper.find('[data-testid="outline-construction-l1"]').trigger('click');
@@ -1306,6 +1312,7 @@ describe('EditorView', () => {
     );
 
     const wrapper = await mountEditor(pinia);
+    await openPanel(wrapper, 'outline');
 
     await wrapper.find('[data-testid="outline-construction-l1"]').trigger('click');
 
@@ -1325,6 +1332,7 @@ describe('EditorView', () => {
       ...edgeDoc,
       seams: [{ id: 's1', edge: 'l1', width: 10 }],
     });
+    await openPanel(wrapper, 'outline');
 
     expect(wrapper.find('[data-testid="seam-label-l1"]').text()).toBe('Allowance 10 mm');
     expect(wrapper.find('[data-testid="seam-width-l1"]').exists()).toBe(false);
@@ -1335,6 +1343,7 @@ describe('EditorView', () => {
 
   it('shows No allowance for an unattached edge with no add control', async () => {
     const { wrapper } = await mountLoaded(edgeDoc);
+    await openPanel(wrapper, 'outline');
 
     expect(wrapper.find('[data-testid="seam-empty-l1"]').text()).toBe('No allowance');
     expect(wrapper.find('[data-testid="add-seam-l1"]').exists()).toBe(false);
@@ -1399,7 +1408,7 @@ describe('EditorView', () => {
   it('lists seeded non-distance constraints and removes one through the constraints drawer', async () => {
     const wrapper = await mountEditor(createPinia());
 
-    await wrapper.find('[data-testid="drawer-toggle-constraints"]').trigger('click');
+    await openPanel(wrapper, 'constraints');
     await nextTick();
 
     expect(wrapper.findAll('[aria-label="Constraints"] li')).toHaveLength(4);
@@ -1419,7 +1428,7 @@ describe('EditorView', () => {
 
     expect(wrapper.find('[aria-label="Dimensions"]').exists()).toBe(false);
 
-    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await openPanel(wrapper, 'dimensions');
     await nextTick();
 
     expect(wrapper.findAll('[aria-label="Dimensions"] li')).toHaveLength(2);
@@ -1482,7 +1491,7 @@ describe('EditorView', () => {
       constraints: [{ id: 'gap', type: 'distance', a: 'ab', b: 'c' }],
     });
 
-    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await openPanel(wrapper, 'dimensions');
     await nextTick();
 
     expect(wrapper.find('[data-testid="dimension-orientation-gap"]').exists()).toBe(false);
@@ -1496,7 +1505,7 @@ describe('EditorView', () => {
       constraints: [{ id: 'w', type: 'distance', a: 'a', b: 'b', value: 100 }],
     });
 
-    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await openPanel(wrapper, 'dimensions');
     await nextTick();
 
     const input = wrapper.find('[data-testid="dimension-value-w"]');
@@ -1535,7 +1544,7 @@ describe('EditorView', () => {
       constraints: [{ id: 'm', type: 'distance', a: 'a', b: 'b' }],
     });
 
-    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await openPanel(wrapper, 'dimensions');
     await nextTick();
 
     expect(wrapper.find('[data-testid="dimension-state-m"]').text()).toBe('Driven');
@@ -1565,11 +1574,12 @@ describe('EditorView', () => {
     );
 
     const wrapper = await mountEditor(pinia);
-    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
-    await wrapper.find('[data-testid="drawer-toggle-constraints"]').trigger('click');
+    await openPanel(wrapper, 'dimensions');
     await nextTick();
-
     expect(wrapper.text()).toContain('No dimensions yet.');
+
+    await openPanel(wrapper, 'constraints');
+    await nextTick();
     expect(wrapper.text()).toContain('No constraints yet.');
   });
 
@@ -1582,7 +1592,7 @@ describe('EditorView', () => {
       ],
     });
 
-    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await openPanel(wrapper, 'dimensions');
     await nextTick();
 
     const input = wrapper.find('[data-testid="dimension-value-w"]');
@@ -1628,7 +1638,7 @@ describe('EditorView', () => {
       ],
     });
 
-    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await openPanel(wrapper, 'dimensions');
     await nextTick();
 
     const input = wrapper.find('[data-testid="dimension-value-w"]');
@@ -1683,7 +1693,7 @@ describe('EditorView', () => {
       constraints: [{ id: 'ghost', type: 'distance', a: 'a', b: 'missing' }],
     });
 
-    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await openPanel(wrapper, 'dimensions');
     await nextTick();
 
     expect(
@@ -1935,7 +1945,7 @@ describe('EditorView', () => {
   it('keeps the constraints drawer as a list-only surface', async () => {
     const wrapper = await mountEditor(createPinia());
 
-    await wrapper.find('[data-testid="drawer-toggle-constraints"]').trigger('click');
+    await openPanel(wrapper, 'constraints');
     await nextTick();
 
     expect(wrapper.findAll('[aria-label="Constraints"] li')).toHaveLength(4);
@@ -2058,7 +2068,7 @@ describe('EditorView', () => {
     window.dispatchEvent(new MouseEvent('pointermove', { clientX: 560 }));
     await nextTick();
 
-    expect(wrapper.find('[data-testid="sidebar"]').attributes('style')).toContain('width: 360px');
+    expect(wrapper.find('[data-testid="sidebar"]').attributes('style')).toContain('width: 400px');
 
     window.dispatchEvent(new MouseEvent('pointerup'));
   });
@@ -2789,7 +2799,7 @@ describe('EditorView', () => {
     };
     const { wrapper } = await mountLoaded(edgeDoc);
 
-    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await openPanel(wrapper, 'dimensions');
 
     expect(wrapper.find('[data-testid="dimension-orientation-locked-cut"]').text()).toBe('Aligned');
     expect(wrapper.find('[data-testid="dimension-orientation-cut"]').exists()).toBe(false);
@@ -2812,7 +2822,7 @@ describe('EditorView', () => {
   it('shows a cut dimension as read-only and refuses edits in the drawer', async () => {
     const { wrapper, store } = await mountLoaded(cutDimensionDoc);
 
-    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await openPanel(wrapper, 'dimensions');
     const input = wrapper.find('[data-testid="dimension-value-cut"]');
 
     expect(input.attributes('readonly')).toBeDefined();
@@ -2844,7 +2854,7 @@ describe('EditorView', () => {
       ],
     });
 
-    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await openPanel(wrapper, 'dimensions');
     const input = wrapper.find('[data-testid="dimension-value-cut"]');
 
     expect((input.element as HTMLInputElement).value).toBe('');
@@ -2908,6 +2918,7 @@ describe('EditorView', () => {
 
   it('describes an edge that belongs to a piece in the outline', async () => {
     const { wrapper } = await mountLoaded(pieceDoc);
+    await openPanel(wrapper, 'outline');
 
     entityDown(wrapper, 'line', 'ab');
     await nextTick();
@@ -2920,6 +2931,7 @@ describe('EditorView', () => {
 describe('EditorView piece, pattern and assembly drawers', () => {
   it('renders the active piece card with its label and sizes', async () => {
     const { wrapper } = await mountLoaded(pieceDoc);
+    await openPanel(wrapper, 'pieces');
 
     const card = wrapper.find('[data-testid="piece-drawer-piece"]');
     expect(card.exists()).toBe(true);
@@ -2936,10 +2948,17 @@ describe('EditorView piece, pattern and assembly drawers', () => {
 
     expect(wrapper.find('[data-testid="no-tabs-empty"]').text()).toBe('Create a piece to start');
     expect(wrapper.find('[data-testid="tabs-list"]').text()).toBe('');
+
+    await openPanel(wrapper, 'pieces');
+    expect(wrapper.find('[data-testid="pieces-empty"]').exists()).toBe(true);
+
+    await openPanel(wrapper, 'outline');
+    expect(wrapper.text()).toContain('No edges yet.');
   });
 
   it('edits and clears the per-piece parameters', async () => {
     const { wrapper, store } = await mountLoaded(pieceDoc);
+    await openPanel(wrapper, 'pieces');
 
     const name = wrapper.find('[data-testid="piece-drawer-name"]');
     await name.setValue('Back');
@@ -2984,7 +3003,7 @@ describe('EditorView piece, pattern and assembly drawers', () => {
 
   it('shows and edits the document default allowance from the Pattern drawer', async () => {
     const { wrapper, store } = await mountLoaded(lineDoc);
-    await wrapper.find('[data-testid="drawer-toggle-pattern"]').trigger('click');
+    await openPanel(wrapper, 'pattern');
     await nextTick();
     const kind = () => wrapper.find('[data-testid="default-allowance-kind"]');
     const width = () => wrapper.find('[data-testid="default-allowance-width"]');
@@ -3014,6 +3033,7 @@ describe('EditorView piece, pattern and assembly drawers', () => {
 
   it('sets and clears a piece allowance override', async () => {
     const { wrapper, store } = await mountLoaded(pieceDoc);
+    await openPanel(wrapper, 'pieces');
     const mode = () => wrapper.find('[data-testid="piece-drawer-default-mode"]');
 
     await mode().setValue('none');
@@ -3033,6 +3053,7 @@ describe('EditorView piece, pattern and assembly drawers', () => {
 
   it('applies one allowance to every edge in a single undo step', async () => {
     const { wrapper, store } = await mountLoaded(pieceDoc);
+    await openPanel(wrapper, 'pieces');
 
     expect(wrapper.find('[data-testid="piece-drawer-piece-all-mixed"]').exists()).toBe(true);
     await wrapper.find('[data-testid="piece-drawer-piece-all-apply"]').trigger('click');
@@ -3062,6 +3083,7 @@ describe('EditorView piece, pattern and assembly drawers', () => {
       ],
     };
     const { wrapper, store } = await mountLoaded(uniformDoc);
+    await openPanel(wrapper, 'pieces');
 
     await wrapper.find('[data-testid="piece-drawer-piece-all-kind"]').setValue('none');
     await wrapper.find('[data-testid="piece-drawer-piece-all-apply"]').trigger('click');
@@ -3079,6 +3101,7 @@ describe('EditorView piece, pattern and assembly drawers', () => {
         { kind: 'piece', id: 'p2' },
       ],
     });
+    await openPanel(wrapper, 'pieces');
 
     await wrapper.find('[data-testid="piece-drawer-remove-piece-p1"]').trigger('click');
     await flushPromises();
@@ -3106,6 +3129,7 @@ describe('EditorView piece, pattern and assembly drawers', () => {
         { kind: 'assembly', id: 'a1' },
       ],
     });
+    await openPanel(wrapper, 'pieces');
 
     await wrapper.find('[data-testid="piece-drawer-remove-piece-p1"]').trigger('click');
     await flushPromises();
@@ -3170,7 +3194,7 @@ describe('EditorView piece, pattern and assembly drawers', () => {
 
 describe('EditorView dimension selection', () => {
   async function openDimensions(wrapper: VueWrapper): Promise<void> {
-    await wrapper.find('[data-testid="drawer-toggle-dimensions"]').trigger('click');
+    await openPanel(wrapper, 'dimensions');
     await nextTick();
   }
 
@@ -3189,9 +3213,7 @@ describe('EditorView dimension selection', () => {
       'Ctrl/Cmd-click adds or removes a dimension.',
     );
     expect(wrapper.find('[data-testid="selection-status"]').text()).toBe('1 dimension selected');
-    expect(
-      wrapper.find('[data-testid="drawer-toggle-properties"] [data-testid="drawer-count"]').text(),
-    ).toBe('1');
+    expect(wrapper.find('[data-testid="sidebar-tab-count-properties"]').text()).toBe('1');
 
     canvas.vm.$emit('update:selectedDimensionIds', ['width', 'height']);
     await nextTick();
@@ -3206,11 +3228,7 @@ describe('EditorView dimension selection', () => {
     expect(store.document.constraints.some((constraint) => constraint.id === 'height')).toBe(false);
     expect(store.journal).toHaveLength(journal + 1);
     expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
-    expect(
-      wrapper
-        .find('[data-testid="drawer-toggle-properties"] [data-testid="drawer-count"]')
-        .exists(),
-    ).toBe(false);
+    expect(wrapper.find('[data-testid="sidebar-tab-count-properties"]').exists()).toBe(false);
 
     store.undo();
     await nextTick();
@@ -3379,6 +3397,7 @@ describe('EditorView dimension selection', () => {
     await openDimensions(wrapper);
     await wrapper.find('[data-testid="select-dimension-w"]').trigger('click');
     await nextTick();
+    await openPanel(wrapper, 'properties');
     expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
     expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
 
@@ -3394,7 +3413,7 @@ describe('EditorView dimension selection', () => {
 
     await wrapper.find('[data-testid="select-dimension-width"]').trigger('click');
     await nextTick();
-    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
+    expect(wrapper.find('[data-testid="sidebar-tab-count-properties"]').text()).toBe('1');
     expect(wrapper.find('[data-testid="dimension-width"]').classes()).toContain('bg-primary/10');
     expect(wrapper.find('[data-testid="select-dimension-width"]').attributes('aria-current')).toBe(
       'true',
@@ -3404,23 +3423,25 @@ describe('EditorView dimension selection', () => {
       ctrlKey: true,
     });
     await nextTick();
-    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('2 dimensions selected');
+    expect(wrapper.find('[data-testid="sidebar-tab-count-properties"]').text()).toBe('2');
 
     await wrapper.find('[data-testid="select-dimension-height"]').trigger('click', {
       metaKey: true,
     });
     await nextTick();
-    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
+    expect(wrapper.find('[data-testid="sidebar-tab-count-properties"]').text()).toBe('1');
 
     await wrapper.find('[data-testid="select-dimension-width"]').trigger('click', {
       ctrlKey: true,
       shiftKey: true,
     });
     await nextTick();
-    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="dimension-width"]').classes()).not.toContain(
       'bg-primary/10',
     );
+
+    await openPanel(wrapper, 'properties');
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
   });
 
   it('selects a drawer row with Enter and Space', async () => {
@@ -3431,7 +3452,7 @@ describe('EditorView dimension selection', () => {
       .find('[data-testid="select-dimension-width"]')
       .trigger('keydown', { key: 'Enter' });
     await nextTick();
-    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
+    expect(wrapper.find('[data-testid="sidebar-tab-count-properties"]').text()).toBe('1');
 
     await wrapper.find('[data-testid="select-dimension-height"]').trigger('keydown', { key: ' ' });
     await nextTick();
@@ -3449,14 +3470,18 @@ describe('EditorView dimension selection', () => {
 
     await wrapper.find('[data-testid="select-dimension-width"]').trigger('click');
     await nextTick();
+    await openPanel(wrapper, 'properties');
     expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(true);
+    await openPanel(wrapper, 'dimensions');
 
     await wrapper.find('[data-testid="remove-dimension-width"]').trigger('click');
     await nextTick();
 
     expect(store.document.constraints.some((constraint) => constraint.id === 'width')).toBe(false);
-    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
     expect(wrapper.findAll('[aria-label="Dimensions"] li')).toHaveLength(1);
+
+    await openPanel(wrapper, 'properties');
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
   });
 
   it('prunes a dimension id removed underneath the selection', async () => {
@@ -3480,7 +3505,7 @@ describe('EditorView dimension selection', () => {
     await toggleDisplay(wrapper, 'dimensions');
     await nextTick();
 
-    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
+    expect(wrapper.find('[data-testid="sidebar-tab-count-properties"]').text()).toBe('1');
     expect(wrapper.find('[data-testid="select-dimension-width"]').attributes('aria-current')).toBe(
       'true',
     );
@@ -3498,13 +3523,13 @@ describe('EditorView dimension selection', () => {
 
     await wrapper.find('[data-testid="select-dimension-width"]').trigger('click');
     await nextTick();
-    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
+    expect(wrapper.find('[data-testid="sidebar-tab-count-properties"]').text()).toBe('1');
 
     keydown('Delete');
     await nextTick();
 
     expect(store.document.constraints.some((constraint) => constraint.id === 'width')).toBe(true);
-    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
+    expect(wrapper.find('[data-testid="sidebar-tab-count-properties"]').text()).toBe('1');
   });
 });
 
@@ -3759,6 +3784,7 @@ describe('EditorView edge cases', () => {
 
   it('selects outline rows with add and subtract modifiers', async () => {
     const { wrapper } = await mountLoaded(seededDocument);
+    await openPanel(wrapper, 'outline');
 
     await wrapper.find('[data-testid="outline-select-ab"]').trigger('click');
     expect(wrapper.find('[data-testid="outline-select-ab"]').attributes('aria-current')).toBe(
@@ -3769,7 +3795,10 @@ describe('EditorView edge cases', () => {
     expect(wrapper.find('[data-testid="outline-select-bc"]').attributes('aria-current')).toBe(
       'true',
     );
+
+    await openPanel(wrapper, 'properties');
     expect(wrapper.find('[data-testid="selection-summary"]').text()).toContain('2 entities');
+    await openPanel(wrapper, 'outline');
 
     await wrapper
       .find('[data-testid="outline-select-ab"]')
@@ -3815,6 +3844,7 @@ describe('EditorView edge cases', () => {
       ],
       tabs: [{ kind: 'piece', id: 'p1' }],
     });
+    await openPanel(wrapper, 'pieces');
 
     await wrapper.find('[data-testid="piece-drawer-remove-piece-p1"]').trigger('click');
     await flushPromises();
@@ -3886,6 +3916,7 @@ describe('EditorView edge cases', () => {
       ],
       tabs: [{ kind: 'piece', id: 'p1' }],
     });
+    await openPanel(wrapper, 'pieces');
 
     await wrapper.find('[data-testid="piece-drawer-remove-piece-p1"]').trigger('click');
     await flushPromises();
@@ -3906,6 +3937,7 @@ describe('EditorView edge cases', () => {
       ],
       assemblies: [{ id: 'a1', name: 'Shell', instances: [] }],
     });
+    await openPanel(wrapper, 'pieces');
 
     await wrapper.find('[data-testid="tab-assembly-a1"]').trigger('click');
     await flushPromises();
@@ -4954,6 +4986,7 @@ describe('EditorView containers and annotation text', () => {
       ...owned(lineDoc),
       pieces: [{ id: 'p1', edges: [], allowances: [] }],
     });
+    await openPanel(wrapper, 'pieces');
 
     for (const id of ['ab', 'bc', 'cd', 'da']) {
       entityDown(wrapper, 'line', id, { ctrlKey: id !== 'ab' });

@@ -1,6 +1,6 @@
 # Sidebar panel tabs
 
-Status: proposed
+Status: implemented
 Pattern schema: unchanged
 Command spec: unchanged
 Geometry package: unchanged
@@ -164,20 +164,20 @@ Files:
 
 ## 📝 Acceptance criteria
 
-- [ ] The piece tab shows the rail with Properties, Piece, Pattern, Outline,
+- [x] The piece tab shows the rail with Properties, Piece, Pattern, Outline,
       Dimensions and Constraints; assembly shows Assembly only.
-- [ ] Exactly one section body is visible; switching tabs replaces it.
-- [ ] Clicking the active tab keeps the panel open.
-- [ ] The rail chevron collapses the panel, leaves the rail visible and reopens the
+- [x] Exactly one section body is visible; switching tabs replaces it.
+- [x] Clicking the active tab keeps the panel open.
+- [x] The rail chevron collapses the panel, leaves the rail visible and reopens the
       last section; a tab click while collapsed opens that section.
-- [ ] The panel keeps its width on resize and clamps to 240–560 px.
-- [ ] Non-zero counts show on the rail and in the panel header; zero counts do not.
-- [ ] The last used section persists per project and mode; a fresh piece opens
+- [x] The panel keeps its width on resize and clamps to 240–560 px.
+- [x] Non-zero counts show on the rail and in the panel header; zero counts do not.
+- [x] The last used section persists per project and mode; a fresh piece opens
       Properties and a fresh assembly opens Assembly.
-- [ ] A malformed stored panel or unavailable storage falls back safely.
-- [ ] Read-only keeps the rail, resize and collapse working while the body stays
+- [x] A malformed stored panel or unavailable storage falls back safely.
+- [x] Read-only keeps the rail, resize and collapse working while the body stays
       disabled.
-- [ ] `SidebarDrawer.vue`, drawer open state and drawer tests are gone; the
+- [x] `SidebarDrawer.vue`, drawer open state and drawer tests are gone; the
       frontend checks pass at 100 % coverage.
 
 ## 📝 Risks
