@@ -64,9 +64,9 @@ per-piece SVG export at schema `sewcraft.pattern/0.4`, keeping every existing ga
 
 ### Phase 2: Tabs, piece isolation and per-piece parameters
 
-- [ ] 2.1 Schema 0.4, tab normalisation and per-piece fields
-- [ ] 2.2 Piece commands: create/update/default allowance/tabs/loop
-- [ ] 2.3 `reorder_tabs` and the command-spec three-way sync
+- [x] 2.1 Schema 0.4, tab normalisation and per-piece fields — c2ebca3
+- [x] 2.2 Piece commands: create/update/default allowance/tabs/loop — c2ebca3
+- [x] 2.3 `reorder_tabs` and the command-spec three-way sync — c2ebca3
 - [ ] 2.4 Pure tab helpers
 - [ ] 2.5 Store active tab, load restore and undo reconciliation
 - [ ] 2.6 Tab bar with the `+` menu
@@ -76,11 +76,11 @@ per-piece SVG export at schema `sewcraft.pattern/0.4`, keeping every existing ga
 
 ### Phase 3: Assemblies
 
-- [ ] 3.1 Assembly and instance commands with `delete_piece` cascade
-- [ ] 3.2 Placement math: anchor, transform, loops, bounds
+- [x] 3.1 Assembly and instance commands with `delete_piece` cascade — c2ebca3
+- [x] 3.2 Placement math: anchor, transform, loops, bounds — c2ebca3
 - [ ] 3.3 Assembly canvas and `documentForAssembly`
 - [ ] 3.4 Assembly inspector and ribbon
-- [ ] 3.5 Docs and compatibility update
+- [x] 3.5 Docs and compatibility update — c2ebca3
 
 ### Phase 4: Order, undo and polish
 
