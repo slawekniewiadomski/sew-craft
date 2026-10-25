@@ -1,6 +1,10 @@
 # Editor sidebar readability
 
 Status: implemented
+Amended 2026-10-25: the **View** drawer is removed. Display toggles moved to an
+icon-only display menu in the canvas's bottom-right corner (per-project,
+persisted) and export-layer options moved into an `Export SVG` dialog opened
+from the ribbon. The assembly canvas has its own display menu for its layers.
 Builds on: 013-editor-workspace-shell (the sidebar shell, drawers and rail),
 2026-10-23-pieces-sidebar-and-selection (Pieces drawer, Outline selection),
 2026-10-20-selected-entity-properties (the per-entity inspector)

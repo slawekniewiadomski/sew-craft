@@ -171,6 +171,8 @@ Existing components stay where they are; new modules are labelled by their role:
   only holds placed pieces); a drag previews only the pressed instance. The view
   fits on mount, on an assembly/tab change and on Fit — never on an instance
   edit — and the wheel zooms around the pointer while the middle button pans.
+  The canvas display menu drives five layer props: cut shapes, allowances, stitch
+  lines, fold lines and piece labels.
 - `frontend/src/components/AssemblyPanel.vue` — assembly name, instance transform
   fields, selected piece parameters and the "Open piece tab" action.
 - `frontend/src/components/PiecePanel.vue` — the active piece's parameters; the
