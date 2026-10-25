@@ -3644,6 +3644,20 @@ describe('EditorView assembly tab', () => {
 });
 
 describe('EditorView edge cases', () => {
+  it('disables export while the active piece loop does not resolve', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...pieceDoc,
+      pieces: [{ id: 'p1', edges: ['ab', 'ghost'], allowances: [] }],
+      tabs: [{ kind: 'piece', id: 'p1' }],
+    });
+
+    expect(wrapper.findComponent(EditorRibbon).props('canExport')).toBe(false);
+    expect(wrapper.find('[data-testid="download-svg"]').attributes('disabled')).toBeDefined();
+    await wrapper.find('[data-testid="download-svg"]').trigger('click');
+    expect(vi.mocked(downloadSvgFile)).not.toHaveBeenCalled();
+    expect(store.journal).toHaveLength(0);
+  });
+
   it('reports Set cut loop without an active piece', async () => {
     const { wrapper, store } = await mountLoaded(createEmptyDocument());
 

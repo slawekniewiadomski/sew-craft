@@ -20,6 +20,7 @@ import {
   documentForAssembly,
   documentForPiece,
   pieceById,
+  pieceCutLoop,
   seamForEdge,
   toSvgPiece,
   usesCutEdgeAnchor,
@@ -636,7 +637,9 @@ function downloadSvg(): void {
 }
 
 /** Whether the Export action can run on the current tab. */
-const canExport = computed(() => activePiece.value !== null && activePiece.value.edges.length > 0);
+const canExport = computed(
+  () => activePiece.value !== null && pieceCutLoop(pattern.value, activePiece.value) !== null,
+);
 
 const exportHint = computed(() =>
   isAssemblyTab.value ? 'Switch to a piece to export' : 'Capture a cut loop before exporting',
