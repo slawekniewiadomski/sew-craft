@@ -95,6 +95,9 @@ is already part of every distance constraint.
   change the grab area).
 - Render the drag strip only while the dimension is draggable, so another tool
   never shows an affordance that does not work.
+- Only the primary button starts a dimension drag. A middle-button press on the
+  strip or label falls through to the canvas, so it pans like anywhere else;
+  space-drag panning is unchanged.
 - Use a move cursor on both handles:
   - line strip and label: `cursor-move` while draggable;
   - label: `cursor-text` when editing is available but dragging is not (for

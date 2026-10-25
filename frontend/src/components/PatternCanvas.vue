@@ -3181,6 +3181,7 @@ watch(
       @pointermove="onCanvasPointerMove"
       @pointerleave="onCanvasPointerLeave"
       @wheel.prevent="onWheel"
+      @mousedown.middle.prevent
     >
       <defs>
         <pattern
@@ -4000,7 +4001,7 @@ watch(
             vector-effect="non-scaling-stroke"
             class="pointer-events-auto cursor-move"
             :data-testid="`dimension-drag-${drawing.id}`"
-            @pointerdown.stop="onDimensionPointerDown(drawing.constraint, $event)"
+            @pointerdown.left.stop="onDimensionPointerDown(drawing.constraint, $event)"
           />
         </g>
 
@@ -4056,7 +4057,7 @@ watch(
             vector-effect="non-scaling-stroke"
             class="pointer-events-auto cursor-move"
             :data-testid="`dimension-drag-${drawing.id}`"
-            @pointerdown.stop="onDimensionPointerDown(drawing.constraint, $event)"
+            @pointerdown.left.stop="onDimensionPointerDown(drawing.constraint, $event)"
           />
         </g>
       </g>
@@ -4078,7 +4079,7 @@ watch(
           :transform="`translate(${label.x} ${label.y}) rotate(${label.angle})`"
           role="img"
           :aria-label="label.accessibleName"
-          @pointerdown.stop="
+          @pointerdown.left.stop="
             label.draggable ? onDimensionPointerDown(label.constraint, $event) : undefined
           "
           @dblclick.stop.prevent="onDimensionDoubleClick(label)"
@@ -4134,7 +4135,7 @@ watch(
           :transform="`translate(${label.x} ${label.y}) rotate(${label.angle})`"
           role="img"
           :aria-label="label.accessibleName"
-          @pointerdown.stop="
+          @pointerdown.left.stop="
             label.draggable
               ? onDimensionPointerDown(derivedConstraint(label.id), $event)
               : undefined
@@ -4183,7 +4184,7 @@ watch(
             height="10"
             class="fill-primary stroke-background"
             stroke-width="1.5"
-            @pointerdown.stop="beginTangentDragHandle(handle, $event)"
+            @pointerdown.left.stop="beginTangentDragHandle(handle, $event)"
           />
         </g>
 
@@ -4195,7 +4196,7 @@ watch(
           :transform="`translate(${label.screenX} ${label.screenY})`"
           role="img"
           :aria-label="label.accessible"
-          @pointerdown.stop.prevent
+          @pointerdown.left.stop.prevent
           @dblclick.stop.prevent="openCornerRoundEditor(label.round, label.screenX, label.screenY)"
         >
           <title>Double-click to edit the radius</title>
@@ -4219,14 +4220,14 @@ watch(
         >
           <title>{{ marker.label }}</title>
           <circle r="9" class="fill-background stroke-muted-foreground" stroke-width="1" />
-          <g transform="translate(-6 -6)">
+          <g transform="translate(-6 -6) scale(0.5)">
             <path
               v-for="(d, index) in CONSTRAINT_ICONS[marker.type].paths"
               :key="index"
               :d="d"
               fill="none"
               stroke="currentColor"
-              stroke-width="1.4"
+              stroke-width="2.8"
               stroke-linecap="round"
               stroke-linejoin="round"
               class="text-foreground"

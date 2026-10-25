@@ -1648,6 +1648,15 @@ describe('PatternCanvas', () => {
     const wrapper = mountCanvas();
     const vp = fittedViewport(baseDoc);
 
+    // The browser's middle-click autoscroll never starts over the canvas.
+    const middleDown = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      button: 1,
+    });
+    wrapper.find('svg').element.dispatchEvent(middleDown);
+    expect(middleDown.defaultPrevented).toBe(true);
+
     down(pointCircle(wrapper, 'a').element, 500, 300, 1);
     expect(wrapper.emitted('update:selectedEntityIds')).toBeUndefined();
 
@@ -2333,6 +2342,19 @@ describe('PatternCanvas', () => {
     up();
 
     expect(wrapper.emitted('update-dimension')).toEqual([['w', { offset: 30 }]]);
+  });
+
+  it('pans with the middle button over a dimension instead of dragging it', async () => {
+    const wrapper = mountCanvas({ document: dimensionDoc });
+    const vp = fittedViewport(dimensionDoc);
+
+    down(wrapper.find('[data-testid="dimension-drag-w"]').element, 300, 200, 1);
+    move(320, 230);
+    await nextTick();
+    up();
+
+    expect(transformOf(wrapper)).toBe(viewportTransform(panBy(vp, 20, 30)));
+    expect(wrapper.emitted('update-dimension')).toBeUndefined();
   });
 
   it('does not drag dimensions during constraint placement', async () => {
