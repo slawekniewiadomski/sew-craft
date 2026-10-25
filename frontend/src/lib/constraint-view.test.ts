@@ -113,7 +113,7 @@ describe('CONSTRAINT_ICONS', () => {
   });
 
   it('marks point-on-line with a filled dot', () => {
-    expect(CONSTRAINT_ICONS.point_on_line.dots).toEqual([{ cx: 6, cy: 6, r: 1.4 }]);
+    expect(CONSTRAINT_ICONS.point_on_line.dots).toEqual([{ cx: 12, cy: 12, r: 2.8 }]);
     expect(CONSTRAINT_ICONS.horizontal.dots).toBeUndefined();
   });
 });

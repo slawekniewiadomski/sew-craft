@@ -63,33 +63,34 @@ export function constraintLabel(constraint: Constraint): string {
   }
 }
 
-/** A stroke path and optional filled dots drawn inside a 12 × 12 icon box. */
+/** A stroke path and optional filled dots drawn inside a 24 × 24 icon box. */
 export interface ConstraintIcon {
   paths: string[];
   dots?: { cx: number; cy: number; r: number }[];
 }
 
 /**
- * Compact constraint glyphs for the canvas overlay. Geometry is authored in a
- * 12 × 12 box so the canvas can draw every icon at the same size.
+ * Constraint glyphs for the canvas overlay. Geometry is authored in a 24 × 24
+ * box, the common icon grid, so library glyphs can be dropped in unscaled; the
+ * canvas renders them at half size inside its markers.
  */
 export const CONSTRAINT_ICONS: Record<ConstraintType, ConstraintIcon> = {
-  horizontal: { paths: ['M3 4 V8', 'M9 4 V8', 'M3 6 H9'] },
-  vertical: { paths: ['M4 3 H8', 'M4 9 H8', 'M6 3 V9'] },
+  horizontal: { paths: ['M6 8 V16', 'M18 8 V16', 'M6 12 H18'] },
+  vertical: { paths: ['M8 6 H16', 'M8 18 H16', 'M12 6 V18'] },
   coincident: {
-    paths: ['M2.2 6 a2 2 0 1 0 4 0 a2 2 0 1 0 -4 0', 'M5.8 6 a2 2 0 1 0 4 0 a2 2 0 1 0 -4 0'],
+    paths: ['M4.4 12 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0', 'M11.6 12 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0'],
   },
   point_on_line: {
-    paths: ['M2 9.5 L10 2.5'],
-    dots: [{ cx: 6, cy: 6, r: 1.4 }],
+    paths: ['M4 19 L20 5'],
+    dots: [{ cx: 12, cy: 12, r: 2.8 }],
   },
   distance: {
-    paths: ['M2 6 H10', 'M4 3.8 L2 6 L4 8.2', 'M8 3.8 L10 6 L8 8.2'],
+    paths: ['M4 12 H20', 'M8 7.6 L4 12 L8 16.4', 'M16 7.6 L20 12 L16 16.4'],
   },
   angle: {
-    paths: ['M3 9 H10.5', 'M3 9 L10 3', 'M6.5 9 A3.5 3.5 0 0 0 5.35 6.36'],
+    paths: ['M6 18 H21', 'M6 18 L20 6', 'M13 18 A7 7 0 0 0 10.7 12.72'],
   },
-  equal: { paths: ['M3 4.5 H9', 'M3 7.5 H9'] },
+  equal: { paths: ['M6 9 H18', 'M6 15 H18'] },
 };
 
 export interface ConstraintMarker {

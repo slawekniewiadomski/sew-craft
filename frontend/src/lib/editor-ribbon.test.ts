@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { RIBBON_GROUPS, type RibbonToolGroupItem } from './editor-ribbon';
+import { ASSEMBLY_RIBBON_GROUPS, RIBBON_GROUPS, type RibbonToolGroupItem } from './editor-ribbon';
 
 describe('RIBBON_GROUPS', () => {
   it('groups controls into tools, features, annotation, sketching, constraints and export', () => {
@@ -189,5 +189,17 @@ describe('RIBBON_GROUPS', () => {
         action: 'download_svg',
       },
     ]);
+  });
+});
+
+describe('ASSEMBLY_RIBBON_GROUPS', () => {
+  it('marks Add piece with a plus badge on the piece glyph', () => {
+    expect(ASSEMBLY_RIBBON_GROUPS[0]!.items[1]).toEqual({
+      kind: 'action',
+      id: 'add-instance',
+      label: 'Add piece',
+      icon: 'piece-add',
+      action: 'add_instance',
+    });
   });
 });

@@ -4,7 +4,7 @@ import { CONSTRAINT_ICONS } from './constraint-view';
 import { RIBBON_ICONS, ribbonIcon, type RibbonIconName } from './ribbon-icons';
 
 describe('RIBBON_ICONS', () => {
-  it('registers one 12 × 12 descriptor for every ribbon glyph', () => {
+  it('registers one 24 × 24 descriptor for every ribbon glyph', () => {
     expect(Object.keys(RIBBON_ICONS).sort()).toEqual([
       'angle',
       'arc',
@@ -25,6 +25,7 @@ describe('RIBBON_ICONS', () => {
       'line',
       'mirror',
       'piece',
+      'piece-add',
       'point',
       'point_on_line',
       'rectangle',
@@ -52,13 +53,15 @@ describe('RIBBON_ICONS', () => {
 
   it('authors the tool and action glyphs in the same box', () => {
     expect(RIBBON_ICONS.select.paths).toHaveLength(1);
-    expect(RIBBON_ICONS.point).toEqual({ paths: [], dots: [{ cx: 6, cy: 6, r: 1.9 }] });
-    expect(RIBBON_ICONS.line.paths).toEqual(['M2.5 9.5 L9.5 2.5']);
+    expect(RIBBON_ICONS.point).toEqual({ paths: [], dots: [{ cx: 12, cy: 12, r: 3.8 }] });
+    expect(RIBBON_ICONS.line.paths).toEqual(['M5 19 L19 5']);
     expect(RIBBON_ICONS.dimension.paths).toHaveLength(5);
     expect(RIBBON_ICONS['cut-dimension'].paths).toHaveLength(5);
     expect(RIBBON_ICONS['cut-dimension'].paths).not.toEqual(RIBBON_ICONS.dimension.paths);
     expect(RIBBON_ICONS.download.paths).toHaveLength(3);
     expect(RIBBON_ICONS.rectangle.paths).toHaveLength(1);
+    expect(RIBBON_ICONS['piece-add'].paths).toHaveLength(RIBBON_ICONS.piece.paths.length + 2);
+    expect(RIBBON_ICONS['piece-add'].paths.slice(0, 3)).toEqual(RIBBON_ICONS.piece.paths);
     expect(RIBBON_ICONS['rectangle-center'].dots).toHaveLength(1);
     expect(RIBBON_ICONS['rectangle-aligned'].paths).toHaveLength(1);
   });

@@ -74,13 +74,14 @@ visual label that icon-only controls would otherwise lose.
 ### Icons
 
 Icons are authored as data descriptors — inline SVG path strings, optionally with
-filled dots — against a **12 × 12 viewBox**, mirroring the existing
-`ConstraintIcon` shape in `frontend/src/lib/constraint-view.ts:63-90`. The
-constraint icons already exist there and are reused verbatim for the Constraints
-group; the nine tool/action icons are added in a new
-`frontend/src/lib/ribbon-icons.ts`. **No new dependency is introduced** (see the
-resolved-assumptions table, Q2): the project's established icon primitive is an
-inline-SVG descriptor, not an icon component library.
+filled dots — against a **24 × 24 viewBox**, the common library grid, mirroring
+the existing `ConstraintIcon` shape in `frontend/src/lib/constraint-view.ts:66`.
+The constraint icons already exist there and are reused verbatim for the
+Constraints group; the canvas marker badge renders them at half size. The
+tool/action icons live in a new `frontend/src/lib/ribbon-icons.ts`. **No new
+dependency is introduced** (see the resolved-assumptions table, Q2): the
+project's established icon primitive is an inline-SVG descriptor, not an icon
+component library.
 
 ### Alternatives considered
 

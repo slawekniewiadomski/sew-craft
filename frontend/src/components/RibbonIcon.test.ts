@@ -12,7 +12,7 @@ describe('RibbonIcon', () => {
     const svg = wrapper.find('svg');
     expect(svg.attributes('width')).toBe('16');
     expect(svg.attributes('height')).toBe('16');
-    expect(svg.attributes('viewBox')).toBe('0 0 12 12');
+    expect(svg.attributes('viewBox')).toBe('0 0 24 24');
     expect(svg.attributes('aria-hidden')).toBe('true');
     expect(wrapper.findAll('path').map((path) => path.attributes('d'))).toEqual([
       'M0 0 H12',
