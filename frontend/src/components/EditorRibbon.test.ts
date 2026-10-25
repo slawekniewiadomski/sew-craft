@@ -32,7 +32,6 @@ function mountRibbon(
 
 const RIBBON_LABELS = [
   'Select',
-  'New piece',
   'Set cut loop',
   'Undo',
   'Redo',
@@ -73,7 +72,7 @@ describe('EditorRibbon', () => {
     const wrapper = mountRibbon();
 
     const buttons = wrapper.findAll('button');
-    expect(buttons).toHaveLength(27);
+    expect(buttons).toHaveLength(26);
     expect(buttons.every((button) => button.find('svg').exists())).toBe(true);
     expect(buttons.map((button) => button.attributes('aria-label'))).toEqual(RIBBON_LABELS);
 
@@ -131,33 +130,6 @@ describe('EditorRibbon', () => {
 
     expect(wrapper.findAll('.ribbon-tooltip').map((tooltip) => tooltip.text())).toEqual(
       RIBBON_TOOLTIPS,
-    );
-  });
-
-  it('explains a refused Create piece in its tooltip', () => {
-    const wrapper = mount(EditorRibbon, {
-      props: {
-        activeTool: 'select',
-        activeConstraint: null,
-        canUndo: false,
-        canRedo: false,
-        canDelete: false,
-        canCreatePiece: false,
-        createPieceHint: 'Clear the dimension selection: Create piece applies to entities only.',
-      },
-      global: {
-        stubs: {
-          TooltipProvider: { template: '<div><slot /></div>' },
-          Tooltip: { template: '<div><slot /></div>' },
-          TooltipTrigger: { template: '<div><slot /></div>' },
-          TooltipContent: { template: '<span class="ribbon-tooltip"><slot /></span>' },
-        },
-      },
-    });
-
-    const createPiece = wrapper.findAll('.ribbon-tooltip')[1]!.text();
-    expect(createPiece).toBe(
-      'Clear the dimension selection: Create piece applies to entities only.',
     );
   });
 

@@ -2535,33 +2535,18 @@ describe('EditorView', () => {
     expect(store.document.cornerRounds).toEqual([]);
   });
 
-  it('creates an empty piece from the ribbon, clears the selection and switches to it', async () => {
+  it('creates an empty piece from the + menu and switches to it', async () => {
     const { wrapper, store } = await mountLoaded(lineDoc);
-    const create = () => wrapper.find('[data-testid="create-piece"]');
 
-    expect(create().attributes('disabled')).toBeDefined();
-
-    entityDown(wrapper, 'line', 'ab');
-    await nextTick();
-    entityDown(wrapper, 'line', 'bc', { ctrlKey: true });
-    await nextTick();
-    entityDown(wrapper, 'line', 'cd', { ctrlKey: true });
-    await nextTick();
-    entityDown(wrapper, 'line', 'da', { ctrlKey: true });
-    await nextTick();
-
-    expect(create().attributes('disabled')).toBeUndefined();
-    await create().trigger('click');
+    await wrapper.find('[data-testid="tabs-new"]').trigger('click');
+    await wrapper.find('[data-testid="tabs-menu-piece"]').trigger('click');
     await flushPromises();
 
-    // The spec creates the piece empty: the loop is captured separately.
     expect(store.document.pieces).toHaveLength(2);
     const created = store.document.pieces[1]!;
     expect(created.edges).toEqual([]);
-    expect(created.defaults).toBeUndefined();
     expect(created.color).toBeDefined();
     expect(store.activeTab).toEqual({ kind: 'piece', id: created.id });
-    expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
 
     store.undo();
     await nextTick();
@@ -3254,7 +3239,7 @@ describe('EditorView dimension selection', () => {
     );
   });
 
-  it('summarises a mixed selection and disables Create piece while a dimension is selected', async () => {
+  it('summarises a mixed selection', async () => {
     const { wrapper } = await mountLoaded({
       ...lineDoc,
       constraints: [
@@ -3266,7 +3251,6 @@ describe('EditorView dimension selection', () => {
 
     canvas.vm.$emit('update:selectedEntityIds', ['ab', 'bc', 'cd', 'da']);
     await nextTick();
-    expect(wrapper.find('[data-testid="create-piece"]').attributes('disabled')).toBeUndefined();
 
     canvas.vm.$emit('update:selectedDimensionIds', ['w']);
     await nextTick();
@@ -3281,7 +3265,6 @@ describe('EditorView dimension selection', () => {
     expect(wrapper.find('[data-testid="selection-status"]').text()).toBe(
       '4 entities and 1 dimension selected',
     );
-    expect(wrapper.find('[data-testid="create-piece"]').attributes('disabled')).toBeDefined();
 
     canvas.vm.$emit('update:selectedDimensionIds', ['w', 'h']);
     await nextTick();

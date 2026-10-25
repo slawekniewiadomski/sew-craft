@@ -295,24 +295,7 @@ const selectedEntity = computed(() =>
     : null,
 );
 
-/** The ordered loop the selection would become, or the reason it cannot. */
-const pieceCreation = computed(() =>
-  pieceCreationFromSelection(pattern.value, selectedEntityIds.value),
-);
-
 const defaultAllowance = computed(() => defaultAllowanceSummary(pattern.value));
-/** A piece is a loop of entities, so a dimension in the selection is ambiguous. */
-const canCreatePiece = computed(
-  () => pieceCreation.value.ok && selectedDimensionIds.value.length === 0,
-);
-
-/** Why Create piece is refused while a dimension is selected; a tooltip. */
-const createPieceHint = computed(() =>
-  selectedDimensionIds.value.length > 0
-    ? 'Clear the dimension selection: Create piece applies to entities only.'
-    : undefined,
-);
-
 /** The entity selection as a set, for row highlighting and `aria-current`. */
 const selectedIds = computed(() => new Set(selectedEntityIds.value));
 
@@ -1072,9 +1055,6 @@ function onRibbonAction(action: RibbonAction): void {
       break;
     case 'fit':
       fit();
-      break;
-    case 'create_piece':
-      newPiece();
       break;
     case 'set_cut_loop': {
       const pieceId = activePieceId.value;
@@ -1993,8 +1973,6 @@ onBeforeUnmount(() => {
             ? selectedInstanceId !== null
             : selectedEntityIds.length > 0 || selectedDimensionIds.length > 0
         "
-        :can-create-piece="canCreatePiece"
-        :create-piece-hint="createPieceHint"
         :can-export="canExport"
         :export-hint="exportHint"
         :read-only="editor.readOnly"

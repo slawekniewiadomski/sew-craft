@@ -7,7 +7,6 @@ export type RibbonAction =
   | 'redo'
   | 'delete'
   | 'fit'
-  | 'create_piece'
   | 'set_cut_loop'
   | 'download_svg'
   | 'add_instance'
@@ -137,7 +136,6 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
     label: 'Tools',
     items: [
       toolItem('select'),
-      actionItem('create-piece', 'New piece', 'create_piece', 'piece'),
       actionItem('set-cut-loop', 'Set cut loop', 'set_cut_loop', 'piece'),
       actionItem('undo', 'Undo', 'undo', 'undo'),
       actionItem('redo', 'Redo', 'redo', 'redo'),

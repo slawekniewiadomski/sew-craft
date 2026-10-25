@@ -29,9 +29,6 @@ const props = withDefaults(
     canUndo: boolean;
     canRedo: boolean;
     canDelete: boolean;
-    canCreatePiece?: boolean;
-    /** Explains a refused Create piece, shown in its tooltip. */
-    createPieceHint?: string;
     /** A read-only document disables every tool and action. */
     readOnly?: boolean;
     /** Whether the active piece can be exported. */
@@ -88,8 +85,6 @@ function isDisabled(item: RibbonButtonItem): boolean {
       return !props.canRedo;
     case 'delete':
       return !props.canDelete;
-    case 'create_piece':
-      return !props.canCreatePiece;
     case 'download_svg':
       return !props.canExport;
     case 'mirror_instance':
@@ -107,7 +102,6 @@ function pressed(item: RibbonButtonItem): true | undefined {
 /** The tooltip text: an action's own label, or the reason it is refused. */
 function hintFor(item: RibbonButtonItem): string {
   if (item.kind !== 'action') return item.label;
-  if (item.action === 'create_piece' && props.createPieceHint) return props.createPieceHint;
   if (item.action === 'download_svg' && !props.canExport && props.exportHint) {
     return props.exportHint;
   }
