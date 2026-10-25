@@ -92,9 +92,14 @@ supported as piece edges in v0.3.
 
 `TextEntity` stores one line of content, an anchor point, alignment, rotation,
 cap height in millimetres and an optional leader point. It is never a solver
-variable. `text.ts` derives the rotated selection box (`textLayout`) and the
-leader polyline (`textLeader`) without a DOM, using `MONO_ADVANCE_RATIO = 0.6`.
-Text is canvas-only in this change; export is unchanged.
+variable. `text.ts` derives the rotated selection box (`textLayout`) and, for a
+label with a leader, `textLeaderGeometry`: a rule under the baseline spanning the
+label width, a shaft from whichever rule end is nearer the target, and a filled
+arrow head whose tip is the target. The helper owns the rule gap (`0.12 ×`
+cap height) and the head's `0.30 ×` length and `0.15 ×` width, shrinking the head
+proportionally when the leader is shorter. Everything is DOM-free, using
+`MONO_ADVANCE_RATIO = 0.6`. Text is canvas-only in this change; export is
+unchanged.
 
 ### Ownership rules
 

@@ -332,9 +332,12 @@ Place a one-line annotation label at a point of its piece.
   `alignment?: 'left' | 'center' | 'right'`, `rotation?: number` (radians),
   `fontSize?: number` (mm), `leader?: entity_id`
 - `content` is trimmed, 1–120 characters, single-line. `fontSize` is 1–100 mm
-  (default 6), `rotation` finite (default 0), `alignment` default `left`.
+  (default 10), `rotation` finite (default 0), `alignment` default `left`.
 - Anchor and leader must be ordinary points of the same piece; the leader must
   differ from the anchor and must not be corner-round-derived.
+- `leader` stays a point reference. The editor now creates it with the **Text
+  with leader** tool (two clicks); `update_text` remains the programmatic way to
+  set or remove it.
 - Text is annotation by kind and never a solver variable.
 - inverse: `delete_entity`.
 
@@ -580,10 +583,18 @@ Request a solver rebuild. Typically emitted after a batch of geometry commands.
 4. Wire any UI affordance. Emit it from the command bus — never mutate state
    directly.
 
+## Migration from spec 0.13.0
+
+`spec_version` is **0.14.0**. No schema or command change: the pattern schema
+stays `sewcraft.pattern/0.3`. The one documented behaviour change is the
+`add_text` `fontSize` default, 6 → 10 mm; stored labels keep their own size, so
+no migration is needed. `spec_version` moves so agents can detect the new
+default.
+
 ## Migration from spec 0.12.0
 
-`spec_version` is **0.13.0** and the pattern schema is
-`sewcraft.pattern/0.3`. This is a breaking development-stage change:
+The pattern schema is `sewcraft.pattern/0.3`. This is a breaking
+development-stage change:
 
 - Every entity and constraint now names its `piece`; geometry has no
   document-level layer.
