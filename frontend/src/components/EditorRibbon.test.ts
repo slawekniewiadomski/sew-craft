@@ -13,6 +13,9 @@ function mountRibbon(
     canRedo: boolean;
     canDelete: boolean;
     readOnly: boolean;
+    mode: 'piece' | 'assembly';
+    canExport: boolean;
+    exportHint: string;
   }> = {},
 ): VueWrapper {
   return mount(EditorRibbon, {
@@ -277,5 +280,32 @@ describe('EditorRibbon', () => {
       ['fit'],
       ['download_svg'],
     ]);
+  });
+
+  it('shows the assembly ribbon with an export hint', async () => {
+    const wrapper = mount(EditorRibbon, {
+      props: {
+        mode: 'assembly',
+        activeTool: 'select',
+        canUndo: false,
+        canRedo: false,
+        canDelete: false,
+        canExport: false,
+        exportHint: 'Switch to a piece to export',
+      },
+      global: {
+        stubs: {
+          TooltipProvider: { template: '<div><slot /></div>' },
+          Tooltip: { template: '<div><slot /></div>' },
+          TooltipTrigger: { template: '<div><slot /></div>' },
+          TooltipContent: { template: '<span class="ribbon-tooltip"><slot /></span>' },
+        },
+      },
+    });
+
+    expect(wrapper.find('[data-testid="add-instance"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="tool-add_line"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="download-svg"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.findAll('.ribbon-tooltip').at(-1)!.text()).toBe('Switch to a piece to export');
   });
 });

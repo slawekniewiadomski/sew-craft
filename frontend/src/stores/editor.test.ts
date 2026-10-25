@@ -262,7 +262,9 @@ describe('editor store', () => {
       pieces: [],
     };
 
-    expect(() => store.load(legacy as PatternDocument)).toThrow('Unsupported pattern schema');
+    expect(() => store.load(legacy as unknown as PatternDocument)).toThrow(
+      'Unsupported pattern schema',
+    );
   });
 
   it('undo is a no-op with no history', () => {
@@ -475,17 +477,81 @@ describe('active piece and loop capture', () => {
   const emptyPiece = (): PatternDocument => ({
     ...createEmptyDocument(),
     pieces: [{ id: 'p1', edges: [], allowances: [] }],
+    tabs: [{ kind: 'piece', id: 'p1' }],
   });
 
-  it('activates only a piece that exists', () => {
+  it('activates only a tab that exists', () => {
     const store = useEditorStore();
     store.load(emptyPiece());
 
-    store.setActivePiece('p1');
+    store.setActiveTab({ kind: 'piece', id: 'p1' });
     expect(store.activePieceId).toBe('p1');
 
-    store.setActivePiece('missing');
+    store.setActiveTab({ kind: 'piece', id: 'missing' });
+    expect(store.activeTab).toBeNull();
     expect(store.activePieceId).toBeNull();
+  });
+
+  it('derives the active piece from a piece tab only', () => {
+    const store = useEditorStore();
+    const document: PatternDocument = {
+      ...emptyPiece(),
+      assemblies: [{ id: 'a1', name: 'A', instances: [] }],
+      tabs: [
+        { kind: 'piece', id: 'p1' },
+        { kind: 'assembly', id: 'a1' },
+      ],
+    };
+    store.load(document);
+
+    store.setActiveTab({ kind: 'assembly', id: 'a1' });
+    expect(store.activePieceId).toBeNull();
+    expect(store.activeTab).toEqual({ kind: 'assembly', id: 'a1' });
+  });
+
+  it('restores a persisted tab and falls back to the first one', () => {
+    const store = useEditorStore();
+    const document: PatternDocument = {
+      ...emptyPiece(),
+      pieces: [
+        { id: 'p1', edges: [], allowances: [] },
+        { id: 'p2', edges: [], allowances: [] },
+      ],
+      tabs: [
+        { kind: 'piece', id: 'p1' },
+        { kind: 'piece', id: 'p2' },
+      ],
+    };
+
+    store.load(document, { kind: 'piece', id: 'p2' });
+    expect(store.activeTab).toEqual({ kind: 'piece', id: 'p2' });
+
+    store.load(document, { kind: 'piece', id: 'gone' });
+    expect(store.activeTab).toEqual({ kind: 'piece', id: 'p1' });
+  });
+
+  it('reconciles the active tab after undo removes it', () => {
+    const store = useEditorStore();
+    const document: PatternDocument = {
+      ...emptyPiece(),
+      assemblies: [{ id: 'a1', name: 'A', instances: [] }],
+      tabs: [
+        { kind: 'piece', id: 'p1' },
+        { kind: 'assembly', id: 'a1' },
+      ],
+    };
+    store.load(document, { kind: 'assembly', id: 'a1' });
+
+    store.dispatch({ id: 'a2', type: 'create_assembly', params: { name: 'B' } });
+    store.setActiveTab({ kind: 'assembly', id: 'a2' });
+
+    store.undo();
+    expect(store.activeTab).toEqual({ kind: 'assembly', id: 'a1' });
+
+    store.dispatch({ id: 'p2', type: 'create_piece', params: { name: 'Back' } });
+    store.setActiveTab({ kind: 'piece', id: 'p2' });
+    store.undo();
+    expect(store.activeTab).toEqual({ kind: 'assembly', id: 'a1' });
   });
 
   it('activates the first piece on load and clears it for a new project', () => {
@@ -500,7 +566,7 @@ describe('active piece and loop capture', () => {
   it('captures one closed chain in the same journal entry', () => {
     const store = useEditorStore();
     store.load(emptyPiece());
-    store.setActivePiece('p1');
+    store.setActiveTab({ kind: 'piece', id: 'p1' });
 
     store.dispatchGroup(square());
 
@@ -517,7 +583,7 @@ describe('active piece and loop capture', () => {
   it('does not capture an open chain or an already looped piece', () => {
     const store = useEditorStore();
     store.load(emptyPiece());
-    store.setActivePiece('p1');
+    store.setActiveTab({ kind: 'piece', id: 'p1' });
 
     store.dispatchGroup(square().slice(0, 7));
     expect(store.document.pieces[0]!.edges).toEqual([]);
@@ -538,7 +604,7 @@ describe('active piece and loop capture', () => {
   it('does not capture without an active piece', () => {
     const store = useEditorStore();
     store.load(emptyPiece());
-    store.setActivePiece(null);
+    store.setActiveTab(null);
 
     store.dispatchGroup(square());
     expect(store.document.pieces[0]!.edges).toEqual([]);

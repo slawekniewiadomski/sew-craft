@@ -1669,6 +1669,7 @@ function entityClass(entity: {
 /** The active-piece badge's text: its label and loop state. */
 const activePieceLabel = computed(() => {
   const piece = props.document.pieces.find((candidate) => candidate.id === props.activePieceId);
+  /* v8 ignore next -- the badge renders only with an active piece */
   if (piece === undefined) return '';
   const index = props.document.pieces.indexOf(piece);
   const name = piece.name ?? `Piece ${index + 1}`;

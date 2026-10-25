@@ -554,11 +554,11 @@ describe('EntityPropertiesPanel piece card', () => {
 
     expect(wrapper.find('[data-testid="entity-piece"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="entity-piece-id"]').text()).toBe('p1');
+    expect((wrapper.find('[data-testid="entity-name"]').element as HTMLInputElement).value).toBe(
+      'Front',
+    );
     expect(
-      (wrapper.find('[data-testid="entity-piece-name"]').element as HTMLInputElement).value,
-    ).toBe('Front');
-    expect(
-      (wrapper.find('[data-testid="entity-piece-quantity"]').element as HTMLInputElement).value,
+      (wrapper.find('[data-testid="entity-quantity"]').element as HTMLInputElement).value,
     ).toBe('2');
     expect(wrapper.find('[data-testid="entity-piece-finished"]').text()).toBe('100 × 60 mm');
     expect(wrapper.find('[data-testid="entity-piece-cut"]').text()).not.toBe('—');
@@ -592,7 +592,7 @@ describe('EntityPropertiesPanel piece card', () => {
 
   it('renames a piece, clears the name and ignores an unchanged one', async () => {
     const { wrapper } = panel(pieceDoc(), 'ab');
-    const name = wrapper.find('[data-testid="entity-piece-name"]');
+    const name = wrapper.find('[data-testid="entity-name"]');
     const emitted = () => wrapper.emitted('update-piece') ?? [];
 
     await name.setValue('Back');
@@ -617,7 +617,7 @@ describe('EntityPropertiesPanel piece card', () => {
       'ab',
     );
 
-    const name = wrapper.find('[data-testid="entity-piece-name"]');
+    const name = wrapper.find('[data-testid="entity-name"]');
     expect((name.element as HTMLInputElement).value).toBe('');
 
     await name.setValue('Front');
@@ -627,7 +627,7 @@ describe('EntityPropertiesPanel piece card', () => {
 
   it('updates the quantity and snaps invalid or unchanged values back', async () => {
     const { wrapper } = panel(pieceDoc(), 'ab');
-    const quantity = wrapper.find('[data-testid="entity-piece-quantity"]');
+    const quantity = wrapper.find('[data-testid="entity-quantity"]');
     const emitted = () => wrapper.emitted('update-piece') ?? [];
 
     await quantity.setValue('4');
@@ -856,5 +856,13 @@ describe('annotation text editor', () => {
     await size.setValue('');
     expect((size.element as HTMLInputElement).value).toBe('8');
     expect(wrapper.emitted('update-text')).toBeUndefined();
+  });
+
+  it('forwards a per-piece allowance override from the card', async () => {
+    const { wrapper } = panel(pieceDoc(), 'ab');
+
+    await wrapper.find('[data-testid="entity-default-mode"]').setValue('none');
+
+    expect(wrapper.emitted('set-piece-default')).toEqual([['p1', { mode: 'none' }]]);
   });
 });

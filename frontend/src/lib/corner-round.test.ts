@@ -416,7 +416,12 @@ describe('applyCornerRoundPick', () => {
     let document = executeCommand(square(), {
       id: 'piece',
       type: 'create_piece',
-      params: { edges: ['ab', 'bc', 'cd', 'da'] },
+      params: {},
+    }).document;
+    document = executeCommand(document, {
+      id: 'loop',
+      type: 'set_piece_loop',
+      params: { piece: 'piece', edges: ['ab', 'bc', 'cd', 'da'], allowance: 'none' },
     }).document;
     document = executeCommand(document, {
       id: 'allow-ab',
@@ -435,7 +440,12 @@ describe('applyCornerRoundPick', () => {
     let document = executeCommand(square(), {
       id: 'piece',
       type: 'create_piece',
-      params: { edges: ['ab', 'bc', 'cd', 'da'] },
+      params: {},
+    }).document;
+    document = executeCommand(document, {
+      id: 'loop',
+      type: 'set_piece_loop',
+      params: { piece: 'piece', edges: ['ab', 'bc', 'cd', 'da'], allowance: 'none' },
     }).document;
     document = executeCommand(document, {
       id: 'allow-ab',
@@ -454,7 +464,12 @@ describe('applyCornerRoundPick', () => {
     let document = executeCommand(square(), {
       id: 'piece',
       type: 'create_piece',
-      params: { edges: ['ab', 'bc', 'cd', 'da'] },
+      params: {},
+    }).document;
+    document = executeCommand(document, {
+      id: 'loop',
+      type: 'set_piece_loop',
+      params: { piece: 'piece', edges: ['ab', 'bc', 'cd', 'da'], allowance: 'none' },
     }).document;
     for (const [index, edge] of ['ab', 'bc'].entries()) {
       document = executeCommand(document, {
@@ -762,7 +777,12 @@ describe('roundableCorners', () => {
     let document = executeCommand(square(), {
       id: 'piece',
       type: 'create_piece',
-      params: { edges: ['ab', 'bc', 'cd', 'da'] },
+      params: {},
+    }).document;
+    document = executeCommand(document, {
+      id: 'loop',
+      type: 'set_piece_loop',
+      params: { piece: 'piece', edges: ['ab', 'bc', 'cd', 'da'], allowance: 'none' },
     }).document;
     document = executeCommand(document, {
       id: 'allow-ab',
@@ -774,7 +794,12 @@ describe('roundableCorners', () => {
     const kinds = executeCommand(square(), {
       id: 'piece',
       type: 'create_piece',
-      params: { edges: ['ab', 'bc', 'cd', 'da'] },
+      params: {},
+    }).document;
+    document = executeCommand(document, {
+      id: 'loop',
+      type: 'set_piece_loop',
+      params: { piece: 'piece', edges: ['ab', 'bc', 'cd', 'da'], allowance: 'none' },
     }).document;
     const withKinds: PatternDocument = {
       ...kinds,

@@ -9,11 +9,13 @@ import {
   type Command,
   type EntityId,
   type PatternDocument,
+  type TabRef,
 } from '@sewcraft/geometry';
 import { defineStore } from 'pinia';
 import { computed, ref, shallowRef } from 'vue';
 
 import type { SaveOrigin } from '@/lib/autosave';
+import { reconcileTab, tabIndex } from '@/lib/tabs';
 
 /**
  * The status of the last save attempt; `idle` before the first one. `failed` is
@@ -60,8 +62,16 @@ export const useEditorStore = defineStore('editor', () => {
   const lastSaveOrigin = ref<SaveOrigin | null>(null);
   /** Read-only documents reject every mutation, including undo and redo. */
   const readOnly = ref(false);
-  /** The piece every new entity belongs to; `null` in a document with no piece. */
-  const activePieceId = ref<EntityId | null>(null);
+  /** The bottom bar's active tab; `null` in a document with no tabs. */
+  const activeTab = ref<TabRef | null>(null);
+
+  /**
+   * The piece every new entity belongs to. It is derived from the active tab,
+   * so switching to an assembly tab leaves no piece editable.
+   */
+  const activePieceId = computed<EntityId | null>(() =>
+    activeTab.value?.kind === 'piece' ? activeTab.value.id : null,
+  );
 
   const canUndo = computed(() => past.value.length > 0);
   const canRedo = computed(() => future.value.length > 0);
@@ -76,9 +86,11 @@ export const useEditorStore = defineStore('editor', () => {
     if (readOnly.value) return;
 
     const before = document.value;
+    const previousIndex = tabIndex(before, activeTab.value);
     const result = executeCommand(before, command);
 
     document.value = result.document;
+    activeTab.value = reconcileTab(document.value, activeTab.value, previousIndex);
     past.value = [...past.value, { command, inverse: result.inverse, before }];
     future.value = [];
   }
@@ -122,6 +134,7 @@ export const useEditorStore = defineStore('editor', () => {
     if (readOnly.value || commands.length === 0) return;
 
     const before = document.value;
+    const previousIndex = tabIndex(before, activeTab.value);
     let next = before;
     const applied = [...commands];
     const inverses: (Command | null)[] = [];
@@ -141,6 +154,7 @@ export const useEditorStore = defineStore('editor', () => {
     }
 
     document.value = next;
+    activeTab.value = reconcileTab(document.value, activeTab.value, previousIndex);
     past.value = [
       ...past.value,
       {
@@ -160,9 +174,11 @@ export const useEditorStore = defineStore('editor', () => {
     const entry = past.value[past.value.length - 1];
     if (entry === undefined) return;
 
+    const previousIndex = tabIndex(document.value, activeTab.value);
     past.value = past.value.slice(0, -1);
     future.value = [...future.value, entry];
     document.value = entry.before;
+    activeTab.value = reconcileTab(document.value, activeTab.value, previousIndex);
   }
 
   function redo(): void {
@@ -171,14 +187,16 @@ export const useEditorStore = defineStore('editor', () => {
     const entry = future.value[future.value.length - 1];
     if (entry === undefined) return;
 
+    const previousIndex = tabIndex(document.value, activeTab.value);
     document.value = replay(document.value, entry);
     future.value = future.value.slice(0, -1);
     past.value = [...past.value, entry];
+    activeTab.value = reconcileTab(document.value, activeTab.value, previousIndex);
   }
 
-  function load(next: PatternDocument): void {
+  function load(next: PatternDocument, preferredTab: TabRef | null = null): void {
     document.value = normalizeCornerRounds(normalizeDocument(next));
-    activePieceId.value = document.value.pieces[0]?.id ?? null;
+    activeTab.value = reconcileTab(document.value, preferredTab);
     past.value = [];
     future.value = [];
   }
@@ -186,7 +204,7 @@ export const useEditorStore = defineStore('editor', () => {
   /** Replace the document without normalising it; only unknown schemas use this. */
   function loadRaw(next: PatternDocument): void {
     document.value = next;
-    activePieceId.value = next.pieces?.[0]?.id ?? null;
+    activeTab.value = next.tabs?.[0] ?? null;
     past.value = [];
     future.value = [];
   }
@@ -194,7 +212,6 @@ export const useEditorStore = defineStore('editor', () => {
   /** Start an unsaved project: an empty document with no stored copy. */
   function markNew(): void {
     load(createEmptyDocument());
-    activePieceId.value = null;
     savedDocument.value = document.value;
     newProject.value = true;
     savedVersion.value = 0;
@@ -205,8 +222,13 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   /** Adopt a stored document as the clean baseline. */
-  function markLoaded(next: PatternDocument, version: number, savedAt: string | null): void {
-    load(next);
+  function markLoaded(
+    next: PatternDocument,
+    version: number,
+    savedAt: string | null,
+    preferredTab: TabRef | null = null,
+  ): void {
+    load(next, preferredTab);
     savedDocument.value = document.value;
     newProject.value = false;
     savedVersion.value = version;
@@ -278,10 +300,15 @@ export const useEditorStore = defineStore('editor', () => {
     readOnly.value = value;
   }
 
-  /** Activate one piece; an id that is not in the document clears the selection. */
-  function setActivePiece(id: EntityId | null): void {
-    activePieceId.value =
-      id !== null && document.value.pieces.some((piece) => piece.id === id) ? id : null;
+  /** Activate one tab; a ref that is not in the document clears the tab. */
+  function setActiveTab(tab: TabRef | null): void {
+    activeTab.value =
+      tab !== null &&
+      document.value.tabs.some(
+        (candidate) => candidate.kind === tab.kind && candidate.id === tab.id,
+      )
+        ? { kind: tab.kind, id: tab.id }
+        : null;
   }
 
   return {
@@ -296,6 +323,7 @@ export const useEditorStore = defineStore('editor', () => {
     saveState,
     lastSaveOrigin,
     readOnly,
+    activeTab,
     activePieceId,
     isDirty,
     isNew,
@@ -315,6 +343,6 @@ export const useEditorStore = defineStore('editor', () => {
     markSaveError,
     clearSaveError,
     setReadOnly,
-    setActivePiece,
+    setActiveTab,
   };
 });

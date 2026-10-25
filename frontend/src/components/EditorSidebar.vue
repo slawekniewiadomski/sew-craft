@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 
 import SidebarAction from '@/components/sidebar/SidebarAction.vue';
 import SidebarDrawer from '@/components/SidebarDrawer.vue';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { EDITOR_DRAWERS, initialDrawerState, type DrawerId } from '@/lib/editor-drawers';
+import { drawersFor, initialDrawerState, type DrawerId } from '@/lib/editor-drawers';
 
 const props = defineProps<{
   width: number;
@@ -15,6 +15,8 @@ const props = defineProps<{
   counts?: Partial<Record<DrawerId, number>>;
   /** Mutating drawer controls are disabled; the View drawer keeps export toggles. */
   readOnly?: boolean;
+  /** The active tab kind selects which drawers exist. */
+  mode?: 'piece' | 'assembly';
 }>();
 
 const emit = defineEmits<{
@@ -22,6 +24,7 @@ const emit = defineEmits<{
   'update:collapsed': [collapsed: boolean];
 }>();
 
+const drawers = computed(() => drawersFor(props.mode ?? 'piece'));
 const open = ref(initialDrawerState());
 const resizing = ref(false);
 const startX = ref(0);
@@ -100,7 +103,7 @@ onBeforeUnmount(removeResizeListeners);
 
         <ScrollArea class="min-h-0 flex-1">
           <SidebarDrawer
-            v-for="drawer in EDITOR_DRAWERS"
+            v-for="drawer in drawers"
             :key="drawer.id"
             :id="drawer.id"
             :label="drawer.label"
@@ -119,7 +122,7 @@ onBeforeUnmount(removeResizeListeners);
 
       <div v-else class="flex h-full w-12 flex-col items-center gap-1 py-2">
         <SidebarAction
-          v-for="drawer in EDITOR_DRAWERS"
+          v-for="drawer in drawers"
           :key="drawer.id"
           :icon="drawer.icon"
           :label="`Open ${drawer.label} drawer`"

@@ -14,10 +14,12 @@ const state = vi.hoisted(() => ({ thrown: new Error('command exploded') as unkno
 const storedDocument: PatternDocument = {
   ...createEmptyDocument(),
   entities: [
-    { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
-    { id: 'q', kind: 'point', x: 100, y: 0, construction: false, fixed: false },
-    { id: 'l', kind: 'line', start: 'p', end: 'q', construction: false },
+    { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false, piece: 'p1' },
+    { id: 'q', kind: 'point', x: 100, y: 0, construction: false, fixed: false, piece: 'p1' },
+    { id: 'l', kind: 'line', start: 'p', end: 'q', construction: false, piece: 'p1' },
   ],
+  pieces: [{ id: 'p1', edges: [], allowances: [] }],
+  tabs: [{ kind: 'piece', id: 'p1' }],
 };
 
 vi.mock('@/api/projects', () => {
@@ -57,10 +59,12 @@ vi.mock('@/composables/use-command-bus', async () => {
       document: ref({
         ...createEmptyDocument(),
         entities: [
-          { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
-          { id: 'q', kind: 'point', x: 100, y: 0, construction: false, fixed: false },
-          { id: 'l', kind: 'line', start: 'p', end: 'q', construction: false },
+          { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false, piece: 'p1' },
+          { id: 'q', kind: 'point', x: 100, y: 0, construction: false, fixed: false, piece: 'p1' },
+          { id: 'l', kind: 'line', start: 'p', end: 'q', construction: false, piece: 'p1' },
         ],
+        pieces: [{ id: 'p1', edges: [], allowances: [] }],
+        tabs: [{ kind: 'piece', id: 'p1' }],
       }),
       journal: ref([]),
       canUndo: ref(false),

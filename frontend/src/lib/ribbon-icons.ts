@@ -30,6 +30,8 @@ export type RibbonIconName =
   | 'delete'
   | 'fit'
   | 'download'
+  | 'mirror'
+  | 'rotate'
   | ConstraintType;
 
 type ActionIconName = Exclude<RibbonIconName, ConstraintType>;
@@ -91,6 +93,10 @@ const ACTION_ICONS: Record<ActionIconName, RibbonIcon> = {
   delete: { paths: ['M2.5 3.5 H9.5', 'M4.5 3.5 V10 H7.5 V3.5', 'M5 3.5 V2.2 H7 V3.5'] },
   fit: { paths: ['M3 1.5 H1.5 V3', 'M9 1.5 H10.5 V3', 'M1.5 9 V10.5 H3', 'M10.5 9 V10.5 H9'] },
   download: { paths: ['M6 1.6 V7.6', 'M3.6 5.2 L6 7.6 L8.4 5.2', 'M2 10.4 H10'] },
+  mirror: { paths: ['M6 1.6 V10.4', 'M4.4 3.2 L1.6 6 L4.4 8.8 Z', 'M7.6 3.2 L10.4 6 L7.6 8.8 Z'] },
+  rotate: {
+    paths: ['M9.6 6 A3.6 3.6 0 1 1 6 2.4', 'M6 1 L8 2.4 L6 3.9'],
+  },
 };
 
 /** One registry for every ribbon glyph, so a missing icon is a type error. */

@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { EDITOR_DRAWERS, initialDrawerState } from './editor-drawers';
+import { EDITOR_DRAWERS, drawersFor, initialDrawerState } from './editor-drawers';
 
 describe('EDITOR_DRAWERS', () => {
   it('lists every drawer with its default and rail glyph', () => {
     expect(EDITOR_DRAWERS).toEqual([
       { id: 'properties', label: 'Properties', defaultOpen: true, icon: 'select' },
-      { id: 'pieces', label: 'Pieces', defaultOpen: true, icon: 'piece' },
+      { id: 'pieces', label: 'Piece', defaultOpen: true, icon: 'piece' },
+      { id: 'pattern', label: 'Pattern', defaultOpen: false, icon: 'eye' },
+      { id: 'assembly', label: 'Assembly', defaultOpen: true, icon: 'piece' },
       { id: 'outline', label: 'Outline', defaultOpen: true, icon: 'line' },
       { id: 'dimensions', label: 'Dimensions', defaultOpen: false, icon: 'dimension' },
       { id: 'constraints', label: 'Constraints', defaultOpen: false, icon: 'constraints' },
@@ -20,10 +22,25 @@ describe('initialDrawerState', () => {
     expect(initialDrawerState()).toEqual({
       properties: true,
       pieces: true,
+      pattern: false,
+      assembly: true,
       outline: true,
       dimensions: false,
       constraints: false,
       view: false,
     });
+  });
+
+  it('shows piece drawers on a piece tab and only the assembly inspector on an assembly tab', () => {
+    expect(drawersFor('piece').map((drawer) => drawer.id)).toEqual([
+      'properties',
+      'pieces',
+      'pattern',
+      'outline',
+      'dimensions',
+      'constraints',
+      'view',
+    ]);
+    expect(drawersFor('assembly').map((drawer) => drawer.id)).toEqual(['assembly', 'view']);
   });
 });

@@ -3,7 +3,16 @@ import { EDITOR_TOOLS, type EditorTool } from './editor-tools';
 import type { RibbonIconName } from './ribbon-icons';
 
 export type RibbonAction =
-  'undo' | 'redo' | 'delete' | 'fit' | 'create_piece' | 'set_cut_loop' | 'download_svg';
+  | 'undo'
+  | 'redo'
+  | 'delete'
+  | 'fit'
+  | 'create_piece'
+  | 'set_cut_loop'
+  | 'download_svg'
+  | 'add_instance'
+  | 'mirror_instance'
+  | 'rotate_instance';
 
 export interface RibbonConstraintItem {
   kind: 'constraint';
@@ -180,6 +189,38 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
       icon: tool.type,
       constraint: tool.type,
     })),
+  },
+  {
+    id: 'export',
+    label: 'Export',
+    items: [actionItem('download-svg', 'Download SVG', 'download_svg', 'download')],
+  },
+];
+
+/**
+ * The assembly tab's intentionally minimal ribbon: no sketch or constraint
+ * tools, only instance placement, history and view actions.
+ */
+export const ASSEMBLY_RIBBON_GROUPS: RibbonGroup[] = [
+  {
+    id: 'assembly',
+    label: 'Assembly',
+    items: [
+      toolItem('select'),
+      actionItem('add-instance', 'Add piece', 'add_instance', 'piece'),
+      actionItem('mirror-instance', 'Mirror', 'mirror_instance', 'mirror'),
+      actionItem('rotate-instance', 'Rotate 90°', 'rotate_instance', 'rotate'),
+    ],
+  },
+  {
+    id: 'edit',
+    label: 'Edit',
+    items: [
+      actionItem('undo', 'Undo', 'undo', 'undo'),
+      actionItem('redo', 'Redo', 'redo', 'redo'),
+      actionItem('delete', 'Delete', 'delete', 'delete'),
+      actionItem('fit', 'Fit', 'fit', 'fit'),
+    ],
   },
   {
     id: 'export',

@@ -39,6 +39,7 @@ import {
   type DimensionPatch,
   type DimensionReferenceOption,
 } from '@/lib/dimensions';
+import { pieceById } from '@sewcraft/geometry';
 import { ribbonIcon, type RibbonIconName } from '@/lib/ribbon-icons';
 import DimensionReferencePicker from './DimensionReferencePicker.vue';
 import { defaultAllowanceSummary } from '@/lib/allowance-defaults';
@@ -59,7 +60,23 @@ const emit = defineEmits<{
   'set-corner-round-radius': [id: EntityId, radius: number];
   'remove-corner-round': [id: EntityId];
   'set-circle-radius': [id: EntityId, radius: number];
-  'update-piece': [id: EntityId, patch: { name?: string | null; quantity?: number | null }];
+  'update-piece': [
+    id: EntityId,
+    patch: {
+      name?: string | null;
+      quantity?: number | null;
+      notes?: string | null;
+      fabric?: string | null;
+      color?: string | null;
+    },
+  ];
+  'set-piece-default': [
+    piece: EntityId,
+    value:
+      | { mode: 'inherit' }
+      | { mode: 'none' }
+      | { mode: 'preset'; width: number; kind: AllowanceKind },
+  ];
   'set-piece-allowance': [
     piece: EntityId,
     edge: EntityId,
@@ -68,6 +85,12 @@ const emit = defineEmits<{
   'set-all-allowances': [piece: EntityId, value: { kind: AllowanceKind; width: number } | null];
   'remove-piece': [id: EntityId];
 }>();
+
+/** The stored piece behind the summary, so its new parameters can be edited. */
+const storedPiece = computed(() =>
+  /* v8 ignore next -- 0.4 geometry always names an existing piece */
+  props.entity.piece === null ? null : (pieceById(props.document, props.entity.piece.id) ?? null),
+);
 
 /** The `#` picker open in the inspector, if any. */
 const picker = ref<{ id: EntityId; text: string; activeIndex: number } | null>(null);
@@ -536,11 +559,14 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
     </section>
 
     <PiecePanel
-      v-if="props.entity.piece"
+      v-if="props.entity.piece && storedPiece"
       :summary="props.entity.piece"
+      :piece="storedPiece"
       :default-allowance="defaultAllowanceSummary(props.document)"
+      :inherited-default="defaultAllowanceSummary(props.document)"
       label="Piece"
       @update-piece="(id, patch) => emit('update-piece', id, patch)"
+      @set-piece-default="(piece, value) => emit('set-piece-default', piece, value)"
       @set-piece-allowance="(piece, edge, value) => emit('set-piece-allowance', piece, edge, value)"
       @set-all-allowances="(piece, value) => emit('set-all-allowances', piece, value)"
       @remove-piece="(id) => emit('remove-piece', id)"

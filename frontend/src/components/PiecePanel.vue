@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import type { AllowanceKind, EntityId } from '@sewcraft/geometry';
+import type { AllowanceKind, EntityId, Piece } from '@sewcraft/geometry';
 import { computed, ref, watch } from 'vue';
 
+import PieceParametersForm from '@/components/PieceParametersForm.vue';
 import Pill from '@/components/sidebar/Pill.vue';
 import SidebarAction from '@/components/sidebar/SidebarAction.vue';
 import SidebarField from '@/components/sidebar/SidebarField.vue';
@@ -18,27 +19,45 @@ import { pieceSizeText, type PieceAllowanceRow, type PieceSummary } from '@/lib/
 const props = withDefaults(
   defineProps<{
     summary: PieceSummary;
+    /** The stored piece, so the parameter form can edit its new fields. */
+    piece: Piece;
     /** The card's heading: `Piece` in the inspector, the piece label in the drawer. */
     label: string;
     /** Prefix for the card's data-testids, so two mounted cards never collide. */
     prefix?: string;
     /** The project default the All edges row starts from when the edges differ. */
     defaultAllowance?: AllowanceChoice;
+    /** The preset the piece's own default inherits when it has no override. */
+    inheritedDefault?: AllowanceChoice;
     /** Whether this is the active piece every new entity belongs to. */
     active?: boolean;
-    /** Whether the Move gesture is armed for this piece. */
-    moveMode?: boolean;
   }>(),
   {
     prefix: 'entity',
     defaultAllowance: () => ({ kind: 'seam' as const, width: 10 }),
+    inheritedDefault: () => ({ kind: 'seam' as const, width: 10 }),
     active: false,
-    moveMode: false,
   },
 );
 
 const emit = defineEmits<{
-  'update-piece': [id: EntityId, patch: { name?: string | null; quantity?: number | null }];
+  'update-piece': [
+    id: EntityId,
+    patch: {
+      name?: string | null;
+      quantity?: number | null;
+      notes?: string | null;
+      fabric?: string | null;
+      color?: string | null;
+    },
+  ];
+  'set-piece-default': [
+    piece: EntityId,
+    value:
+      | { mode: 'inherit' }
+      | { mode: 'none' }
+      | { mode: 'preset'; width: number; kind: AllowanceKind },
+  ];
   'set-piece-allowance': [
     piece: EntityId,
     edge: EntityId,
@@ -48,7 +67,6 @@ const emit = defineEmits<{
   'remove-piece': [id: EntityId];
   'set-cut-loop': [id: EntityId];
   'clear-cut-loop': [id: EntityId];
-  'toggle-move': [id: EntityId];
   activate: [id: EntityId];
 }>();
 
@@ -144,25 +162,6 @@ function applyAll(): void {
     allKind.value === 'none' ? null : { kind: allKind.value, width: allWidth.value },
   );
 }
-
-/** Empty text clears the name, mirroring `update_piece`'s `name: null`. */
-function pieceName(event: Event): void {
-  const input = event.target as HTMLInputElement;
-  const name = input.value.trim();
-  if (name === (props.summary.name ?? '')) return;
-  emit('update-piece', props.summary.id, { name: name === '' ? null : name });
-}
-
-function pieceQuantity(event: Event): void {
-  const input = event.target as HTMLInputElement;
-  const quantity = Number(input.value);
-  if (!Number.isInteger(quantity) || quantity < 1) {
-    input.value = String(props.summary.quantity);
-    return;
-  }
-  if (quantity === props.summary.quantity) return;
-  emit('update-piece', props.summary.id, { quantity });
-}
 </script>
 
 <template>
@@ -190,28 +189,15 @@ function pieceQuantity(event: Event): void {
       <SidebarField label="Id" mono :data-testid="testId('piece-id')">
         {{ props.summary.id }}
       </SidebarField>
-      <SidebarField label="Name">
-        <input
-          type="text"
-          class="h-7 w-40 rounded-sm border px-2 text-[13px]"
-          :value="props.summary.name ?? ''"
-          :aria-label="`Name for piece ${props.summary.id}`"
-          :data-testid="testId('piece-name')"
-          @change="pieceName"
+      <div class="text-2xs text-muted-foreground" :data-testid="testId('piece-parameters')">
+        <PieceParametersForm
+          :piece="props.piece"
+          :inherited="props.inheritedDefault"
+          :prefix="props.prefix"
+          @update-piece="(patch) => emit('update-piece', props.summary.id, patch)"
+          @set-default="(value) => emit('set-piece-default', props.summary.id, value)"
         />
-      </SidebarField>
-      <SidebarField label="Quantity">
-        <input
-          type="number"
-          min="1"
-          step="1"
-          class="h-7 w-20 rounded-sm border px-2 text-[13px] tabular-nums"
-          :value="props.summary.quantity"
-          :aria-label="`Quantity for piece ${props.summary.id}`"
-          :data-testid="testId('piece-quantity')"
-          @change="pieceQuantity"
-        />
-      </SidebarField>
+      </div>
       <SidebarField label="Finished" :data-testid="testId('piece-finished')">
         {{ props.summary.hasLoop ? pieceSizeText(props.summary.metrics?.finished) : 'No cut loop' }}
       </SidebarField>
@@ -259,16 +245,6 @@ function pieceQuantity(event: Event): void {
         @click="emit('clear-cut-loop', props.summary.id)"
       >
         Clear cut loop
-      </button>
-      <button
-        type="button"
-        class="h-7 rounded-sm border px-2 text-2xs font-medium"
-        :aria-pressed="props.moveMode ? 'true' : 'false'"
-        :class="props.moveMode ? 'bg-accent text-accent-foreground' : ''"
-        :data-testid="testId('piece-move-toggle')"
-        @click="emit('toggle-move', props.summary.id)"
-      >
-        Move
       </button>
       <button
         type="button"
