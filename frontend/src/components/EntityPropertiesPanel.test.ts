@@ -825,7 +825,8 @@ describe('annotation text editor', () => {
       '0.5',
     );
     expect((wrapper.find('[data-testid="text-size"]').element as HTMLInputElement).value).toBe('8');
-    expect(wrapper.find('[data-testid="text-leader"]').text()).toBe('b');
+    expect(wrapper.find('[data-testid="text-leader"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="text-leader-pick"]').exists()).toBe(false);
   });
 
   it('emits each text edit', async () => {
@@ -842,16 +843,6 @@ describe('annotation text editor', () => {
       ['t1', { rotation: 1.5 }],
       ['t1', { fontSize: 12 }],
     ]);
-  });
-
-  it('picks and clears a leader', async () => {
-    const { wrapper } = panel(textDoc(), 't1');
-
-    await wrapper.find('[data-testid="text-leader-pick"]').trigger('click');
-    await wrapper.find('[data-testid="text-leader-clear"]').trigger('click');
-
-    expect(wrapper.emitted('create-leader')).toEqual([['t1']]);
-    expect(wrapper.emitted('update-text')).toEqual([['t1', { leader: null }]]);
   });
 
   it('snaps an invalid rotation back to the stored value', async () => {

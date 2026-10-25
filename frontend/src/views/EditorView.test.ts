@@ -213,6 +213,19 @@ async function selectRectangleMode(
   await flushPromises();
 }
 
+/** Arm one of the grouped text modes through the ribbon's split control. */
+async function selectTextMode(
+  wrapper: VueWrapper,
+  mode: 'add_text' | 'add_text_leader',
+): Promise<void> {
+  await wrapper.find('[data-testid="tool-text-modes"]').trigger('click');
+  await flushPromises();
+  document
+    .querySelector<HTMLElement>(`[data-testid="tool-${mode}"]`)!
+    .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await flushPromises();
+}
+
 function keydown(key: string, init: KeyboardEventInit = {}): void {
   window.dispatchEvent(new KeyboardEvent('keydown', { key, cancelable: true, ...init }));
 }
@@ -4446,7 +4459,7 @@ describe('EditorView containers and annotation text', () => {
   it('places a label with the Text tool and edits it in the inspector', async () => {
     const { wrapper, store } = await mountLoaded(owned(pieceDoc));
 
-    await wrapper.find('[data-testid="tool-add_text"]').trigger('click');
+    await wrapper.find('[data-testid="tool-text"]').trigger('click');
     wrapper.findComponent(PatternCanvas).vm.$emit('add-text', { kind: 'point', id: 'a' });
     await flushPromises();
 
@@ -4466,12 +4479,24 @@ describe('EditorView containers and annotation text', () => {
     expect(store.document.entities.find((entity) => entity.id === text.id)).toMatchObject({
       content: 'snap',
     });
+  });
 
-    await wrapper.find('[data-testid="text-leader-pick"]').trigger('click');
+  it('places a label and its arrow target in one batch', async () => {
+    const { wrapper, store } = await mountLoaded(owned(pieceDoc));
+
+    await selectTextMode(wrapper, 'add_text_leader');
+    wrapper
+      .findComponent(PatternCanvas)
+      .vm.$emit('add-text', { kind: 'new', x: 10, y: 20 }, { kind: 'point', id: 'b' });
     await flushPromises();
-    expect(store.document.entities.find((entity) => entity.id === text.id)).toHaveProperty(
-      'leader',
+
+    const text = store.document.entities.find((entity) => entity.kind === 'text')!;
+    expect(text).toMatchObject({ content: 'Text', leader: 'b', piece: 'p1' });
+    const anchor = store.document.entities.find(
+      (entity) => entity.kind === 'point' && entity.x === 10 && entity.y === 20,
     );
+    expect(anchor).toMatchObject({ role: 'annotation' });
+    expect(store.journal.at(-1)?.command.type).toBe('add_text');
   });
 
   it('assigns an annotation role from the inspector', async () => {
@@ -4497,28 +4522,6 @@ describe('EditorView containers and annotation text', () => {
     await nextTick();
 
     expect(wrapper.text()).toContain('Switch to Sleeve to edit it.');
-  });
-
-  it('reports a leader that cannot be chosen and ignores an update on a non-text id', async () => {
-    const { wrapper, store } = await mountLoaded({
-      ...pieceDoc,
-      entities: pieceDoc.entities.filter((entity) => !['b', 'c', 'd', 'e'].includes(entity.id)),
-      pieces: [{ id: 'p1', edges: [], allowances: [] }],
-    });
-
-    wrapper.findComponent(PatternCanvas).vm.$emit('add-text', { kind: 'point', id: 'a' });
-    await flushPromises();
-    const text = store.document.entities.find((entity) => entity.kind === 'text')!;
-    await wrapper.find('[data-testid="tool-select"]').trigger('click');
-    wrapper
-      .find(`[data-kind="text"][data-entity-id="${text.id}"]`)
-      .element.dispatchEvent(
-        new MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100, button: 0 }),
-      );
-    await nextTick();
-    await wrapper.find('[data-testid="text-leader-pick"]').trigger('click');
-    await nextTick();
-    expect(wrapper.text()).toContain('Add another point to the piece');
   });
 });
 
@@ -4583,18 +4586,12 @@ describe('EditorView container escape hatches', () => {
 });
 
 describe('EditorView remaining container branches', () => {
-  it('names an unknown piece and ignores a leader on a non-text id', async () => {
-    const { wrapper, store } = await mountLoaded(pieceDoc);
+  it('names an unknown piece', async () => {
+    const { wrapper } = await mountLoaded(pieceDoc);
 
     wrapper.findComponent(PatternCanvas).vm.$emit('cross-piece', 'missing');
     await nextTick();
     expect(wrapper.text()).toContain('Switch to the owning piece to edit it.');
-
-    entityDown(wrapper, 'line', 'ab');
-    await nextTick();
-    wrapper.findComponent(EntityPropertiesPanel).vm.$emit('create-leader', 'ab');
-    await nextTick();
-    expect(store.journal).toHaveLength(0);
   });
 
   it('adds unowned points, curves and constraints when no piece is active', async () => {
@@ -4697,32 +4694,6 @@ describe('EditorView active-piece defaults and teardown', () => {
     wrapper.unmount();
     await new Promise((resolve) => setTimeout(resolve, 350));
     expect(store.journal).toHaveLength(0);
-  });
-
-  it('chooses a leader across unowned text and points', async () => {
-    const { wrapper, store } = await mountLoaded({
-      ...createEmptyDocument(),
-      entities: [
-        { id: 'a', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
-        { id: 'b', kind: 'point', x: 100, y: 0, construction: false, fixed: false, piece: 'p1' },
-        { id: 't1', kind: 'text', piece: 'p1', anchor: 'a', content: 'x' },
-      ],
-      pieces: [{ id: 'p1', edges: [], allowances: [] }],
-    });
-
-    await wrapper.find('[data-testid="tool-select"]').trigger('click');
-    wrapper
-      .find('[data-kind="text"][data-entity-id="t1"]')
-      .element.dispatchEvent(
-        new MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100, button: 0 }),
-      );
-    await nextTick();
-    await wrapper.find('[data-testid="text-leader-pick"]').trigger('click');
-    await flushPromises();
-
-    expect(store.document.entities.find((entity) => entity.id === 't1')).toMatchObject({
-      leader: 'b',
-    });
   });
 });
 

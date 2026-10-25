@@ -59,6 +59,7 @@ import {
   type Rect,
   resolveCutSpan,
   type TextLayout,
+  type TextEntity,
   textLayout,
   textLeaderGeometry,
   DEFAULT_TEXT_SIZE,
@@ -122,6 +123,8 @@ import {
   endpointMissing,
   endpointPosition,
   resolveDraftingEndpoint,
+  resolveLeaderEndpoint,
+  resolveTextAnchorEndpoint,
   sameDraftingEndpoint,
   type DraftingEndpoint,
 } from '@/lib/drafting';
@@ -150,6 +153,7 @@ import {
   type SelectionMode,
 } from '@/lib/selection';
 import { nearestPoint, POINT_SNAP_TOLERANCE, snapPoint, snapToGrid } from '@/lib/snap';
+import { DEFAULT_TEXT_CONTENT, leaderTargetIssue } from '@/lib/text-tool';
 import {
   fitToBounds,
   niceStep,
@@ -375,7 +379,7 @@ const emit = defineEmits<{
   'move-piece': [dx: number, dy: number];
   'activate-piece': [id: EntityId];
   'cross-piece': [id: EntityId];
-  'add-text': [anchor: DraftingEndpoint];
+  'add-text': [anchor: DraftingEndpoint, leader?: DraftingEndpoint];
 }>();
 
 const svg = ref<SVGSVGElement | null>(null);
@@ -407,6 +411,10 @@ const circlePreview = ref<Vec2 | null>(null);
 const rectangleClicks = ref<DraftingEndpoint[]>([]);
 /** The snapped pointer while a rectangle gesture is pending; its next click. */
 const rectanglePointer = ref<Vec2 | null>(null);
+/** The label anchor stored by the first click of the Text with leader tool. */
+const textAnchor = ref<DraftingEndpoint | null>(null);
+/** The snapped arrow target while the leader gesture is pending. */
+const textPointer = ref<Vec2 | null>(null);
 const spaceHeld = ref(false);
 
 /** Anchors picked for a dimension that has not yet been placed. */
@@ -1685,15 +1693,15 @@ interface TextView {
   layout: TextLayout;
 }
 
-/** Annotation labels, resolved against their anchor and leader points. */
+/** Annotation labels, resolved against their drag-aware anchor and leader points. */
 const textViews = computed<TextView[]>(() =>
   props.document.entities.flatMap((entity): TextView[] => {
     if (entity.kind !== 'text') return [];
-    const anchor = getEntity(props.document, entity.anchor);
-    if (anchor?.kind !== 'point') return [];
+    const anchor = pointById.value.get(entity.anchor);
+    if (anchor === undefined) return [];
     const layout = textLayout(entity, { x: anchor.x, y: anchor.y })!;
     const leaderPoint =
-      entity.leader === undefined ? undefined : getEntity(props.document, entity.leader);
+      entity.leader === undefined ? undefined : pointById.value.get(entity.leader);
     return [
       {
         id: entity.id,
@@ -1704,17 +1712,65 @@ const textViews = computed<TextView[]>(() =>
         alignment: entity.alignment ?? 'left',
         layout,
         leader:
-          leaderPoint?.kind === 'point'
-            ? textLeaderGeometry(
+          leaderPoint === undefined
+            ? null
+            : textLeaderGeometry(
                 entity,
                 { x: anchor.x, y: anchor.y },
                 { x: leaderPoint.x, y: leaderPoint.y },
-              )
-            : null,
+              ),
       },
     ];
   }),
 );
+
+/** The synthetic label a pending leader gesture previews. */
+const textPreviewEntity = computed<TextEntity>(() => ({
+  id: 'text-preview',
+  kind: 'text',
+  ...(props.activePieceId === null ? {} : { piece: props.activePieceId }),
+  anchor: 'text-preview-anchor',
+  content: DEFAULT_TEXT_CONTENT,
+  alignment: 'left',
+  rotation: 0,
+  fontSize: DEFAULT_TEXT_SIZE,
+  leader: 'text-preview-target',
+}));
+
+interface TextLeaderPreview {
+  entity: TextEntity;
+  anchor: Vec2;
+  layout: TextLayout;
+  geometry: LeaderGeometry | null;
+  issue: string | null;
+}
+
+/**
+ * The pending leader gesture's ghost label and live rule/arrow. The provisional
+ * anchor is a coordinate, so it always resolves; `endpointPosition` returns
+ * `null` only for a missing document point, which this gesture never holds.
+ */
+const textPreview = computed<TextLeaderPreview | null>(() => {
+  if (props.tool !== 'add_text_leader' || textAnchor.value === null) return null;
+  const entity = textPreviewEntity.value;
+  const anchor = endpointPosition(props.document, textAnchor.value)!;
+  const target = textPointer.value;
+  return {
+    entity,
+    anchor,
+    layout: textLayout(entity, anchor)!,
+    geometry: target === null ? null : textLeaderGeometry(entity, anchor, target),
+    issue: target === null ? null : leaderTargetIssue(entity, anchor, target),
+  };
+});
+
+/** What the leader gesture asks for next, or null while it is satisfied. */
+const textLeaderHint = computed<string | null>(() => {
+  const preview = textPreview.value;
+  if (preview === null) return null;
+  if (preview.issue !== null) return preview.issue;
+  return textPointer.value === null ? 'Click the arrow target.' : null;
+});
 
 function lineWidth(id: EntityId): number {
   return pointOnLineHover.value?.lineId === id ||
@@ -2284,12 +2340,33 @@ const DRAFTING_TOOLS = new Set<EditorTool>([
   'add_center_rectangle',
   'add_3point_rectangle',
   'add_text',
+  'add_text_leader',
 ]);
 
 /** The translation the active piece's cut loop previews during a move. */
 function movePreview(pieceId: EntityId): string | undefined {
   if (moveDrag.value === null || pieceId !== props.activePieceId) return undefined;
   return `translate(${moveDrag.value.dx} ${moveDrag.value.dy})`;
+}
+
+/** One click of the Text with leader gesture: the anchor, then the target. */
+function onTextLeaderPointer(screen: Vec2): void {
+  const world = screenToWorld(viewport.value, screen);
+  if (textAnchor.value === null) {
+    textAnchor.value = resolveTextAnchorEndpoint(props.document, world, props.activePieceId);
+    textPointer.value = null;
+    return;
+  }
+
+  const leader = resolveLeaderEndpoint(props.document, world, props.activePieceId);
+  const anchor = endpointPosition(props.document, textAnchor.value)!;
+  const target = endpointPosition(props.document, leader)!;
+  textPointer.value = target;
+  if (leaderTargetIssue(textPreviewEntity.value, anchor, target) !== null) return;
+
+  emit('add-text', textAnchor.value, leader);
+  textAnchor.value = null;
+  textPointer.value = null;
 }
 
 function onPointerDown(event: PointerEvent): void {
@@ -2361,6 +2438,11 @@ function onPointerDown(event: PointerEvent): void {
       if (mode !== 'replace') break;
       if (hit.kind === 'point' && !isCornerRoundDerived(props.document, hit.id)) {
         beginDrag(hit.id, pointById.value.get(hit.id)!);
+      } else if (hit.kind === 'text') {
+        // A label drag moves only its anchor; the arrow target stays put. The
+        // hit box is rendered only from a text view whose anchor resolved.
+        const anchorId = (getEntity(props.document, hit.id) as TextEntity).anchor;
+        beginDrag(anchorId, pointById.value.get(anchorId)!);
       } else if (hit.kind !== 'point') {
         beginPan(screen);
       }
@@ -2395,12 +2477,15 @@ function onPointerDown(event: PointerEvent): void {
     case 'add_text':
       emit(
         'add-text',
-        resolveDraftingEndpoint(
+        resolveTextAnchorEndpoint(
           props.document,
           screenToWorld(viewport.value, screen),
           props.activePieceId,
         ),
       );
+      break;
+    case 'add_text_leader':
+      onTextLeaderPointer(screen);
       break;
   }
 }
@@ -2511,6 +2596,15 @@ function onCanvasPointerMove(event: PointerEvent): void {
   if (rectangleMode.value !== null && rectangleClicks.value.length > 0) {
     rectanglePointer.value = snappedPoint(screenToWorld(viewport.value, screen));
   }
+
+  if (props.tool === 'add_text_leader' && textAnchor.value !== null) {
+    const leader = resolveLeaderEndpoint(
+      props.document,
+      screenToWorld(viewport.value, screen),
+      props.activePieceId,
+    );
+    textPointer.value = endpointPosition(props.document, leader)!;
+  }
 }
 
 /** The pointer left the canvas: end the hover and ghost, keep a pending pick. */
@@ -2519,6 +2613,7 @@ function onCanvasPointerLeave(): void {
   hoveredLoopHandle.value = null;
   pointerWorld.value = null;
   pointOnLineHover.value = null;
+  textPointer.value = null;
 }
 
 /** Drop every in-flight pointer interaction without emitting a command. */
@@ -2590,6 +2685,13 @@ function onWheel(event: WheelEvent): void {
 }
 
 function onKeyDown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && textAnchor.value !== null) {
+    event.preventDefault();
+    textAnchor.value = null;
+    textPointer.value = null;
+    return;
+  }
+
   if (event.key === 'Escape' && marqueeState.value !== null) {
     event.preventDefault();
     cancelPointerInteraction();
@@ -2995,6 +3097,8 @@ watch(
     circleCenter.value = null;
     circlePreview.value = null;
     clearRectangleGesture();
+    textAnchor.value = null;
+    textPointer.value = null;
     dimensionPending.value = [];
     dimensionPlacement.value = null;
     dimensionHint.value = null;
@@ -3302,6 +3406,52 @@ watch(
               {{ entry.content }}
             </text>
           </template>
+
+          <g v-if="textPreview" class="pointer-events-none" data-testid="text-leader-preview">
+            <text
+              :transform="`translate(${textPreview.anchor.x} ${textPreview.anchor.y}) rotate(${((textPreview.entity.rotation ?? 0) * 180) / Math.PI})`"
+              :font-size="textPreview.entity.fontSize"
+              class="fill-annotation font-annotation italic opacity-60"
+              aria-hidden="true"
+              data-testid="text-preview"
+            >
+              {{ textPreview.entity.content }}
+            </text>
+            <template v-if="textPreview.geometry">
+              <line
+                :x1="textPreview.geometry.underline.start.x"
+                :y1="textPreview.geometry.underline.start.y"
+                :x2="textPreview.geometry.underline.end.x"
+                :y2="textPreview.geometry.underline.end.y"
+                class="stroke-annotation"
+                stroke-width="0.5"
+                vector-effect="non-scaling-stroke"
+                data-testid="text-leader-preview-underline"
+              />
+              <line
+                v-if="textPreview.geometry.shaft"
+                :x1="textPreview.geometry.shaft.start.x"
+                :y1="textPreview.geometry.shaft.start.y"
+                :x2="textPreview.geometry.shaft.end.x"
+                :y2="textPreview.geometry.shaft.end.y"
+                class="stroke-annotation"
+                stroke-width="0.5"
+                stroke-dasharray="2 2"
+                vector-effect="non-scaling-stroke"
+                data-testid="text-leader-preview-shaft"
+              />
+              <polygon
+                :points="
+                  textPreview.geometry.head.map((point) => `${point.x},${point.y}`).join(' ')
+                "
+                fill="none"
+                class="stroke-annotation"
+                stroke-width="0.5"
+                vector-effect="non-scaling-stroke"
+                data-testid="text-leader-preview-arrow"
+              />
+            </template>
+          </g>
         </g>
 
         <g class="pointer-events-none" data-testid="piece-cut-layer">
@@ -4198,6 +4348,15 @@ watch(
       data-testid="cut-dimension-hint"
     >
       {{ cutDimensionHintText }}
+    </p>
+
+    <p
+      v-if="textLeaderHint !== null"
+      class="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground shadow-sm"
+      role="status"
+      data-testid="text-leader-hint"
+    >
+      {{ textLeaderHint }}
     </p>
 
     <input

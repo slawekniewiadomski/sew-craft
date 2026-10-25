@@ -1,6 +1,8 @@
 # Annotation text with a leader — underline, arrow and independent movement
 
-Status: **proposed** (design-only). Builds on
+Status: **implemented** — the 10 mm default, the Text / Text with leader split
+control, the derived rule and arrow, and independent label/target movement
+shipped on PR #92 (2026-10-25). Builds on
 `2026-10-25-piece-containers-and-annotations` (annotation text, the `leader`
 field and `textLayout`/`textLeader`) and the rectangle split control in
 `2026-10-23-grouped-sketch-tools`.

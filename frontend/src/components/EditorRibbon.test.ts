@@ -37,6 +37,7 @@ const RIBBON_LABELS = [
   'Fit',
   'Round corner',
   'Text',
+  'Text modes',
   'Point',
   'Line',
   'Curve',
@@ -60,14 +61,16 @@ const RIBBON_LABELS = [
  * The caret names itself with a native `title` instead of the ribbon tooltip:
  * wrapping the menu trigger in a TooltipTrigger breaks the menu's anchor.
  */
-const RIBBON_TOOLTIPS = RIBBON_LABELS.filter((label) => label !== 'Rectangle modes');
+const RIBBON_TOOLTIPS = RIBBON_LABELS.filter(
+  (label) => label !== 'Rectangle modes' && label !== 'Text modes',
+);
 
 describe('EditorRibbon', () => {
   it('renders every control as an icon button with an accessible name', () => {
     const wrapper = mountRibbon();
 
     const buttons = wrapper.findAll('button');
-    expect(buttons).toHaveLength(26);
+    expect(buttons).toHaveLength(27);
     expect(buttons.every((button) => button.find('svg').exists())).toBe(true);
     expect(buttons.map((button) => button.attributes('aria-label'))).toEqual(RIBBON_LABELS);
 
