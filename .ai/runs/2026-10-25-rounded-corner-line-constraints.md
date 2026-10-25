@@ -75,4 +75,4 @@ lines.
 
 - [x] 3.1 Inspector matches direction constraints against either pair — 431277a
 - [x] 3.2 Document the helpers and the reference rule; mark the spec implemented — 431277a
-- [x] 3.3 Full validation gate and authoritative review — pending
+- [x] 3.3 Full validation gate and authoritative review (approved, one minor fixed) — 17e2050
