@@ -6,6 +6,7 @@ import {
   getEntity,
   incidentLines,
   isCornerRoundDerived,
+  lineEndpointAnchor,
   maxCornerRadius,
   MIN_CORNER_ROUND,
   type CornerRound,
@@ -53,17 +54,6 @@ function lineOf(document: PatternDocument, id: EntityId): LineEntity | undefined
   return entity?.kind === 'line' ? entity : undefined;
 }
 
-/**
- * The original corner at a line end, following one level of trim when that end
- * already carries a round.
- */
-function anchorOf(document: PatternDocument, line: EntityId, endpoint: EntityId): EntityId {
-  const round = cornerRounds(document).find((candidate) =>
-    candidate.ends.some((end) => end.line === line && end.tangent === endpoint),
-  );
-  return round?.corner ?? endpoint;
-}
-
 function sharedCorner(first: LineEntity, second: LineEntity): EntityId | null {
   const shared = [first.start, first.end].filter((id) => id === second.start || id === second.end);
   return shared.length === 1 ? shared[0]! : null;
@@ -88,12 +78,20 @@ export function maxCornerRadiusForLines(
     ends: [
       {
         line: first,
-        anchor: anchorOf(document, first, lineA.start === corner ? lineA.end : lineA.start),
+        anchor: lineEndpointAnchor(
+          document,
+          first,
+          lineA.start === corner ? lineA.end : lineA.start,
+        ),
         tangent: 'preview:a',
       },
       {
         line: second,
-        anchor: anchorOf(document, second, lineB.start === corner ? lineB.end : lineB.start),
+        anchor: lineEndpointAnchor(
+          document,
+          second,
+          lineB.start === corner ? lineB.end : lineB.start,
+        ),
         tangent: 'preview:b',
       },
     ],
@@ -249,8 +247,16 @@ function applyCornerPointPick(
     return { status: 'rejected', picks, reason: 'allowance' };
   }
 
-  const anchorA = anchorOf(document, lineA.id, lineA.start === pointId ? lineA.end : lineA.start);
-  const anchorB = anchorOf(document, lineB.id, lineB.start === pointId ? lineB.end : lineB.start);
+  const anchorA = lineEndpointAnchor(
+    document,
+    lineA.id,
+    lineA.start === pointId ? lineA.end : lineA.start,
+  );
+  const anchorB = lineEndpointAnchor(
+    document,
+    lineB.id,
+    lineB.start === pointId ? lineB.end : lineB.start,
+  );
   const geometry = cornerRoundGeometry(document, pointId, anchorA, anchorB, 1);
   if (geometry.geometry === null) {
     return { status: 'rejected', picks, reason: geometryReason(geometry.error) };
@@ -350,12 +356,12 @@ export function applyCornerRoundPick(
     return { status: 'rejected', picks, reason: 'third-edge' };
   }
 
-  const anchorA = anchorOf(
+  const anchorA = lineEndpointAnchor(
     document,
     picks.first,
     firstLine.start === corner ? firstLine.end : firstLine.start,
   );
-  const anchorB = anchorOf(document, id, line.start === corner ? line.end : line.start);
+  const anchorB = lineEndpointAnchor(document, id, line.start === corner ? line.end : line.start);
   const geometry = cornerRoundGeometry(document, corner, anchorA, anchorB, 1);
   if (geometry.geometry === null) {
     return { status: 'rejected', picks, reason: geometryReason(geometry.error) };
@@ -425,8 +431,8 @@ export function cornerRoundPreview(
   const geometry = cornerRoundGeometry(
     document,
     corner,
-    anchorOf(document, picks.first, oppositeA),
-    anchorOf(document, picks.second, oppositeB),
+    lineEndpointAnchor(document, picks.first, oppositeA),
+    lineEndpointAnchor(document, picks.second, oppositeB),
     radius,
   );
   if (geometry.geometry === null) return null;

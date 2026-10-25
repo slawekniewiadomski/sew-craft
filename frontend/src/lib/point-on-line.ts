@@ -1,6 +1,7 @@
 import {
   getEntity,
   lineEndpoints,
+  lineEndpointAnchor,
   projectPointOnLine,
   type Command,
   type EntityId,
@@ -13,6 +14,10 @@ import {
  * projected point, then constrain it to that line's supporting line, as one
  * undoable gesture. `null` when the id is not a resolvable, non-degenerate
  * straight line, so the caller falls back to today's free-point click.
+ *
+ * The projection uses the trimmed segment, but the constraint names the
+ * authored support anchors: a rounded end maps to its sharp corner so the
+ * reference survives radius changes, round removal and undo.
  */
 export function buildPointOnLineCommands(
   document: PatternDocument,
@@ -42,7 +47,11 @@ export function buildPointOnLineCommands(
       type: 'add_constraint',
       params: {
         type: 'point_on_line',
-        entities: [pointId, line.start, line.end],
+        entities: [
+          pointId,
+          lineEndpointAnchor(document, lineId, line.start),
+          lineEndpointAnchor(document, lineId, line.end),
+        ],
         ...(piece === undefined ? {} : { piece }),
       },
     },

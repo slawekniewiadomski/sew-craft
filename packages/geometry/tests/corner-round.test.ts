@@ -4,6 +4,7 @@ import {
   applyCommand,
   CommandValidationError,
   cornerRoundGeometry,
+  cross,
   distance,
   cornerRounds,
   cornerRoundsForEntity,
@@ -11,11 +12,14 @@ import {
   getEntity,
   incidentLines,
   isCornerRoundDerived,
+  lineEndpointAnchor,
+  lineSupportAnchors,
   maxCornerRadius,
   normalizeCornerRounds,
   regenerateCornerRounds,
   roundBetween,
   roundBridge,
+  sub,
   type CornerRound,
   type Entity,
   type LineEntity,
@@ -190,6 +194,86 @@ describe('cornerRoundsForEntity and isCornerRoundDerived', () => {
     for (const id of [round.corner, round.ends[0].line, round.ends[0].anchor]) {
       expect(isCornerRoundDerived(document, id)).toBe(false);
     }
+  });
+});
+
+describe('lineEndpointAnchor and lineSupportAnchors', () => {
+  it('returns the endpoints themselves for a plain line', () => {
+    expect(lineEndpointAnchor(rightAngle(), 'l1', 'c')).toBe('c');
+    expect(lineEndpointAnchor(rightAngle(), 'l1', 'a')).toBe('a');
+    expect(lineSupportAnchors(rightAngle(), 'l1')).toEqual({ start: 'c', end: 'a' });
+  });
+
+  it('maps a trimmed end to its sharp corner and keeps the other end', () => {
+    const document = rounded();
+    const [round] = cornerRounds(document);
+
+    expect(lineEndpointAnchor(document, 'l1', round!.ends[0].tangent)).toBe('c');
+    expect(lineEndpointAnchor(document, 'l1', 'a')).toBe('a');
+    expect(lineSupportAnchors(document, 'l1')).toEqual({ start: 'c', end: 'a' });
+    expect(lineSupportAnchors(document, 'l2')).toEqual({ start: 'c', end: 'b' });
+  });
+
+  it('maps both ends when a line carries a round at each end', () => {
+    const base = documentOf(
+      point('c', 0, 0),
+      point('a', 100, 0),
+      point('b', 0, 100),
+      point('d', 100, 100),
+      line('l1', 'c', 'a'),
+      line('l2', 'c', 'b'),
+      line('l3', 'a', 'd'),
+    );
+    const first = applyCommand(base, {
+      id: 'r1',
+      type: 'add_corner_round',
+      params: { first: 'l1', second: 'l2', radius: 10 },
+    }).document;
+    const document = applyCommand(first, {
+      id: 'r2',
+      type: 'add_corner_round',
+      params: { first: 'l1', second: 'l3', radius: 10 },
+    }).document;
+
+    const [startRound, endRound] = cornerRounds(document);
+    const side = getEntity(document, 'l1') as LineEntity;
+    expect([side.start, side.end]).toEqual([
+      startRound!.ends[0].tangent,
+      endRound!.ends[0].tangent,
+    ]);
+    expect(lineSupportAnchors(document, 'l1')).toEqual({ start: 'c', end: 'a' });
+  });
+
+  it('keeps the support anchors, the trimmed line and the sharp corner collinear', () => {
+    const document = rounded();
+    const round = roundOf(document);
+    const corner = round.corner;
+
+    for (const end of round.ends) {
+      const anchor = lineEndpointAnchor(document, end.line, end.tangent);
+      expect(anchor).toBe(corner);
+      const cornerPoint = getEntity(document, corner) as PointEntity;
+      const anchorPoint = getEntity(document, end.anchor) as PointEntity;
+      const tangent = getEntity(document, end.tangent) as PointEntity;
+      expect(Math.abs(cross(sub(tangent, cornerPoint), sub(anchorPoint, cornerPoint)))).toBeCloseTo(
+        0,
+        9,
+      );
+    }
+  });
+
+  it('returns null for a missing line or a non-point endpoint', () => {
+    expect(lineSupportAnchors(rightAngle(), 'missing')).toBeNull();
+    expect(lineSupportAnchors(rounded(), 'a')).toBeNull();
+
+    const broken = documentOf(
+      line('bad', 'l1', 'a'),
+      line('tail', 'a', 'l1'),
+      line('l1', 'c', 'a'),
+      point('a', 10, 0),
+    );
+    expect(lineSupportAnchors(broken, 'bad')).toBeNull();
+    expect(lineSupportAnchors(broken, 'tail')).toBeNull();
   });
 });
 

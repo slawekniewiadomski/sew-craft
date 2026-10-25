@@ -1,4 +1,9 @@
-import { createEmptyDocument, type Constraint, type PatternDocument } from '@sewcraft/geometry';
+import {
+  applyCommand,
+  createEmptyDocument,
+  type Constraint,
+  type PatternDocument,
+} from '@sewcraft/geometry';
 import { describe, expect, it } from 'vitest';
 
 import { entityProperties } from './entity-properties';
@@ -448,6 +453,68 @@ describe('entityProperties', () => {
     expect(entityProperties(document, 'a')?.constraints.map((constraint) => constraint.id)).toEqual(
       ['coincident', 'horizontal'],
     );
+  });
+
+  it('lists direction constraints on a rounded line through its support anchors', () => {
+    const base = doc({
+      entities: [
+        { id: 'c', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+        { id: 'a', kind: 'point', x: 100, y: 0, construction: false, fixed: false },
+        { id: 'b', kind: 'point', x: 0, y: 100, construction: false, fixed: false },
+        { id: 'l1', kind: 'line', start: 'c', end: 'a', construction: false },
+        { id: 'l2', kind: 'line', start: 'c', end: 'b', construction: false },
+        { id: 'p', kind: 'point', x: 50, y: 20, construction: false, fixed: false },
+      ],
+    });
+    const rounded = applyCommand(base, {
+      id: 'r1',
+      type: 'add_corner_round',
+      params: { first: 'l1', second: 'l2', radius: 10 },
+    }).document;
+    // `l1` now ends at the derived tangent; the constraint names the corner.
+    expect(rounded.entities.find((entity) => entity.id === 'l1')).toMatchObject({
+      start: 'r1:a',
+      end: 'a',
+    });
+
+    const before = doc({
+      ...rounded,
+      constraints: [
+        { id: 'pin', type: 'point_on_line', point: 'p', a: 'c', b: 'a' },
+        { id: 'flat', type: 'horizontal', a: 'c', b: 'a' },
+        { id: 'next', type: 'vertical', a: 'c', b: 'b' },
+      ],
+    });
+
+    expect(entityProperties(before, 'l1')?.constraints.map((row) => row.id)).toEqual([
+      'pin',
+      'flat',
+    ]);
+
+    const after = doc({
+      ...rounded,
+      constraints: [
+        { id: 'pin', type: 'point_on_line', point: 'p', a: 'c', b: 'a' },
+        { id: 'flat', type: 'horizontal', a: 'c', b: 'a' },
+        { id: 'other', type: 'horizontal', a: 'a', b: 'b' },
+      ],
+    });
+    expect(entityProperties(after, 'l1')?.constraints.map((row) => row.id)).toEqual([
+      'pin',
+      'flat',
+    ]);
+  });
+
+  it('resolves no support pair for a line with a missing endpoint', () => {
+    const document = doc({
+      entities: [
+        { id: 'a', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+        { id: 'ghost', kind: 'line', start: 'missing', end: 'a', construction: false },
+      ],
+      constraints: [{ id: 'flat', type: 'horizontal', a: 'a', b: 'a' }],
+    });
+
+    expect(entityProperties(document, 'ghost')?.constraints).toEqual([]);
   });
 
   it('keeps duplicate endpoint-pair constraints in document order', () => {

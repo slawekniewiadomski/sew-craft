@@ -4,10 +4,12 @@ import {
   applyCommand,
   CommandValidationError,
   cornerRounds,
+  cross,
   createEmptyDocument,
   executeCommand,
   getEntity,
   solveDocument,
+  sub,
   type Command,
   type Entity,
   type LineEntity,
@@ -528,6 +530,74 @@ describe('remove_corner_round', () => {
     }).document;
 
     expect(result.constraints).toEqual([]);
+  });
+});
+
+describe('direction constraints on a rounded line', () => {
+  /** A rounded right angle with a free point to constrain. */
+  const documentWithPoint = (radius = 10): PatternDocument => {
+    const document = rounded(radius);
+    return {
+      ...document,
+      entities: [...document.entities, point('p', 50, 30)],
+    };
+  };
+
+  const pin = (document: PatternDocument): PatternDocument =>
+    applyCommand(document, {
+      id: 'pin',
+      type: 'add_constraint',
+      params: { type: 'point_on_line', entities: ['p', 'c', 'a'] },
+    }).document;
+
+  /** The stored `point_on_line` tuple and whether the solver holds it. */
+  function pinned(document: PatternDocument): { a: string; b: string; satisfied: boolean } {
+    const constraint = document.constraints.find((candidate) => candidate.id === 'pin')!;
+    if (constraint.type !== 'point_on_line') throw new Error('expected point_on_line');
+    const solved = solveDocument(document).document;
+    const p = getEntity(solved, constraint.point) as PointEntity;
+    const a = getEntity(solved, constraint.a) as PointEntity;
+    const b = getEntity(solved, constraint.b) as PointEntity;
+    return {
+      a: constraint.a,
+      b: constraint.b,
+      satisfied: Math.abs(cross(sub(p, a), sub(b, a))) < 1e-6,
+    };
+  }
+
+  it('rejects the derived tangent as a direction reference', () => {
+    const document = documentWithPoint();
+    expect(() =>
+      applyCommand(document, {
+        id: 'pin',
+        type: 'add_constraint',
+        params: { type: 'point_on_line', entities: ['p', 'r1:a', 'a'] },
+      }),
+    ).toThrow('This point is derived by a corner round; edit the radius.');
+  });
+
+  it('survives round removal, undo and a radius change', () => {
+    const withPin = pin(documentWithPoint());
+    expect(pinned(withPin)).toEqual({ a: 'c', b: 'a', satisfied: true });
+
+    const removed = applyCommand(withPin, {
+      id: 'remove',
+      type: 'remove_corner_round',
+      params: { id: 'r1' },
+    });
+    expect(removed.document.constraints).toHaveLength(1);
+    expect(pinned(removed.document)).toEqual({ a: 'c', b: 'a', satisfied: true });
+
+    const restored = applyCommand(removed.document, removed.inverse!).document;
+    expect(restored.constraints).toHaveLength(1);
+    expect(pinned(restored)).toEqual({ a: 'c', b: 'a', satisfied: true });
+
+    const resized = applyCommand(restored, {
+      id: 'radius',
+      type: 'set_corner_round_radius',
+      params: { id: 'r1', radius: 20 },
+    }).document;
+    expect(pinned(resized)).toEqual({ a: 'c', b: 'a', satisfied: true });
   });
 });
 

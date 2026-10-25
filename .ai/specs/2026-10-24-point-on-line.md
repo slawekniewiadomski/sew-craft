@@ -104,7 +104,10 @@ between.
    projected coordinates, then
    `add_constraint { type: 'point_on_line', entities: [newPoint, line.start, line.end] }`.
    Apply it with `dispatchGroup`, so the gesture is one journal entry and one
-   undo.
+   undo. The two line references are the authored **support anchors**
+   (`lineSupportAnchors`), so an end trimmed by a corner round names the sharp
+   corner rather than its derived tangent — see
+   `.ai/specs/2026-10-25-rounded-corner-line-constraints.md`.
 4. **Click anywhere else.** Unchanged: bare canvas creates a free point at the
    existing `snapPoint` position; a point hit keeps today's behaviour; curve, arc
    and circle hits keep creating a free point. A degenerate line (coincident

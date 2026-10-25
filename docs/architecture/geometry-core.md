@@ -444,6 +444,21 @@ opposite anchors, `θ` the interior angle, and `r` the radius:
 - `incidentLines(document, pointId)` — every line whose start or end is the
   point, the one rule both the piece walk and the corner-point pick use to decide
   what a corner is.
+- `lineEndpointAnchor(document, lineId, endpoint)` — the authored point at a line
+  end: the sharp corner when a round replaced that end with its tangent,
+  otherwise the endpoint itself.
+- `lineSupportAnchors(document, lineId)` — the two authored points that name the
+  line's supporting line, or `null` when the id is not a line or either current
+  endpoint is no longer a point. The corner, the tangent and the opposite anchor
+  are collinear by construction, so the pair describes the same support line.
+
+Direction constraints — `point_on_line`, `horizontal` and `vertical` — store the
+support-anchor pair rather than the current endpoints. A rounded end therefore
+names the sharp corner, which survives radius changes, `remove_corner_round` and
+undo; a constraint created before a round already names that corner and keeps
+working. `distance` and `equal` keep the visible endpoints because they measure
+the trimmed segment, so they remain rejected on a rounded line. The inspector
+matches a direction constraint against either pair.
 
 ### Commands
 

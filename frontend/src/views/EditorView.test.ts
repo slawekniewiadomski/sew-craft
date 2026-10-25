@@ -291,6 +291,13 @@ const lineDoc: PatternDocument = {
   ],
 };
 
+/** `lineDoc` with the corner at `b` rounded between `ab` and `bc`. */
+const roundedLineDoc: PatternDocument = executeCommand(lineDoc, {
+  id: 'r1',
+  type: 'add_corner_round',
+  params: { first: 'ab', second: 'bc', radius: 20 },
+}).document;
+
 const curveDoc: PatternDocument = {
   ...lineDoc,
   entities: [
@@ -405,6 +412,23 @@ describe('EditorView', () => {
     await wrapper.find('[data-testid="undo"]').trigger('click');
     expect(store.document.entities.some((entity) => entity.id === created!.id)).toBe(false);
     expect(store.document.constraints).toEqual([]);
+  });
+
+  it('creates a point on a rounded line with its authored anchors', async () => {
+    const { wrapper, store } = await mountLoaded(roundedLineDoc);
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('add-point-on-line', 'ab', 30, 12);
+    await flushPromises();
+
+    const created = store.document.entities.find(
+      (entity) => entity.kind === 'point' && entity.x === 30 && entity.y === 0,
+    );
+    expect(created).toBeDefined();
+    expect(store.document.constraints).toEqual([
+      { id: expect.any(String), type: 'point_on_line', point: created!.id, a: 'a', b: 'b' },
+    ]);
+    expect(store.journal).toHaveLength(1);
+    expect(wrapper.text()).not.toContain('This point is derived by a corner round');
   });
 
   it('dispatches nothing when the point-on-line line no longer resolves', async () => {

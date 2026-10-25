@@ -4,6 +4,7 @@ import {
   cross,
   distance,
   dot,
+  lineSupportAnchors,
   magnitude,
   sub,
   type AddConstraintParams,
@@ -151,6 +152,15 @@ function pointMap(document: PatternDocument): Map<EntityId, PointEntity> {
 }
 
 /**
+ * Whether a relation names the line's supporting line rather than its visible
+ * span. `point_on_line`, `horizontal` and `vertical` are direction relations;
+ * `distance` and `equal` measure length and keep the raw endpoints.
+ */
+function usesSupportAnchors(type: ConstraintType): boolean {
+  return type === 'point_on_line' || type === 'horizontal' || type === 'vertical';
+}
+
+/**
  * Resolve the picked slots to the point ids `add_constraint` expects. Returns
  * `null` for an incomplete tuple, a missing reference or a degenerate one.
  */
@@ -184,6 +194,16 @@ export function constraintParams(
       (entity): entity is LineEntity => entity.id === pick.id && entity.kind === 'line',
     );
     if (line === undefined) return null;
+
+    // Direction relations describe the line's supporting line, so a rounded end
+    // names its sharp corner and the reference survives the trim. Length
+    // relations keep the visible endpoints because they measure the segment.
+    if (usesSupportAnchors(type)) {
+      const anchors = lineSupportAnchors(document, line.id);
+      if (anchors === null) return null;
+      ids.push(anchors.start, anchors.end);
+      continue;
+    }
     ids.push(line.start, line.end);
   }
 
