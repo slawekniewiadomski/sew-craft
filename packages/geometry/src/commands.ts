@@ -21,7 +21,7 @@ import {
   regenerateCornerRounds,
 } from './corner-round.js';
 import { MIN_RADIUS } from './circle.js';
-import { effectiveDefaultAllowance } from './defaults.js';
+import { effectiveDefaultAllowance, effectivePieceAllowance } from './defaults.js';
 import {
   constraintOffset,
   constraintOrientation,
@@ -48,6 +48,8 @@ import {
   type AllowanceKind,
   type AllowancePreset,
   type ArcEntity,
+  type Assembly,
+  type AssemblyInstance,
   type AssignableRole,
   type Constraint,
   type ConstraintType,
@@ -64,15 +66,26 @@ import {
   type LineEntity,
   type PatternDocument,
   type Piece,
+  type PieceDefaults,
   type PointEntity,
   type Seam,
   type SeamSide,
+  type TabRef,
   type TextAlignment,
   type TextEntity,
 } from './types.js';
 
 /** Seam allowance applied to an edge when the command omits an explicit width. */
 export const DEFAULT_SEAM_ALLOWANCE = 10;
+
+/** The longest assembly name `create_assembly`/`update_assembly` accepts. */
+export const MAX_ASSEMBLY_NAME_LENGTH = 80;
+
+/** The longest free-text note a piece stores. */
+export const MAX_PIECE_NOTES_LENGTH = 500;
+
+/** The longest fabric name a piece stores. */
+export const MAX_PIECE_FABRIC_LENGTH = 120;
 
 export interface AddPointParams {
   x: number;
@@ -200,18 +213,12 @@ export interface RemoveCornerRoundParams {
 }
 
 export interface CreatePieceParams {
-  /**
-   * Deprecated: an optional closed loop of cut line/curve/arc ids. Omit it to
-   * create an empty piece; the loop is captured later with `set_piece_loop`.
-   */
-  edges?: EntityId[];
   name?: string;
   quantity?: number;
-  /**
-   * Only used with the deprecated `edges` argument: the allowance copied onto
-   * every loop edge.
-   */
-  allowance?: 'default' | 'none' | AllowancePreset;
+  /** `#rrggbb`; absent means the neutral fallback. */
+  color?: string;
+  /** Per-piece overrides applied at creation; absent inherits the document. */
+  defaults?: PieceDefaults;
 }
 
 export interface SetPieceLoopParams {
@@ -227,10 +234,56 @@ export interface SetRoleParams {
   role: AssignableRole;
 }
 
-export interface MovePieceParams {
+export interface SetPieceDefaultAllowanceParams {
+  piece: EntityId;
+  /** `inherit` drops the override, `none` stores an explicit null, `preset` sets one. */
+  mode: 'inherit' | 'none' | 'preset';
+  /** Finished width in millimetres; required for `preset`. */
+  width?: number;
+  /** Omitted means `seam`. */
+  kind?: AllowanceKind;
+}
+
+export interface CreateAssemblyParams {
+  /** Defaults to "Assembly N" by creation index when omitted. */
+  name?: string;
+}
+
+export interface UpdateAssemblyParams {
   id: EntityId;
-  dx: number;
-  dy: number;
+  name: string;
+}
+
+export interface DeleteAssemblyParams {
+  id: EntityId;
+}
+
+export interface AddInstanceParams {
+  assembly: EntityId;
+  piece: EntityId;
+  x: number;
+  y: number;
+  rotation?: number;
+  mirrored?: boolean;
+}
+
+export interface RemoveInstanceParams {
+  assembly: EntityId;
+  instance: EntityId;
+}
+
+export interface UpdateInstanceParams {
+  assembly: EntityId;
+  instance: EntityId;
+  x?: number;
+  y?: number;
+  rotation?: number;
+  mirrored?: boolean;
+}
+
+export interface ReorderTabsParams {
+  /** A permutation of the document's current tab refs. */
+  tabs: TabRef[];
 }
 
 export interface AddTextParams {
@@ -260,6 +313,12 @@ export interface UpdatePieceParams {
   name?: string | null;
   /** A positive integer sets the cut quantity; `null` clears it (defaults to 1). */
   quantity?: number | null;
+  /** Free text, at most 500 characters; `null` or empty clears it. */
+  notes?: string | null;
+  /** Fabric name, at most 120 characters; `null` or empty clears it. */
+  fabric?: string | null;
+  /** `#rrggbb`; `null` clears the colour. */
+  color?: string | null;
 }
 
 export interface DeletePieceParams {
@@ -359,7 +418,6 @@ export type Command =
       issuedAt?: string;
     }
   | { id: EntityId; type: 'set_role'; params: SetRoleParams; issuedAt?: string }
-  | { id: EntityId; type: 'move_piece'; params: MovePieceParams; issuedAt?: string }
   | { id: EntityId; type: 'add_text'; params: AddTextParams; issuedAt?: string }
   | { id: EntityId; type: 'update_text'; params: UpdateTextParams; issuedAt?: string }
   | {
@@ -380,6 +438,29 @@ export type Command =
       params: AddDerivedDimensionParams;
       issuedAt?: string;
     }
+  | {
+      id: EntityId;
+      type: 'set_piece_default_allowance';
+      params: SetPieceDefaultAllowanceParams;
+      issuedAt?: string;
+    }
+  | { id: EntityId; type: 'create_assembly'; params: CreateAssemblyParams; issuedAt?: string }
+  | { id: EntityId; type: 'update_assembly'; params: UpdateAssemblyParams; issuedAt?: string }
+  | { id: EntityId; type: 'delete_assembly'; params: DeleteAssemblyParams; issuedAt?: string }
+  | { id: EntityId; type: 'add_instance'; params: AddInstanceParams; issuedAt?: string }
+  | {
+      id: EntityId;
+      type: 'remove_instance';
+      params: RemoveInstanceParams;
+      issuedAt?: string;
+    }
+  | {
+      id: EntityId;
+      type: 'update_instance';
+      params: UpdateInstanceParams;
+      issuedAt?: string;
+    }
+  | { id: EntityId; type: 'reorder_tabs'; params: ReorderTabsParams; issuedAt?: string }
   | { id: EntityId; type: 'solve'; params: SolveParams; issuedAt?: string };
 
 export type CommandType = Command['type'];
@@ -489,8 +570,6 @@ export function applyCommand(document: PatternDocument, command: Command): Comma
       return applySetPieceLoop(document, command);
     case 'set_role':
       return applySetRole(document, command);
-    case 'move_piece':
-      return applyMovePiece(document, command);
     case 'add_text':
       return applyAddText(document, command);
     case 'update_text':
@@ -501,6 +580,22 @@ export function applyCommand(document: PatternDocument, command: Command): Comma
       return applySetDefaultAllowance(document, command);
     case 'add_derived_dimension':
       return applyAddDerivedDimension(document, command);
+    case 'set_piece_default_allowance':
+      return applySetPieceDefaultAllowance(document, command);
+    case 'create_assembly':
+      return applyCreateAssembly(document, command);
+    case 'update_assembly':
+      return applyUpdateAssembly(document, command);
+    case 'delete_assembly':
+      return applyDeleteAssembly(document, command);
+    case 'add_instance':
+      return applyAddInstance(document, command);
+    case 'remove_instance':
+      return applyRemoveInstance(document, command);
+    case 'update_instance':
+      return applyUpdateInstance(document, command);
+    case 'reorder_tabs':
+      return applyReorderTabs(document, command);
     case 'solve':
       return noOp(document);
   }
@@ -2029,31 +2124,173 @@ function effectiveKind(allowance: Allowance): AllowanceKind {
   return allowance.kind ?? 'seam';
 }
 
-/** The preset `create_piece` copies onto a new piece, or `null` for none. */
+/** The preset `create_piece`/`set_piece_loop` copies onto new loop edges, or `null`. */
 function resolveCreateAllowance(
   document: PatternDocument,
-  allowance: CreatePieceParams['allowance'],
-  type: CommandType = 'create_piece',
+  allowance: 'default' | 'none' | AllowancePreset | undefined,
+  type: CommandType,
+  piece: Piece,
 ): AllowancePreset | null {
-  if (allowance === undefined || allowance === 'none') return null;
-  if (allowance === 'default') return effectiveDefaultAllowance(document);
-
-  if (typeof allowance !== 'object' || allowance === null) {
-    throw new CommandValidationError(type, 'allowance must be "default", "none" or a preset');
+  if (allowance === 'none') return null;
+  if (allowance === undefined || allowance === 'default') {
+    return effectivePieceAllowance(document, piece);
   }
-  if (!Number.isFinite(allowance.width) || allowance.width <= 0) {
+
+  return requireAllowancePreset(type, allowance);
+}
+
+/** Validate and copy one allowance preset. */
+function requireAllowancePreset(
+  commandType: CommandType,
+  preset: AllowancePreset,
+): AllowancePreset {
+  if (typeof preset !== 'object' || preset === null) {
     throw new CommandValidationError(
-      type,
+      commandType,
+      'allowance must be "default", "none" or a preset',
+    );
+  }
+  if (!Number.isFinite(preset.width) || preset.width <= 0) {
+    throw new CommandValidationError(
+      commandType,
       'allowance width must be a finite number greater than 0',
     );
   }
-  if (allowance.kind !== undefined && !ALLOWANCE_KINDS.includes(allowance.kind)) {
-    throw new CommandValidationError(type, `unknown allowance kind: ${String(allowance.kind)}`);
+  if (preset.kind !== undefined && !ALLOWANCE_KINDS.includes(preset.kind)) {
+    throw new CommandValidationError(commandType, `unknown allowance kind: ${String(preset.kind)}`);
   }
 
   return {
-    width: allowance.width,
-    ...(allowance.kind === undefined ? {} : { kind: allowance.kind }),
+    width: preset.width,
+    ...(preset.kind === undefined ? {} : { kind: preset.kind }),
+  };
+}
+
+/** Validate a per-piece defaults object, copying its preset. */
+function requirePieceDefaults(
+  commandType: CommandType,
+  defaults: PieceDefaults | undefined,
+): PieceDefaults | undefined {
+  if (defaults === undefined) return undefined;
+  if (defaults.allowance === null) return { allowance: null };
+  return { allowance: requireAllowancePreset(commandType, defaults.allowance) };
+}
+
+/** Reject a non-finite coordinate or rotation. */
+function requireFinite(commandType: CommandType, value: number, label: string): number {
+  if (!Number.isFinite(value)) {
+    throw new CommandValidationError(commandType, `${label} must be a finite number`);
+  }
+  return value;
+}
+
+/** Trim optional free text; an empty string clears the field. */
+function requireOptionalText(
+  commandType: CommandType,
+  value: string | null | undefined,
+  max: number,
+  label: string,
+): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string') {
+    throw new CommandValidationError(commandType, `${label} must be a string`);
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return undefined;
+  if (trimmed.length > max) {
+    throw new CommandValidationError(commandType, `${label} must be at most ${max} characters`);
+  }
+  return trimmed;
+}
+
+/** Reject anything that is not exactly `#` plus six lowercase hex digits. */
+function requirePieceColor(
+  commandType: CommandType,
+  value: string | null | undefined,
+): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string' || !/^#[0-9a-f]{6}$/.test(value)) {
+    throw new CommandValidationError(
+      commandType,
+      'color must be #rrggbb with lowercase hex digits',
+    );
+  }
+  return value;
+}
+
+/** Find an assembly or explain which id is unknown. */
+function requireAssembly(document: PatternDocument, id: EntityId, type: CommandType): Assembly {
+  const assembly = document.assemblies.find((candidate) => candidate.id === id);
+  if (assembly === undefined) {
+    throw new CommandValidationError(type, `unknown assembly: ${id}`);
+  }
+  return assembly;
+}
+
+/** Trim and validate an assembly name; empty names are rejected. */
+function requireAssemblyName(commandType: CommandType, name: unknown): string {
+  if (typeof name !== 'string') {
+    throw new CommandValidationError(commandType, 'name must be a string');
+  }
+  const trimmed = name.trim();
+  if (trimmed.length === 0 || trimmed.length > MAX_ASSEMBLY_NAME_LENGTH) {
+    throw new CommandValidationError(
+      commandType,
+      `name must be 1–${MAX_ASSEMBLY_NAME_LENGTH} characters after trimming`,
+    );
+  }
+  return trimmed;
+}
+
+/** Replace one assembly in the document, preserving assembly order. */
+function replaceAssembly(document: PatternDocument, assembly: Assembly): PatternDocument {
+  return {
+    ...document,
+    assemblies: document.assemblies.map((candidate) =>
+      candidate.id === assembly.id ? assembly : candidate,
+    ),
+  };
+}
+
+/** Append a tab unless the object already has one. */
+function withTab(document: PatternDocument, tab: TabRef): TabRef[] {
+  return document.tabs.some((candidate) => candidate.kind === tab.kind && candidate.id === tab.id)
+    ? document.tabs
+    : [...document.tabs, tab];
+}
+
+/** Drop one object's tab from the order. */
+function withoutTab(document: PatternDocument, tab: TabRef): TabRef[] {
+  return document.tabs.filter(
+    (candidate) => candidate.kind !== tab.kind || candidate.id !== tab.id,
+  );
+}
+
+/** The defaults a piece override represents, turned into a restoring command. */
+function restorePieceDefaults(piece: EntityId, defaults: PieceDefaults | undefined): Command {
+  if (defaults === undefined) {
+    return {
+      id: `${piece}:default-allowance`,
+      type: 'set_piece_default_allowance',
+      params: { piece, mode: 'inherit' },
+    };
+  }
+  if (defaults.allowance === null) {
+    return {
+      id: `${piece}:default-allowance`,
+      type: 'set_piece_default_allowance',
+      params: { piece, mode: 'none' },
+    };
+  }
+  return {
+    id: `${piece}:default-allowance`,
+    type: 'set_piece_default_allowance',
+    params: {
+      piece,
+      mode: 'preset',
+      width: defaults.allowance.width,
+      ...(defaults.allowance.kind === undefined ? {} : { kind: defaults.allowance.kind }),
+    },
   };
 }
 
@@ -2077,74 +2314,97 @@ function restoreAllowance(id: EntityId, piece: EntityId, allowance: Allowance): 
   };
 }
 
-/** Create a piece from one closed loop of existing cut edges. */
+/** Create an empty piece; its loop is captured later with `set_piece_loop`. */
 function applyCreatePiece(
   document: PatternDocument,
   command: CommandOf<'create_piece'>,
 ): CommandApplication {
-  const { name, quantity } = command.params;
+  const { name, quantity, color, defaults } = command.params;
   if (pieceById(document, command.id) !== undefined) {
     return noOp(document);
   }
 
   requireQuantity('create_piece', quantity);
   requirePieceName('create_piece', name);
+  const nextColor = requirePieceColor('create_piece', color);
+  const nextDefaults = requirePieceDefaults('create_piece', defaults);
 
-  const edges = command.params.edges ?? [];
-  if (edges.length > 0) {
-    const validation = validatePiece(document, edges);
-    if (!validation.ok) {
-      throw new CommandValidationError('create_piece', validation.message);
-    }
-  }
-
-  const preset = resolveCreateAllowance(document, command.params.allowance);
-  const piece: Piece = {
-    id: command.id,
-    edges: [...edges],
-    allowances:
-      preset === null || edges.length === 0
-        ? []
-        : edges.map((edge) => ({ edge, width: preset.width, kind: preset.kind ?? 'seam' })),
-  };
+  const piece: Piece = { id: command.id, edges: [], allowances: [] };
   if (name !== undefined) piece.name = name.trim();
   if (quantity !== undefined) piece.quantity = quantity;
+  if (nextColor !== undefined) piece.color = nextColor;
+  if (nextDefaults !== undefined) piece.defaults = nextDefaults;
 
   return {
-    document: { ...document, pieces: [...document.pieces, piece] },
+    document: {
+      ...document,
+      pieces: [...document.pieces, piece],
+      tabs: withTab(document, { kind: 'piece', id: command.id }),
+    },
     inverse: { id: command.id, type: 'delete_piece', params: { id: command.id } },
   };
 }
 
-/** Rename a piece or change its cut quantity; `null` clears either. */
+/** Change a piece's parameters; `null` or empty text clears a field. */
 function applyUpdatePiece(
   document: PatternDocument,
   command: CommandOf<'update_piece'>,
 ): CommandApplication {
-  const { id, name, quantity } = command.params;
+  const { id, name, quantity, notes, fabric, color } = command.params;
   const piece = pieceById(document, id);
   if (piece === undefined) {
     throw new CommandValidationError('update_piece', `unknown piece: ${id}`);
   }
-  if (name === undefined && quantity === undefined) {
-    throw new CommandValidationError('update_piece', 'provide name or quantity');
+  if (
+    name === undefined &&
+    quantity === undefined &&
+    notes === undefined &&
+    fabric === undefined &&
+    color === undefined
+  ) {
+    throw new CommandValidationError(
+      'update_piece',
+      'provide name, quantity, notes, fabric or color',
+    );
   }
 
   requirePieceName('update_piece', name);
   requireQuantity('update_piece', quantity);
-
-  const nextName = name === undefined ? piece.name : name === null ? undefined : name.trim();
-  const nextQuantity =
-    quantity === undefined ? piece.quantity : quantity === null ? undefined : quantity;
-  if (nextName === piece.name && nextQuantity === piece.quantity) {
-    return noOp(document);
-  }
+  const nextNotes = requireOptionalText('update_piece', notes, MAX_PIECE_NOTES_LENGTH, 'notes');
+  const nextFabric = requireOptionalText('update_piece', fabric, MAX_PIECE_FABRIC_LENGTH, 'fabric');
+  const nextColor = requirePieceColor('update_piece', color);
 
   const next: Piece = { ...piece };
-  if (nextName === undefined) delete next.name;
-  else next.name = nextName;
-  if (nextQuantity === undefined) delete next.quantity;
-  else next.quantity = nextQuantity;
+  if (name !== undefined) {
+    if (name === null) delete next.name;
+    else next.name = name.trim();
+  }
+  if (quantity !== undefined) {
+    if (quantity === null) delete next.quantity;
+    else next.quantity = quantity;
+  }
+  if (notes !== undefined) {
+    if (nextNotes === undefined) delete next.notes;
+    else next.notes = nextNotes;
+  }
+  if (fabric !== undefined) {
+    if (nextFabric === undefined) delete next.fabric;
+    else next.fabric = nextFabric;
+  }
+  if (color !== undefined) {
+    if (nextColor === undefined) delete next.color;
+    else next.color = nextColor;
+  }
+
+  if (
+    next.name === piece.name &&
+    next.quantity === piece.quantity &&
+    next.notes === piece.notes &&
+    next.fabric === piece.fabric &&
+    next.color === piece.color
+  ) {
+    return noOp(document);
+  }
 
   return {
     document: replacePiece(document, next),
@@ -2155,6 +2415,9 @@ function applyUpdatePiece(
         id,
         name: piece.name ?? null,
         quantity: piece.quantity ?? null,
+        notes: piece.notes ?? null,
+        fabric: piece.fabric ?? null,
+        color: piece.color ?? null,
       },
     },
   };
@@ -2220,6 +2483,15 @@ function applyDeletePiece(
       entities,
       constraints,
       pieces: document.pieces.filter((candidate) => candidate.id !== id),
+      assemblies: document.assemblies.map((assembly) =>
+        assembly.instances.some((instance) => instance.piece === id)
+          ? {
+              ...assembly,
+              instances: assembly.instances.filter((instance) => instance.piece !== id),
+            }
+          : assembly,
+      ),
+      tabs: withoutTab(document, { kind: 'piece', id }),
       ...(document.cornerRounds === undefined ? {} : { cornerRounds: rounds }),
       ...(document.seams === undefined
         ? {}
@@ -2260,6 +2532,7 @@ function applySetPieceLoop(
     document,
     command.params.allowance ?? 'default',
     'set_piece_loop',
+    piece,
   );
   const existing = new Map(piece.allowances.map((allowance) => [allowance.edge, allowance]));
   const allowances = edges.flatMap((edge) => {
@@ -2326,27 +2599,269 @@ function applySetRole(
   };
 }
 
-/** Translate every point the piece owns, including fixed ones, in one step. */
-function applyMovePiece(
+/** Store or clear a piece's allowance override. */
+function applySetPieceDefaultAllowance(
   document: PatternDocument,
-  command: CommandOf<'move_piece'>,
+  command: CommandOf<'set_piece_default_allowance'>,
 ): CommandApplication {
-  const { id, dx, dy } = command.params;
-  if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
-    throw new CommandValidationError('move_piece', 'dx and dy must be finite numbers');
-  }
-  requirePiece(document, id, 'move_piece');
-  if (dx === 0 && dy === 0) return noOp(document);
+  const { piece: pieceId, mode } = command.params;
+  const piece = requirePiece(document, pieceId, 'set_piece_default_allowance');
 
-  const entities: Entity[] = document.entities.map((entity) =>
-    entity.kind === 'point' && entity.piece === id
-      ? { ...entity, x: entity.x + dx, y: entity.y + dy }
-      : entity,
-  );
+  let defaults: PieceDefaults | undefined;
+  if (mode === 'inherit') {
+    defaults = undefined;
+  } else if (mode === 'none') {
+    defaults = { allowance: null };
+  } else if (mode === 'preset') {
+    defaults = {
+      allowance: requireAllowancePreset('set_piece_default_allowance', {
+        width: command.params.width ?? Number.NaN,
+        ...(command.params.kind === undefined ? {} : { kind: command.params.kind }),
+      }),
+    };
+  } else {
+    throw new CommandValidationError(
+      'set_piece_default_allowance',
+      `unknown mode: ${String(mode)}`,
+    );
+  }
+
+  const next: Piece = { ...piece };
+  if (defaults === undefined) delete next.defaults;
+  else next.defaults = defaults;
+
+  if (JSON.stringify(next.defaults) === JSON.stringify(piece.defaults)) {
+    return noOp(document);
+  }
 
   return {
-    document: { ...document, entities },
-    inverse: { id: command.id, type: 'move_piece', params: { id, dx: -dx, dy: -dy } },
+    document: replacePiece(document, next),
+    inverse: restorePieceDefaults(pieceId, piece.defaults),
+  };
+}
+
+/** Create an empty assembly and append its tab. */
+function applyCreateAssembly(
+  document: PatternDocument,
+  command: CommandOf<'create_assembly'>,
+): CommandApplication {
+  if (document.assemblies.some((assembly) => assembly.id === command.id)) {
+    return noOp(document);
+  }
+
+  const name =
+    command.params.name === undefined
+      ? `Assembly ${document.assemblies.length + 1}`
+      : requireAssemblyName('create_assembly', command.params.name);
+
+  return {
+    document: {
+      ...document,
+      assemblies: [...document.assemblies, { id: command.id, name, instances: [] }],
+      tabs: withTab(document, { kind: 'assembly', id: command.id }),
+    },
+    inverse: { id: command.id, type: 'delete_assembly', params: { id: command.id } },
+  };
+}
+
+/** Rename an assembly. */
+function applyUpdateAssembly(
+  document: PatternDocument,
+  command: CommandOf<'update_assembly'>,
+): CommandApplication {
+  const { id } = command.params;
+  const assembly = requireAssembly(document, id, 'update_assembly');
+  const name = requireAssemblyName('update_assembly', command.params.name);
+
+  if (name === assembly.name) return noOp(document);
+
+  return {
+    document: replaceAssembly(document, { ...assembly, name }),
+    inverse: {
+      id: command.id,
+      type: 'update_assembly',
+      params: { id, name: assembly.name },
+    },
+  };
+}
+
+/** Delete an assembly and its tab; placed pieces are untouched. */
+function applyDeleteAssembly(
+  document: PatternDocument,
+  command: CommandOf<'delete_assembly'>,
+): CommandApplication {
+  const { id } = command.params;
+  if (!document.assemblies.some((assembly) => assembly.id === id)) {
+    return noOp(document);
+  }
+
+  return {
+    document: {
+      ...document,
+      assemblies: document.assemblies.filter((assembly) => assembly.id !== id),
+      tabs: withoutTab(document, { kind: 'assembly', id }),
+    },
+    // Restoring an assembly and its instances is not a single command.
+    inverse: null,
+  };
+}
+
+/** Place one instance of a piece in an assembly. */
+function applyAddInstance(
+  document: PatternDocument,
+  command: CommandOf<'add_instance'>,
+): CommandApplication {
+  const { assembly: assemblyId, piece: pieceId, x, y, rotation, mirrored } = command.params;
+  const assembly = requireAssembly(document, assemblyId, 'add_instance');
+  requirePiece(document, pieceId, 'add_instance');
+  requireFinite('add_instance', x, 'x');
+  requireFinite('add_instance', y, 'y');
+  if (rotation !== undefined) requireFinite('add_instance', rotation, 'rotation');
+
+  if (assembly.instances.some((instance) => instance.id === command.id)) {
+    return noOp(document);
+  }
+
+  const instance: AssemblyInstance = { id: command.id, piece: pieceId, x, y };
+  if (rotation !== undefined) instance.rotation = rotation;
+  if (mirrored !== undefined) instance.mirrored = mirrored;
+
+  return {
+    document: replaceAssembly(document, {
+      ...assembly,
+      instances: [...assembly.instances, instance],
+    }),
+    inverse: {
+      id: command.id,
+      type: 'remove_instance',
+      params: { assembly: assemblyId, instance: command.id },
+    },
+  };
+}
+
+/** Remove one placed instance. */
+function applyRemoveInstance(
+  document: PatternDocument,
+  command: CommandOf<'remove_instance'>,
+): CommandApplication {
+  const { assembly: assemblyId, instance: instanceId } = command.params;
+  const assembly = requireAssembly(document, assemblyId, 'remove_instance');
+  const instance = assembly.instances.find((candidate) => candidate.id === instanceId);
+  if (instance === undefined) return noOp(document);
+
+  return {
+    document: replaceAssembly(document, {
+      ...assembly,
+      instances: assembly.instances.filter((candidate) => candidate.id !== instanceId),
+    }),
+    inverse: {
+      id: instance.id,
+      type: 'add_instance',
+      params: {
+        assembly: assemblyId,
+        piece: instance.piece,
+        x: instance.x,
+        y: instance.y,
+        ...(instance.rotation === undefined ? {} : { rotation: instance.rotation }),
+        ...(instance.mirrored === undefined ? {} : { mirrored: instance.mirrored }),
+      },
+    },
+  };
+}
+
+/** Move, rotate or mirror one placed instance. */
+function applyUpdateInstance(
+  document: PatternDocument,
+  command: CommandOf<'update_instance'>,
+): CommandApplication {
+  const { assembly: assemblyId, instance: instanceId, x, y, rotation, mirrored } = command.params;
+  const assembly = requireAssembly(document, assemblyId, 'update_instance');
+  const instance = assembly.instances.find((candidate) => candidate.id === instanceId);
+  if (instance === undefined) {
+    throw new CommandValidationError('update_instance', `unknown instance: ${instanceId}`);
+  }
+  if (x === undefined && y === undefined && rotation === undefined && mirrored === undefined) {
+    throw new CommandValidationError('update_instance', 'provide x, y, rotation or mirrored');
+  }
+  if (x !== undefined) requireFinite('update_instance', x, 'x');
+  if (y !== undefined) requireFinite('update_instance', y, 'y');
+  if (rotation !== undefined) requireFinite('update_instance', rotation, 'rotation');
+
+  const next: AssemblyInstance = { ...instance };
+  if (x !== undefined) next.x = x;
+  if (y !== undefined) next.y = y;
+  if (rotation !== undefined) next.rotation = rotation;
+  if (mirrored !== undefined) next.mirrored = mirrored;
+
+  if (
+    next.x === instance.x &&
+    next.y === instance.y &&
+    next.rotation === instance.rotation &&
+    next.mirrored === instance.mirrored
+  ) {
+    return noOp(document);
+  }
+
+  return {
+    document: replaceAssembly(document, {
+      ...assembly,
+      instances: assembly.instances.map((candidate) =>
+        candidate.id === instanceId ? next : candidate,
+      ),
+    }),
+    inverse: {
+      id: command.id,
+      type: 'update_instance',
+      params: {
+        assembly: assemblyId,
+        instance: instanceId,
+        x: instance.x,
+        y: instance.y,
+        rotation: instance.rotation ?? 0,
+        mirrored: instance.mirrored ?? false,
+      },
+    },
+  };
+}
+
+/** Replace the tab order with a permutation of the current refs. */
+function applyReorderTabs(
+  document: PatternDocument,
+  command: CommandOf<'reorder_tabs'>,
+): CommandApplication {
+  const { tabs } = command.params;
+  if (tabs.length !== document.tabs.length) {
+    throw new CommandValidationError(
+      'reorder_tabs',
+      'tabs must be a permutation of the current order',
+    );
+  }
+
+  const known = new Set(document.tabs.map((tab) => `${tab.kind}:${tab.id}`));
+  const seen = new Set<string>();
+  for (const tab of tabs) {
+    const key = `${tab.kind}:${tab.id}`;
+    if (!known.has(key) || seen.has(key)) {
+      throw new CommandValidationError(
+        'reorder_tabs',
+        'tabs must be a permutation of the current order',
+      );
+    }
+    seen.add(key);
+  }
+
+  const unchanged = tabs.every(
+    (tab, index) => tab.kind === document.tabs[index]!.kind && tab.id === document.tabs[index]!.id,
+  );
+  if (unchanged) return noOp(document);
+
+  return {
+    document: { ...document, tabs: tabs.map((tab) => ({ kind: tab.kind, id: tab.id })) },
+    inverse: {
+      id: command.id,
+      type: 'reorder_tabs',
+      params: { tabs: document.tabs.map((tab) => ({ kind: tab.kind, id: tab.id })) },
+    },
   };
 }
 

@@ -29,6 +29,8 @@ export function createEmptyDocument(): PatternDocument {
     entities: [],
     constraints: [],
     pieces: [],
+    assemblies: [],
+    tabs: [],
     defaults: { allowance: { ...DEFAULT_ALLOWANCE_PRESET } },
   };
 }
@@ -198,4 +200,108 @@ export function bounds(document: PatternDocument): Bounds | null {
   }
 
   return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
+}
+
+/** Every point id a line, curve, arc, circle or text entity references. */
+function entityReferenceIds(entity: Entity): EntityId[] {
+  switch (entity.kind) {
+    case 'point':
+      return [];
+    case 'line':
+    case 'arc':
+      return entity.kind === 'line'
+        ? [entity.start, entity.end]
+        : [entity.start, entity.through, entity.end];
+    case 'curve':
+      return [entity.p0, entity.p1, entity.p2, entity.p3];
+    case 'circle':
+      return [entity.center, entity.rim];
+    case 'text':
+      return entity.leader === undefined ? [entity.anchor] : [entity.anchor, entity.leader];
+  }
+}
+
+/**
+ * A valid document containing only the given pieces and everything they own:
+ * entities, constraints, corner rounds and legacy seams. `assemblies` and `tabs`
+ * are empty so a piece view never sees another piece.
+ */
+function documentForPieces(
+  document: PatternDocument,
+  pieceIds: ReadonlySet<EntityId>,
+): PatternDocument {
+  const pieces = document.pieces.filter((piece) => pieceIds.has(piece.id));
+  const loopEdges = new Set(pieces.flatMap((piece) => piece.edges));
+
+  // Start from the entities the pieces name directly, then close over the points
+  // those entities reference so a partially owned legacy fixture still renders.
+  const kept = new Set<EntityId>();
+  for (const entity of document.entities) {
+    if (entity.piece !== undefined ? pieceIds.has(entity.piece) : loopEdges.has(entity.id)) {
+      kept.add(entity.id);
+    }
+  }
+  const queue = [...kept];
+  let changed = queue.length > 0;
+  while (changed) {
+    changed = false;
+    for (const entity of document.entities) {
+      if (!kept.has(entity.id)) continue;
+      for (const reference of entityReferenceIds(entity)) {
+        if (kept.has(reference) || getEntity(document, reference)?.kind !== 'point') continue;
+        kept.add(reference);
+        changed = true;
+      }
+    }
+  }
+
+  const constraints = document.constraints.filter((constraint) =>
+    constraint.piece !== undefined
+      ? pieceIds.has(constraint.piece)
+      : constraintEntityIds(constraint).every((id) => kept.has(id)),
+  );
+  const rounds = cornerRounds(document).filter(
+    (round) =>
+      kept.has(round.corner) || kept.has(round.arc) || round.ends.some((end) => kept.has(end.line)),
+  );
+
+  return {
+    ...document,
+    entities: document.entities.filter((entity) => kept.has(entity.id)),
+    constraints,
+    pieces,
+    assemblies: [],
+    tabs: [],
+    ...(document.cornerRounds === undefined ? {} : { cornerRounds: rounds }),
+    ...(document.seams === undefined
+      ? {}
+      : { seams: documentSeams(document).filter((seam) => kept.has(seam.edge)) }),
+  };
+}
+
+/**
+ * The document a piece tab edits: only that piece's entities, constraints and
+ * corner rounds, with no assemblies or tabs. An unknown piece yields an empty
+ * piece list rather than an invalid document.
+ */
+export function documentForPiece(document: PatternDocument, piece: EntityId): PatternDocument {
+  const exists = document.pieces.some((candidate) => candidate.id === piece);
+  return documentForPieces(document, new Set(exists ? [piece] : []));
+}
+
+/**
+ * The document an assembly tab edits: the pieces its instances reference, with
+ * that assembly kept and the tab order cleared.
+ */
+export function documentForAssembly(
+  document: PatternDocument,
+  assembly: EntityId,
+): PatternDocument {
+  const target = document.assemblies.find((candidate) => candidate.id === assembly);
+  if (target === undefined) {
+    return documentForPieces(document, new Set());
+  }
+  const referenced = new Set(target.instances.map((instance) => instance.piece));
+  const filtered = documentForPieces(document, referenced);
+  return { ...filtered, assemblies: [target] };
 }

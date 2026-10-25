@@ -1,0 +1,1406 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SewCraft — piece tabs and assembly</title>
+    <style>
+      :root {
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.145 0 0);
+        --card: oklch(1 0 0);
+        --primary: oklch(0.627 0.194 149.214);
+        --primary-foreground: oklch(0.985 0 0);
+        --muted: oklch(0.97 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --border: oklch(0.922 0 0);
+        --input: oklch(0.922 0 0);
+        --destructive: oklch(0.577 0.245 27.325);
+        --annotation: oklch(0.55 0.2 300);
+        --radius: 0.5rem;
+        --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial,
+          sans-serif;
+        --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: var(--foreground);
+        font-family: var(--font-sans);
+        font-size: 13px;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .wrap {
+        max-width: 720px;
+        margin: 0 auto;
+      }
+
+      /* ── app frame ─────────────────────────────────────────────────────── */
+      .app {
+        display: flex;
+        flex-direction: column;
+        height: 600px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: calc(var(--radius) + 2px);
+        background: var(--background);
+      }
+
+      .savebar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 32px;
+        flex: none;
+        padding: 0 12px;
+        border-bottom: 1px solid var(--border);
+      }
+      .savebar .pattern {
+        font-size: 13px;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .savebar .pattern span {
+        color: var(--muted-foreground);
+        font-weight: 400;
+        font-size: 11px;
+      }
+      .savebar .status {
+        margin-left: auto;
+        font-size: 11px;
+        color: var(--muted-foreground);
+        white-space: nowrap;
+      }
+      .btn {
+        height: 26px;
+        padding: 0 10px;
+        font: inherit;
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--foreground);
+        background: var(--background);
+        border: 1px solid var(--input);
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .btn:hover {
+        background: var(--muted);
+      }
+
+      /* ── ribbon ───────────────────────────────────────────────────────── */
+      .ribbon {
+        display: flex;
+        align-items: stretch;
+        gap: 4px;
+        flex: none;
+        padding: 4px 6px 5px;
+        border-bottom: 1px solid var(--border);
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+      .ribbon::-webkit-scrollbar {
+        display: none;
+      }
+      .rgroup {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        flex: none;
+      }
+      .rgroup > .cap {
+        font-size: 8px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted-foreground);
+        padding-left: 2px;
+        line-height: 1;
+      }
+      .ritems {
+        display: flex;
+        align-items: center;
+        gap: 1px;
+      }
+      .rsep {
+        width: 1px;
+        flex: none;
+        align-self: stretch;
+        margin: 2px 4px;
+        background: var(--border);
+      }
+      .rbtn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 23px;
+        height: 26px;
+        padding: 0;
+        color: var(--foreground);
+        background: transparent;
+        border: 0;
+        border-radius: 5px;
+        cursor: pointer;
+      }
+      .rbtn:hover {
+        background: var(--muted);
+      }
+      .rbtn.active {
+        color: var(--primary-foreground);
+        background: var(--primary);
+      }
+      .rbtn[disabled] {
+        opacity: 0.4;
+        cursor: default;
+      }
+      .rbtn svg {
+        width: 15px;
+        height: 15px;
+      }
+
+      /* ── body ─────────────────────────────────────────────────────────── */
+      .body {
+        display: flex;
+        min-height: 0;
+        flex: 1;
+      }
+      .canvas {
+        position: relative;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        background: var(--background);
+      }
+      .canvas svg.cv {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .badge {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        padding: 3px 7px;
+        font-size: 10px;
+        color: var(--foreground);
+        background: color-mix(in srgb, var(--background) 90%, transparent);
+        border-radius: 4px;
+        box-shadow: 0 1px 2px rgb(0 0 0 / 0.07);
+        pointer-events: none;
+      }
+      .badge .loop {
+        color: var(--muted-foreground);
+      }
+      .addpiece {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 24px;
+        padding: 0 8px;
+        font: inherit;
+        font-size: 10.5px;
+        font-weight: 500;
+        background: var(--background);
+        border: 1px solid var(--input);
+        border-radius: 5px;
+        cursor: pointer;
+        box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+      }
+      .addpiece:hover {
+        background: var(--muted);
+      }
+      .addpiece svg {
+        width: 11px;
+        height: 11px;
+      }
+      .picker {
+        position: absolute;
+        top: 36px;
+        left: 8px;
+        z-index: 5;
+        width: 148px;
+        padding: 4px;
+        background: var(--background);
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+      }
+      .picker button {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+        height: 27px;
+        padding: 0 6px;
+        font: inherit;
+        font-size: 11px;
+        text-align: left;
+        color: var(--foreground);
+        background: transparent;
+        border: 0;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .picker button:hover {
+        background: var(--muted);
+      }
+      .picker .empty {
+        padding: 6px;
+        font-size: 10.5px;
+        color: var(--muted-foreground);
+      }
+      .empty-state {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        text-align: center;
+        pointer-events: none;
+      }
+      .empty-state strong {
+        font-size: 12px;
+        font-weight: 500;
+      }
+      .empty-state span {
+        font-size: 10.5px;
+        color: var(--muted-foreground);
+      }
+
+      /* ── sidebar ──────────────────────────────────────────────────────── */
+      .sidebar {
+        width: 204px;
+        flex: none;
+        border-left: 1px solid var(--border);
+        overflow-y: auto;
+        scrollbar-width: thin;
+      }
+      .drawer-h {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        height: 27px;
+        padding: 0 9px;
+        border-bottom: 1px solid var(--border);
+        font-size: 9.5px;
+        font-weight: 600;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--muted-foreground);
+        background: var(--background);
+        position: sticky;
+        top: 0;
+        z-index: 2;
+      }
+      .drawer-h svg {
+        width: 8px;
+        height: 8px;
+      }
+      .drawer-h .count {
+        margin-left: auto;
+        font-size: 9px;
+        font-weight: 500;
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        padding: 0 3px;
+      }
+      .drawer-b {
+        display: grid;
+        gap: 6px;
+        padding: 7px 9px 9px;
+        border-bottom: 1px solid var(--border);
+      }
+      .field > span {
+        display: block;
+        margin-bottom: 3px;
+        font-size: 9px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--muted-foreground);
+      }
+      .field input,
+      .field select {
+        width: 100%;
+        height: 24px;
+        padding: 0 5px;
+        font: inherit;
+        font-size: 11px;
+        color: var(--foreground);
+        background: var(--background);
+        border: 1px solid var(--input);
+        border-radius: 4px;
+      }
+      .row2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+      .row3 {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 5px;
+      }
+      .meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 10px;
+      }
+      .meta dt {
+        color: var(--muted-foreground);
+      }
+      .meta dd {
+        margin: 0;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .meta dd.mono {
+        font-family: var(--font-mono);
+        font-size: 9.5px;
+        color: var(--muted-foreground);
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 16px;
+        padding: 0 5px;
+        font-size: 9px;
+        font-weight: 500;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--muted-foreground);
+      }
+      .pill.on {
+        color: var(--primary);
+        border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+        background: color-mix(in srgb, var(--primary) 8%, transparent);
+      }
+      .swatches {
+        display: flex;
+        gap: 5px;
+      }
+      .swatch {
+        width: 17px;
+        height: 17px;
+        padding: 0;
+        border-radius: 50%;
+        border: 1px solid rgb(0 0 0 / 0.12);
+        cursor: pointer;
+      }
+      .swatch[aria-pressed='true'] {
+        outline: 2px solid var(--primary);
+        outline-offset: 1px;
+      }
+      .linkbtn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 23px;
+        padding: 0 7px;
+        font: inherit;
+        font-size: 10px;
+        font-weight: 500;
+        color: var(--foreground);
+        background: var(--background);
+        border: 1px solid var(--input);
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .linkbtn:hover {
+        background: var(--muted);
+      }
+      .allow-row {
+        display: grid;
+        grid-template-columns: 1fr 42px 54px;
+        gap: 4px;
+        align-items: center;
+      }
+      .allow-row > span {
+        font-size: 10px;
+        color: var(--muted-foreground);
+      }
+      .allow-row input,
+      .allow-row select {
+        height: 21px;
+        font-size: 10px;
+      }
+      .subhead {
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--muted-foreground);
+        margin-top: 2px;
+      }
+
+      /* ── tab bar ──────────────────────────────────────────────────────── */
+      .tabbar {
+        display: flex;
+        align-items: stretch;
+        flex: none;
+        height: 36px;
+        padding: 0 4px;
+        border-top: 1px solid var(--border);
+        background: var(--muted);
+      }
+      .plus-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+        flex: none;
+        padding-right: 4px;
+        margin-right: 4px;
+        border-right: 1px solid color-mix(in srgb, var(--foreground) 10%, transparent);
+      }
+      .plus {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 23px;
+        height: 26px;
+        padding: 0;
+        font: inherit;
+        font-size: 17px;
+        line-height: 1;
+        color: var(--muted-foreground);
+        background: transparent;
+        border: 0;
+        border-radius: 5px;
+        cursor: pointer;
+      }
+      .plus:hover,
+      .plus[aria-expanded='true'] {
+        color: var(--foreground);
+        background: color-mix(in srgb, var(--foreground) 8%, transparent);
+      }
+      .menu {
+        position: absolute;
+        bottom: 33px;
+        left: 0;
+        z-index: 20;
+        width: 190px;
+        padding: 4px;
+        background: var(--background);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: 0 10px 30px rgb(0 0 0 / 0.14);
+      }
+      .menu button {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        height: 29px;
+        padding: 0 7px;
+        font: inherit;
+        font-size: 11.5px;
+        text-align: left;
+        color: var(--foreground);
+        background: transparent;
+        border: 0;
+        border-radius: 5px;
+        cursor: pointer;
+      }
+      .menu button:hover:not([disabled]) {
+        background: var(--muted);
+      }
+      .menu button svg {
+        width: 14px;
+        height: 14px;
+        flex: none;
+        color: var(--muted-foreground);
+      }
+      .menu button[disabled] {
+        opacity: 0.45;
+        cursor: default;
+      }
+      .menu .soon {
+        margin-left: auto;
+        font-size: 8.5px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--muted-foreground);
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        padding: 1px 4px;
+      }
+      .menu .sep {
+        height: 1px;
+        margin: 4px 5px;
+        background: var(--border);
+      }
+      .tabs {
+        display: flex;
+        align-items: stretch;
+        min-width: 0;
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+      .tabs::-webkit-scrollbar {
+        display: none;
+      }
+      .tab {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: none;
+        max-width: 160px;
+        padding: 0 11px;
+        font: inherit;
+        font-size: 11px;
+        color: var(--muted-foreground);
+        background: transparent;
+        border: 0;
+        border-right: 1px solid color-mix(in srgb, var(--foreground) 7%, transparent);
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .tab:hover {
+        background: color-mix(in srgb, var(--foreground) 4%, transparent);
+        color: var(--foreground);
+      }
+      .tab.active {
+        color: var(--foreground);
+        background: var(--background);
+        box-shadow: inset 0 2px 0 var(--primary);
+      }
+      .tab .name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .tab .dot {
+        width: 8px;
+        height: 8px;
+        flex: none;
+        border-radius: 50%;
+        border: 1px solid rgb(0 0 0 / 0.14);
+      }
+      .tab svg {
+        width: 13px;
+        height: 13px;
+        flex: none;
+        color: var(--muted-foreground);
+      }
+      .tab.active svg {
+        color: var(--foreground);
+      }
+      .tab.dragging {
+        opacity: 0.45;
+      }
+      .tab.drop-left {
+        box-shadow: inset 2px 0 0 var(--primary);
+      }
+      .tab.drop-right {
+        box-shadow: inset -2px 0 0 var(--primary);
+      }
+      .tab.active.drop-left {
+        box-shadow:
+          inset 0 2px 0 var(--primary),
+          inset 2px 0 0 var(--primary);
+      }
+      .tab.active.drop-right {
+        box-shadow:
+          inset 0 2px 0 var(--primary),
+          inset -2px 0 0 var(--primary);
+      }
+
+      .hint {
+        margin: 10px 2px 0;
+        font-size: 11px;
+        line-height: 1.5;
+        color: var(--muted-foreground);
+      }
+
+      @media (max-width: 560px) {
+        .app {
+          height: 470px;
+        }
+        .sidebar {
+          display: none;
+        }
+        .canvas {
+          flex: 1;
+        }
+        .rgroup > .cap {
+          display: none;
+        }
+        .ribbon {
+          padding-top: 6px;
+        }
+        .rbtn {
+          width: 28px;
+          height: 28px;
+        }
+        .savebar .status {
+          display: none;
+        }
+        .tab {
+          padding: 0 9px;
+          max-width: 132px;
+        }
+        .allow-row {
+          grid-template-columns: 1fr 34px 46px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="app" id="app">
+        <div class="savebar">
+          <div class="pattern">Tote bag <span>· Pattern</span></div>
+          <div class="status">Saved 12:04</div>
+          <button class="btn" type="button">Save</button>
+        </div>
+        <div class="ribbon" id="ribbon" role="toolbar" aria-label="Editor tools"></div>
+        <div class="body">
+          <div class="canvas" id="canvas"></div>
+          <aside class="sidebar" id="sidebar"></aside>
+        </div>
+        <div class="tabbar">
+          <div class="plus-wrap">
+            <button class="plus" id="plus" type="button" aria-label="New" aria-expanded="false">
+              +
+            </button>
+            <div class="menu" id="menu" hidden>
+              <button type="button" data-new="piece">
+                <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3">
+                  <path d="M2.5 1.5h7l2 10.5h-9z" stroke-linejoin="round" />
+                </svg>
+                New piece
+              </button>
+              <button type="button" data-new="assembly">
+                <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3">
+                  <rect x="1.5" y="1.5" width="4.5" height="4.5" rx="0.6" />
+                  <rect x="8" y="1.5" width="4.5" height="4.5" rx="0.6" />
+                  <rect x="1.5" y="8" width="4.5" height="4.5" rx="0.6" />
+                  <rect x="8" y="8" width="4.5" height="4.5" rx="0.6" />
+                </svg>
+                New assembly
+              </button>
+              <div class="sep"></div>
+              <button type="button" disabled>
+                <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3">
+                  <path d="M3 1.5h8v11H3z" stroke-linejoin="round" />
+                  <path d="M5 4.5h4M5 7h4M5 9.5h2" />
+                </svg>
+                New drawing
+                <span class="soon">Soon</span>
+              </button>
+            </div>
+          </div>
+          <div class="tabs" id="tabs" role="tablist" aria-label="Pattern objects"></div>
+        </div>
+      </div>
+      <p class="hint">
+        Click a tab to switch between pieces and assemblies; drag a tab to reorder. The + menu
+        creates a piece or an assembly — drawing is stubbed out for later.
+      </p>
+    </div>
+
+    <script>
+      /* ── mock data ────────────────────────────────────────────────────── */
+      const PALETTE = ['#2563eb', '#d97706', '#7c3aed', '#0d9488', '#e11d48', '#65a30d'];
+
+      const tabs = [
+        {
+          id: 'front',
+          kind: 'piece',
+          name: 'Front panel',
+          colour: '#2563eb',
+          quantity: 2,
+          allowance: '12',
+          allowanceKind: 'seam',
+          notes: 'Main body',
+          fabric: 'Canvas 12 oz',
+        },
+        {
+          id: 'back',
+          kind: 'piece',
+          name: 'Back panel',
+          colour: '#d97706',
+          quantity: 1,
+          allowance: '12',
+          allowanceKind: 'seam',
+          notes: 'Plain, same as front',
+          fabric: 'Canvas 12 oz',
+        },
+        {
+          id: 'asm1',
+          kind: 'assembly',
+          name: 'Assembly 01',
+          instances: [
+            { piece: 'front', x: 58, y: 56, scale: 0.46, mirror: false, angle: 0 },
+            { piece: 'front', x: 312, y: 56, scale: 0.46, mirror: true, angle: 0 },
+            { piece: 'back', x: 185, y: 196, scale: 0.46, mirror: false, angle: 0 },
+          ],
+        },
+      ];
+
+      let order = tabs.map((t) => t.id);
+      let activeId = 'asm1';
+      let selectedInstance = 1;
+      let menuOpen = false;
+      let pickerOpen = false;
+      let dragId = null;
+
+      const byId = (id) => tabs.find((t) => t.id === id);
+      const active = () => byId(activeId);
+      const pieceTabs = () => tabs.filter((t) => t.kind === 'piece');
+
+      /* ── icons ────────────────────────────────────────────────────────── */
+      const I = {
+        select:
+          '<path d="M3 2.2 11.6 7l-3.7 1-1.6 3.6z" fill="currentColor" stroke="none"/>',
+        loop: '<circle cx="7" cy="7" r="4.6" stroke-dasharray="2 2"/><circle cx="7" cy="7" r="1.4" fill="currentColor" stroke="none"/>',
+        undo: '<path d="M3.2 6h5.6a3 3 0 0 1 0 6H6.4M3.2 6l2.4-2.4M3.2 6l2.4 2.4"/>',
+        redo: '<path d="M10.8 6H5.2a3 3 0 0 0 0 6h2.4M10.8 6 8.4 3.6M10.8 6 8.4 8.4"/>',
+        trash: '<path d="M2.6 4h8.8M5.6 4V2.6h2.8V4M4 4l.6 8h4.8L10 4"/>',
+        fit: '<path d="M2 5V2h3M12 5V2H9M2 9v3h3M12 9v3H9"/>',
+        round: '<path d="M2 12V7.2A5.2 5.2 0 0 1 7.2 2H12"/>',
+        text: '<path d="M3 3h8M7 3v8"/>',
+        point: '<circle cx="7" cy="7" r="1.7" fill="currentColor" stroke="none"/>',
+        line: '<path d="M2.4 11.6 11.6 2.4"/>',
+        curve: '<path d="M2 11C4.6 2.4 9.4 11.6 12 3"/>',
+        arc: '<path d="M2 11a6.4 6.4 0 0 1 10-4.6"/>',
+        circle: '<circle cx="7" cy="7" r="4.8"/>',
+        rect: '<rect x="2" y="3.2" width="10" height="7.6" rx="1"/>',
+        dim: '<path d="M2 7h10M2 4.2v5.6M12 4.2v5.6"/>',
+        cutdim:
+          '<path d="M2 7h10M4.4 4.6 2 7l2.4 2.4M9.6 4.6 12 7l-2.4 2.4"/>',
+        h: '<path d="M3 3v8M11 3v8M3 7h8"/>',
+        v: '<path d="M4 2.4v9.2M10 2.4v9.2M7 3v8"/>',
+        coincident: '<circle cx="4.4" cy="7" r="1.9"/><circle cx="9.6" cy="7" r="1.9"/>',
+        distance: '<path d="M2 7h10M4.5 4.5 2 7l2.5 2.5M9.5 4.5 12 7l-2.5 2.5"/>',
+        angle: '<path d="M2.5 11.5h9M2.5 11.5 10 4"/><path d="M6.4 11.5A4 4 0 0 0 5.9 9"/>',
+        equal: '<path d="M3 5.4h8M3 8.6h8"/>',
+        download: '<path d="M7 2v7.4M4.3 6.7 7 9.4l2.7-2.7M2.5 12h9"/>',
+        mirror: '<path d="M7 2v10M3.6 4.4 1.2 7l2.4 2.6zM10.4 4.4 12.8 7l-2.4 2.6z" stroke-linejoin="round"/>',
+        rotate: '<path d="M11.4 7a4.4 4.4 0 1 1-1.3-3.1M11.4 2.6V5.4H8.6"/>',
+        plus: '<path d="M7 2.4v9.2M2.4 7h9.2"/>',
+        piece: '<path d="M2.8 1.8h7.4l1.4 10.4H1.2z" stroke-linejoin="round"/>',
+        grid: '<rect x="1.6" y="1.6" width="4.4" height="4.4" rx="0.5"/><rect x="8" y="1.6" width="4.4" height="4.4" rx="0.5"/><rect x="1.6" y="8" width="4.4" height="4.4" rx="0.5"/><rect x="8" y="8" width="4.4" height="4.4" rx="0.5"/>',
+      };
+      const icon = (name, size = 15) =>
+        `<svg viewBox="0 0 14 14" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">${I[name] ?? ''}</svg>`;
+
+      /* ── ribbon ───────────────────────────────────────────────────────── */
+      const pieceRibbon = [
+        {
+          cap: 'Tools',
+          items: [
+            ['select', 'Select', true],
+            ['loop', 'Set cut loop'],
+            ['undo', 'Undo'],
+            ['redo', 'Redo'],
+            ['trash', 'Delete'],
+            ['fit', 'Fit'],
+          ],
+        },
+        { cap: 'Features', items: [['round', 'Round corner']] },
+        { cap: 'Annotation', items: [['text', 'Text']] },
+        {
+          cap: 'Sketching',
+          items: [
+            ['point', 'Point'],
+            ['line', 'Line'],
+            ['curve', 'Curve'],
+            ['arc', 'Arc'],
+            ['circle', 'Circle'],
+            ['rect', 'Rectangle'],
+            ['dim', 'Dimension'],
+            ['cutdim', 'Cut dimension'],
+          ],
+        },
+        {
+          cap: 'Constraints',
+          items: [
+            ['h', 'Horizontal'],
+            ['v', 'Vertical'],
+            ['coincident', 'Coincident'],
+            ['distance', 'Distance'],
+            ['angle', 'Angle'],
+            ['equal', 'Equal'],
+          ],
+        },
+        { cap: 'Export', items: [['download', 'Download SVG']] },
+      ];
+
+      const assemblyRibbon = [
+        {
+          cap: 'Tools',
+          items: [
+            ['select', 'Select instance', true],
+            ['plus', 'Add piece'],
+            ['undo', 'Undo'],
+            ['redo', 'Redo'],
+            ['trash', 'Delete instance'],
+            ['fit', 'Fit'],
+          ],
+        },
+        {
+          cap: 'Transform',
+          items: [
+            ['mirror', 'Mirror instance'],
+            ['rotate', 'Rotate 90°'],
+          ],
+        },
+        { cap: 'Export', items: [['download', 'Download SVG', false, true]] },
+      ];
+
+      function renderRibbon() {
+        const groups = active().kind === 'piece' ? pieceRibbon : assemblyRibbon;
+        return groups
+          .map(
+            (g, i) => `
+            ${i > 0 ? '<div class="rsep"></div>' : ''}
+            <div class="rgroup">
+              <span class="cap">${g.cap}</span>
+              <div class="ritems">
+                ${g.items
+                  .map(
+                    ([ic, label, on, disabled]) =>
+                      `<button class="rbtn${on ? ' active' : ''}" type="button" title="${label}" aria-label="${label}" ${disabled ? 'disabled' : ''}>${icon(ic)}</button>`,
+                  )
+                  .join('')}
+              </div>
+            </div>`,
+          )
+          .join('');
+      }
+
+      /* ── tabs ─────────────────────────────────────────────────────────── */
+      function renderTabs() {
+        return order
+          .map((id) => byId(id))
+          .filter(Boolean)
+          .map((t) => {
+            const dot =
+              t.kind === 'piece'
+                ? `<span class="dot" style="background:${t.colour}"></span>`
+                : icon('grid', 13);
+            return `<button class="tab${t.id === activeId ? ' active' : ''}" type="button" role="tab" aria-selected="${t.id === activeId}" data-tab="${t.id}" draggable="true" title="${escapeHtml(t.name)} — drag to reorder">
+              ${dot}<span class="name">${escapeHtml(t.name)}</span>
+            </button>`;
+          })
+          .join('');
+      }
+
+      function escapeHtml(value) {
+        return String(value).replace(
+          /[&<>"']/g,
+          (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+        );
+      }
+
+      /* ── piece geometry ───────────────────────────────────────────────── */
+      // A panel silhouette: cut line (outer), stitch line (inner) and the
+      // allowance ring between them. Local box: x -20..284, y 0..272.
+      const CUT_PATH = 'M-12 10 L276 -6 L284 242 Q284 272 252 272 H12 Q-20 272 -20 242 Z';
+      const STITCH_PATH = 'M0 18 L264 4 L272 240 Q272 260 252 260 H12 Q-8 260 -8 240 Z';
+
+      function pieceGroup(colour, { annotations = false, selected = false, fill = false } = {}) {
+        const body = fill
+          ? `<path d="${CUT_PATH}" fill="${colour}" fill-opacity="0.13"/>`
+          : '';
+        const band = `<path d="${CUT_PATH} ${STITCH_PATH}" fill="${colour}" fill-opacity="${fill ? 0.24 : 0.18}" fill-rule="evenodd"/>`;
+        const grain = `
+          <g stroke="var(--muted-foreground)" stroke-width="0.7" fill="none" vector-effect="non-scaling-stroke" opacity="0.8">
+            <path d="M150 66v142"/>
+            <path d="M145 74 150 63l5 11M145 200l5 11 5-11" fill="var(--muted-foreground)" stroke="none"/>
+            <path d="M84 12v9M196 12v9M84 251v9M196 251v9"/>
+          </g>`;
+        const notes = annotations
+          ? `
+          <g stroke="var(--annotation)" stroke-width="0.8" fill="none" vector-effect="non-scaling-stroke">
+            <path d="M150 152 168 124" stroke-dasharray="2 2"/>
+            <circle cx="150" cy="152" r="1.6" fill="var(--annotation)" stroke="none"/>
+          </g>
+          <text x="172" y="121" font-size="8.5" font-style="italic" font-family="var(--font-mono)" fill="var(--annotation)">rivet</text>
+          <g stroke="var(--annotation)" stroke-width="0.8" fill="none" vector-effect="non-scaling-stroke">
+            <rect x="36" y="186" width="26" height="14" rx="1.5"/>
+            <path d="M36 191h26M36 195h26"/>
+          </g>
+          <text x="36" y="182" font-size="7.5" font-style="italic" font-family="var(--font-mono)" fill="var(--annotation)">velcro</text>`
+          : '';
+        const selection = selected
+          ? `<rect x="-28" y="-8" width="320" height="288" fill="none" stroke="var(--primary)" stroke-width="1.4" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>
+             <g fill="var(--background)" stroke="var(--primary)" stroke-width="1.2">
+               <rect x="-33" y="-13" width="10" height="10"/>
+               <rect x="287" y="-13" width="10" height="10"/>
+               <rect x="-33" y="275" width="10" height="10"/>
+               <rect x="287" y="275" width="10" height="10"/>
+             </g>`
+          : '';
+        return `
+          ${body}
+          ${band}
+          <path d="${CUT_PATH}" fill="none" stroke="var(--foreground)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+          <path d="${STITCH_PATH}" fill="none" stroke="var(--muted-foreground)" stroke-width="1" stroke-dasharray="5 3" vector-effect="non-scaling-stroke"/>
+          ${grain}
+          ${notes}
+          ${selection}`;
+      }
+
+      function gridPattern() {
+        return `
+          <defs>
+            <pattern id="g" width="16" height="16" patternUnits="userSpaceOnUse">
+              <path d="M16 0H0V16" fill="none" stroke="color-mix(in srgb, var(--foreground) 11%, transparent)" stroke-width="0.8"/>
+            </pattern>
+          </defs>
+          <rect width="520" height="392" fill="url(#g)"/>`;
+      }
+
+      function dimension(x1, x2, y) {
+        return `
+          <g stroke="var(--foreground)" stroke-width="0.7" fill="none" vector-effect="non-scaling-stroke">
+            <path d="M${x1} ${y} H${x2}"/>
+            <path d="M${x1} ${y - 16}v16M${x2} ${y - 16}v16" opacity="0.55"/>
+          </g>
+          <polygon points="${x1},${y} ${x1 + 7},${y - 2.6} ${x1 + 7},${y + 2.6}" fill="var(--foreground)"/>
+          <polygon points="${x2},${y} ${x2 - 7},${y - 2.6} ${x2 - 7},${y + 2.6}" fill="var(--foreground)"/>
+          <text x="${(x1 + x2) / 2}" y="${y - 5}" text-anchor="middle" font-size="8.5" fill="var(--foreground)">320 mm</text>`;
+      }
+
+      function emptyPiece() {
+        const t = active();
+        return {
+          svg: `<svg class="cv" viewBox="0 0 520 392" preserveAspectRatio="xMidYMid meet">${gridPattern()}</svg>`,
+          overlay: `<div class="badge">${escapeHtml(t.name)} <span class="loop">· no cut loop</span></div>
+            <div class="empty-state"><strong>Empty piece</strong><span>Start with a line, a rectangle or a point.</span></div>`,
+        };
+      }
+
+      function pieceCanvas() {
+        const t = active();
+        if (!t || t.kind !== 'piece') return { svg: '', overlay: '' };
+        const hasLoop = t.id !== 'new';
+        if (!hasLoop) return emptyPiece();
+        return {
+          svg: `<svg class="cv" viewBox="0 0 520 392" preserveAspectRatio="xMidYMid meet">
+            ${gridPattern()}
+            <g transform="translate(110 74)">
+              ${pieceGroup(t.colour, { annotations: true })}
+            </g>
+            ${dimension(110 - 12, 110 + 284, 54)}
+          </svg>`,
+          overlay: `<div class="badge">${escapeHtml(t.name)} <span class="loop">· cut loop</span></div>`,
+        };
+      }
+
+      function assemblyCanvas() {
+        const t = active();
+        if (!t || t.kind !== 'assembly') return { svg: '', overlay: '' };
+        const pieces = t.instances.map((inst, index) => {
+          const piece = byId(inst.piece);
+          if (!piece) return '';
+          const mirror = inst.mirror ? ' translate(304 0) scale(-1 1)' : '';
+          const transform = `translate(${inst.x} ${inst.y}) scale(${inst.scale}) rotate(${inst.angle} 152 136)${mirror}`;
+          const selected = index === selectedInstance;
+          const w = 304 * inst.scale;
+          const h = 272 * inst.scale;
+          return `
+            <g data-instance="${index}" style="cursor:grab">
+              <g transform="${transform}">${pieceGroup(piece.colour, { selected, fill: true })}</g>
+              <rect x="${inst.x - 6}" y="${inst.y - 4}" width="${w + 12}" height="${h + 8}" fill="transparent"/>
+              <g transform="translate(${inst.x + w / 2} ${inst.y + h + 22})">
+                <rect x="-56" y="-8" width="112" height="16" rx="3" fill="var(--background)" fill-opacity="0.92" stroke="${selected ? 'var(--primary)' : 'var(--border)'}" stroke-width="1"/>
+                <text y="3" text-anchor="middle" font-size="8.5" fill="${selected ? 'var(--foreground)' : 'var(--muted-foreground)'}">${escapeHtml(piece.name)}${inst.mirror ? ' · mirrored' : ''}</text>
+              </g>
+            </g>`;
+        });
+        return {
+          svg: `<svg class="cv" viewBox="0 0 520 392" preserveAspectRatio="xMidYMid meet">
+            ${gridPattern()}
+            ${pieces.join('')}
+          </svg>`,
+          overlay: `
+            <button class="addpiece" type="button" data-add-piece>${icon('plus', 11)} Add piece</button>
+            ${pickerOpen ? picker() : ''}`,
+        };
+      }
+
+      function picker() {
+        const list = pieceTabs()
+          .map(
+            (p) =>
+              `<button type="button" data-pick="${p.id}"><span class="dot" style="width:8px;height:8px;border-radius:50%;background:${p.colour}"></span>${escapeHtml(p.name)}</button>`,
+          )
+          .join('');
+        return `<div class="picker">${list || '<div class="empty">No pieces yet.</div>'}</div>`;
+      }
+
+      function renderCanvas() {
+        const t = active();
+        const view =
+          t.kind === 'piece'
+            ? pieceCanvas()
+            : t.instances.length === 0
+              ? {
+                  svg: `<svg class="cv" viewBox="0 0 520 392" preserveAspectRatio="xMidYMid meet">${gridPattern()}</svg>`,
+                  overlay: `<div class="empty-state"><strong>No instances yet</strong><span>Use Add piece to place a piece in this assembly.</span></div>
+                    <button class="addpiece" type="button" data-add-piece>${icon('plus', 11)} Add piece</button>
+                    ${pickerOpen ? picker() : ''}`,
+                }
+              : assemblyCanvas();
+        document.getElementById('canvas').innerHTML = view.svg + view.overlay;
+      }
+
+      /* ── sidebar ──────────────────────────────────────────────────────── */
+      function drawerHeader(label, open = true, count) {
+        return `<div class="drawer-h">
+          <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(${open ? 90 : 0}deg)">
+            <path d="M4.5 3 7.5 6 4.5 9"/>
+          </svg>
+          ${label}${count !== undefined ? `<span class="count">${count}</span>` : ''}
+        </div>`;
+      }
+
+      function field(label, inner) {
+        return `<label class="field"><span>${label}</span>${inner}</label>`;
+      }
+
+      function colourPicker(piece, scope) {
+        return `<div class="field"><span>Colour</span><div class="swatches">
+          ${PALETTE.map(
+            (c) =>
+              `<button class="swatch" type="button" data-colour="${c}" data-scope="${scope}" aria-label="Set colour ${c}" aria-pressed="${piece.colour === c}" style="background:${c}"></button>`,
+          ).join('')}
+        </div></div>`;
+      }
+
+      function pieceFields(piece) {
+        return `
+          ${field('Name', `<input data-field="name" data-scope="piece" value="${escapeHtml(piece.name)}" />`)}
+          ${colourPicker(piece, 'piece')}
+          <div class="row2">
+            ${field('Quantity', `<input type="number" min="1" data-field="quantity" data-scope="piece" value="${piece.quantity}" />`)}
+            ${field('Allowance mm', `<input type="number" min="0" data-field="allowance" data-scope="piece" value="${piece.allowance}" />`)}
+          </div>
+          ${field(
+            'Allowance kind',
+            `<select data-field="allowanceKind" data-scope="piece">
+              <option value="seam" ${piece.allowanceKind === 'seam' ? 'selected' : ''}>Seam</option>
+              <option value="single" ${piece.allowanceKind === 'single' ? 'selected' : ''}>Single fold</option>
+              <option value="double" ${piece.allowanceKind === 'double' ? 'selected' : ''}>Double fold</option>
+              <option value="none" ${piece.allowanceKind === 'none' ? 'selected' : ''}>None</option>
+            </select>`,
+          )}
+          ${field('Notes', `<input data-field="notes" data-scope="piece" value="${escapeHtml(piece.notes)}" />`)}
+          ${field('Fabric', `<input data-field="fabric" data-scope="piece" value="${escapeHtml(piece.fabric)}" />`)}`;
+      }
+
+      function pieceSidebar(t) {
+        return `
+          ${drawerHeader('Piece')}
+          <div class="drawer-b">
+            ${pieceFields(t)}
+            <p class="subhead" style="margin-bottom:0">Measurements</p>
+            <dl style="display:grid;gap:4px;margin:0">
+              <div class="meta"><dt>Finished</dt><dd>320 × 410 mm</dd></div>
+              <div class="meta"><dt>Cut</dt><dd>344 × 434 mm</dd></div>
+              <div class="meta"><dt>Cut loop</dt><dd>Captured</dd></div>
+              <div class="meta"><dt>Owned</dt><dd>18 entities</dd></div>
+            </dl>
+            <div style="display:flex;gap:4px">
+              <button class="linkbtn" type="button">Set cut loop</button>
+              <button class="linkbtn" type="button">Clear</button>
+            </div>
+            <p class="subhead" style="margin-bottom:0">Per-edge allowances</p>
+            <div class="allow-row"><span>All edges</span><input value="${t.allowance}" /><select><option>Seam</option></select></div>
+            <div class="allow-row"><span>Top edge</span><input value="${t.allowance}" /><select><option>Seam</option></select></div>
+            <div class="allow-row"><span>Side seam</span><input value="${t.allowance}" /><select><option>Seam</option></select></div>
+            <div class="allow-row"><span>Hem</span><input placeholder="none" /><select><option>None</option></select></div>
+            <div class="allow-row"><span>Fold</span><input value="8" /><select><option>Double</option></select></div>
+            <button class="linkbtn" type="button" style="justify-self:start">Apply to all edges</button>
+          </div>
+          ${drawerHeader('Outline', false, 18)}
+          ${drawerHeader('View', false)}`;
+      }
+
+      function assemblySidebar(t) {
+        const inst = t.instances[selectedInstance];
+        const piece = inst ? byId(inst.piece) : null;
+        return `
+          ${drawerHeader('Selection')}
+          <div class="drawer-b">
+            ${
+              inst && piece
+                ? `
+              <div style="display:flex;align-items:center;gap:6px">
+                <span class="dot" style="width:8px;height:8px;border-radius:50%;background:${piece.colour}"></span>
+                <strong style="font-size:11.5px;font-weight:500">${escapeHtml(piece.name)}</strong>
+                <span class="pill ${inst.mirror ? 'on' : ''}" style="margin-left:auto">${inst.mirror ? 'Mirrored' : 'Normal'}</span>
+              </div>
+              <div class="row2">
+                ${field('X (mm)', `<input type="number" data-field="x" data-scope="instance" value="${Math.round(inst.x)}" />`)}
+                ${field('Y (mm)', `<input type="number" data-field="y" data-scope="instance" value="${Math.round(inst.y)}" />`)}
+              </div>
+              <div class="row2">
+                ${field('Angle (°)', `<input type="number" data-field="angle" data-scope="instance" value="${inst.angle}" />`)}
+                <label class="field"><span>Mirror</span>
+                  <button class="linkbtn" type="button" data-mirror style="width:100%;justify-content:center;height:24px">${inst.mirror ? 'On' : 'Off'}</button>
+                </label>
+              </div>
+              <button class="linkbtn" type="button" data-open-piece="${piece.id}" style="justify-self:start">Open piece tab →</button>
+            `
+                : '<span style="font-size:10.5px;color:var(--muted-foreground)">Select an instance in the canvas.</span>'
+            }
+          </div>
+          ${
+            piece
+              ? `${drawerHeader('Piece')}<div class="drawer-b">${pieceFields(piece)}<p style="margin:0;font-size:9.5px;color:var(--muted-foreground);line-height:1.45">Parameters apply to the piece, so every instance of it updates.</p></div>`
+              : ''
+          }
+          ${drawerHeader('Assembly', true, t.instances.length)}
+          <div class="drawer-b">
+            ${field('Name', `<input data-field="asmName" data-scope="assembly" value="${escapeHtml(t.name)}" />`)}
+            <dl style="display:grid;gap:4px;margin:0">
+              <div class="meta"><dt>Instances</dt><dd>${t.instances.length}</dd></div>
+              <div class="meta"><dt>Pieces</dt><dd>${new Set(t.instances.map((i) => i.piece)).size}</dd></div>
+            </dl>
+          </div>`;
+      }
+
+      function renderSidebar() {
+        const t = active();
+        document.getElementById('sidebar').innerHTML =
+          t.kind === 'piece' ? pieceSidebar(t) : assemblySidebar(t);
+      }
+
+      /* ── render ───────────────────────────────────────────────────────── */
+      function render() {
+        document.getElementById('ribbon').innerHTML = renderRibbon();
+        document.getElementById('tabs').innerHTML = renderTabs();
+        renderCanvas();
+        renderSidebar();
+      }
+
+      /* ── interactions ─────────────────────────────────────────────────── */
+      const app = document.getElementById('app');
+
+      document.getElementById('plus').addEventListener('click', (e) => {
+        e.stopPropagation();
+        menuOpen = !menuOpen;
+        document.getElementById('menu').hidden = !menuOpen;
+        document.getElementById('plus').setAttribute('aria-expanded', String(menuOpen));
+      });
+
+      document.getElementById('menu').addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-new]');
+        if (!btn) return;
+        menuOpen = false;
+        document.getElementById('menu').hidden = true;
+        document.getElementById('plus').setAttribute('aria-expanded', 'false');
+        const kind = btn.dataset.new;
+        const n = tabs.filter((t) => t.kind === kind).length + 1;
+        const id = `${kind}-${Date.now()}`;
+        if (kind === 'piece') {
+          tabs.push({
+            id,
+            kind: 'piece',
+            name: `Piece ${n}`,
+            colour: PALETTE[(n - 1) % PALETTE.length],
+            quantity: 1,
+            allowance: '10',
+            allowanceKind: 'seam',
+            notes: '',
+            fabric: '',
+            fresh: true,
+          });
+        } else {
+          tabs.push({ id, kind: 'assembly', name: `Assembly 0${n}`, instances: [] });
+          selectedInstance = 0;
+        }
+        order.push(id);
+        activeId = id;
+        pickerOpen = false;
+        render();
+      });
+
+      app.addEventListener('click', (e) => {
+        const tab = e.target.closest('[data-tab]');
+        if (tab) {
+          activeId = tab.dataset.tab;
+          pickerOpen = false;
+          selectedInstance = 0;
+          render();
+          return;
+        }
+
+        const inst = e.target.closest('[data-instance]');
+        if (inst && active().kind === 'assembly') {
+          selectedInstance = Number(inst.dataset.instance);
+          pickerOpen = false;
+          render();
+          return;
+        }
+
+        if (e.target.closest('[data-add-piece]')) {
+          pickerOpen = !pickerOpen;
+          renderCanvas();
+          return;
+        }
+
+        const pick = e.target.closest('[data-pick]');
+        if (pick && active().kind === 'assembly') {
+          const t = active();
+          const slots = [
+            [58, 56],
+            [312, 56],
+            [185, 196],
+            [40, 200],
+            [330, 200],
+          ];
+          const slot = slots[t.instances.length % slots.length];
+          t.instances.push({
+            piece: pick.dataset.pick,
+            x: slot[0],
+            y: slot[1],
+            scale: 0.46,
+            mirror: false,
+            angle: 0,
+          });
+          selectedInstance = t.instances.length - 1;
+          pickerOpen = false;
+          render();
+          return;
+        }
+
+        if (e.target.closest('[data-mirror]') && active().kind === 'assembly') {
+          const inst = active().instances[selectedInstance];
+          if (inst) {
+            inst.mirror = !inst.mirror;
+            render();
+          }
+          return;
+        }
+
+        const openPiece = e.target.closest('[data-open-piece]');
+        if (openPiece) {
+          activeId = openPiece.dataset.openPiece;
+          render();
+          return;
+        }
+
+        const swatch = e.target.closest('[data-colour]');
+        if (swatch) {
+          const colour = swatch.dataset.colour;
+          if (swatch.dataset.scope === 'piece') {
+            const t = active();
+            const piece = t.kind === 'piece' ? t : byId(t.instances[selectedInstance]?.piece);
+            if (piece) piece.colour = colour;
+          }
+          render();
+          return;
+        }
+
+        if (!e.target.closest('.plus-wrap')) {
+          if (menuOpen) {
+            menuOpen = false;
+            document.getElementById('menu').hidden = true;
+            document.getElementById('plus').setAttribute('aria-expanded', 'false');
+          }
+          if (pickerOpen && !e.target.closest('.picker')) {
+            pickerOpen = false;
+            renderCanvas();
+          }
+        }
+      });
+
+      document.addEventListener('change', (e) => {
+        const el = e.target.closest('[data-field]');
+        if (!el) return;
+        const scope = el.dataset.scope;
+        const fieldName = el.dataset.field;
+        const t = active();
+
+        if (scope === 'assembly') {
+          t.name = el.value || t.name;
+          render();
+          return;
+        }
+
+        const piece =
+          scope === 'piece'
+            ? t.kind === 'piece'
+              ? t
+              : byId(t.instances[selectedInstance]?.piece)
+            : null;
+        if (!piece) return;
+
+        if (fieldName === 'name') piece.name = el.value;
+        if (fieldName === 'quantity') piece.quantity = Math.max(1, Number(el.value) || 1);
+        if (fieldName === 'allowance') piece.allowance = el.value;
+        if (fieldName === 'allowanceKind') piece.allowanceKind = el.value;
+        if (fieldName === 'notes') piece.notes = el.value;
+        if (fieldName === 'fabric') piece.fabric = el.value;
+
+        if (['x', 'y', 'angle'].includes(fieldName)) {
+          const inst = t.instances[selectedInstance];
+          if (inst) inst[fieldName] = Number(String(el.value).replace('°', '')) || 0;
+        }
+        render();
+      });
+
+      /* tab drag reorder */
+      const tabsEl = document.getElementById('tabs');
+      tabsEl.addEventListener('dragstart', (e) => {
+        const tab = e.target.closest('[data-tab]');
+        if (!tab) return;
+        dragId = tab.dataset.tab;
+        tab.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      tabsEl.addEventListener('dragend', () => {
+        dragId = null;
+        render();
+      });
+      tabsEl.addEventListener('dragover', (e) => {
+        const tab = e.target.closest('[data-tab]');
+        if (!tab || !dragId) return;
+        e.preventDefault();
+        document.querySelectorAll('.tab').forEach((el) => el.classList.remove('drop-left', 'drop-right'));
+        const r = tab.getBoundingClientRect();
+        tab.classList.add(e.clientX < r.left + r.width / 2 ? 'drop-left' : 'drop-right');
+      });
+      tabsEl.addEventListener('drop', (e) => {
+        const tab = e.target.closest('[data-tab]');
+        if (!tab || !dragId || tab.dataset.tab === dragId) return;
+        e.preventDefault();
+        const r = tab.getBoundingClientRect();
+        const after = e.clientX >= r.left + r.width / 2;
+        order = order.filter((id) => id !== dragId);
+        const target = order.indexOf(tab.dataset.tab);
+        order.splice(after ? target + 1 : target, 0, dragId);
+        dragId = null;
+        render();
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          menuOpen = false;
+          pickerOpen = false;
+          document.getElementById('menu').hidden = true;
+          renderCanvas();
+        }
+      });
+
+      render();
+    </script>
+  </body>
+</html>

@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { computed } from 'vue';
+
 import { Button, type ButtonVariant } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { ConstraintType } from '@sewcraft/geometry';
 
 import {
+  ASSEMBLY_RIBBON_GROUPS,
   RIBBON_GROUPS,
   type RibbonAction,
   type RibbonItem,
@@ -17,18 +20,26 @@ import RibbonToolGroup from './RibbonToolGroup.vue';
 
 type RibbonButtonItem = Exclude<RibbonItem, RibbonToolGroupItem>;
 
-const props = defineProps<{
-  activeTool: EditorTool;
-  activeConstraint?: ConstraintType | null;
-  canUndo: boolean;
-  canRedo: boolean;
-  canDelete: boolean;
-  canCreatePiece?: boolean;
-  /** Explains a refused Create piece, shown in its tooltip. */
-  createPieceHint?: string;
-  /** A read-only document disables every tool and action. */
-  readOnly?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    activeTool: EditorTool;
+    /** The piece tab shows the sketch ribbon; an assembly tab shows its own. */
+    mode?: 'piece' | 'assembly';
+    activeConstraint?: ConstraintType | null;
+    canUndo: boolean;
+    canRedo: boolean;
+    canDelete: boolean;
+    /** A read-only document disables every tool and action. */
+    readOnly?: boolean;
+    /** Whether the active piece can be exported. */
+    canExport?: boolean;
+    /** Explains a refused export, shown in its tooltip. */
+    exportHint?: string;
+  }>(),
+  { mode: 'piece', readOnly: false, canExport: true, exportHint: undefined },
+);
+
+const groups = computed(() => (props.mode === 'assembly' ? ASSEMBLY_RIBBON_GROUPS : RIBBON_GROUPS));
 
 const emit = defineEmits<{
   'select-tool': [tool: EditorTool];
@@ -59,8 +70,12 @@ function variantFor(item: RibbonButtonItem): ButtonVariant {
 
 function isDisabled(item: RibbonButtonItem): boolean {
   if (props.readOnly) {
-    // Read-only keeps the view actions that do not mutate: fit and export.
-    return item.kind !== 'action' || (item.action !== 'fit' && item.action !== 'download_svg');
+    // Read-only keeps the view actions that do not mutate: fit, and export when
+    // the active piece can still be written.
+    if (item.kind !== 'action') return true;
+    if (item.action === 'fit') return false;
+    if (item.action === 'download_svg') return !props.canExport;
+    return true;
   }
   if (item.kind !== 'action') return false;
   switch (item.action) {
@@ -70,8 +85,11 @@ function isDisabled(item: RibbonButtonItem): boolean {
       return !props.canRedo;
     case 'delete':
       return !props.canDelete;
-    case 'create_piece':
-      return !props.canCreatePiece;
+    case 'download_svg':
+      return !props.canExport;
+    case 'mirror_instance':
+    case 'rotate_instance':
+      return !props.canDelete;
     default:
       return false;
   }
@@ -83,9 +101,11 @@ function pressed(item: RibbonButtonItem): true | undefined {
 
 /** The tooltip text: an action's own label, or the reason it is refused. */
 function hintFor(item: RibbonButtonItem): string {
-  return item.kind === 'action' && item.action === 'create_piece' && props.createPieceHint
-    ? props.createPieceHint
-    : item.label;
+  if (item.kind !== 'action') return item.label;
+  if (item.action === 'download_svg' && !props.canExport && props.exportHint) {
+    return props.exportHint;
+  }
+  return item.label;
 }
 
 function activate(item: RibbonButtonItem): void {
@@ -107,7 +127,7 @@ function activate(item: RibbonButtonItem): void {
       aria-label="Editor tools"
       data-testid="editor-ribbon"
     >
-      <template v-for="(group, index) in RIBBON_GROUPS" :key="group.id">
+      <template v-for="(group, index) in groups" :key="group.id">
         <Separator v-if="index > 0" orientation="vertical" class="mx-1" />
         <div class="flex flex-col gap-1" :aria-label="group.label" role="group">
           <span

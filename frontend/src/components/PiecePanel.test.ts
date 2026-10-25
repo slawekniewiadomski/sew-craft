@@ -33,8 +33,20 @@ const summary: PieceSummary = {
 };
 
 function mountPanel(overrides: Partial<PieceSummary> = {}, props: Record<string, unknown> = {}) {
+  const merged = { ...summary, ...overrides };
   return mount(PiecePanel, {
-    props: { summary: { ...summary, ...overrides }, label: 'Front panel', ...props },
+    props: {
+      summary: merged,
+      piece: {
+        id: merged.id,
+        ...(merged.name === null ? {} : { name: merged.name }),
+        quantity: merged.quantity,
+        edges: merged.edges,
+        allowances: [],
+      },
+      label: 'Front panel',
+      ...props,
+    },
   });
 }
 
@@ -93,7 +105,7 @@ describe('PiecePanel', () => {
 
   it('renames a piece, clears the name and ignores an unchanged one', async () => {
     const wrapper = mountPanel();
-    const name = wrapper.find('[data-testid="entity-piece-name"]');
+    const name = wrapper.find('[data-testid="entity-name"]');
     const emitted = () => wrapper.emitted('update-piece') ?? [];
 
     await name.setValue('Back');
@@ -112,7 +124,7 @@ describe('PiecePanel', () => {
 
   it('edits and validates the quantity', async () => {
     const wrapper = mountPanel();
-    const quantity = wrapper.find('[data-testid="entity-piece-quantity"]');
+    const quantity = wrapper.find('[data-testid="entity-quantity"]');
     const emitted = () => wrapper.emitted('update-piece') ?? [];
 
     await quantity.setValue('3');
@@ -292,27 +304,30 @@ describe('PiecePanel loop state and actions', () => {
     );
   });
 
-  it('emits Set, Clear, Move and Activate', async () => {
+  it('emits Set, Clear and Activate', async () => {
     const wrapper = mountPanel({}, { prefix: 'drawer' });
 
     await wrapper.find('[data-testid="drawer-set-cut-loop"]').trigger('click');
     await wrapper.find('[data-testid="drawer-clear-cut-loop"]').trigger('click');
-    await wrapper.find('[data-testid="drawer-piece-move-toggle"]').trigger('click');
     await wrapper.find('[data-testid="drawer-piece-activate"]').trigger('click');
 
     expect(wrapper.emitted('set-cut-loop')).toEqual([['p1']]);
     expect(wrapper.emitted('clear-cut-loop')).toEqual([['p1']]);
-    expect(wrapper.emitted('toggle-move')).toEqual([['p1']]);
     expect(wrapper.emitted('activate')).toEqual([['p1']]);
   });
 
-  it('marks the active piece and armed Move toggle', () => {
-    const wrapper = mountPanel({}, { active: true, moveMode: true });
+  it('marks the active piece', () => {
+    const wrapper = mountPanel({}, { active: true });
 
     expect(wrapper.find('[data-testid="entity-piece"]').classes()).toContain('border-primary');
-    expect(
-      wrapper.find('[data-testid="entity-piece-move-toggle"]').attributes('aria-pressed'),
-    ).toBe('true');
     expect(wrapper.find('[data-testid="entity-piece-activate"]').text()).toBe('Active');
+  });
+
+  it('emits the per-piece allowance override', async () => {
+    const wrapper = mountPanel();
+
+    await wrapper.find('[data-testid="entity-default-mode"]').setValue('none');
+
+    expect(wrapper.emitted('set-piece-default')).toEqual([['p1', { mode: 'none' }]]);
   });
 });

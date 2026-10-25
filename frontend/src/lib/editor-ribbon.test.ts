@@ -27,13 +27,6 @@ describe('RIBBON_GROUPS', () => {
       { kind: 'tool', id: 'tool-select', label: 'Select', icon: 'select', tool: 'select' },
       {
         kind: 'action',
-        id: 'create-piece',
-        label: 'New piece',
-        icon: 'piece',
-        action: 'create_piece',
-      },
-      {
-        kind: 'action',
         id: 'set-cut-loop',
         label: 'Set cut loop',
         icon: 'piece',

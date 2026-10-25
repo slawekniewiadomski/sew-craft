@@ -328,11 +328,18 @@ describe('corner round feature points', () => {
       params: { first: 'bottom', second: 'right', radius: 10 },
     }).document;
     expect(cornerRounds(roundedBase)[0]!.center).toBe('r1:center');
-    const withPiece = applyCommand(roundedBase, {
-      id: 'piece',
-      type: 'create_piece',
-      params: { edges: ['bottom', 'right', 'top', 'left'] },
-    }).document;
+    const withPiece = applyCommand(
+      applyCommand(roundedBase, {
+        id: 'piece',
+        type: 'create_piece',
+        params: {},
+      }).document,
+      {
+        id: 'loop',
+        type: 'set_piece_loop',
+        params: { piece: 'piece', edges: ['bottom', 'right', 'top', 'left'] },
+      },
+    ).document;
 
     expect(withPiece.pieces).toHaveLength(1);
     expect(withPiece.pieces[0]!.edges).toEqual(['bottom', 'right', 'top', 'left']);

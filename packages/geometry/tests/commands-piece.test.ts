@@ -68,21 +68,43 @@ const documentOf = (extra: Entity[] = []): PatternDocument => ({
 const createPiece = (
   overrides: Partial<{
     id: string;
-    edges: string[];
     name: string;
     quantity: number;
-    allowance: 'default' | 'none' | { width: number; kind?: 'seam' | 'single' | 'double' };
+    color: string;
+    defaults: { allowance: { width: number; kind?: 'seam' | 'single' | 'double' } | null };
   }> = {},
 ): Command => ({
   id: overrides.id ?? 'piece-1',
   type: 'create_piece',
   params: {
-    edges: overrides.edges ?? ['bottom', 'right', 'top', 'left'],
     ...(overrides.name === undefined ? {} : { name: overrides.name }),
     ...(overrides.quantity === undefined ? {} : { quantity: overrides.quantity }),
-    ...(overrides.allowance === undefined ? {} : { allowance: overrides.allowance }),
+    ...(overrides.color === undefined ? {} : { color: overrides.color }),
+    ...(overrides.defaults === undefined ? {} : { defaults: overrides.defaults }),
   },
 });
+
+const setLoop = (
+  piece = 'piece-1',
+  edges: string[] = ['bottom', 'right', 'top', 'left'],
+  allowance:
+    'default' | 'none' | { width: number; kind?: 'seam' | 'single' | 'double' } = 'default',
+): Command => ({
+  id: `${piece}:loop`,
+  type: 'set_piece_loop',
+  params: { piece, edges, allowance },
+});
+
+/** A document with one looped piece, before any per-edge allowance edits. */
+function withLoop(
+  allowance:
+    'default' | 'none' | { width: number; kind?: 'seam' | 'single' | 'double' } = 'default',
+): PatternDocument {
+  return applyCommand(
+    applyCommand(documentOf(), createPiece()).document,
+    setLoop('piece-1', ['bottom', 'right', 'top', 'left'], allowance),
+  ).document;
+}
 
 /** A document with no stored default, so the built-in 10 mm seam applies. */
 const bareDocument = (): PatternDocument => {
@@ -93,7 +115,7 @@ const bareDocument = (): PatternDocument => {
 
 /** A document with one piece and the standard three-edge allowance set. */
 function withPiece(): PatternDocument {
-  const created = applyCommand(documentOf(), createPiece()).document;
+  const created = withLoop('none');
   return [
     { edge: 'right', width: 10, kind: 'single' as const },
     { edge: 'top', width: 10, kind: 'single' as const },
@@ -131,18 +153,29 @@ function derivedOf(document: PatternDocument, id: string) {
 }
 
 describe('create_piece', () => {
-  it('creates a piece with a name, quantity and allowances list', () => {
+  it('creates an empty piece with a name, quantity, colour and defaults', () => {
     const document = documentOf();
-    const result = applyCommand(document, createPiece({ name: ' Panel ', quantity: 2 }));
+    const result = applyCommand(
+      document,
+      createPiece({
+        name: ' Panel ',
+        quantity: 2,
+        color: '#336699',
+        defaults: { allowance: { width: 7, kind: 'single' } },
+      }),
+    );
     const piece = pieceById(result.document, 'piece-1');
 
     expect(piece).toEqual({
       id: 'piece-1',
       name: 'Panel',
       quantity: 2,
-      edges: ['bottom', 'right', 'top', 'left'],
+      color: '#336699',
+      defaults: { allowance: { width: 7, kind: 'single' } },
+      edges: [],
       allowances: [],
     });
+    expect(result.document.tabs).toEqual([{ kind: 'piece', id: 'piece-1' }]);
     expect(result.inverse).toEqual({
       id: 'piece-1',
       type: 'delete_piece',
@@ -150,11 +183,19 @@ describe('create_piece', () => {
     });
   });
 
-  it('omits an absent name and quantity', () => {
+  it('omits absent optional fields and an explicit null allowance default', () => {
     const piece = pieceById(applyCommand(documentOf(), createPiece()).document, 'piece-1')!;
 
     expect('name' in piece).toBe(false);
     expect('quantity' in piece).toBe(false);
+    expect('color' in piece).toBe(false);
+    expect('defaults' in piece).toBe(false);
+
+    const none = pieceById(
+      applyCommand(documentOf(), createPiece({ defaults: { allowance: null } })).document,
+      'piece-1',
+    )!;
+    expect(none.defaults).toEqual({ allowance: null });
   });
 
   it('is idempotent when the piece already exists', () => {
@@ -163,39 +204,6 @@ describe('create_piece', () => {
 
     expect(second.document).toBe(first);
     expect(second.inverse).toBeNull();
-  });
-
-  it('rejects a selection that is not one closed loop', () => {
-    expect(() =>
-      applyCommand(documentOf(), createPiece({ edges: ['bottom', 'right', 'top'] })),
-    ).toThrowError(/does not connect to edge/);
-  });
-
-  it('rejects a star that only shares one common vertex', () => {
-    const document = documentOf([
-      point('hub', 300, 0),
-      point('x', 310, 0),
-      point('y', 300, 10),
-      point('z', 290, 0),
-      line('spoke-x', 'hub', 'x'),
-      line('spoke-y', 'hub', 'y'),
-      line('spoke-z', 'hub', 'z'),
-    ]);
-
-    expect(() =>
-      applyCommand(document, createPiece({ edges: ['spoke-x', 'spoke-y', 'spoke-z'] })),
-    ).toThrowError(/does not connect to edge/);
-  });
-
-  it('rejects an edge that already belongs to a piece', () => {
-    const document = applyCommand(documentOf(), createPiece()).document;
-
-    expect(() =>
-      applyCommand(
-        document,
-        createPiece({ id: 'piece-2', edges: ['bottom', 'right', 'top', 'left'] }),
-      ),
-    ).toThrowError(/already belongs to another piece/);
   });
 
   it('rejects an invalid quantity', () => {
@@ -212,13 +220,64 @@ describe('create_piece', () => {
     );
   });
 
-  it('copies the document default onto every edge', () => {
-    const piece = pieceById(
-      applyCommand(documentOf(), createPiece({ allowance: 'default' })).document,
-      'piece-1',
-    )!;
+  it('rejects a colour that is not lowercase #rrggbb', () => {
+    for (const color of ['336699', '#33669', '#33669G', '#AABBCC', 'red']) {
+      expect(() => applyCommand(documentOf(), createPiece({ color }))).toThrowError(
+        /color must be #rrggbb/,
+      );
+    }
+  });
 
-    expect(piece.allowances).toEqual([
+  it('rejects an invalid default preset', () => {
+    for (const width of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() =>
+        applyCommand(documentOf(), createPiece({ defaults: { allowance: { width } } })),
+      ).toThrowError(/allowance width must be a finite number greater than 0/);
+    }
+
+    expect(() =>
+      applyCommand(
+        documentOf(),
+        createPiece({
+          defaults: { allowance: { width: 10, kind: 'welded' as unknown as 'seam' } },
+        }),
+      ),
+    ).toThrowError(/unknown allowance kind/);
+  });
+
+  it('does not duplicate a tab that a hand-edited document already holds', () => {
+    const handEdited: PatternDocument = {
+      ...documentOf(),
+      pieces: [],
+      tabs: [{ kind: 'piece', id: 'piece-1' }],
+    };
+
+    expect(applyCommand(handEdited, createPiece()).document.tabs).toEqual([
+      { kind: 'piece', id: 'piece-1' },
+    ]);
+  });
+
+  it('rejects a non-object default preset', () => {
+    expect(() =>
+      applyCommand(
+        documentOf(),
+        createPiece({ defaults: { allowance: 'preset' as unknown as { width: number } } }),
+      ),
+    ).toThrowError(/allowance must be "default", "none" or a preset/);
+  });
+
+  it('removes the piece and its tab on undo', () => {
+    const result = applyCommand(documentOf(), createPiece());
+    const restored = applyCommand(result.document, result.inverse!).document;
+
+    expect(pieceById(restored, 'piece-1')).toBeUndefined();
+    expect(restored.tabs).toEqual([]);
+  });
+});
+
+describe('set_piece_loop allowance defaults', () => {
+  it('copies the document default onto every edge', () => {
+    expect(pieceById(withLoop(), 'piece-1')!.allowances).toEqual([
       { edge: 'bottom', width: 10, kind: 'seam' },
       { edge: 'right', width: 10, kind: 'seam' },
       { edge: 'top', width: 10, kind: 'seam' },
@@ -234,7 +293,7 @@ describe('create_piece', () => {
     }).document;
 
     const piece = pieceById(
-      applyCommand(base, createPiece({ allowance: 'default' })).document,
+      applyCommand(applyCommand(base, createPiece()).document, setLoop('piece-1')).document,
       'piece-1',
     )!;
 
@@ -242,30 +301,47 @@ describe('create_piece', () => {
     expect(piece.allowances.every((row) => row.width === 15 && row.kind === 'double')).toBe(true);
   });
 
-  it('starts with no allowances for "none" or an explicit absence', () => {
-    expect(
-      pieceById(applyCommand(documentOf(), createPiece({ allowance: 'none' })).document, 'piece-1')!
-        .allowances,
-    ).toEqual([]);
+  it('starts with no allowances for "none"', () => {
+    expect(pieceById(withLoop('none'), 'piece-1')!.allowances).toEqual([]);
   });
 
   it('copies an explicit preset onto every edge', () => {
-    const piece = pieceById(
-      applyCommand(documentOf(), createPiece({ allowance: { width: 7, kind: 'single' } })).document,
-      'piece-1',
-    )!;
+    const piece = pieceById(withLoop({ width: 7, kind: 'single' }), 'piece-1')!;
 
     expect(piece.allowances).toHaveLength(4);
     expect(piece.allowances.every((row) => row.width === 7 && row.kind === 'single')).toBe(true);
   });
 
   it('defaults an omitted preset kind to seam', () => {
+    const piece = pieceById(withLoop({ width: 8 }), 'piece-1')!;
+
+    expect(piece.allowances[0]).toEqual({ edge: 'bottom', width: 8, kind: 'seam' });
+  });
+
+  it('uses the per-piece default over the document default', () => {
+    const document = applyCommand(
+      applyCommand(documentOf(), {
+        id: 'default',
+        type: 'set_default_allowance',
+        params: { width: 15, kind: 'double' },
+      }).document,
+      createPiece({ defaults: { allowance: { width: 4, kind: 'single' } } }),
+    ).document;
+    const piece = pieceById(applyCommand(document, setLoop('piece-1')).document, 'piece-1')!;
+
+    expect(piece.allowances.every((row) => row.width === 4 && row.kind === 'single')).toBe(true);
+  });
+
+  it('starts with no allowances when the per-piece override is explicitly none', () => {
     const piece = pieceById(
-      applyCommand(documentOf(), createPiece({ allowance: { width: 8 } })).document,
+      applyCommand(
+        applyCommand(documentOf(), createPiece({ defaults: { allowance: null } })).document,
+        setLoop('piece-1'),
+      ).document,
       'piece-1',
     )!;
 
-    expect(piece.allowances[0]).toEqual({ edge: 'bottom', width: 8, kind: 'seam' });
+    expect(piece.allowances).toEqual([]);
   });
 
   it('starts with no allowances when the document default is off', () => {
@@ -276,34 +352,55 @@ describe('create_piece', () => {
     }).document;
 
     expect(
-      pieceById(applyCommand(base, createPiece({ allowance: 'default' })).document, 'piece-1')!
-        .allowances,
+      pieceById(
+        applyCommand(applyCommand(base, createPiece()).document, setLoop('piece-1')).document,
+        'piece-1',
+      )!.allowances,
     ).toEqual([]);
   });
 
   it('rejects an invalid explicit preset', () => {
     for (const width of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(() => applyCommand(documentOf(), createPiece({ allowance: { width } }))).toThrowError(
+      expect(() => withLoop({ width })).toThrowError(
         /allowance width must be a finite number greater than 0/,
       );
     }
 
-    expect(() =>
-      applyCommand(
-        documentOf(),
-        createPiece({ allowance: { width: 10, kind: 'welded' as unknown as 'seam' } }),
-      ),
-    ).toThrowError(/unknown allowance kind/);
-    expect(() =>
-      applyCommand(documentOf(), createPiece({ allowance: 'other' as unknown as 'none' })),
-    ).toThrowError(/allowance must be "default", "none" or a preset/);
+    expect(() => withLoop({ width: 10, kind: 'welded' as unknown as 'seam' })).toThrowError(
+      /unknown allowance kind/,
+    );
   });
 
-  it('removes the copied allowances with the piece on undo', () => {
-    const result = applyCommand(documentOf(), createPiece({ allowance: 'default' }));
-    const restored = applyCommand(result.document, result.inverse!).document;
+  it('rejects an edge that already belongs to another piece', () => {
+    const document = withLoop();
 
-    expect(pieceById(restored, 'piece-1')).toBeUndefined();
+    expect(() =>
+      applyCommand(document, {
+        id: 'piece-2',
+        type: 'create_piece',
+        params: {},
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      applyCommand(
+        applyCommand(document, {
+          id: 'piece-2',
+          type: 'create_piece',
+          params: {},
+        }).document,
+        setLoop('piece-2', ['bottom', 'right', 'top', 'left']),
+      ),
+    ).toThrowError(/belongs to another piece/);
+  });
+
+  it('rejects a selection that is not one closed loop', () => {
+    expect(() =>
+      applyCommand(
+        applyCommand(documentOf(), createPiece()).document,
+        setLoop('piece-1', ['bottom', 'right', 'top']),
+      ),
+    ).toThrowError(/does not connect to edge/);
   });
 });
 
@@ -436,7 +533,7 @@ describe('update_piece', () => {
     expect(result.inverse).toEqual({
       id: 'update-1',
       type: 'update_piece',
-      params: { id: 'piece-1', name: null, quantity: null },
+      params: { id: 'piece-1', name: null, quantity: null, notes: null, fabric: null, color: null },
     });
   });
 
@@ -457,7 +554,7 @@ describe('update_piece', () => {
     expect(result.inverse).toEqual({
       id: 'update-1',
       type: 'update_piece',
-      params: { id: 'piece-1', name: 'Panel', quantity: 3 },
+      params: { id: 'piece-1', name: 'Panel', quantity: 3, notes: null, fabric: null, color: null },
     });
   });
 
@@ -526,7 +623,7 @@ describe('update_piece', () => {
         type: 'update_piece',
         params: { id: 'piece-1' },
       }),
-    ).toThrowError(/provide name or quantity/);
+    ).toThrowError(/provide name, quantity, notes, fabric or color/);
     expect(() =>
       applyCommand(document, {
         id: 'update-1',
@@ -573,7 +670,7 @@ describe('delete_piece', () => {
 
 describe('set_piece_allowance', () => {
   it('adds an allowance and restores its absence', () => {
-    const document = applyCommand(documentOf(), createPiece()).document;
+    const document = withLoop('none');
     const result = applyCommand(document, {
       id: 'a1',
       type: 'set_piece_allowance',
@@ -611,7 +708,7 @@ describe('set_piece_allowance', () => {
   });
 
   it('omits the kind on undo when the previous allowance had none', () => {
-    const created = applyCommand(documentOf(), createPiece()).document;
+    const created = withLoop('none');
     const document = applyCommand(created, {
       id: 'a1',
       type: 'set_piece_allowance',
@@ -671,7 +768,7 @@ describe('set_piece_allowance', () => {
   });
 
   it('treats an omitted kind and seam as the same allowance', () => {
-    const document = applyCommand(documentOf(), createPiece()).document;
+    const document = withLoop();
     const added = applyCommand(document, {
       id: 'a1',
       type: 'set_piece_allowance',
@@ -1712,9 +1809,14 @@ describe('corner rounds on piece corners', () => {
       {
         id: 'piece-1',
         type: 'create_piece',
-        params: { edges },
+        params: {},
       },
     ).document;
+    document = applyCommand(document, {
+      id: 'loop',
+      type: 'set_piece_loop',
+      params: { piece: 'piece-1', edges, allowance: 'none' },
+    }).document;
     for (const [index, edge] of ['cd', 'de'].entries()) {
       document = applyCommand(document, {
         id: `allow-${index}`,

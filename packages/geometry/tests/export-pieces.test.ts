@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createEmptyDocument,
-  toSvg,
+  toSvgPiece,
   type Entity,
   type LineEntity,
   type PatternDocument,
@@ -10,21 +10,21 @@ import {
   type PointEntity,
 } from '../src/index.js';
 
-const point = (id: string, x: number, y: number, construction = false): PointEntity => ({
+const point = (id: string, x: number, y: number): PointEntity => ({
   id,
   kind: 'point',
   x,
   y,
-  construction,
+  construction: false,
   fixed: false,
 });
 
-const line = (id: string, start: string, end: string, construction = false): LineEntity => ({
+const line = (id: string, start: string, end: string): LineEntity => ({
   id,
   kind: 'line',
   start,
   end,
-  construction,
+  construction: false,
 });
 
 const entities = (): Entity[] => [
@@ -59,8 +59,8 @@ const documentOf = (pieces: Piece[] = [piece()], extra: Entity[] = []): PatternD
 
 const generatedAt = '2026-10-22T00:00:00.000Z';
 
-const svg = (document: PatternDocument, options = {}): string =>
-  toSvg(document, { generatedAt, ...options });
+const svg = (document: PatternDocument, target: Piece, options = {}): string =>
+  toSvgPiece(document, target, { generatedAt, ...options });
 
 /** The inner content of the layer group with this name, or `null` when absent. */
 function layer(svgText: string, name: string): string[] | null {
@@ -77,8 +77,9 @@ function layer(svgText: string, name: string): string[] | null {
 }
 
 describe('piece cut layer', () => {
-  it('exports the closed cut loops as the cut layer', () => {
-    const cut = layer(svg(documentOf()), 'cut')!;
+  it('exports the closed cut loop as the cut layer', () => {
+    const document = documentOf();
+    const cut = layer(svg(document, piece()), 'cut')!;
 
     expect(cut).toHaveLength(1);
     expect(cut[0]).toContain('data-piece="piece-1"');
@@ -87,7 +88,7 @@ describe('piece cut layer', () => {
     expect(cut[0]).not.toContain('data-entity-id');
   });
 
-  it('unions the cut bounds of several pieces', () => {
+  it('exports only the requested piece from a multi-piece document', () => {
     const second: Entity[] = [
       point('a2', 500, 0),
       point('b2', 600, 0),
@@ -103,41 +104,25 @@ describe('piece cut layer', () => {
       edges: ['bottom2', 'right2', 'top2', 'left2'],
       allowances: [],
     };
-    const output = svg(documentOf([piece(), secondPiece], second));
-    const cut = layer(output, 'cut')!;
+    const document = documentOf([piece(), secondPiece], second);
+    const output = svg(document, secondPiece);
 
-    expect(cut).toHaveLength(2);
-    expect(output).toContain('data-piece="piece-1"');
+    expect(layer(output, 'cut')).toHaveLength(1);
     expect(output).toContain('data-piece="piece-2"');
-    // -10..600 wide and 0..210 high, plus 10 mm of padding.
-    expect(output).toContain('width="630mm" height="230mm"');
-    expect(output).toContain('viewBox="-20 -10 630 230"');
-  });
-
-  it('skips a piece that does not resolve but still uses the next cut bound', () => {
-    const broken: Piece = { ...piece(), id: 'broken', edges: ['bottom', 'right'] };
-    const output = svg(documentOf([broken, piece()]));
-
-    expect(layer(output, 'cut')).toHaveLength(1);
-    expect(output).toContain('width="240mm" height="230mm"');
-    expect(output).not.toContain('sewcraft:piece id="broken"');
-  });
-
-  it('keeps the resolved cut bound when a later piece does not resolve', () => {
-    const broken: Piece = { ...piece(), id: 'broken', edges: ['bottom', 'right'] };
-    const output = svg(documentOf([piece(), broken]));
-
-    expect(layer(output, 'cut')).toHaveLength(1);
-    expect(output).toContain('width="240mm" height="230mm"');
-    expect(output).not.toContain('sewcraft:piece id="broken"');
+    expect(output).not.toContain('data-piece="piece-1"');
+    expect(output).toContain('width="120mm" height="220mm"');
+    expect(output).toContain('viewBox="490 -10 120 220"');
   });
 
   it('exports an empty cut layer and a zero-size viewBox for an unresolvable piece', () => {
     const document = documentOf();
-    const output = svg({
-      ...document,
-      entities: document.entities.filter((entity) => entity.id !== 'c'),
-    });
+    const output = svg(
+      {
+        ...document,
+        entities: document.entities.filter((entity) => entity.id !== 'c'),
+      },
+      piece(),
+    );
 
     expect(layer(output, 'cut')).toEqual([]);
     expect(layer(output, 'stitch')).toBeNull();
@@ -147,36 +132,46 @@ describe('piece cut layer', () => {
   });
 
   it('sizes the page from the cut bounds plus padding, not the document bounds', () => {
-    const output = svg(documentOf([piece()], [point('guide', 5000, 5000, true)]));
+    const document = documentOf([piece()], [point('guide', 5000, 5000)]);
+    const output = svg(document, piece());
 
     // 220 x 210 of cut geometry plus 10 mm on every side.
     expect(output).toContain('width="240mm" height="230mm"');
     expect(output).toContain('viewBox="-20 -10 240 230"');
   });
 
+  it('accepts a custom padding', () => {
+    const document = documentOf();
+    const output = svg(document, piece(), { padding: 0 });
+
+    expect(output).toContain('width="220mm" height="210mm"');
+    expect(output).toContain('viewBox="-10 0 220 210"');
+  });
+
   it('adds a stitch layer by default and omits it on request', () => {
-    const stitch = layer(svg(documentOf()), 'stitch')!;
+    const document = documentOf();
+    const stitch = layer(svg(document, piece()), 'stitch')!;
 
     expect(stitch).toHaveLength(1);
     expect(stitch[0]).toContain('data-piece="piece-1"');
     expect(stitch[0]).toContain('data-kind="stitch"');
-    expect(layer(svg(documentOf(), { stitch: false }), 'stitch')).toBeNull();
+    expect(layer(svg(document, piece(), { stitch: false }), 'stitch')).toBeNull();
   });
 
   it('adds a fold layer only for a double fold and omits it on request', () => {
-    expect(layer(svg(documentOf()), 'fold')).toBeNull();
-
     const doubled = piece({
       allowances: piece().allowances.map((allowance) => ({
         ...allowance,
         kind: 'double' as const,
       })),
     });
-    const fold = layer(svg(documentOf([doubled])), 'fold')!;
+    const document = documentOf([doubled]);
 
+    expect(layer(svg(documentOf(), piece()), 'fold')).toBeNull();
+    const fold = layer(svg(document, doubled), 'fold')!;
     expect(fold).toHaveLength(1);
     expect(fold[0]).toContain('data-kind="fold"');
-    expect(layer(svg(documentOf([doubled]), { fold: false }), 'fold')).toBeNull();
+    expect(layer(svg(document, doubled, { fold: false }), 'fold')).toBeNull();
   });
 
   it('flags a self-intersecting cut loop as a warning', () => {
@@ -203,7 +198,7 @@ describe('piece cut layer', () => {
       edges,
       allowances: edges.map((edge) => ({ edge, width: 15 })),
     });
-    const cut = layer(svg({ ...createEmptyDocument(), entities, pieces: [slot] }), 'cut')!;
+    const cut = layer(svg({ ...createEmptyDocument(), entities, pieces: [slot] }, slot), 'cut')!;
 
     expect(cut[0]).toContain('data-warning="self-intersection"');
   });
@@ -211,7 +206,7 @@ describe('piece cut layer', () => {
 
 describe('piece metadata', () => {
   it('records finished and cut sizes plus quantity', () => {
-    const output = svg(documentOf());
+    const output = svg(documentOf(), piece());
 
     expect(output).toContain(
       '<!-- sewcraft:piece id="piece-1" name="Front &amp; back" finished="200x200" cut="220x210" quantity="2" -->',
@@ -222,7 +217,7 @@ describe('piece metadata', () => {
     const unnamed = piece();
     delete unnamed.name;
     delete unnamed.quantity;
-    const output = svg(documentOf([unnamed]));
+    const output = svg(documentOf([unnamed]), unnamed);
 
     expect(output).toContain(
       '<!-- sewcraft:piece id="piece-1" finished="200x200" cut="220x210" quantity="1" -->',
@@ -231,64 +226,14 @@ describe('piece metadata', () => {
 
   it('omits metadata for a piece whose loop no longer resolves', () => {
     const broken: Piece = { ...piece(), edges: ['bottom', 'right'] };
-    const output = svg(documentOf([broken]));
+    const output = svg(documentOf([broken]), broken);
 
     expect(output).not.toContain('sewcraft:piece');
   });
-});
-
-describe('legacy documents and layers', () => {
-  it('keeps the legacy cut layer without a stitch layer', () => {
-    const output = svg(documentOf([]));
-    const cut = layer(output, 'cut')!;
-
-    expect(cut).toHaveLength(4);
-    expect(cut[0]).toContain('data-entity-id="bottom"');
-    expect(layer(output, 'stitch')).toBeNull();
-    expect(layer(output, 'fold')).toBeNull();
-  });
-
-  it('keeps construction geometry opt-in', () => {
-    const document = documentOf([], [point('g1', 300, 0), point('g2', 300, 100)]);
-    document.entities.push(line('guide', 'g1', 'g2', true));
-
-    expect(layer(svg(document), 'construction')).toBeNull();
-    expect(layer(svg(document, { construction: true }), 'construction')).toHaveLength(1);
-  });
-
-  it('keeps legacy seam allowances in their own layer', () => {
-    const output = svg(documentOf(), {
-      seamAllowance: [
-        {
-          edge: 'legacy',
-          path: [
-            { x: 0, y: 0 },
-            { x: 1, y: 1 },
-          ],
-        },
-      ],
-    });
-    const seams = layer(output, 'seam-allowance')!;
-
-    expect(seams).toHaveLength(1);
-    expect(seams[0]).toContain('data-edge="legacy"');
-    expect(seams[0]!.endsWith(' />')).toBe(true);
-    expect(seams[0]).not.toContain('Z"');
-  });
-
-  it('does not fall back to the document bounds when no piece resolves', () => {
-    const broken: Piece = { ...piece(), edges: ['missing'] };
-    const output = svg(documentOf([broken]));
-
-    expect(layer(output, 'cut')).toEqual([]);
-    expect(output).not.toContain('data-entity-id');
-    expect(output).toContain('width="0mm" height="0mm"');
-    expect(output).toContain('viewBox="0 0 0 0"');
-  });
 
   it('uses the encoded schema version in the comment', () => {
-    expect(svg(documentOf())).toContain(
-      '<!-- sewcraft:svg schema="sewcraft.pattern/0.3" generated="2026-10-22T00:00:00.000Z" -->',
+    expect(svg(documentOf(), piece())).toContain(
+      '<!-- sewcraft:svg schema="sewcraft.pattern/0.4" generated="2026-10-22T00:00:00.000Z" -->',
     );
   });
 });

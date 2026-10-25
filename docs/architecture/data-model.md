@@ -75,7 +75,7 @@ can be written when it changes.
 
 ```jsonc
 {
-  "schema": "sewcraft.pattern/0.3",
+  "schema": "sewcraft.pattern/0.4",
   "units": "mm",
   "entities": [
     // Every entity names its piece; role absent means cut.
@@ -134,7 +134,24 @@ can be written when it changes.
         { "edge": "l2", "width": 10 },
       ],
       "quantity": 2,
+      "notes": "Cut two mirrored",
+      "fabric": "Linen",
+      "color": "#336699",
+      "defaults": { "allowance": { "width": 10, "kind": "seam" } },
     },
+  ],
+  "assemblies": [
+    {
+      "id": "as1",
+      "name": "Outer shell",
+      // The anchor is the piece's derived finished-loop centre.
+      "instances": [{ "id": "in1", "piece": "pc1", "x": 100, "y": 100, "rotation": 1.57 }],
+    },
+  ],
+  // Authoritative tab order: every piece and assembly exactly once.
+  "tabs": [
+    { "kind": "piece", "id": "pc1" },
+    { "kind": "assembly", "id": "as1" },
   ],
   "defaults": { "allowance": { "width": 10, "kind": "seam" } },
   "cornerRounds": [],
@@ -143,11 +160,12 @@ can be written when it changes.
 
 `defaults` is optional and additive: a document written without it resolves the
 built-in **10 mm seam** preset, and `normalizeDocument` fills the field on load
-(one-way and idempotent). `defaults.allowance` is the preset `create_piece`
-copies onto every loop edge; `null` means new pieces start with no allowance.
-Changing or clearing it never rewrites an existing piece's allowances. An invalid
-stored width or kind falls back to the built-in preset; the pattern schema string
-is `sewcraft.pattern/0.3`.
+(one-way and idempotent). `defaults.allowance` is the document-wide preset
+`set_piece_loop` copies onto new loop edges; `null` means new pieces start with no
+allowance. A piece may override it with `defaults.allowance` (absent inherits,
+`null` means none). Changing or clearing either default never rewrites an existing
+piece's allowances. An invalid stored width or kind falls back to the built-in
+preset; the pattern schema string is `sewcraft.pattern/0.4`.
 
 `cornerRounds` is optional, so documents written before the feature load
 unchanged. A round is a live feature: it stores the sharp corner, both line
@@ -157,7 +175,7 @@ anchors and the radius, while its derived entities (tangent points `r1:a`,
 are trimmed to the tangent points, and `p2` stays as a construction point.
 `center` is optional and additive — it points at a fixed construction point, is
 minted once on load for rounds written before feature points, and never joins a
-piece loop or the SVG export. The schema string is `sewcraft.pattern/0.3`.
+piece loop or the SVG export. The schema string is `sewcraft.pattern/0.4`.
 
 An `arc` entity is a true circular arc referencing three ordinary points: `start`
 and `end` bound it and `through` lies on it between them, fixing both the bulge
@@ -187,15 +205,29 @@ adds a fold line at `width`. `name` and `quantity` are optional (quantity omitte
 means 1). Derived geometry is never stored: the stitch loop, cut loop, fold lines,
 metrics and cut bounds are recomputed from the document on read.
 
-The schema is `sewcraft.pattern/0.3`. `normalizeDocument` in
-`packages/geometry/src/migration.ts` brings a document up to it on load and is
-one-way and idempotent. A 0.1 document's closed seam chains become one piece each,
-with those allowances as `kind: 'seam'` allowances at the stored width and `side`
-discarded. This migration is removed in 0.3: a stored 0.2 document is refused.
-which is read-only after load and keeps its legacy dashed rendering until it is
-removed in 0.3. The editor has no legacy-allowance authoring surface: allowances
-are edited per piece, through the Pieces drawer or the entity inspector. Documents without `pieces` gain an empty list, and an
+`notes`, `fabric` and `color` are optional piece parameters: free text trimmed to
+500 and 120 characters, and a stored `#rrggbb` colour used for the tab dot and the
+assembly fill. An empty string is not stored. `defaults.allowance` is the piece's
+own override; absent inherits the document default, `null` means none.
+
+The schema is `sewcraft.pattern/0.4`. `normalizeDocument` in
+`packages/geometry/src/migration.ts` refuses every other schema (a stored 0.3
+document included) through `UnsupportedPatternSchemaError`: there is no
+load-time migration. It also fills `defaults`, defaults a missing `assemblies` to
+`[]`, and normalises `tabs` — duplicate refs and refs to missing objects are
+dropped, and every piece and assembly missing from the order is appended in
+pieces-then-assemblies order. The normalisation is one-way and idempotent, and an
 already-current document is returned unchanged.
+
+An `assembly` is a named list of **instances**. Each instance references a piece
+and stores a placement: `x`/`y` is the assembly-space position of the piece's
+derived anchor, `rotation` is in radians with SVG's y-down convention, and
+`mirrored` flips the piece about the anchor's vertical axis before rotating.
+Nothing about a piece's position in an assembly is written back to its geometry.
+`tabs` is the authoritative tab order; it lives in the document because reordering
+is undoable, and every valid document holds each piece and assembly exactly once.
+
+The whole set of placement rules is in `docs/architecture/geometry-core.md`.
 
 A `distance` constraint without `value` or `reference` is a **driven** dimension:
 it reports the live measurement and adds no solver equation. Its `a`/`b` fields

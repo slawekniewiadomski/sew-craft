@@ -97,6 +97,12 @@ interface JournalEntry {
 Dispatching a new command clears the redo stack. The journal is the source of
 truth for both undo/redo and replay.
 
+**Tab bookkeeping is atomic with its command.** Creating a piece or an assembly
+appends its tab, deleting one removes its tab, and `delete_piece` also removes its
+instances from every assembly — all inside the same `applyCommand` call. There is
+no separate "refresh tabs" step and no window in which the document holds an
+object without its tab, so undo and replay restore both together.
+
 ## Replay and determinism
 
 Applying the same ordered command list to the same starting document must always

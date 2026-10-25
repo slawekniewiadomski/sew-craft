@@ -196,7 +196,7 @@ describe('dimension state presentation', () => {
 
 describe('reference options', () => {
   const document: PatternDocument = {
-    schema: 'sewcraft.pattern/0.3',
+    schema: 'sewcraft.pattern/0.4',
     units: 'mm',
     entities: [
       { id: 'p1', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
@@ -210,6 +210,8 @@ describe('reference options', () => {
       { id: 'measure', type: 'distance', a: 'p2', b: 'p3' },
     ],
     pieces: [],
+    assemblies: [],
+    tabs: [],
     seams: [],
   };
   const edited = document.constraints[1] as DistanceConstraint;

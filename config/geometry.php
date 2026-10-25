@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.14.0',
+    'spec_version' => '0.15.0',
 
     /*
     |--------------------------------------------------------------------------
@@ -171,6 +171,8 @@ return [
             'params' => [
                 'name' => 'string?',
                 'quantity' => 'int?',
+                'color' => '#rrggbb?',
+                'defaults' => 'piece_defaults?',
             ],
             'inverse' => 'delete_piece',
         ],
@@ -181,15 +183,6 @@ return [
                 'edges' => 'entity_id[]',
                 'allowance' => 'default|none|preset?',
             ],
-        ],
-        'move_piece' => [
-            'description' => 'Translate every point the piece owns, including fixed points, as one undoable step.',
-            'params' => [
-                'id' => 'entity_id',
-                'dx' => 'number',
-                'dy' => 'number',
-            ],
-            'inverse' => 'move_piece',
         ],
         'add_text' => [
             'description' => 'Place a one-line annotation label at a point of its piece, with alignment, rotation, size and an optional leader point.',
@@ -218,19 +211,92 @@ return [
             'inverse' => 'update_text',
         ],
         'update_piece' => [
-            'description' => 'Rename a piece or change its cut quantity. Null clears either.',
+            'description' => 'Change a piece parameter: name, quantity, notes, fabric or colour. Null or empty text clears a field.',
             'params' => [
                 'id' => 'entity_id',
                 'name' => 'string|null?',
                 'quantity' => 'int|null?',
+                'notes' => 'string|null?',
+                'fabric' => 'string|null?',
+                'color' => '#rrggbb|null?',
             ],
             'inverse' => 'update_piece',
         ],
         'delete_piece' => [
-            'description' => 'Remove a piece together with its cut dimensions.',
+            'description' => 'Remove a piece together with its cut dimensions, its instances in every assembly and its tab.',
             'params' => [
                 'id' => 'entity_id',
             ],
+        ],
+        'set_piece_default_allowance' => [
+            'description' => 'Set, clear or inherit the allowance preset a piece applies to new loop edges.',
+            'params' => [
+                'piece' => 'entity_id',
+                'mode' => 'inherit|none|preset',
+                'width' => 'number?',
+                'kind' => 'seam|single|double?',
+            ],
+            'inverse' => 'set_piece_default_allowance',
+        ],
+        'create_assembly' => [
+            'description' => 'Create an empty assembly and append its tab. The default name is "Assembly N".',
+            'params' => [
+                'name' => 'string?',
+            ],
+            'inverse' => 'delete_assembly',
+        ],
+        'update_assembly' => [
+            'description' => 'Rename an assembly. The name is trimmed and 1-80 characters.',
+            'params' => [
+                'id' => 'entity_id',
+                'name' => 'string',
+            ],
+            'inverse' => 'update_assembly',
+        ],
+        'delete_assembly' => [
+            'description' => 'Remove an assembly and its tab. Placed pieces and their instances everywhere else are untouched.',
+            'params' => [
+                'id' => 'entity_id',
+            ],
+        ],
+        'add_instance' => [
+            'description' => 'Place one instance of a piece in an assembly, positioned by the piece anchor.',
+            'params' => [
+                'assembly' => 'entity_id',
+                'piece' => 'entity_id',
+                'x' => 'number',
+                'y' => 'number',
+                'rotation' => 'number?',
+                'mirrored' => 'bool?',
+            ],
+            'inverse' => 'remove_instance',
+        ],
+        'remove_instance' => [
+            'description' => 'Remove one placed instance from an assembly.',
+            'params' => [
+                'assembly' => 'entity_id',
+                'instance' => 'entity_id',
+            ],
+            'inverse' => 'add_instance',
+        ],
+        'update_instance' => [
+            'description' => 'Move, rotate or mirror one placed instance. At least one field is required.',
+            'params' => [
+                'assembly' => 'entity_id',
+                'instance' => 'entity_id',
+                'x' => 'number?',
+                'y' => 'number?',
+                'rotation' => 'number?',
+                'mirrored' => 'bool?',
+            ],
+            'inverse' => 'update_instance',
+        ],
+        'reorder_tabs' => [
+            'description' => 'Replace the document tab order with a permutation of the current refs.',
+            'params' => [
+                'tabs' => 'tab_ref[]',
+            ],
+            'inverse' => 'reorder_tabs',
         ],
         'set_piece_allowance' => [
             'description' => 'Set, change or remove the allowance of one piece loop edge. Width is the finished width in mm; double folds cut twice it.',

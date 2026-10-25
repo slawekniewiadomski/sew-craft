@@ -113,12 +113,23 @@ describe('EditorSidebar', () => {
     expect(collapsed.emitted('update:collapsed')).toEqual([[false]]);
   });
 
+  it('shows only the assembly inspector and view on an assembly tab', () => {
+    const wrapper = mount(EditorSidebar, {
+      props: { width: 320, collapsed: false, mode: 'assembly' },
+    });
+
+    expect(wrapper.find('[data-testid="drawer-toggle-assembly"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="drawer-toggle-view"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="drawer-toggle-pieces"]').exists()).toBe(false);
+  });
+
   it('turns the collapsed strip into one named icon button per drawer', () => {
     const wrapper = mountSidebar(320, true);
 
     for (const [id, label] of [
       ['properties', 'Properties'],
-      ['pieces', 'Pieces'],
+      ['pieces', 'Piece'],
+      ['pattern', 'Pattern'],
       ['outline', 'Outline'],
       ['dimensions', 'Dimensions'],
       ['constraints', 'Constraints'],

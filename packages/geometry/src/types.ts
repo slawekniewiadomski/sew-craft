@@ -1,6 +1,6 @@
 export type EntityId = string;
 
-export const PATTERN_SCHEMA = 'sewcraft.pattern/0.3';
+export const PATTERN_SCHEMA = 'sewcraft.pattern/0.4';
 
 export type PatternSchema = typeof PATTERN_SCHEMA;
 
@@ -242,6 +242,50 @@ export interface Piece {
   allowances: Allowance[];
   /** How many to cut; omitted means 1. */
   quantity?: number;
+  /** Free text, trimmed, max 500 characters; absent or empty means none. */
+  notes?: string;
+  /** Trimmed, max 120 characters; absent or empty means none. */
+  fabric?: string;
+  /** `#rrggbb`; absent means the neutral fallback. */
+  color?: string;
+  /**
+   * Per-piece overrides. Absent means inherit the document default; an explicit
+   * `{ allowance: null }` means this piece starts with no allowance.
+   */
+  defaults?: PieceDefaults;
+}
+
+/** A piece's own overrides; only the allowance default exists in v1. */
+export interface PieceDefaults {
+  allowance: AllowancePreset | null;
+}
+
+/** One placed copy of a piece inside an assembly. */
+export interface AssemblyInstance {
+  id: EntityId;
+  /** The piece it places. Must exist in the same document. */
+  piece: EntityId;
+  /** Assembly-space position of the piece's derived anchor, in millimetres. */
+  x: number;
+  y: number;
+  /** Radians, SVG convention (positive turns clockwise on screen); omitted means 0. */
+  rotation?: number;
+  /** Horizontal flip about the anchor's vertical axis; omitted means false. */
+  mirrored?: boolean;
+}
+
+/** A named layout that places instances of the pattern's pieces. */
+export interface Assembly {
+  id: EntityId;
+  /** Required, trimmed, 1–80 characters; defaults to "Assembly N" on creation. */
+  name: string;
+  instances: AssemblyInstance[];
+}
+
+/** One entry of the authoritative tab order; every piece and assembly appears once. */
+export interface TabRef {
+  kind: 'piece' | 'assembly';
+  id: EntityId;
 }
 
 /** One end of a cut dimension, addressed by loop vertex or whole edge, not by point id. */
@@ -351,6 +395,10 @@ export interface PatternDocument {
   constraints: Constraint[];
   /** Every authored piece. Documents written before 0.2 gain an empty list on load. */
   pieces: Piece[];
+  /** Every assembly; a hand-edited document may omit it, which normalises to `[]`. */
+  assemblies: Assembly[];
+  /** Authoritative tab order: every piece and assembly exactly once. */
+  tabs: TabRef[];
   /**
    * Deprecated legacy allowances for edges that close no loop. Read-only,
    * rendered as before, removed in 0.3.

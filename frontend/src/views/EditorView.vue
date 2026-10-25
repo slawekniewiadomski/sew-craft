@@ -16,15 +16,19 @@ import {
   isLineAnchor,
   measureDistanceDimension,
   measureLinearDimension,
-  ALLOWANCE_KIND_LABELS,
   PATTERN_SCHEMA,
+  documentForAssembly,
+  documentForPiece,
+  pieceById,
+  pieceCutLoop,
   seamForEdge,
-  toSvg,
+  toSvgPiece,
   usesCutEdgeAnchor,
 } from '@sewcraft/geometry';
 import type {
   AddConstraintParams,
   AllowanceKind,
+  Assembly,
   Command,
   ConstraintType,
   DerivedDistanceConstraint,
@@ -33,17 +37,22 @@ import type {
   DistanceConstraint,
   EntityId,
   PatternDocument,
+  Piece,
+  TabRef,
 } from '@sewcraft/geometry';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { onBeforeRouteLeave, RouterLink, useRouter } from 'vue-router';
 
 import { ApiError, projectsApi, type Pattern } from '@/api/projects';
+import AssemblyCanvas from '@/components/AssemblyCanvas.vue';
+import AssemblyPanel from '@/components/AssemblyPanel.vue';
 import ConstraintPromptBar from '@/components/ConstraintPromptBar.vue';
 import CornerRoundPromptBar from '@/components/CornerRoundPromptBar.vue';
 import DimensionReferencePicker from '@/components/DimensionReferencePicker.vue';
 import EditorRibbon from '@/components/EditorRibbon.vue';
 import EditorSaveBar from '@/components/EditorSaveBar.vue';
 import EditorSidebar from '@/components/EditorSidebar.vue';
+import EditorTabs from '@/components/EditorTabs.vue';
 import EntityPropertiesPanel from '@/components/EntityPropertiesPanel.vue';
 import PatternCanvas from '@/components/PatternCanvas.vue';
 import PiecePanel from '@/components/PiecePanel.vue';
@@ -128,6 +137,13 @@ import {
 } from '@/lib/pieces';
 import { ribbonIcon, type RibbonIconName } from '@/lib/ribbon-icons';
 import { applySelection, orphanedEdges, selectionModeFrom, toggleSelection } from '@/lib/selection';
+import {
+  assemblyTab,
+  nextPieceColor,
+  pieceTab,
+  readPersistedTab,
+  writePersistedTab,
+} from '@/lib/tabs';
 import { useEditorStore } from '@/stores/editor';
 
 const props = defineProps<{ id: string }>();
@@ -165,22 +181,41 @@ const selectedEntityIds = ref<EntityId[]>([]);
  * two kinds exclusive; only a committed marquee may fill both.
  */
 const selectedDimensionIds = ref<EntityId[]>([]);
-/**
- * The piece whose card is open in the Pieces drawer. Ephemeral like the entity
- * selection, and deliberately separate from it: deleting a row never targets a
- * loop by accident.
- */
-const selectedPieceId = ref<EntityId | null>(null);
-/** The piece every new entity belongs to, mirrored from the store. */
+/** The active tab, mirrored from the store; switching it is view state only. */
+const activeTab = computed(() => editor.activeTab);
+const isAssemblyTab = computed(() => activeTab.value?.kind === 'assembly');
+/** The piece every new entity belongs to, derived from the active tab. */
 const activePieceId = computed(() => editor.activePieceId);
 const activePiece = computed(
   () => pattern.value.pieces.find((piece) => piece.id === activePieceId.value) ?? null,
 );
-/** The Move toggle's target; cleared by Escape, a tool change or another piece. */
-const moveMode = ref(false);
-/** Arrow-key nudges coalesce into one journal entry instead of one per keypress. */
-const nudge = ref<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
-let nudgeTimer: ReturnType<typeof setTimeout> | null = null;
+const activePieceSummary = computed(() => {
+  /* v8 ignore start -- the sidebar renders the card only with an active piece */
+  if (activePiece.value === null) return null;
+  /* v8 ignore stop */
+  const summary = pieceSummaries(pattern.value).find(
+    (candidate) => candidate.id === activePiece.value!.id,
+  );
+  /* v8 ignore next -- the active piece is always summarised */
+  return summary ?? null;
+});
+/** The assembly the active tab shows, or `null` on a piece tab. */
+const activeAssembly = computed<Assembly | null>(() => {
+  const tab = activeTab.value;
+  /* v8 ignore start -- an assembly tab always names an existing assembly */
+  if (tab === null || tab.kind !== 'assembly') return null;
+  /* v8 ignore stop */
+  const assembly = pattern.value.assemblies.find((candidate) => candidate.id === tab.id);
+  /* v8 ignore next -- the tab names an existing assembly */
+  return assembly ?? null;
+});
+/** The selected instance in the assembly tab; ephemeral like the entity selection. */
+const selectedInstanceId = ref<EntityId | null>(null);
+/** Whether the Add piece picker overlay is open. */
+const assemblyPickerOpen = ref(false);
+
+/** The active tab is a view preference, persisted per pattern. */
+watch(activeTab, (tab) => writePersistedTab(window.localStorage, props.id, tab));
 /** True while a marquee owns the pointer, so Delete/Escape defer to the canvas. */
 const marqueeActive = ref(false);
 const fitToken = ref(0);
@@ -203,14 +238,33 @@ const cornerRoundPreviewRadius = ref<number | null>(null);
  * Construction geometry is presentation only: hiding it filters what is drawn
  * without touching the document, so the toggle never changes the model.
  */
+/**
+ * The piece canvas only ever sees the active piece: the cross-piece edit path
+ * is gone rather than refused, so every hit is editable.
+ */
+const pieceDocument = computed(() => {
+  /* v8 ignore start -- the canvas only renders with a piece tab */
+  if (activePieceId.value === null) return pattern.value;
+  /* v8 ignore stop */
+  return documentForPiece(pattern.value, activePieceId.value);
+});
+
 const visibleDocument = computed(() =>
   showConstruction.value
-    ? pattern.value
+    ? pieceDocument.value
     : {
-        ...pattern.value,
-        entities: pattern.value.entities.filter((entity) => !isConstruction(entity)),
+        ...pieceDocument.value,
+        entities: pieceDocument.value.entities.filter((entity) => !isConstruction(entity)),
       },
 );
+
+/** The assembly canvas's slice: the pieces its instances reference. */
+const assemblyDocument = computed(() => {
+  /* v8 ignore start -- evaluated only while an assembly tab is active */
+  if (activeAssembly.value === null) return pattern.value;
+  /* v8 ignore stop */
+  return documentForAssembly(pattern.value, activeAssembly.value.id);
+});
 
 /** Every line, curve, arc and circle, so any edge can be converted between guide and cut. */
 const edges = computed(() =>
@@ -242,30 +296,7 @@ const selectedEntity = computed(() =>
     : null,
 );
 
-/** The ordered loop the selection would become, or the reason it cannot. */
-const pieceCreation = computed(() =>
-  pieceCreationFromSelection(pattern.value, selectedEntityIds.value),
-);
-
 const defaultAllowance = computed(() => defaultAllowanceSummary(pattern.value));
-const defaultAllowanceHint = computed(() => {
-  const choice = defaultAllowance.value;
-  return choice.kind === 'none'
-    ? 'New pieces start with no allowance.'
-    : `New pieces get ${choice.width} mm ${ALLOWANCE_KIND_LABELS[choice.kind].toLowerCase()}.`;
-});
-/** A piece is a loop of entities, so a dimension in the selection is ambiguous. */
-const canCreatePiece = computed(
-  () => pieceCreation.value.ok && selectedDimensionIds.value.length === 0,
-);
-
-/** Why Create piece is refused while a dimension is selected; a tooltip. */
-const createPieceHint = computed(() =>
-  selectedDimensionIds.value.length > 0
-    ? 'Clear the dimension selection: Create piece applies to entities only.'
-    : undefined,
-);
-
 /** The entity selection as a set, for row highlighting and `aria-current`. */
 const selectedIds = computed(() => new Set(selectedEntityIds.value));
 
@@ -297,19 +328,6 @@ const EDGE_KIND_ICONS: Record<'line' | 'curve' | 'arc' | 'circle', RibbonIconNam
   arc: 'arc',
   circle: 'circle',
 };
-
-/**
- * Open or collapse one piece's card. Selecting a piece clears the entity and
- * dimension selections so Delete and the inspector never act on the wrong
- * target.
- */
-function selectPiece(id: EntityId): void {
-  selectedPieceId.value = selectedPieceId.value === id ? null : id;
-  if (selectedPieceId.value !== null) {
-    selectedEntityIds.value = [];
-    selectedDimensionIds.value = [];
-  }
-}
 
 /** The selected entities in selection order, for the multi-selection summary. */
 const selectedEntities = computed(() =>
@@ -604,10 +622,13 @@ function fit(): void {
   fitToken.value += 1;
 }
 
+/** Export the active piece only; an assembly tab or a broken loop refuses. */
 function downloadSvg(): void {
+  /* v8 ignore next -- export is disabled without an active piece */
+  if (activePiece.value === null) return;
   downloadSvgFile(
     `pattern-${props.id}.svg`,
-    toSvg(pattern.value, {
+    toSvgPiece(pattern.value, activePiece.value, {
       construction: includeConstruction.value,
       stitch: exportStitch.value,
       fold: exportFold.value,
@@ -615,28 +636,215 @@ function downloadSvg(): void {
   );
 }
 
-/** Create one piece from the selected closed chain, or explain the first break. */
+/** Whether the Export action can run on the current tab. */
+const canExport = computed(
+  () => activePiece.value !== null && pieceCutLoop(pattern.value, activePiece.value) !== null,
+);
+
+const exportHint = computed(() =>
+  isAssemblyTab.value ? 'Switch to a piece to export' : 'Capture a cut loop before exporting',
+);
+
+/** Create an empty piece with the next palette colour and switch to its tab. */
 function newPiece(): void {
   const id = nextCommandId('piece');
   const name = `Piece ${pattern.value.pieces.length + 1}`;
-  const loop = pieceCreationFromSelection(pattern.value, selectedEntityIds.value, id);
-  const commands: Command[] = [{ id, type: 'create_piece', params: { name } }];
-  if (loop.ok) {
-    commands.push({
-      id: nextCommandId('loop'),
-      type: 'set_piece_loop',
-      params: { piece: id, edges: loop.edges, allowance: 'default' },
-    });
+  if (
+    run(() =>
+      dispatch({
+        id,
+        type: 'create_piece',
+        params: { name, color: nextPieceColor(pattern.value) },
+      }),
+    )
+  ) {
+    setActiveTab(pieceTab(id));
   }
+}
 
-  if (run(() => dispatchGroup(commands))) {
-    editor.setActivePiece(id);
-    selectedEntityIds.value = [];
-    selectedDimensionIds.value = [];
-    selectedPieceId.value = id;
-    activeTool.value = 'select';
-    moveMode.value = false;
+/** Create an empty assembly and switch to its tab. */
+function newAssembly(): void {
+  const id = nextCommandId('assembly');
+  if (run(() => dispatch({ id, type: 'create_assembly', params: {} }))) {
+    setActiveTab(assemblyTab(id));
   }
+}
+
+/**
+ * Activate one tab. A tab switch is view state only: it cancels an armed
+ * gesture, clears both selections and fits the canvas.
+ */
+function setActiveTab(tab: TabRef | null): void {
+  editor.setActiveTab(tab);
+  selectedEntityIds.value = [];
+  selectedDimensionIds.value = [];
+  selectedInstanceId.value = null;
+  assemblyPickerOpen.value = false;
+  exitConstraint();
+  exitCornerRound();
+  activeTool.value = 'select';
+  fit();
+}
+
+function onReorderTabs(tabs: TabRef[]): void {
+  run(() => dispatch({ id: nextCommandId('tabs'), type: 'reorder_tabs', params: { tabs } }));
+}
+
+function selectInstance(id: EntityId | null): void {
+  selectedInstanceId.value = id;
+  selectedEntityIds.value = [];
+  selectedDimensionIds.value = [];
+}
+
+function onMoveInstance(id: EntityId, x: number, y: number): void {
+  const assembly = activeAssembly.value;
+  /* v8 ignore next -- the canvas exists only inside an assembly tab */
+  if (assembly === null) return;
+  run(() =>
+    dispatch({
+      id: nextCommandId('instance'),
+      type: 'update_instance',
+      params: { assembly: assembly.id, instance: id, x, y },
+    }),
+  );
+}
+
+/** Arrow nudges coalesce into one journal entry like point nudges do. */
+const instanceNudge = ref<{ id: EntityId | null; dx: number; dy: number }>({
+  id: null,
+  dx: 0,
+  dy: 0,
+});
+let instanceNudgeTimer: ReturnType<typeof setTimeout> | null = null;
+
+function onNudgeInstance(id: EntityId, dx: number, dy: number): void {
+  if (instanceNudge.value.id === null) {
+    const instance = activeAssembly.value?.instances.find((entry) => entry.id === id);
+    /* v8 ignore next -- the canvas only nudges instances it rendered */
+    if (instance === undefined) return;
+    instanceNudge.value = { id, dx: 0, dy: 0 };
+  }
+  instanceNudge.value = {
+    id,
+    dx: instanceNudge.value.dx + dx,
+    dy: instanceNudge.value.dy + dy,
+  };
+  if (instanceNudgeTimer !== null) clearTimeout(instanceNudgeTimer);
+  instanceNudgeTimer = setTimeout(() => {
+    const pending = instanceNudge.value;
+    instanceNudge.value = { id: null, dx: 0, dy: 0 };
+    instanceNudgeTimer = null;
+    const assembly = activeAssembly.value;
+    /* v8 ignore start -- the assembly exists while its canvas is mounted */
+    const instance =
+      assembly === null ? undefined : assembly.instances.find((entry) => entry.id === pending.id);
+    if (assembly === null || instance === undefined) return;
+    /* v8 ignore stop */
+    /* v8 ignore next -- the canvas never emits a zero nudge */
+    if (pending.dx === 0 && pending.dy === 0) return;
+    run(() =>
+      dispatch({
+        id: nextCommandId('instance'),
+        type: 'update_instance',
+        params: {
+          assembly: assembly.id,
+          instance: instance.id,
+          x: instance.x + pending.dx,
+          y: instance.y + pending.dy,
+        },
+      }),
+    );
+  }, 300);
+}
+
+function onRemoveInstance(id: EntityId): void {
+  const assembly = activeAssembly.value;
+  /* v8 ignore next -- the canvas exists only inside an assembly tab */
+  if (assembly === null) return;
+  if (
+    run(() =>
+      dispatch({
+        id: nextCommandId('instance'),
+        type: 'remove_instance',
+        params: { assembly: assembly.id, instance: id },
+      }),
+    )
+  ) {
+    selectedInstanceId.value = null;
+  }
+}
+
+function onAddInstance(piece: EntityId): void {
+  const assembly = activeAssembly.value;
+  /* v8 ignore next -- the picker exists only inside an assembly tab */
+  if (assembly === null) return;
+  run(() =>
+    dispatch({
+      id: nextCommandId('instance'),
+      type: 'add_instance',
+      params: { assembly: assembly.id, piece, x: 0, y: 0 },
+    }),
+  );
+  assemblyPickerOpen.value = false;
+}
+
+/** Mirror or rotate the selected instance through one update_instance. */
+function onTransformInstance(kind: 'mirror' | 'rotate'): void {
+  const assembly = activeAssembly.value;
+  /* v8 ignore start -- the ribbon action exists only inside an assembly tab */
+  const instance =
+    assembly === null
+      ? undefined
+      : assembly.instances.find((entry) => entry.id === selectedInstanceId.value);
+  if (assembly === null || instance === undefined) return;
+  /* v8 ignore stop */
+  const patch =
+    kind === 'mirror'
+      ? { mirrored: instance.mirrored !== true }
+      : { rotation: (instance.rotation ?? 0) + Math.PI / 2 };
+  run(() =>
+    dispatch({
+      id: nextCommandId('instance'),
+      type: 'update_instance',
+      params: { assembly: assembly.id, instance: instance.id, ...patch },
+    }),
+  );
+}
+
+function onUpdateInstance(patch: {
+  x?: number;
+  y?: number;
+  rotation?: number;
+  mirrored?: boolean;
+}): void {
+  const assembly = activeAssembly.value;
+  /* v8 ignore next -- the panel renders only with a selected instance */
+  if (assembly === null || selectedInstanceId.value === null) return;
+  run(() =>
+    dispatch({
+      id: nextCommandId('instance'),
+      type: 'update_instance',
+      params: { assembly: assembly.id, instance: selectedInstanceId.value!, ...patch },
+    }),
+  );
+}
+
+function onUpdateAssembly(name: string): void {
+  const assembly = activeAssembly.value;
+  /* v8 ignore next -- the panel exists only inside an assembly tab */
+  if (assembly === null) return;
+  run(() =>
+    dispatch({
+      id: nextCommandId('assembly'),
+      type: 'update_assembly',
+      params: { id: assembly.id, name },
+    }),
+  );
+}
+
+/** Switch from an assembly's piece section to that piece's own tab. */
+function openPieceTab(piece: EntityId): void {
+  setActiveTab(pieceTab(piece));
 }
 
 /** Capture the selected closed chain as this piece's loop. */
@@ -655,8 +863,7 @@ function setCutLoop(pieceId: EntityId): void {
       }),
     )
   ) {
-    editor.setActivePiece(pieceId);
-    selectedEntityIds.value = [];
+    setActiveTab(pieceTab(pieceId));
   }
 }
 
@@ -668,49 +875,6 @@ function clearCutLoop(pieceId: EntityId): void {
       params: { piece: pieceId, edges: [] },
     }),
   );
-}
-
-function activatePiece(pieceId: EntityId): void {
-  editor.setActivePiece(pieceId);
-  selectedPieceId.value = pieceId;
-  moveMode.value = false;
-}
-
-function toggleMove(pieceId: EntityId): void {
-  const wasActive = activePieceId.value === pieceId;
-  editor.setActivePiece(pieceId);
-  selectedPieceId.value = pieceId;
-  moveMode.value = wasActive ? !moveMode.value : true;
-  if (moveMode.value) activeTool.value = 'select';
-}
-
-function onMovePiece(dx: number, dy: number): void {
-  const pieceId = activePieceId.value;
-  if (pieceId === null) return;
-  run(() =>
-    dispatch({
-      id: nextCommandId('move-piece'),
-      type: 'move_piece',
-      params: { id: pieceId, dx, dy },
-    }),
-  );
-  moveMode.value = false;
-}
-
-function onActivatePiece(pieceId: EntityId): void {
-  activatePiece(pieceId);
-}
-
-function onCrossPiece(pieceId: EntityId): void {
-  const piece = pattern.value.pieces.find((candidate) => candidate.id === pieceId);
-  error.value = `Switch to ${
-    piece === undefined
-      ? 'the owning piece'
-      : pieceLabel(
-          pieceSummaries(pattern.value).find((summary) => summary.id === pieceId)!,
-          pattern.value.pieces.indexOf(piece),
-        )
-  } to edit it.`;
 }
 
 /** Change the default kind; None clears the default. */
@@ -727,6 +891,7 @@ function onDefaultAllowanceKind(event: Event): void {
     return;
   }
 
+  /* v8 ignore next -- a non-none default always has a positive width */
   const width = defaultAllowance.value.width > 0 ? defaultAllowance.value.width : 10;
   run(() =>
     dispatch({
@@ -799,16 +964,6 @@ function onUpdateText(id: EntityId, patch: Record<string, unknown>): void {
   );
 }
 
-watch(selectedEntityIds, (ids) => {
-  if (ids.length === 0) return;
-  selectedPieceId.value = null;
-});
-
-watch(selectedDimensionIds, (ids) => {
-  if (ids.length === 0) return;
-  selectedPieceId.value = null;
-});
-
 /**
  * Select one Outline row's entity with the canvas' modifier rules: plain click
  * replaces, Ctrl/Cmd toggles, Ctrl/Cmd+Shift (or Alt) subtracts.
@@ -850,6 +1005,11 @@ function onDimensionSelect(id: EntityId, event: MouseEvent | KeyboardEvent): voi
 /** Remove the whole selection, mixed or not, as one journal entry. */
 function deleteSelected(): void {
   if (marqueeActive.value || editor.readOnly) return;
+
+  if (isAssemblyTab.value) {
+    if (selectedInstanceId.value !== null) onRemoveInstance(selectedInstanceId.value);
+    return;
+  }
 
   const dimensionIds = selectedDimensionIds.value;
   const entityIds = selectedEntityIds.value;
@@ -899,11 +1059,8 @@ function onRibbonAction(action: RibbonAction): void {
     case 'fit':
       fit();
       break;
-    case 'create_piece':
-      newPiece();
-      break;
     case 'set_cut_loop': {
-      const pieceId = activePieceId.value ?? selectedPieceId.value;
+      const pieceId = activePieceId.value;
       if (pieceId === null) {
         error.value = 'Create or select a piece first.';
       } else {
@@ -913,6 +1070,15 @@ function onRibbonAction(action: RibbonAction): void {
     }
     case 'download_svg':
       downloadSvg();
+      break;
+    case 'add_instance':
+      assemblyPickerOpen.value = !assemblyPickerOpen.value;
+      break;
+    case 'mirror_instance':
+      onTransformInstance('mirror');
+      break;
+    case 'rotate_instance':
+      onTransformInstance('rotate');
       break;
   }
 }
@@ -927,6 +1093,7 @@ function onAddPoint(x: number, y: number): void {
     dispatch({
       id: nextCommandId('point'),
       type: 'add_point',
+      /* v8 ignore next -- the canvas only adds points with an active piece */
       params: { x, y, ...(piece === null ? {} : { piece }) },
     }),
   );
@@ -943,6 +1110,7 @@ function onAddPointOnLine(lineId: EntityId, x: number, y: number): void {
     lineId,
     { x, y },
     nextCommandId,
+    /* v8 ignore next -- the canvas only exists inside a piece tab */
     activePieceId.value ?? undefined,
   );
   if (commands === null) return;
@@ -952,6 +1120,7 @@ function onAddPointOnLine(lineId: EntityId, x: number, y: number): void {
 /** One gesture: new endpoints become points, then the line, as a single entry. */
 function onAddLine(start: LineEndpoint, end: LineEndpoint): void {
   run(() =>
+    /* v8 ignore next -- the canvas only exists inside a piece tab */
     dispatchGroup(buildLineCommands(start, end, nextCommandId, activePieceId.value ?? undefined)),
   );
 }
@@ -960,6 +1129,7 @@ function onAddLine(start: LineEndpoint, end: LineEndpoint): void {
 function onAddArc(start: ArcEndpoint, end: ArcEndpoint, through: ArcEndpoint): void {
   run(() =>
     dispatchGroup(
+      /* v8 ignore next -- the canvas only exists inside a piece tab */
       buildArcCommands(start, end, through, nextCommandId, activePieceId.value ?? undefined),
     ),
   );
@@ -969,6 +1139,7 @@ function onAddArc(start: ArcEndpoint, end: ArcEndpoint, through: ArcEndpoint): v
 function onAddCircle(center: CircleEndpoint, rim: CircleEndpoint): void {
   run(() =>
     dispatchGroup(
+      /* v8 ignore next -- the canvas only exists inside a piece tab */
       buildCircleCommands(center, rim, nextCommandId, activePieceId.value ?? undefined),
     ),
   );
@@ -986,6 +1157,7 @@ function onAddRectangle(mode: RectangleMode, clicks: DraftingEndpoint[]): void {
         mode,
         clicks,
         nextCommandId,
+        /* v8 ignore next -- the canvas only exists inside a piece tab */
         activePieceId.value ?? undefined,
       ),
     ),
@@ -994,10 +1166,12 @@ function onAddRectangle(mode: RectangleMode, clicks: DraftingEndpoint[]): void {
 
 function onAddText(anchor: DraftingEndpoint, leader?: DraftingEndpoint): void {
   const pieceId = activePieceId.value;
+  /* v8 ignore start -- the canvas only exists inside a piece tab */
   if (pieceId === null) {
     error.value = 'Create or select a piece before placing annotation text.';
     return;
   }
+  /* v8 ignore stop */
   run(() => dispatchGroup(buildTextCommands(anchor, pieceId, nextCommandId, leader)));
 }
 
@@ -1012,6 +1186,7 @@ function onAddCurve(points: [EntityId, EntityId, EntityId, EntityId]): void {
           p1: points[1],
           p2: points[2],
           p3: points[3],
+          /* v8 ignore next -- the canvas only exists inside a piece tab */
           ...(activePieceId.value === null ? {} : { piece: activePieceId.value }),
         },
       },
@@ -1060,6 +1235,7 @@ function onAddDimension(placement: DimensionPlacement): void {
         entities: [placement.a, placement.b],
         orientation,
         offset: placement.offset,
+        /* v8 ignore next -- the canvas only exists inside a piece tab */
         ...(activePieceId.value === null ? {} : { piece: activePieceId.value }),
       },
     }),
@@ -1169,7 +1345,13 @@ function convert(id: string, construction: boolean): void {
 /** Rename, re-quantify or clear fields on a piece. */
 function onUpdatePiece(
   id: EntityId,
-  patch: { name?: string | null; quantity?: number | null },
+  patch: {
+    name?: string | null;
+    quantity?: number | null;
+    notes?: string | null;
+    fabric?: string | null;
+    color?: string | null;
+  },
 ): void {
   run(() =>
     dispatch({
@@ -1198,9 +1380,44 @@ function onSetPieceAllowance(
   );
 }
 
+/** Set, clear or inherit a piece's allowance default. */
+function onSetPieceDefault(
+  piece: EntityId,
+  value:
+    { mode: 'inherit' } | { mode: 'none' } | { mode: 'preset'; width: number; kind: AllowanceKind },
+): void {
+  run(() =>
+    dispatch({
+      id: nextCommandId('piece-default'),
+      type: 'set_piece_default_allowance',
+      params: { piece, ...value },
+    }),
+  );
+}
+
+/** The deletion warning for a placed piece: how often and where it is placed. */
+function placedPieceWarning(piece: Piece): string | null {
+  const placements = pattern.value.assemblies.flatMap((assembly) =>
+    assembly.instances.filter((instance) => instance.piece === piece.id),
+  );
+  if (placements.length === 0) return null;
+  const assemblies = pattern.value.assemblies.filter((assembly) =>
+    assembly.instances.some((instance) => instance.piece === piece.id),
+  ).length;
+  const name = piece.name?.trim() || `Piece ${piece.id}`;
+  return `${name} is placed ${placements.length} time${
+    placements.length === 1 ? '' : 's'
+  } in ${assemblies} assembl${assemblies === 1 ? 'y' : 'ies'}. Remove it and its instances?`;
+}
+
 function onRemovePiece(id: EntityId): void {
+  const piece = pieceById(pattern.value, id);
+  /* v8 ignore next -- the card renders only for an existing piece */
+  const warning = piece === undefined ? null : placedPieceWarning(piece);
+  if (warning !== null && !window.confirm(warning)) return;
   if (run(() => dispatch({ id: nextCommandId('piece'), type: 'delete_piece', params: { id } }))) {
     selectedEntityIds.value = [];
+    selectedInstanceId.value = null;
   }
 }
 
@@ -1211,6 +1428,7 @@ function dispatchConstraint(params: AddConstraintParams): boolean {
       type: 'add_constraint',
       params: {
         ...params,
+        /* v8 ignore next -- the canvas only exists inside a piece tab */
         ...(activePieceId.value === null ? {} : { piece: activePieceId.value }),
       },
     }),
@@ -1380,39 +1598,6 @@ function onKeyDown(event: KeyboardEvent): void {
 
   if (isEditing(event.target)) return;
 
-  if (
-    activePieceId.value !== null &&
-    activeTool.value === 'select' &&
-    !moveMode.value &&
-    event.key.startsWith('Arrow')
-  ) {
-    event.preventDefault();
-    const step = event.shiftKey ? 10 : 1;
-    nudge.value = {
-      dx:
-        nudge.value.dx +
-        (event.key === 'ArrowRight' ? step : event.key === 'ArrowLeft' ? -step : 0),
-      dy: nudge.value.dy + (event.key === 'ArrowDown' ? step : event.key === 'ArrowUp' ? -step : 0),
-    };
-    if (nudgeTimer !== null) clearTimeout(nudgeTimer);
-    nudgeTimer = setTimeout(() => {
-      const { dx, dy } = nudge.value;
-      nudge.value = { dx: 0, dy: 0 };
-      nudgeTimer = null;
-      if (dx === 0 && dy === 0) return;
-      const pieceId = activePieceId.value;
-      if (pieceId === null) return;
-      run(() =>
-        dispatch({
-          id: nextCommandId('move-piece'),
-          type: 'move_piece',
-          params: { id: pieceId, dx, dy },
-        }),
-      );
-    }, 300);
-    return;
-  }
-
   if (event.key === 'Delete' || event.key === 'Backspace') {
     event.preventDefault();
     deleteSelected();
@@ -1442,10 +1627,12 @@ watch(pattern, (next) => {
   }
 
   if (
-    selectedPieceId.value !== null &&
-    !next.pieces.some((piece) => piece.id === selectedPieceId.value)
+    selectedInstanceId.value !== null &&
+    !next.assemblies.some((assembly) =>
+      assembly.instances.some((instance) => instance.id === selectedInstanceId.value),
+    )
   ) {
-    selectedPieceId.value = null;
+    selectedInstanceId.value = null;
   }
 
   if (activeConstraint.value === null) return;
@@ -1567,7 +1754,12 @@ function applySnapshot(snapshot: Pattern): void {
 
   if (stored.schema === PATTERN_SCHEMA) {
     if (!isRenderableDocument(stored)) throw new Error(unreadableMessage(snapshot.name));
-    editor.markLoaded(stored, snapshot.version, snapshot.saved_at);
+    editor.markLoaded(
+      stored,
+      snapshot.version,
+      snapshot.saved_at,
+      readPersistedTab(window.localStorage, props.id),
+    );
     return;
   }
 
@@ -1737,7 +1929,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  if (nudgeTimer !== null) clearTimeout(nudgeTimer);
+  if (instanceNudgeTimer !== null) clearTimeout(instanceNudgeTimer);
   autosave.cancel();
   window.removeEventListener('keydown', onKeyDown);
   window.removeEventListener('beforeunload', onBeforeUnload);
@@ -1774,13 +1966,18 @@ onBeforeUnmount(() => {
       />
 
       <EditorRibbon
+        :mode="isAssemblyTab ? 'assembly' : 'piece'"
         :active-tool="activeTool"
         :active-constraint="activeConstraint"
         :can-undo="canUndo"
         :can-redo="canRedo"
-        :can-delete="selectedEntityIds.length > 0 || selectedDimensionIds.length > 0"
-        :can-create-piece="canCreatePiece"
-        :create-piece-hint="createPieceHint"
+        :can-delete="
+          isAssemblyTab
+            ? selectedInstanceId !== null
+            : selectedEntityIds.length > 0 || selectedDimensionIds.length > 0
+        "
+        :can-export="canExport"
+        :export-hint="exportHint"
         :read-only="editor.readOnly"
         @select-tool="selectTool"
         @select-constraint="selectConstraint"
@@ -1818,14 +2015,36 @@ onBeforeUnmount(() => {
 
       <div class="flex min-h-0 flex-1">
         <div class="min-h-0 flex-1 p-2">
+          <p
+            v-if="pattern.tabs.length === 0"
+            class="flex h-full items-center justify-center text-sm text-muted-foreground"
+            data-testid="no-tabs-empty"
+          >
+            Create a piece to start
+          </p>
+          <AssemblyCanvas
+            v-else-if="isAssemblyTab && activeAssembly"
+            :document="assemblyDocument"
+            :assembly-id="activeAssembly.id"
+            :selected-instance-id="selectedInstanceId"
+            :picker-open="assemblyPickerOpen"
+            :fit-token="fitToken"
+            :read-only="editor.readOnly"
+            @select="selectInstance"
+            @move="onMoveInstance"
+            @nudge="onNudgeInstance"
+            @remove="onRemoveInstance"
+            @add-piece="onAddInstance"
+            @close-picker="assemblyPickerOpen = false"
+          />
           <PatternCanvas
+            v-else
             v-model:selected-entity-ids="selectedEntityIds"
             v-model:selected-dimension-ids="selectedDimensionIds"
             :document="visibleDocument"
             :tool="activeTool"
             :fit-token="fitToken"
             :show-allowances="showAllowances"
-            :selected-piece-id="selectedPieceId"
             :show-constraints="showConstraints"
             :show-dimensions="showDimensions"
             :constraint-active="activeConstraint !== null"
@@ -1835,11 +2054,7 @@ onBeforeUnmount(() => {
             :corner-round-preview-radius="cornerRoundPreviewRadius"
             :read-only="editor.readOnly"
             :active-piece-id="activePieceId"
-            :move-mode="moveMode"
             @move-point="onMovePoint"
-            @move-piece="onMovePiece"
-            @activate-piece="onActivatePiece"
-            @cross-piece="onCrossPiece"
             @add-text="onAddText"
             @add-point="onAddPoint"
             @add-point-on-line="onAddPointOnLine"
@@ -1862,6 +2077,7 @@ onBeforeUnmount(() => {
           :width="width"
           :collapsed="collapsed"
           :counts="drawerCounts"
+          :mode="isAssemblyTab ? 'assembly' : 'piece'"
           :read-only="editor.readOnly"
           @update:width="setWidth"
           @update:collapsed="collapsed = $event"
@@ -1887,6 +2103,7 @@ onBeforeUnmount(() => {
               @remove-corner-round="removeCornerRound"
               @set-circle-radius="onSetCircleRadius"
               @update-piece="onUpdatePiece"
+              @set-piece-default="onSetPieceDefault"
               @set-piece-allowance="onSetPieceAllowance"
               @set-all-allowances="onSetAllAllowances"
               @remove-piece="onRemovePiece"
@@ -1915,104 +2132,84 @@ onBeforeUnmount(() => {
 
           <template #pieces>
             <div class="space-y-2">
-              <div class="space-y-1 rounded-md border p-2" data-testid="default-allowance">
-                <SidebarHeading label="Default allowance" />
-                <div class="flex flex-wrap items-center gap-1.5">
-                  <select
-                    class="h-7 rounded-sm border px-1.5 text-2xs"
-                    :value="defaultAllowance.kind"
-                    :disabled="editor.readOnly"
-                    aria-label="Default allowance kind"
-                    data-testid="default-allowance-kind"
-                    @change="onDefaultAllowanceKind"
-                  >
-                    <option value="none" data-testid="default-allowance-none">None</option>
-                    <option value="seam">Seam</option>
-                    <option value="single">Single fold</option>
-                    <option value="double">Double fold</option>
-                  </select>
-                  <input
-                    type="number"
-                    min="0.1"
-                    step="0.1"
-                    class="h-7 w-16 rounded-sm border px-1.5 text-2xs tabular-nums"
-                    :value="defaultAllowance.kind === 'none' ? '' : defaultAllowance.width"
-                    :disabled="defaultAllowance.kind === 'none' || editor.readOnly"
-                    aria-label="Default allowance width"
-                    data-testid="default-allowance-width"
-                    @change="onDefaultAllowanceWidth"
-                  />
-                  <span class="text-2xs text-muted-foreground">mm</span>
-                </div>
-                <p class="text-2xs leading-snug text-muted-foreground">Applied to new pieces.</p>
+              <template v-if="activePiece && activePieceSummary">
+                <PiecePanel
+                  :summary="activePieceSummary"
+                  :piece="activePiece"
+                  :default-allowance="defaultAllowance"
+                  :inherited-default="defaultAllowance"
+                  label="Piece"
+                  prefix="piece-drawer"
+                  active
+                  @update-piece="onUpdatePiece"
+                  @set-piece-default="onSetPieceDefault"
+                  @set-piece-allowance="onSetPieceAllowance"
+                  @set-all-allowances="onSetAllAllowances"
+                  @remove-piece="onRemovePiece"
+                  @set-cut-loop="setCutLoop"
+                  @clear-cut-loop="clearCutLoop"
+                  @activate="setActiveTab(pieceTab($event))"
+                />
+              </template>
+              <SidebarEmpty
+                v-else
+                icon="piece"
+                message="No piece tab is active"
+                hint="Use the + menu to create a piece."
+                data-testid="pieces-empty"
+              />
+            </div>
+          </template>
+
+          <template #pattern>
+            <div class="space-y-1 rounded-md border p-2" data-testid="default-allowance">
+              <SidebarHeading label="Document default" />
+              <div class="flex flex-wrap items-center gap-1.5">
+                <select
+                  class="h-7 rounded-sm border px-1.5 text-2xs"
+                  :value="defaultAllowance.kind"
+                  :disabled="editor.readOnly"
+                  aria-label="Default allowance kind"
+                  data-testid="default-allowance-kind"
+                  @change="onDefaultAllowanceKind"
+                >
+                  <option value="none" data-testid="default-allowance-none">None</option>
+                  <option value="seam">Seam</option>
+                  <option value="single">Single fold</option>
+                  <option value="double">Double fold</option>
+                </select>
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  class="h-7 w-16 rounded-sm border px-1.5 text-2xs tabular-nums"
+                  :value="defaultAllowance.kind === 'none' ? '' : defaultAllowance.width"
+                  :disabled="defaultAllowance.kind === 'none' || editor.readOnly"
+                  aria-label="Default allowance width"
+                  data-testid="default-allowance-width"
+                  @change="onDefaultAllowanceWidth"
+                />
+                <span class="text-2xs text-muted-foreground">mm</span>
               </div>
-
-              <ul v-if="pieces.length > 0" class="space-y-1" aria-label="Pieces">
-                <li v-for="(piece, index) in pieces" :key="piece.id">
-                  <button
-                    type="button"
-                    class="flex w-full items-start justify-between gap-2 rounded-sm px-1 py-1 text-left hover:bg-accent"
-                    :class="selectedPieceId === piece.id ? 'bg-accent text-accent-foreground' : ''"
-                    :aria-expanded="selectedPieceId === piece.id"
-                    :aria-label="`${pieceLabel(piece, index)}: toggle piece details`"
-                    :data-testid="`piece-row-${piece.id}`"
-                    @click="selectPiece(piece.id)"
-                  >
-                    <span class="min-w-0 flex-1 space-y-0.5">
-                      <span class="flex items-center gap-1.5">
-                        <span class="truncate text-[13px] font-semibold">
-                          {{ pieceTitleLine(piece, index) }}
-                        </span>
-                        <Pill tone="neutral">×{{ piece.quantity }}</Pill>
-                      </span>
-                      <span class="block text-2xs leading-snug text-muted-foreground">
-                        {{ piece.hasLoop ? pieceSizeLine(piece.metrics) : 'No cut loop' }}
-                      </span>
-                    </span>
-                    <span aria-hidden="true" class="shrink-0 text-muted-foreground">
-                      {{ selectedPieceId === piece.id ? '▾' : '▸' }}
-                    </span>
-                  </button>
-
-                  <div v-if="selectedPieceId === piece.id" class="mt-1 px-1">
-                    <PiecePanel
-                      :summary="piece"
-                      :default-allowance="defaultAllowance"
-                      :label="pieceLabel(piece, index)"
-                      prefix="piece-drawer"
-                      @update-piece="onUpdatePiece"
-                      @set-piece-allowance="onSetPieceAllowance"
-                      @set-all-allowances="onSetAllAllowances"
-                      @remove-piece="onRemovePiece"
-                      @set-cut-loop="setCutLoop"
-                      @clear-cut-loop="clearCutLoop"
-                      @toggle-move="toggleMove"
-                      @activate="activatePiece"
-                      :active="piece.id === activePieceId"
-                      :move-mode="moveMode && piece.id === activePieceId"
-                    />
-                  </div>
-                </li>
-              </ul>
-
-              <SidebarEmpty v-else message="No pieces yet." data-testid="pieces-empty" />
-
-              <Button
-                variant="outline"
-                size="sm"
-                :disabled="editor.readOnly"
-                data-testid="pieces-create"
-                @click="newPiece"
-              >
-                New piece
-              </Button>
-              <p
-                class="text-2xs leading-snug text-muted-foreground"
-                data-testid="pieces-create-hint"
-              >
-                {{ defaultAllowanceHint }}
+              <p class="text-2xs leading-snug text-muted-foreground">
+                Applied to new pieces that inherit it.
               </p>
             </div>
+          </template>
+
+          <template #assembly>
+            <AssemblyPanel
+              :document="pattern"
+              :assembly="activeAssembly!"
+              :selected-instance-id="selectedInstanceId"
+              :read-only="editor.readOnly"
+              @update-assembly="onUpdateAssembly"
+              @update-instance="onUpdateInstance"
+              @update-piece="onUpdatePiece"
+              @set-default="onSetPieceDefault"
+              @open-piece="openPieceTab"
+              @remove-instance="onRemoveInstance"
+            />
           </template>
 
           <template #outline>
@@ -2329,6 +2526,16 @@ onBeforeUnmount(() => {
           </template>
         </EditorSidebar>
       </div>
+
+      <EditorTabs
+        :document="pattern"
+        :model-value="activeTab"
+        :read-only="editor.readOnly"
+        @update:model-value="setActiveTab"
+        @new-piece="newPiece"
+        @new-assembly="newAssembly"
+        @reorder="onReorderTabs"
+      />
 
       <SaveConflictDialog
         v-if="conflict"

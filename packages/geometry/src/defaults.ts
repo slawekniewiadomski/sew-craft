@@ -3,6 +3,7 @@ import {
   type AllowanceKind,
   type AllowancePreset,
   type PatternDefaults,
+  type PieceDefaults,
 } from './types.js';
 
 /**
@@ -21,8 +22,22 @@ export function effectiveDefaultAllowance(document: {
     : document.defaults.allowance;
 }
 
-/** Whether a stored value is a preset this build can copy onto a piece. */
-function isValidPreset(value: unknown): value is AllowancePreset {
+/**
+ * The preset that applies to one piece's new loop edges. A present `defaults`
+ * object always wins, including `{ allowance: null }` meaning "no allowance";
+ * an absent one inherits the document default.
+ */
+export function effectivePieceAllowance(
+  document: { defaults?: PatternDefaults },
+  piece: { defaults?: PieceDefaults },
+): AllowancePreset | null {
+  if (piece.defaults === undefined) return effectiveDefaultAllowance(document);
+  return piece.defaults.allowance === null ? null : { ...piece.defaults.allowance };
+}
+
+/** Whether a stored value is a preset this build can copy onto a piece. */ function isValidPreset(
+  value: unknown,
+): value is AllowancePreset {
   if (typeof value !== 'object' || value === null) return false;
 
   const preset = value as Partial<AllowancePreset>;
