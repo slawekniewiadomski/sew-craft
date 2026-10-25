@@ -42,6 +42,7 @@ import {
   isCornerRoundDerived,
   lineEndpoints,
   type LineEntity,
+  type LeaderGeometry,
   measureDistanceDimension,
   measureLinearDimension,
   MIN_RADIUS,
@@ -59,7 +60,8 @@ import {
   resolveCutSpan,
   type TextLayout,
   textLayout,
-  textLeader,
+  textLeaderGeometry,
+  DEFAULT_TEXT_SIZE,
   seamAllowancePaths,
   svgArcCommand,
   usesCutEdgeAnchor,
@@ -1678,7 +1680,7 @@ interface TextView {
   rotation: number;
   fontSize: number;
   alignment: 'left' | 'center' | 'right';
-  leader: Vec2[] | null;
+  leader: LeaderGeometry | null;
   /** The rotated selection box; also the label's click target. */
   layout: TextLayout;
 }
@@ -1698,12 +1700,12 @@ const textViews = computed<TextView[]>(() =>
         content: entity.content,
         anchor: { x: anchor.x, y: anchor.y },
         rotation: entity.rotation ?? 0,
-        fontSize: entity.fontSize ?? 6,
+        fontSize: entity.fontSize ?? DEFAULT_TEXT_SIZE,
         alignment: entity.alignment ?? 'left',
         layout,
         leader:
           leaderPoint?.kind === 'point'
-            ? textLeader(
+            ? textLeaderGeometry(
                 entity,
                 { x: anchor.x, y: anchor.y },
                 { x: leaderPoint.x, y: leaderPoint.y },
@@ -3244,21 +3246,39 @@ watch(
 
         <g data-testid="annotation-layer">
           <template v-for="entry in textViews" :key="entry.id">
-            <polyline
-              v-if="entry.leader"
-              :points="entry.leader.map((point) => `${point.x},${point.y}`).join(' ')"
-              fill="none"
-              class="pointer-events-none stroke-annotation"
-              stroke-width="0.5"
-              stroke-dasharray="2 2"
-              vector-effect="non-scaling-stroke"
-              :data-testid="`text-leader-${entry.id}`"
-            />
+            <g v-if="entry.leader" class="pointer-events-none">
+              <line
+                :x1="entry.leader.underline.start.x"
+                :y1="entry.leader.underline.start.y"
+                :x2="entry.leader.underline.end.x"
+                :y2="entry.leader.underline.end.y"
+                class="stroke-annotation"
+                stroke-width="0.5"
+                vector-effect="non-scaling-stroke"
+                :data-testid="`text-underline-${entry.id}`"
+              />
+              <line
+                v-if="entry.leader.shaft"
+                :x1="entry.leader.shaft.start.x"
+                :y1="entry.leader.shaft.start.y"
+                :x2="entry.leader.shaft.end.x"
+                :y2="entry.leader.shaft.end.y"
+                class="stroke-annotation"
+                stroke-width="0.5"
+                vector-effect="non-scaling-stroke"
+                :data-testid="`text-leader-${entry.id}`"
+              />
+              <polygon
+                :points="entry.leader.head.map((point) => `${point.x},${point.y}`).join(' ')"
+                class="fill-annotation"
+                :data-testid="`text-arrow-${entry.id}`"
+              />
+            </g>
             <polygon
               :points="entry.layout.corners.map((point) => `${point.x},${point.y}`).join(' ')"
               fill="none"
               pointer-events="all"
-              class="cursor-pointer"
+              :class="props.tool === 'select' ? 'cursor-move' : 'cursor-pointer'"
               :data-entity-id="entry.id"
               data-kind="text"
               :data-testid="`text-hit-${entry.id}`"

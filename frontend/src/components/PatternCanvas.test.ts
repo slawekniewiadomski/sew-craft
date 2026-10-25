@@ -4174,21 +4174,43 @@ describe('containers, annotation text and move mode', () => {
     return worldToScreen(fitToBounds(bounds(document)!, SIZE), world);
   }
 
-  it('renders the label, its leader and the active-piece badge', () => {
+  it('renders the label, its rule, leader and arrow, and the active-piece badge', () => {
     const document = containerDoc();
     const wrapper = mountCanvas({ document, activePieceId: 'p1' });
 
     expect(wrapper.find('[data-testid="annotation-layer"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="text-t1"]').text()).toBe('velcro');
+    expect(wrapper.find('[data-testid="text-underline-t1"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="text-leader-t1"]').exists()).toBe(true);
+    const arrow = wrapper.find('[data-testid="text-arrow-t1"]');
+    expect(arrow.element.tagName.toLowerCase()).toBe('polygon');
+    expect(arrow.classes()).toContain('fill-annotation');
+    expect(arrow.attributes('points')!.split(' ')).toHaveLength(3);
 
     // A label is selected through its whole rotated box, not only its glyphs.
     const hit = wrapper.find('[data-testid="text-hit-t1"]');
     expect(hit.attributes('data-entity-id')).toBe('t1');
     expect(hit.attributes('data-kind')).toBe('text');
     expect(hit.attributes('pointer-events')).toBe('all');
+    expect(hit.classes()).toContain('cursor-move');
     expect(wrapper.find('[data-testid="active-piece-badge"]').text()).toContain('Piece 1');
     expect(wrapper.find('[data-testid="active-piece-badge"]').text()).toContain('cut loop');
+  });
+
+  it('drops the shaft when the head fills a short leader', () => {
+    const document: PatternDocument = {
+      ...containerDoc(),
+      entities: [
+        pt('a', 0, 0),
+        pt('near', 2, 2, false),
+        { id: 't1', kind: 'text', piece: 'p1', anchor: 'a', content: 'x', leader: 'near' },
+      ],
+    };
+    const wrapper = mountCanvas({ document });
+
+    expect(wrapper.find('[data-testid="text-underline-t1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="text-leader-t1"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="text-arrow-t1"]').exists()).toBe(true);
   });
 
   it('styles annotation geometry distinctly and keeps guides muted', () => {
@@ -4275,7 +4297,7 @@ describe('annotation text defaults and multi-piece move preview', () => {
     const wrapper = mountCanvas({ document: bareText() });
 
     expect(wrapper.find('[data-testid="text-t1"]').text()).toBe('x');
-    expect(wrapper.find('[data-testid="text-t1"]').attributes('font-size')).toBe('6');
+    expect(wrapper.find('[data-testid="text-t1"]').attributes('font-size')).toBe('10');
     expect(wrapper.find('[data-testid="text-sorted"]').attributes('text-anchor')).toBe('end');
     expect(wrapper.find('[data-testid="text-orphan"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="text-leader-led"]').exists()).toBe(false);
