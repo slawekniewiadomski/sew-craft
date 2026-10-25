@@ -67,23 +67,23 @@ per-piece SVG export at schema `sewcraft.pattern/0.4`, keeping every existing ga
 - [x] 2.1 Schema 0.4, tab normalisation and per-piece fields — c2ebca3
 - [x] 2.2 Piece commands: create/update/default allowance/tabs/loop — c2ebca3
 - [x] 2.3 `reorder_tabs` and the command-spec three-way sync — c2ebca3
-- [ ] 2.4 Pure tab helpers
-- [ ] 2.5 Store active tab, load restore and undo reconciliation
-- [ ] 2.6 Tab bar with the `+` menu
-- [ ] 2.7 Active-piece canvas and removal of the cross-piece/Move paths
-- [ ] 2.8 Piece and Pattern drawers
-- [ ] 2.9 Active-piece export
+- [x] 2.4 Pure tab helpers — 7e1ddba
+- [x] 2.5 Store active tab, load restore and undo reconciliation — 7e1ddba
+- [x] 2.6 Tab bar with the `+` menu — 7e1ddba
+- [x] 2.7 Active-piece canvas and removal of the cross-piece/Move paths — 7e1ddba
+- [x] 2.8 Piece and Pattern drawers — 7e1ddba
+- [x] 2.9 Active-piece export — 7e1ddba
 
 ### Phase 3: Assemblies
 
 - [x] 3.1 Assembly and instance commands with `delete_piece` cascade — c2ebca3
 - [x] 3.2 Placement math: anchor, transform, loops, bounds — c2ebca3
-- [ ] 3.3 Assembly canvas and `documentForAssembly`
-- [ ] 3.4 Assembly inspector and ribbon
+- [x] 3.3 Assembly canvas and `documentForAssembly` — 7e1ddba
+- [x] 3.4 Assembly inspector and ribbon — 7e1ddba
 - [x] 3.5 Docs and compatibility update — c2ebca3
 
 ### Phase 4: Order, undo and polish
 
-- [ ] 4.1 Drag and keyboard tab reordering with persistence
-- [ ] 4.2 Reconciliation, read-only, empty states and delete confirmation
-- [ ] 4.3 Full validation gate and review pass
+- [x] 4.1 Drag and keyboard tab reordering with persistence — 7e1ddba
+- [x] 4.2 Reconciliation, read-only, empty states and delete confirmation — 7e1ddba
+- [x] 4.3 Full validation gate and review pass — 7e1ddba
