@@ -16,6 +16,7 @@ import {
   cornerRoundGeometry,
   cornerRoundsForEntity,
   isCornerRoundDerived,
+  lineEndpointAnchor,
   maxCornerRadius,
   regenerateCornerRounds,
 } from './corner-round.js';
@@ -1608,14 +1609,6 @@ function applySetSeamAllowance(
   };
 }
 
-/** The original point at a line end, following one level of corner-round trim. */
-function originalAnchor(document: PatternDocument, lineId: EntityId, endpoint: EntityId): EntityId {
-  const round = cornerRounds(document).find((candidate) =>
-    candidate.ends.some((end) => end.line === lineId && end.tangent === endpoint),
-  );
-  return round?.corner ?? endpoint;
-}
-
 /**
  * Round a corner between two lines. The selected lines are trimmed to their
  * tangent points, the arc and its control points are derived, and the sharp
@@ -1694,8 +1687,12 @@ function applyAddCornerRound(
     );
   }
 
-  const anchorA = originalAnchor(document, first, lineA.start === corner ? lineA.end : lineA.start);
-  const anchorB = originalAnchor(
+  const anchorA = lineEndpointAnchor(
+    document,
+    first,
+    lineA.start === corner ? lineA.end : lineA.start,
+  );
+  const anchorB = lineEndpointAnchor(
     document,
     second,
     lineB.start === corner ? lineB.end : lineB.start,
