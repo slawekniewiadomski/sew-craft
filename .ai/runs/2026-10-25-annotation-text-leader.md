@@ -63,14 +63,14 @@ dragging the target moves only that point. Pure derived geometry in
 
 ### Phase 2: Creation and cleanup
 
-- [ ] 2.1 `add_text_leader` tool, `text-leader` glyph and the Annotation split group
-- [ ] 2.2 Anchor and leader resolvers in `drafting.ts`
-- [ ] 2.3 Leader-aware `buildTextCommands` with annotation-role points
-- [ ] 2.4 Two-click gesture: preview, refusal hints, cancel paths, commit
-- [ ] 2.5 Remove the leader picker from the properties panel and editor view
+- [x] 2.1 `add_text_leader` tool, `text-leader` glyph and the Annotation split group — e087a2d
+- [x] 2.2 Anchor and leader resolvers in `drafting.ts` — e087a2d
+- [x] 2.3 Leader-aware `buildTextCommands` with annotation-role points — e087a2d
+- [x] 2.4 Two-click gesture: preview, refusal hints, cancel paths, commit — d375a76
+- [x] 2.5 Remove the leader picker from the properties panel and editor view — d375a76
 
 ### Phase 3: Independent movement
 
-- [ ] 3.1 Drag-aware text views for the anchor and target
-- [ ] 3.2 Label drag moves only the anchor in the Select tool
-- [ ] 3.3 Target drag test, glossary/geometry-core pass and the full gate
+- [x] 3.1 Drag-aware text views for the anchor and target — d375a76
+- [x] 3.2 Label drag moves only the anchor in the Select tool — d375a76
+- [x] 3.3 Target drag test, glossary/geometry-core pass and the full gate — d375a76
