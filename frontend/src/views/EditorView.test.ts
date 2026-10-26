@@ -2076,18 +2076,55 @@ describe('EditorView', () => {
   it('persists sidebar width and collapsed state across remounts', async () => {
     const first = await mountEditor(createPinia());
 
-    await first.find('[data-testid="sidebar-collapse"]').trigger('click');
+    await first.find('[data-testid="sidebar-toggle"]').trigger('click');
     await nextTick();
 
     expect(JSON.parse(window.localStorage.getItem('sewcraft.editor.sidebar')!)).toEqual({
       width: 320,
       collapsed: true,
     });
+    expect(first.find('[data-testid="sidebar-panel"]').exists()).toBe(false);
 
     first.unmount();
     const second = await mountEditor(createPinia());
 
-    expect(second.find('[data-testid="sidebar-expand"]').exists()).toBe(true);
+    const toggle = second.find('[data-testid="sidebar-toggle"]');
+    expect(toggle.attributes('aria-expanded')).toBe('false');
+    expect(toggle.attributes('aria-label')).toBe('Expand sidebar');
+  });
+
+  it('collapses and expands from the ribbon toggle alone', async () => {
+    const wrapper = await mountEditor(createPinia());
+    const toggle = wrapper.find('[data-testid="sidebar-toggle"]');
+
+    expect(wrapper.find('[data-testid="sidebar"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="sidebar"] [data-testid="sidebar-toggle"]').exists()).toBe(
+      false,
+    );
+
+    await toggle.trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="sidebar-toggle"]').attributes('aria-expanded')).toBe(
+      'false',
+    );
+    expect(wrapper.find('[data-testid="sidebar-panel"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="sidebar-toggle"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="sidebar-toggle"]').attributes('aria-expanded')).toBe('true');
+    expect(wrapper.find('[data-testid="sidebar-panel"]').exists()).toBe(true);
+  });
+
+  it('reopens the collapsed sidebar on the section the user picks', async () => {
+    const wrapper = await mountEditor(createPinia());
+
+    await wrapper.find('[data-testid="sidebar-toggle"]').trigger('click');
+    await nextTick();
+    await wrapper.find('[data-testid="sidebar-tab-outline"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="sidebar-panel"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="sidebar-panel-title"]').text()).toBe('Outline');
   });
 
   it('creates a dimension from a line with the dimension tool', async () => {
@@ -4097,7 +4134,7 @@ describe('EditorView persistence', () => {
       },
     });
     await flushPromises();
-    expect(wrapper.find('[data-testid="editor-save-bar"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="editor-top-bar"]').exists()).toBe(true);
   });
 
   it('reports a malformed stored document as a load error', async () => {
@@ -4166,6 +4203,13 @@ describe('EditorView persistence', () => {
     expect(wrapper.find('[data-testid="editor-load-error"] a').attributes('href')).toBe(
       '/projects',
     );
+    // Hiding the app header on this route must not strand the user here.
+    const header = wrapper.find('[data-testid="editor-top-bar"]');
+    expect(header.exists()).toBe(true);
+    expect(header.text()).toContain('SewCraft');
+    expect(header.text()).toContain('Projects');
+    expect(wrapper.find('[data-testid="pattern-name"]').text()).toBe('Project unavailable');
+    expect(wrapper.find('[data-testid="save-project"]').exists()).toBe(false);
   });
 
   it('saves with Cmd/Ctrl+S and ignores it while clean', async () => {
@@ -4541,6 +4585,54 @@ describe('EditorView persistence', () => {
     expect(wrapper.find('[data-testid="editor-load-error"]').text()).toContain(
       'Failed to load the project',
     );
+  });
+});
+
+describe('EditorView top bar', () => {
+  it('renders one header row above the ribbon with brand navigation and save controls', async () => {
+    const wrapper = await mountEditor(createPinia());
+
+    const headers = wrapper.findAll('header');
+    expect(headers).toHaveLength(1);
+    expect(headers[0]!.attributes('data-testid')).toBe('editor-top-bar');
+    expect(headers[0]!.text()).toContain('SewCraft');
+    expect(headers[0]!.text()).toContain('Projects');
+    expect(wrapper.find('[data-testid="pattern-name"]').text()).toBe('Bodice');
+    expect(wrapper.find('[data-testid="save-project"]').exists()).toBe(true);
+    expect(wrapper.findAll('[role="toolbar"]')).toHaveLength(1);
+  });
+
+  it('keeps the top bar and the way back to Projects while the project loads', async () => {
+    let resolveLoad: (value: unknown) => void = () => {};
+    vi.mocked(projectsApi.getPattern).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveLoad = resolve as (value: unknown) => void;
+        }),
+    );
+    const wrapper = await mountEditor(createPinia());
+
+    const header = wrapper.find('[data-testid="editor-top-bar"]');
+    expect(header.exists()).toBe(true);
+    expect(header.text()).toContain('SewCraft');
+    expect(header.text()).toContain('Projects');
+    expect(wrapper.find('[data-testid="pattern-name"]').text()).toBe('Loading…');
+    expect(wrapper.find('[data-testid="save-status"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="save-project"]').exists()).toBe(false);
+
+    resolveLoad({
+      data: {
+        id: 1,
+        project_id: 1,
+        name: 'Bodice',
+        document: simpleDoc,
+        version: 1,
+        saved_at: '2026-10-23T14:32:00.000Z',
+      },
+    });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="pattern-name"]').text()).toBe('Bodice');
+    expect(wrapper.find('[data-testid="save-project"]').exists()).toBe(true);
   });
 });
 

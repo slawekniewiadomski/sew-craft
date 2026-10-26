@@ -26,18 +26,22 @@ describe('App', () => {
     const wrapper = mount(App, { global: { plugins: [router] } });
     await flushPromises();
 
+    expect(wrapper.find('header').exists()).toBe(true);
     expect(wrapper.text()).toContain('SewCraft');
     expect(wrapper.text()).toContain('Projects');
     expect(wrapper.text()).toContain('2D sewing pattern drafting.');
     expect(wrapper.findComponent(Stub).exists()).toBe(true);
   });
 
-  it('hides the footer on the editor route', async () => {
+  it('hides the app header and footer on the editor route', async () => {
     const router = await makeRouter('/projects/1/edit');
     const wrapper = mount(App, { global: { plugins: [router] } });
     await flushPromises();
 
-    expect(wrapper.text()).toContain('SewCraft');
+    // The editor renders its own top bar, so the shell contributes no header.
+    expect(wrapper.find('header').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('SewCraft');
     expect(wrapper.text()).not.toContain('2D sewing pattern drafting.');
+    expect(wrapper.findComponent(Stub).exists()).toBe(true);
   });
 });

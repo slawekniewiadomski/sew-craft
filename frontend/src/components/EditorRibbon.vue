@@ -35,8 +35,16 @@ const props = withDefaults(
     canExport?: boolean;
     /** Explains a refused export, shown in its tooltip. */
     exportHint?: string;
+    /** The one collapse control mirrors the sidebar it owns. */
+    sidebarCollapsed?: boolean;
   }>(),
-  { mode: 'piece', readOnly: false, canExport: true, exportHint: undefined },
+  {
+    mode: 'piece',
+    readOnly: false,
+    canExport: true,
+    exportHint: undefined,
+    sidebarCollapsed: false,
+  },
 );
 
 const groups = computed(() => (props.mode === 'assembly' ? ASSEMBLY_RIBBON_GROUPS : RIBBON_GROUPS));
@@ -45,6 +53,7 @@ const emit = defineEmits<{
   'select-tool': [tool: EditorTool];
   'select-constraint': [constraint: ConstraintType];
   action: [action: RibbonAction];
+  'toggle-sidebar': [];
 }>();
 
 function isActive(item: RibbonItem): boolean {
@@ -122,51 +131,80 @@ function activate(item: RibbonButtonItem): void {
 <template>
   <TooltipProvider :delay-duration="300">
     <div
-      class="flex flex-wrap items-stretch gap-1 border-b bg-background px-2 py-1"
-      role="toolbar"
-      aria-label="Editor tools"
+      class="flex items-start gap-1 border-b bg-background px-2 py-1"
       data-testid="editor-ribbon"
     >
-      <template v-for="(group, index) in groups" :key="group.id">
-        <Separator v-if="index > 0" orientation="vertical" class="mx-1" />
-        <div class="flex flex-col gap-1" :aria-label="group.label" role="group">
-          <span
-            class="pl-0.5 text-[10px] font-semibold uppercase leading-none tracking-wider text-muted-foreground"
-            aria-hidden="true"
-            :data-testid="`ribbon-group-${group.id}-label`"
-          >
-            {{ group.label }}
-          </span>
-          <div class="flex items-center gap-1">
-            <template v-for="item in group.items" :key="item.id">
-              <RibbonToolGroup
-                v-if="item.kind === 'tool-group'"
-                :item="item"
-                :active-tool="activeTool"
-                :active="isActive(item)"
-                :read-only="readOnly"
-                @select-tool="emit('select-tool', $event)"
-              />
-              <Tooltip v-else>
-                <TooltipTrigger as-child>
-                  <Button
-                    :variant="variantFor(item)"
-                    size="icon"
-                    :data-testid="item.id"
-                    :disabled="isDisabled(item)"
-                    :aria-label="item.label"
-                    :aria-pressed="pressed(item)"
-                    @click="activate(item)"
-                  >
-                    <RibbonIcon :icon="ribbonIcon(item.icon)" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{{ hintFor(item) }}</TooltipContent>
-              </Tooltip>
-            </template>
+      <div
+        class="flex min-w-0 flex-1 flex-wrap items-start gap-1"
+        role="toolbar"
+        aria-label="Editor tools"
+      >
+        <template v-for="(group, index) in groups" :key="group.id">
+          <Separator v-if="index > 0" orientation="vertical" class="mx-1" />
+          <div class="flex flex-col gap-1" :aria-label="group.label" role="group">
+            <span
+              class="pl-0.5 text-[10px] font-semibold uppercase leading-none tracking-wider text-muted-foreground"
+              aria-hidden="true"
+              :data-testid="`ribbon-group-${group.id}-label`"
+            >
+              {{ group.label }}
+            </span>
+            <div class="flex items-center gap-1">
+              <template v-for="item in group.items" :key="item.id">
+                <RibbonToolGroup
+                  v-if="item.kind === 'tool-group'"
+                  :item="item"
+                  :active-tool="activeTool"
+                  :active="isActive(item)"
+                  :read-only="readOnly"
+                  @select-tool="emit('select-tool', $event)"
+                />
+                <Tooltip v-else>
+                  <TooltipTrigger as-child>
+                    <Button
+                      :variant="variantFor(item)"
+                      size="icon"
+                      :data-testid="item.id"
+                      :disabled="isDisabled(item)"
+                      :aria-label="item.label"
+                      :aria-pressed="pressed(item)"
+                      @click="activate(item)"
+                    >
+                      <RibbonIcon :icon="ribbonIcon(item.icon)" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{{ hintFor(item) }}</TooltipContent>
+                </Tooltip>
+              </template>
+            </div>
           </div>
-        </div>
-      </template>
+        </template>
+      </div>
+
+      <div class="flex shrink-0 items-center gap-1 self-center">
+        <Separator orientation="vertical" class="mx-1" />
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button
+              variant="ghost"
+              size="icon"
+              :aria-label="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+              :aria-expanded="!sidebarCollapsed"
+              aria-controls="sidebar"
+              data-testid="sidebar-toggle"
+              @click="emit('toggle-sidebar')"
+            >
+              <RibbonIcon
+                :icon="ribbonIcon('chevron-down')"
+                :class="sidebarCollapsed ? 'rotate-90' : '-rotate-90'"
+              />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{{
+            sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
+          }}</TooltipContent>
+        </Tooltip>
+      </div>
     </div>
   </TooltipProvider>
 </template>
