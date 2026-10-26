@@ -135,15 +135,15 @@ drawer has a pattern to follow instead of inventing classes. The scale lives in
 `frontend/src/assets/main.css` as the `--text-2xs` token; the primitives live in
 `frontend/src/components/sidebar/`.
 
-| Role                | Classes                                                                                             | Where                                                       |
-| ------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| Drawer header       | `text-2xs font-semibold tracking-[0.06em] text-muted-foreground uppercase`, hover `text-foreground` | `SidebarDrawer` trigger                                     |
-| Sub-section heading | the same, plus `mb-1.5`                                                                             | `SidebarHeading` in Geometry, Dimensions, Constraints, View |
-| Field label         | `text-2xs text-muted-foreground`                                                                    | `SidebarField` `dt` and standalone `<label>`                |
-| Field value         | `text-[13px] font-medium tabular-nums text-foreground`                                              | `SidebarField` `dd` and read-only values                    |
-| Object title        | `text-[13px] font-semibold`                                                                         | Inspector header, piece name                                |
-| Metadata            | `font-mono text-2xs text-muted-foreground`                                                          | ids, endpoints, source refs                                 |
-| Secondary sentence  | `text-2xs leading-snug text-muted-foreground`                                                       | hints, empty-state text                                     |
+| Role                | Classes                                                                                   | Where                                        |
+| ------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------- |
+| Panel header        | `text-2xs font-medium tracking-wide text-muted-foreground uppercase`                      | `EditorSidebar` panel title                  |
+| Sub-section heading | `text-2xs font-semibold tracking-[0.06em] text-muted-foreground uppercase`, plus `mb-1.5` | `SidebarHeading` inside panel bodies         |
+| Field label         | `text-2xs text-muted-foreground`                                                          | `SidebarField` `dt` and standalone `<label>` |
+| Field value         | `text-[13px] font-medium tabular-nums text-foreground`                                    | `SidebarField` `dd` and read-only values     |
+| Object title        | `text-[13px] font-semibold`                                                               | Inspector header, piece name                 |
+| Metadata            | `font-mono text-2xs text-muted-foreground`                                                | ids, endpoints, source refs                  |
+| Secondary sentence  | `text-2xs leading-snug text-muted-foreground`                                             | hints, empty-state text                      |
 
 Rules:
 
@@ -156,8 +156,10 @@ Rules:
 - Row actions are always-visible `SidebarAction` icon buttons (28 px) with a
   tooltip and an `aria-label` that match. No action is hover-only.
 - `Pill` has one shape and three tones: neutral, accent, danger.
-- Empty drawers use `SidebarEmpty`, not a bare muted sentence.
-- Workspace stats live in the `SidebarStat` status footer, not in a drawer.
+- Empty panels use `SidebarEmpty`, not a bare muted sentence.
+- Workspace stats live in the `SidebarStat` status footer, not inside a panel body.
+- Sections are rail tabs with one panel visible at a time; the rail carries the
+  counts and a chevron collapses the panel. Do not reintroduce stacked drawers.
 
 ---
 
