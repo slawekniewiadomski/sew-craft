@@ -41,16 +41,16 @@ sections, and issue #95 — see the `📋 adoption plan` comment on the PR.
 
 ### Phase 1: Unified top bar
 
-- [ ] 1.1 Extract `AppBrandNav` and hide the app header on the editor route
-- [ ] 1.2 Build `EditorTopBar` from `EditorSaveBar` (brand nav, identity, save region, loading/error placeholders)
-- [ ] 1.3 Render the top bar in every editor state and update App/EditorView tests
+- [x] 1.1 Extract `AppBrandNav` and hide the app header on the editor route — 90f8b8d
+- [x] 1.2 Build `EditorTopBar` from `EditorSaveBar` (brand nav, identity, save region, loading/error placeholders) — 90f8b8d
+- [x] 1.3 Render the top bar in every editor state and update App/EditorView tests — 90f8b8d
 
 ### Phase 2: Ribbon-owned collapse control
 
-- [ ] 2.1 Add the ribbon toggle and remove the sidebar's collapse/expand controls
-- [ ] 2.2 Wire `EditorView` and cover the single-toggle behaviour
-- [ ] 2.3 Amend the superseded specs (`013-editor-workspace-shell`, `2026-10-25-sidebar-panel-tabs`)
-- [ ] 2.4 Run the full validation gate at 100 % coverage
+- [x] 2.1 Add the ribbon toggle and remove the sidebar's collapse/expand controls — 4a818f2
+- [x] 2.2 Wire `EditorView` and cover the single-toggle behaviour — 4a818f2
+- [x] 2.3 Amend the superseded specs (`013-editor-workspace-shell`, `2026-10-25-sidebar-panel-tabs`) — aed0a58
+- [x] 2.4 Run the full validation gate at 100 % coverage — gate green on 4a818f2 (frontend 100 %, backend 100 %, Pint clean)
 
 ## Validation
 

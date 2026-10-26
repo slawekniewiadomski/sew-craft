@@ -345,22 +345,22 @@ is test churn, not user data.
 
 ## 📋 Acceptance criteria
 
-- [ ] The editor route renders exactly one header row above the ribbon: brand,
+- [x] The editor route renders exactly one header row above the ribbon: brand,
       Projects, project name, save status, Save.
-- [ ] The `/projects` route keeps its existing header and footer.
-- [ ] The editor saves about 57 px of vertical chrome compared with the current
+- [x] The `/projects` route keeps its existing header and footer.
+- [x] The editor saves about 57 px of vertical chrome compared with the current
       two-bar layout at 1280 px.
-- [ ] Loading and error states still expose SewCraft and Projects.
-- [ ] The sidebar collapse and expand actions both live on one toggle at the right
+- [x] Loading and error states still expose SewCraft and Projects.
+- [x] The sidebar collapse and expand actions both live on one toggle at the right
       end of the ribbon, with correct labels, `aria-expanded`, `aria-controls` and
       a working `id="sidebar"` target.
-- [ ] No dedicated collapse/expand toggle remains inside the sidebar; choosing a
+- [x] No dedicated collapse/expand toggle remains inside the sidebar; choosing a
       section while collapsed still reopens the panel on that section.
-- [ ] Exactly one `<header>` landmark and one `role="toolbar"` exist on the
+- [x] Exactly one `<header>` landmark and one `role="toolbar"` exist on the
       editor route.
-- [ ] The save live region is announced once, with unchanged wording for every
+- [x] The save live region is announced once, with unchanged wording for every
       state.
-- [ ] Read-only, both ribbon modes, long names and narrow widths behave as
-      specified (narrow-width treatment pending Q2).
-- [ ] Frontend checks pass at 100 % coverage; `013` and the sidebar-tabs spec are
+- [x] Read-only, both ribbon modes, long names and narrow widths behave as
+      specified (narrow widths follow the Q2 resolution).
+- [x] Frontend checks pass at 100 % coverage; `013` and the sidebar-tabs spec are
       amended.
