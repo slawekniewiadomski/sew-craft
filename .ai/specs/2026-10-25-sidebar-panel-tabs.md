@@ -6,15 +6,17 @@ Command spec: unchanged
 Geometry package: unchanged
 Amends: `.ai/specs/2026-10-23-editor-sidebar-readability.md` (the drawer stack
 this replaces)
+Amended by: `.ai/specs/2026-10-26-top-bars-reduction.md` (the collapse/expand
+control moved from the rail's foot to the right end of the editor ribbon)
 
 ## 📝 TLDR
 
 Replace the sidebar's collapsible drawer stack with one **vertical icon rail** on
 the panel's canvas-facing edge, Onshape-style. The rail is also the resize bar:
-its tabs switch a single panel that shows one section at a time, and a chevron at
-its foot collapses the panel while the rail stays on the canvas edge. The last
-used tab is remembered per project and mode; a fresh piece opens Properties, a
-fresh assembly opens Assembly.
+its tabs switch a single panel that shows one section at a time, and the editor
+ribbon's toggle collapses the panel while the rail stays on the canvas edge. The
+last used tab is remembered per project and mode; a fresh piece opens Properties,
+a fresh assembly opens Assembly.
 
 ## 📝 Problem Statement
 
@@ -30,11 +32,12 @@ it makes the panel width the only thing a collapse has to hide.
 ## 📝 Decisions
 
 - **One active section.** The rail shows exactly one tab's content at a time.
-- **Clicking the active tab does not collapse.** Collapsing is the chevron's
-  job, so a stray second click never hides the panel the user is reading.
+- **Clicking the active tab does not collapse.** Collapsing is the ribbon
+  toggle's job, so a stray second click never hides the panel the user is
+  reading.
 - **The rail stays visible when the panel is collapsed.** It sits on the canvas
-  edge; clicking any tab reopens the panel on that section and the chevron
-  reopens the last one.
+  edge; clicking any tab reopens the panel on that section, and the ribbon
+  toggle reopens the last one.
 - **Last used per project and mode.** Stored per piece/assembly mode, falling
   back to Properties for a piece and Assembly for an assembly.
 - **The rail doubles as the resize handle.** A 4 px separator on its
@@ -57,7 +60,8 @@ A 40 px column attached to the panel's left edge, inside the same aside, with th
 3. Non-zero counts appear as a small `text-2xs` badge at the icon's lower-right;
    zero counts are omitted. The accessible label includes the count
    (`Outline, 12 items`) and the tooltip mirrors it.
-4. A flexible spacer, a hairline, then the collapse/expand chevron.
+4. A flexible spacer. The collapse/expand control is not on the rail: it is the
+   single toggle at the right end of the editor ribbon.
 
 Icons map to today's drawers: Properties (`select`), Piece (`piece`), Pattern
 (`eye`), Assembly (`piece`), Outline (`line`), Dimensions (`dimension`),
@@ -84,20 +88,21 @@ summaries, allowance rows, etc.) is untouched.
 | --- | --- |
 | Click an inactive tab | That section becomes active; the panel expands if collapsed. |
 | Click the active tab | No change; the panel stays open. |
-| Click the rail chevron | Panel collapses; the rail widens the canvas by the panel width and remains visible. |
-| Click the chevron while collapsed | Panel reopens on the active section. |
+| Click the ribbon's sidebar toggle | Panel collapses; the rail widens the canvas by the panel width and remains visible. |
+| Click it while collapsed | Panel reopens on the active section. |
 | Drag the separator | Resizes the panel; the rail moves with it. Disabled while collapsed. |
 | Switch piece ↔ assembly tab | The active section follows the new mode's stored tab. |
 | Open another project | The active section follows that project's stored tab for the mode. |
 | Change a count | The badge and the accessible label update in place. |
 
 Keyboard: every rail button is a normal focusable button, so Tab reaches the
-entries and Enter/Space activates them; the chevron is the last button. Tooltips
-appear on hover and focus.
+entries and Enter/Space activates them. The sidebar toggle is a sibling of the
+ribbon toolbar and follows its tools in focus order. Tooltips appear on hover
+and focus.
 
 ### Read-only
 
-The rail, the collapse chevron and resize stay usable: they are view chrome, not
+The rail, the ribbon toggle and resize stay usable: they are view chrome, not
 document mutations. The section body remains wrapped in the read-only
 `fieldset` as today.
 
@@ -126,8 +131,9 @@ Files:
   Props keep `width`, `collapsed`, `counts`, `readOnly`, `mode`; a new
   `patternId` scopes the active-panel preference. Emits keep
   `update:width`/`update:collapsed`. It reads the active panel on mount and when
-  `patternId`/`mode` change, writes on every switch, and keeps the existing
-  resize-handle logic.
+  `patternId`/`mode` change, writes on every switch, keeps the existing
+  resize-handle logic, and renders no collapse control of its own: the rail's
+  `update:collapsed` emit only reopens the panel on a section click.
 - `frontend/src/views/EditorView.vue`: passes `patternId`, renames
   `drawerCounts` to `panelCounts`, and keeps the slots as-is. The document, command
   bus and canvas wiring are untouched.
@@ -152,9 +158,10 @@ Files:
    definitions, mode lists, default fallback and persistence; test valid, unknown,
    malformed and storage-failure cases.
 2. **Rail + panel.** Rewrite `EditorSidebar.vue`: rail buttons with active state,
-   counts, tooltips and chevron; one panel header and body slot; keep the resize
-   separator and collapsed rail. Test activation, active-click no-op, collapse and
-   expand, resize, counts, mode and project fallback, read-only.
+   counts and tooltips; one panel header and body slot; keep the resize separator
+   and collapsed rail. The collapse control moved to the editor ribbon (see
+   `2026-10-26-top-bars-reduction.md`). Test activation, active-click no-op,
+   resize, counts, mode and project fallback, read-only.
 3. **EditorView wiring.** Pass the project id and counts, keep the section slots,
    and migrate the affected tests from `drawer-toggle-*` / drawer contents to
    `sidebar-tab-*` and the visible panel.
@@ -168,8 +175,10 @@ Files:
       Dimensions and Constraints; assembly shows Assembly only.
 - [x] Exactly one section body is visible; switching tabs replaces it.
 - [x] Clicking the active tab keeps the panel open.
-- [x] The rail chevron collapses the panel, leaves the rail visible and reopens the
-      last section; a tab click while collapsed opens that section.
+- [x] The editor ribbon's sidebar toggle collapses the panel, leaves the rail
+      visible and reopens the last section; a tab click while collapsed opens that
+      section. (Originally the rail's own chevron; moved by
+      `2026-10-26-top-bars-reduction.md`.)
 - [x] The panel keeps its width on resize and clamps to 240–560 px.
 - [x] Non-zero counts show on the rail and in the panel header; zero counts do not.
 - [x] The last used section persists per project and mode; a fresh piece opens

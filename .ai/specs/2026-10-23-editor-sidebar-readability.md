@@ -203,7 +203,9 @@ muted span, never inside the number; nothing in the sidebar goes below 11 px.
 15. **Collapsed rail.** The 40 px strip becomes a 48 px rail of six 28 px ghost
     icon buttons, each with a tooltip and `aria-label="Open <drawer> drawer"`;
     clicking one expands the sidebar, opens that drawer and leaves the others as
-    they were. Expand and collapse keep `sidebar-expand` / `sidebar-collapse`.
+    they were. Expand and collapse keep `sidebar-expand` / `sidebar-collapse`
+    (superseded: `2026-10-26-top-bars-reduction.md` moves the one toggle to the
+    editor ribbon as `sidebar-toggle`).
 16. **Counts.** `EditorView` passes `counts: Partial<Record<DrawerId, number>>` to
     `EditorSidebar`, which forwards each drawer's count: properties = selection
     size, pieces = `pieces.length`, outline = `edges.length`, dimensions =

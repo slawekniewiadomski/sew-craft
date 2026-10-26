@@ -4,6 +4,9 @@ Status: in progress
 Depends on: 004, 005
 
 Refs #17
+Amended by: `.ai/specs/2026-10-26-top-bars-reduction.md` (the editor renders its
+own single top bar above the ribbon; the app header is not shown on the editor
+route, and the sidebar collapse control lives in the ribbon)
 
 ## 📝 TLDR
 
@@ -75,11 +78,12 @@ parameters under the canvas: rejected — that is the layout being replaced.
 
 ```mermaid
 flowchart TD
-  A["App.vue (h-screen shell)"] --> B["header nav"]
+  A["App.vue (h-screen shell)"] --> B["header nav (non-editor routes)"]
   A --> C["main (flex-1 min-h-0)"]
   A --> D["footer (non-editor routes only)"]
   C --> E["EditorView"]
-  E --> F["EditorRibbon (RIBON_GROUPS)"]
+  E --> T["EditorTopBar (brand + project + save)"]
+  E --> F["EditorRibbon (RIBON_GROUPS + sidebar toggle)"]
   E --> G["canvas area (flex-1)"]
   G --> H["PatternCanvas (h-full)"]
   E --> I["EditorSidebar (useSidebarLayout)"]
@@ -102,15 +106,17 @@ flowchart TD
 
 ## 📝 UI/UX
 
-- **Layout:** ribbon pinned under the header; below it a single row: canvas
-  (`flex-1`, padding-free workspace) and the right sidebar. The canvas fills all
+- **Layout:** ribbon pinned under the editor's own single top bar
+  (`EditorTopBar`: SewCraft, Projects, project name, save status, Save); below it
+  a single row: canvas (`flex-1`, padding-free workspace) and the right sidebar.
+  The app header is not rendered on the editor route. The canvas fills all
   remaining height/width and keeps its ruler/zoom behaviour.
 - **Drawers:** accordion with multiple sections open at once. Properties and
   Outline start open; View starts collapsed. Each header is a button with
   `aria-expanded`; the body is the shadcn-vue `CollapsibleContent`.
 - **Sidebar:** a 4 px drag handle on its leading edge resizes between 240 and
-  560 px; a chevron collapses it to a narrow rail with an expand button.
-  Width/collapsed persist across reloads.
+  560 px; one toggle at the right end of the ribbon collapses it to a narrow rail
+  and expands it again. Width/collapsed persist across reloads.
 - **Empty/selection states:** the Properties drawer always shows the active tool
   and reports `None` when nothing is selected. The Outline drawer keeps its
   existing empty behaviour (hidden when there are no edges).
@@ -147,9 +153,9 @@ flowchart TD
 
 ## 📋 Acceptance criteria
 
-- [ ] The editor is a full-height workspace: ribbon under the header, canvas
-      fills the space, resizable + collapsible right sidebar with accordion
-      drawers.
+- [ ] The editor is a full-height workspace: ribbon under the editor's single top
+      bar, canvas fills the space, resizable + collapsible right sidebar with
+      accordion drawers.
 - [ ] Properties + Outline are open by default; View is collapsed.
 - [ ] Every existing editor control still works from its new location, with the
       same testids (tools, undo/redo/delete, fit, download SVG, show

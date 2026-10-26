@@ -1,8 +1,10 @@
 # Top bars reduction
 
-Status: **proposed** — draft design-only PR, implementation not started. Two
-product decisions remain open (Q1–Q2); the PR stays draft until they are
-confirmed. Pattern schema, command spec and geometry package are unchanged.
+Status: **implemented** — landed on the same PR that carried the spec (PR #97),
+after the operator approved it with `spec-ready`. The two product decisions were
+taken with their recommended options (Q1 editor-only, Q2 status dot below 640 px)
+so implementation could continue. Pattern schema, command spec and geometry
+package are unchanged.
 
 Builds on: `013-editor-workspace-shell.md` (the current header + ribbon shell).
 Amends: `013-editor-workspace-shell.md` (the editor's header row) and, once it
@@ -83,19 +85,19 @@ design. They can be overridden in review.
 
 ## 📝 Open Questions
 
-These block the design and are asked on FR #95. The PR stays draft until they
-are answered.
+These blocked the design and were asked on FR #95. Both were resolved by taking
+the recommended option, so implementation could continue on the spec PR.
 
 **Q1 — Does the 40 px bar apply only to the editor, or to every route?**
-Recommended: editor-only for v1. `/projects` keeps its current ~52 px header, so
+**Resolved: editor-only for v1.** `/projects` keeps its current ~52 px header, so
 navigating between the two routes changes the bar height by ~12 px. The
 alternative is to unify the app header at 40 px everywhere for a constant shell,
 which expands the change to the Projects page. *This decides `App.vue`'s header
 markup and whether `AppBrandNav` needs a compact size variant.*
 
 **Q2 — How should save status behave below 640 px?**
-Recommended: keep one row and replace the status text with a 6 px dot plus
-tooltip, while the existing SR-only live region keeps the full wording.
+**Resolved: keep one row and replace the status text with a 6 px dot plus
+tooltip** (native `title`), while the existing SR-only live region keeps the full wording.
 Alternatives: keep the text and truncate the project name harder (status copy is
 long and would crowd the Save button), or hide the status entirely (loses the
 saving/failure signal). *This decides the responsive markup and the narrow-width
@@ -103,7 +105,7 @@ acceptance criteria.*
 
 ## 📝 Proposed Solution
 
-Option B, pending Q1:
+Option B, with Q1 resolved to editor-only:
 
 - `App.vue` stops rendering its header on the editor route (`v-if="!isEditor"`,
   matching the footer). The header stays exactly as today on `/projects`.
