@@ -127,7 +127,7 @@ import {
 } from '@/lib/display-settings';
 import type { DraftingEndpoint } from '@/lib/drafting';
 import type { RibbonAction } from '@/lib/editor-ribbon';
-import type { DrawerId } from '@/lib/editor-drawers';
+import type { PanelId } from '@/lib/editor-panels';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 import { entityProperties } from '@/lib/entity-properties';
 import { buildLineCommands, type LineEndpoint } from '@/lib/line-tool';
@@ -360,7 +360,7 @@ const selectedDimensionIdSet = computed(() => new Set(selectedDimensionIds.value
 const pieces = computed(() => pieceSummaries(pattern.value));
 
 /** Per-drawer row counts for the header badges; the View drawer has none. */
-const drawerCounts = computed<Partial<Record<DrawerId, number>>>(() => ({
+const panelCounts = computed<Partial<Record<PanelId, number>>>(() => ({
   properties: selectedEntityIds.value.length + selectedDimensionIds.value.length,
   pieces: pieces.value.length,
   outline: edges.value.length,
@@ -2156,7 +2156,8 @@ onBeforeUnmount(() => {
         <EditorSidebar
           :width="width"
           :collapsed="collapsed"
-          :counts="drawerCounts"
+          :counts="panelCounts"
+          :pattern-id="props.id"
           :mode="isAssemblyTab ? 'assembly' : 'piece'"
           :read-only="editor.readOnly"
           @update:width="setWidth"
