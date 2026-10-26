@@ -58,7 +58,21 @@ sections, and issue #95 — see the `📋 adoption plan` comment on the PR.
 `npm run test:coverage`, `npm run build`, plus the backend Pest/Pint gate from
 `.ai/agentic.config.json`.
 
+## Review
+
+- `om-auto-review-pr 97 --autofix` — one blocker found and fixed in `9baf820`:
+  the wrapping toolbar kept its min-content width and pushed the only collapse
+  control off-screen at 375 px. Fixed with `min-w-0` on the toolbar, `items-start`
+  on the ribbon (so wrapped groups are not stretched into phantom rows) and
+  `self-center` on the toggle. Regression assertions added to
+  `EditorRibbon.test.ts`.
+
 ## Evidence
 
 - Spec: `.ai/specs/2026-10-26-top-bars-reduction.md`
 - Issue: FR #95
+- Browser measurements at 1280 / 768 / 375 px on project `/projects/4/edit`:
+  one `<header>` at 40 px, one `role="toolbar"`, toggle 36 × 36 px fully inside
+  the viewport (right edge 1272 / 760 / 367), no horizontal page scroll, status
+  text at ≥ 640 px and the 6 px dot below it, collapse and expand both work from
+  the single toggle.
