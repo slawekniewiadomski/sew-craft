@@ -77,10 +77,6 @@ function selectPanel(id: PanelId): void {
   if (props.collapsed) emit('update:collapsed', false);
 }
 
-function toggleCollapsed(): void {
-  emit('update:collapsed', !props.collapsed);
-}
-
 const resizing = ref(false);
 const startX = ref(0);
 const startWidth = ref(0);
@@ -113,6 +109,7 @@ onBeforeUnmount(removeResizeListeners);
 <template>
   <TooltipProvider :delay-duration="300">
     <aside
+      id="sidebar"
       class="flex h-full min-h-0 border-l bg-background"
       :style="collapsed ? undefined : { width: `${width + RAIL_WIDTH}px` }"
       data-testid="sidebar"
@@ -172,26 +169,6 @@ onBeforeUnmount(removeResizeListeners);
         </Tooltip>
 
         <div class="flex-1" />
-
-        <div class="my-1 h-px w-4 bg-border" aria-hidden="true" />
-        <Tooltip>
-          <TooltipTrigger as-child>
-            <button
-              type="button"
-              class="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
-              :data-testid="collapsed ? 'sidebar-expand' : 'sidebar-collapse'"
-              @click="toggleCollapsed"
-            >
-              <RibbonIcon
-                :icon="ribbonIcon('chevron-down')"
-                :size="14"
-                :class="collapsed ? 'rotate-90' : '-rotate-90'"
-              />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>{{ collapsed ? 'Expand sidebar' : 'Collapse sidebar' }}</TooltipContent>
-        </Tooltip>
       </nav>
 
       <div

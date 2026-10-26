@@ -181,7 +181,7 @@ const autosave = createAutosave({
   write: (origin) => persist(editor.savedVersion, { origin }),
   shouldWrite: canAutosave,
 });
-const { width, collapsed, setWidth } = useSidebarLayout(window.localStorage);
+const { width, collapsed, setWidth, toggleCollapsed } = useSidebarLayout(window.localStorage);
 
 const error = ref<string | null>(null);
 const activeTool = ref<EditorTool>('select');
@@ -2047,9 +2047,11 @@ onBeforeUnmount(() => {
         :can-export="canExport"
         :export-hint="exportHint"
         :read-only="editor.readOnly"
+        :sidebar-collapsed="collapsed"
         @select-tool="selectTool"
         @select-constraint="selectConstraint"
         @action="onRibbonAction"
+        @toggle-sidebar="toggleCollapsed"
       />
 
       <ConstraintPromptBar

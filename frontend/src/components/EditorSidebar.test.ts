@@ -150,29 +150,31 @@ describe('EditorSidebar rail', () => {
 });
 
 describe('EditorSidebar collapse', () => {
-  it('collapses from the chevron and keeps the rail on the canvas edge', async () => {
+  it('keeps the rail on the canvas edge without owning a collapse control', () => {
     const wrapper = mountSidebar();
 
-    await wrapper.find('[data-testid="sidebar-collapse"]').trigger('click');
-    expect(wrapper.emitted('update:collapsed')).toEqual([[true]]);
+    // The ribbon owns the one dedicated toggle; the sidebar only exposes state.
+    expect(wrapper.find('[data-testid="sidebar-collapse"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="sidebar-expand"]').exists()).toBe(false);
+    expect(wrapper.find('aside').attributes('id')).toBe('sidebar');
+    expect(wrapper.emitted('update:collapsed')).toBeUndefined();
+  });
 
-    await wrapper.setProps({ collapsed: true });
-    await nextTick();
+  it('renders the collapsed rail and keeps the section buttons', async () => {
+    const wrapper = mountSidebar(320, true);
 
     expect(wrapper.find('[data-testid="sidebar-panel"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="sidebar-resize"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="sidebar-tab-outline"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="sidebar-expand"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="sidebar-collapse"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="sidebar-expand"]').exists()).toBe(false);
   });
 
-  it('reopens the panel on a clicked tab and from the expand chevron', async () => {
+  it('reopens the panel on a clicked section while collapsed', async () => {
     const wrapper = mountSidebar(320, true);
 
     await wrapper.find('[data-testid="sidebar-tab-constraints"]').trigger('click');
     expect(wrapper.emitted('update:collapsed')).toEqual([[false]]);
-
-    await wrapper.find('[data-testid="sidebar-expand"]').trigger('click');
-    expect(wrapper.emitted('update:collapsed')).toEqual([[false], [false]]);
   });
 });
 

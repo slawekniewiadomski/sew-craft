@@ -2076,18 +2076,55 @@ describe('EditorView', () => {
   it('persists sidebar width and collapsed state across remounts', async () => {
     const first = await mountEditor(createPinia());
 
-    await first.find('[data-testid="sidebar-collapse"]').trigger('click');
+    await first.find('[data-testid="sidebar-toggle"]').trigger('click');
     await nextTick();
 
     expect(JSON.parse(window.localStorage.getItem('sewcraft.editor.sidebar')!)).toEqual({
       width: 320,
       collapsed: true,
     });
+    expect(first.find('[data-testid="sidebar-panel"]').exists()).toBe(false);
 
     first.unmount();
     const second = await mountEditor(createPinia());
 
-    expect(second.find('[data-testid="sidebar-expand"]').exists()).toBe(true);
+    const toggle = second.find('[data-testid="sidebar-toggle"]');
+    expect(toggle.attributes('aria-expanded')).toBe('false');
+    expect(toggle.attributes('aria-label')).toBe('Expand sidebar');
+  });
+
+  it('collapses and expands from the ribbon toggle alone', async () => {
+    const wrapper = await mountEditor(createPinia());
+    const toggle = wrapper.find('[data-testid="sidebar-toggle"]');
+
+    expect(wrapper.find('[data-testid="sidebar"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="sidebar"] [data-testid="sidebar-toggle"]').exists()).toBe(
+      false,
+    );
+
+    await toggle.trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="sidebar-toggle"]').attributes('aria-expanded')).toBe(
+      'false',
+    );
+    expect(wrapper.find('[data-testid="sidebar-panel"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="sidebar-toggle"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="sidebar-toggle"]').attributes('aria-expanded')).toBe('true');
+    expect(wrapper.find('[data-testid="sidebar-panel"]').exists()).toBe(true);
+  });
+
+  it('reopens the collapsed sidebar on the section the user picks', async () => {
+    const wrapper = await mountEditor(createPinia());
+
+    await wrapper.find('[data-testid="sidebar-toggle"]').trigger('click');
+    await nextTick();
+    await wrapper.find('[data-testid="sidebar-tab-outline"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="sidebar-panel"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="sidebar-panel-title"]').text()).toBe('Outline');
   });
 
   it('creates a dimension from a line with the dimension tool', async () => {
