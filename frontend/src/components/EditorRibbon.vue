@@ -131,11 +131,11 @@ function activate(item: RibbonButtonItem): void {
 <template>
   <TooltipProvider :delay-duration="300">
     <div
-      class="flex items-stretch gap-1 border-b bg-background px-2 py-1"
+      class="flex items-start gap-1 border-b bg-background px-2 py-1"
       data-testid="editor-ribbon"
     >
       <div
-        class="flex flex-1 flex-wrap items-stretch gap-1"
+        class="flex min-w-0 flex-1 flex-wrap items-start gap-1"
         role="toolbar"
         aria-label="Editor tools"
       >
@@ -181,7 +181,7 @@ function activate(item: RibbonButtonItem): void {
         </template>
       </div>
 
-      <div class="flex shrink-0 items-center gap-1">
+      <div class="flex shrink-0 items-center gap-1 self-center">
         <Separator orientation="vertical" class="mx-1" />
         <Tooltip>
           <TooltipTrigger as-child>

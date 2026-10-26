@@ -333,6 +333,21 @@ describe('EditorRibbon sidebar toggle', () => {
     expect(wrapper.findAll('[data-testid="sidebar-toggle"]')).toHaveLength(1);
   });
 
+  it('lets the toolbar shrink so the toggle stays inside the ribbon', () => {
+    const wrapper = mountRibbon();
+    const ribbon = wrapper.find('[data-testid="editor-ribbon"]');
+    const toolbar = wrapper.find('[role="toolbar"]');
+
+    // Without min-w-0 the wrapping toolbar keeps its min-content width and
+    // pushes the only collapse control off-screen at 375 px.
+    expect(toolbar.classes()).toEqual(expect.arrayContaining(['min-w-0', 'flex-1', 'flex-wrap']));
+    expect(toolbar.classes()).toContain('items-start');
+    expect(ribbon.classes()).toContain('items-start');
+
+    const toggle = wrapper.find('[data-testid="sidebar-toggle"]');
+    expect(toggle.element.parentElement?.className).toContain('self-center');
+  });
+
   it('mirrors a collapsed sidebar and emits the toggle request', async () => {
     const wrapper = mountRibbonWithTooltips({ sidebarCollapsed: true });
 
