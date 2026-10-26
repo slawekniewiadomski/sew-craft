@@ -51,9 +51,9 @@ import ConstraintPromptBar from '@/components/ConstraintPromptBar.vue';
 import CornerRoundPromptBar from '@/components/CornerRoundPromptBar.vue';
 import DimensionReferencePicker from '@/components/DimensionReferencePicker.vue';
 import EditorRibbon from '@/components/EditorRibbon.vue';
-import EditorSaveBar from '@/components/EditorSaveBar.vue';
 import EditorSidebar from '@/components/EditorSidebar.vue';
 import EditorTabs from '@/components/EditorTabs.vue';
+import EditorTopBar from '@/components/EditorTopBar.vue';
 import EntityPropertiesPanel from '@/components/EntityPropertiesPanel.vue';
 import ExportDialog from '@/components/ExportDialog.vue';
 import PatternCanvas from '@/components/PatternCanvas.vue';
@@ -2007,6 +2007,16 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="flex h-full min-h-0 flex-col">
+    <EditorTopBar
+      :name="patternName"
+      :state="saveBarState"
+      :saved-at="editor.lastSavedAt"
+      :origin="editor.lastSaveOrigin"
+      :read-only="editor.readOnly"
+      :load-state="loadState"
+      @save="save"
+    />
+
     <p
       v-if="loadState === 'loading'"
       class="p-4 text-sm text-muted-foreground"
@@ -2023,15 +2033,6 @@ onBeforeUnmount(() => {
     </div>
 
     <template v-else>
-      <EditorSaveBar
-        :name="patternName"
-        :state="saveBarState"
-        :saved-at="editor.lastSavedAt"
-        :origin="editor.lastSaveOrigin"
-        :read-only="editor.readOnly"
-        @save="save"
-      />
-
       <EditorRibbon
         :mode="isAssemblyTab ? 'assembly' : 'piece'"
         :active-tool="activeTool"

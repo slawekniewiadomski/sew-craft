@@ -4097,7 +4097,7 @@ describe('EditorView persistence', () => {
       },
     });
     await flushPromises();
-    expect(wrapper.find('[data-testid="editor-save-bar"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="editor-top-bar"]').exists()).toBe(true);
   });
 
   it('reports a malformed stored document as a load error', async () => {
@@ -4166,6 +4166,13 @@ describe('EditorView persistence', () => {
     expect(wrapper.find('[data-testid="editor-load-error"] a').attributes('href')).toBe(
       '/projects',
     );
+    // Hiding the app header on this route must not strand the user here.
+    const header = wrapper.find('[data-testid="editor-top-bar"]');
+    expect(header.exists()).toBe(true);
+    expect(header.text()).toContain('SewCraft');
+    expect(header.text()).toContain('Projects');
+    expect(wrapper.find('[data-testid="pattern-name"]').text()).toBe('Project unavailable');
+    expect(wrapper.find('[data-testid="save-project"]').exists()).toBe(false);
   });
 
   it('saves with Cmd/Ctrl+S and ignores it while clean', async () => {
@@ -4541,6 +4548,54 @@ describe('EditorView persistence', () => {
     expect(wrapper.find('[data-testid="editor-load-error"]').text()).toContain(
       'Failed to load the project',
     );
+  });
+});
+
+describe('EditorView top bar', () => {
+  it('renders one header row above the ribbon with brand navigation and save controls', async () => {
+    const wrapper = await mountEditor(createPinia());
+
+    const headers = wrapper.findAll('header');
+    expect(headers).toHaveLength(1);
+    expect(headers[0]!.attributes('data-testid')).toBe('editor-top-bar');
+    expect(headers[0]!.text()).toContain('SewCraft');
+    expect(headers[0]!.text()).toContain('Projects');
+    expect(wrapper.find('[data-testid="pattern-name"]').text()).toBe('Bodice');
+    expect(wrapper.find('[data-testid="save-project"]').exists()).toBe(true);
+    expect(wrapper.findAll('[role="toolbar"]')).toHaveLength(1);
+  });
+
+  it('keeps the top bar and the way back to Projects while the project loads', async () => {
+    let resolveLoad: (value: unknown) => void = () => {};
+    vi.mocked(projectsApi.getPattern).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveLoad = resolve as (value: unknown) => void;
+        }),
+    );
+    const wrapper = await mountEditor(createPinia());
+
+    const header = wrapper.find('[data-testid="editor-top-bar"]');
+    expect(header.exists()).toBe(true);
+    expect(header.text()).toContain('SewCraft');
+    expect(header.text()).toContain('Projects');
+    expect(wrapper.find('[data-testid="pattern-name"]').text()).toBe('Loading…');
+    expect(wrapper.find('[data-testid="save-status"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="save-project"]').exists()).toBe(false);
+
+    resolveLoad({
+      data: {
+        id: 1,
+        project_id: 1,
+        name: 'Bodice',
+        document: simpleDoc,
+        version: 1,
+        saved_at: '2026-10-23T14:32:00.000Z',
+      },
+    });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="pattern-name"]').text()).toBe('Bodice');
+    expect(wrapper.find('[data-testid="save-project"]').exists()).toBe(true);
   });
 });
 
