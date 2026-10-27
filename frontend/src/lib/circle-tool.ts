@@ -10,8 +10,13 @@ export type CircleEndpoint = LineEndpoint;
  * resolution, so an existing point under the pointer is reused by id and a bare
  * position is snapped (grid or nearby point) until the gesture commits.
  */
-export function resolveCircleEndpoint(document: PatternDocument, world: Vec2): CircleEndpoint {
-  return resolveLineEndpoint(document, world);
+export function resolveCircleEndpoint(
+  document: PatternDocument,
+  world: Vec2,
+  activePieceId?: EntityId | null,
+  midpointTolerance?: number,
+): CircleEndpoint {
+  return resolveLineEndpoint(document, world, activePieceId, midpointTolerance);
 }
 
 /** Same point id, or coordinates within the endpoint tolerance. */

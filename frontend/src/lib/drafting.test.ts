@@ -14,8 +14,10 @@ import {
   endpointMissing,
   endpointPosition,
   resolveDraftingEndpoint,
+  resolveEndpointCommands,
   resolveLeaderEndpoint,
   resolveTextAnchorEndpoint,
+  sameDraftingEndpoint,
   type DraftingEndpoint,
 } from './drafting';
 
@@ -244,5 +246,86 @@ describe('text endpoints', () => {
     expect(resolveLeaderEndpoint(rounded, { x: derived.x, y: derived.y })).toMatchObject({
       kind: 'new',
     });
+  });
+});
+
+describe('midpoint framing', () => {
+  const midpoint = (lineId = 'ab'): DraftingEndpoint => ({
+    kind: 'midpoint',
+    lineId,
+    x: 50,
+    y: 0,
+  });
+
+  it('resolves the midpoint magnet when no existing point snaps', () => {
+    expect(resolveDraftingEndpoint(baseDoc, { x: 52, y: 1 }, undefined, 5)).toEqual(midpoint());
+  });
+
+  it('keeps the existing point snap ahead of the midpoint', () => {
+    expect(resolveDraftingEndpoint(baseDoc, { x: 99, y: 0 }, undefined, 5)).toEqual(existing('b'));
+  });
+
+  it('falls back to the grid when no tolerance is requested', () => {
+    expect(resolveDraftingEndpoint(baseDoc, { x: 52, y: 1 })).toEqual(fresh(50, 0));
+  });
+
+  it('reuses an existing point that sits exactly on the snapped grid', () => {
+    const gridPoint = doc([pt('p', 10, 10)]);
+
+    expect(resolveDraftingEndpoint(gridPoint, { x: 5, y: 5 })).toEqual(existing('p'));
+  });
+
+  it('tracks a live midpoint and falls back when the line stops resolving', () => {
+    expect(endpointPosition(baseDoc, midpoint())).toEqual({ x: 50, y: 0 });
+    expect(
+      endpointPosition(doc([pt('a', 0, 0), pt('b', 0, 0), ln('ab', 'a', 'b')]), midpoint()),
+    ).toEqual({ x: 50, y: 0 });
+  });
+
+  it('drops a pending midpoint when its line disappears or degenerates', () => {
+    expect(endpointMissing(baseDoc, midpoint())).toBe(false);
+    expect(endpointMissing(baseDoc, midpoint('missing'))).toBe(true);
+    expect(
+      endpointMissing(doc([pt('a', 0, 0), pt('b', 0, 0), ln('ab', 'a', 'b')]), midpoint()),
+    ).toBe(true);
+  });
+
+  it('compares midpoints by line, never with a provisional coordinate', () => {
+    expect(sameDraftingEndpoint(midpoint(), midpoint())).toBe(true);
+    expect(sameDraftingEndpoint(midpoint(), midpoint('bc'))).toBe(false);
+    expect(sameDraftingEndpoint(midpoint(), fresh(50, 0))).toBe(false);
+  });
+
+  it('emits the point and its relation before the geometry', () => {
+    const commands: Parameters<typeof resolveEndpointCommands>[1] = [];
+    let counter = 0;
+    const next = (prefix: string): string => `${prefix}-${++counter}`;
+
+    expect(resolveEndpointCommands(midpoint(), commands, next, 'piece-1')).toBe('point-1');
+    expect(commands).toEqual([
+      { id: 'point-1', type: 'add_point', params: { x: 50, y: 0, piece: 'piece-1' } },
+      {
+        id: 'constraint-2',
+        type: 'add_constraint',
+        params: { type: 'midpoint', entities: ['point-1', 'ab'], piece: 'piece-1' },
+      },
+    ]);
+  });
+
+  it('omits the piece from both commands when none is active', () => {
+    const commands: Parameters<typeof resolveEndpointCommands>[1] = [];
+    let counter = 0;
+    const next = (prefix: string): string => `${prefix}-${++counter}`;
+
+    resolveEndpointCommands(midpoint(), commands, next);
+
+    expect(commands).toEqual([
+      { id: 'point-1', type: 'add_point', params: { x: 50, y: 0 } },
+      {
+        id: 'constraint-2',
+        type: 'add_constraint',
+        params: { type: 'midpoint', entities: ['point-1', 'ab'] },
+      },
+    ]);
   });
 });

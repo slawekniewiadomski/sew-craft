@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.15.0',
+    'spec_version' => '0.16.0',
 
     /*
     |--------------------------------------------------------------------------
@@ -114,7 +114,7 @@ return [
         'add_constraint' => [
             'description' => 'Attach a geometric constraint to one or more entities. A distance without a value is a driven dimension; a distance with a reference follows another dimension. A distance anchor is a point or a straight line; a line anchor is always aligned and two line anchors must be parallel.',
             'params' => [
-                'type' => 'coincident|horizontal|vertical|point_on_line|distance|angle|equal',
+                'type' => 'coincident|horizontal|vertical|point_on_line|distance|angle|equal|midpoint',
                 'entities' => 'entity_id[]',
                 'piece' => 'entity_id',
                 'value' => 'number?',

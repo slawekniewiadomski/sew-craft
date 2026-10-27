@@ -24,15 +24,16 @@ accept    if ||r(x+Δ)|| < ||r(x)||, else increase λ
 
 ## v0.1 constraint set
 
-| Type            | Params                             | Residuals                                   |
-| --------------- | ---------------------------------- | ------------------------------------------- |
-| `coincident`    | `a`, `b`                           | `ax−bx`, `ay−by` (2)                        |
-| `horizontal`    | `a`, `b`                           | `ay−by`                                     |
-| `vertical`      | `a`, `b`                           | `ax−bx`                                     |
-| `point_on_line` | `point`, `a`, `b`                  | signed distance from `point` to line `ab`   |
-| `distance`      | `a`, `b`, `value?`, `orientation?` | `aligned`: `‖b−a‖ − value`; `horizontal`: ` | bx−ax | − value`; `vertical`: ` | by−ay | − value` |
-| `angle`         | `a`, `b`, `c`, `value`             | signed angle `∠abc − value`                 |
-| `equal`         | `a1,a2,b1,b2`                      | `‖a2−a1‖ − ‖b2−b1‖`                         |
+| Type            | Params                               | Residuals                                     |
+| --------------- | ------------------------------------ | --------------------------------------------- |
+| `coincident`    | `a`, `b`                             | `ax−bx`, `ay−by` (2)                          |
+| `horizontal`    | `a`, `b`                             | `ay−by`                                       |
+| `vertical`      | `a`, `b`                             | `ax−bx`                                       |
+| `point_on_line` | `point`, `a`, `b`                    | signed distance from `point` to line `ab`     |
+| `distance`      | `a`, `b`, `value?`, `orientation?`   | `aligned`: `‖b−a‖ − value`; `horizontal`: `   | bx−ax | − value`; `vertical`: ` | by−ay | − value` |
+| `angle`         | `a`, `b`, `c`, `value`               | signed angle `∠abc − value`                   |
+| `equal`         | `a1,a2,b1,b2`                        | `‖a2−a1‖ − ‖b2−b1‖`                           |
+| `midpoint`      | `point`, `line` or `point`, `a`, `b` | none — the target is derived from its sources |
 
 A `distance` constraint doubles as a linear dimension: its optional
 `orientation` (`aligned` default, or `horizontal`/`vertical`) selects which span
@@ -62,6 +63,19 @@ endpoint through it before reading the anchor; `solveDocument` builds that map
 from `document.cornerRounds`. The tangent, the corner and the far endpoint stay
 collinear, so the supporting line — and the measured perpendicular — is
 unchanged, while the constraint keeps a movable point to act on.
+
+A `midpoint` relation makes its target a **derived** coordinate rather than a
+solver variable. `solve` excludes every midpoint target from `variableIds`, skips
+its residual, and overwrites its coordinate in `readState` with the average of its
+two sources on every evaluation — the line's current visible endpoints for the
+line form, or the two named points. Other constraints therefore read the correct
+target coordinate and the numerical Jacobian captures the dependency. A document
+made only of midpoints is converged by definition, like driven dimensions. The
+line form stores the line id, so a corner-round trim moves the target to the
+middle of the trimmed segment; `solveDocument` runs `regenerateMidpoints` after
+`regenerateCornerRounds` for that reason. Chains (a source that is already a
+midpoint target) are rejected at creation and raise a solver validation error in
+a hand-edited document. See `.ai/specs/2026-10-27-midpoint-constraint.md`.
 
 Further types (parallel, perpendicular, tangent, symmetry, radius, point-on-circle)
 are deferred; see `specs/003-constraint-solver-core.md`.

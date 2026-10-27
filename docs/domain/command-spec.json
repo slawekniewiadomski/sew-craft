@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://sewcraft.local/schemas/command-spec-0.15.json",
+  "$id": "https://sewcraft.local/schemas/command-spec-0.16.json",
   "title": "SewCraft Command Spec",
-  "schema": "sewcraft.command-spec/0.15",
-  "spec_version": "0.15.0",
+  "schema": "sewcraft.command-spec/0.16",
+  "spec_version": "0.16.0",
   "units": "mm",
   "envelope": {
     "id": "ULID string, client-generated, unique",
@@ -91,7 +91,7 @@
     "add_constraint": {
       "description": "Attach a geometric constraint to one or more entities. A distance without a value is a driven dimension; a distance with a reference follows another dimension.",
       "params": {
-        "type": "coincident|horizontal|vertical|point_on_line|distance|angle|equal",
+        "type": "coincident|horizontal|vertical|point_on_line|distance|angle|equal|midpoint",
         "entities": "entity_id[]",
         "piece": "entity_id",
         "value": "number?",

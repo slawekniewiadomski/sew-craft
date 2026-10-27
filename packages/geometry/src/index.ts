@@ -11,6 +11,7 @@ export * from './arc.js';
 export * from './corner-round.js';
 export * from './circle.js';
 export * from './dimension.js';
+export * from './midpoint.js';
 export * from './offset.js';
 export * from './piece.js';
 export * from './assembly.js';

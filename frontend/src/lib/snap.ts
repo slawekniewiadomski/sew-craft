@@ -2,6 +2,8 @@ import { distance, type Vec2 } from '@sewcraft/geometry';
 
 export const GRID_STEP = 10;
 export const POINT_SNAP_TOLERANCE = 6;
+/** Screen-space magnet around a line's visible midpoint. */
+export const MIDPOINT_SNAP_PIXELS = 8;
 
 export interface SnapOptions {
   gridStep?: number;

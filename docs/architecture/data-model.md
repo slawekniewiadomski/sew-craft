@@ -243,6 +243,16 @@ stores no duplicate `value`. When the source disappears, the dependent keeps its
 present. A pre-feature build accepts the document but reports a line anchor as an
 unknown point when it solves, so a line-anchored document is not downgradeable.
 
+A `midpoint` constraint pins its `point` to the middle of a straight line
+(`{ point, line }`) or halfway between two points (`{ point, a, b }`). The target
+is derived, not stored state: no `fixed` flag is written and removing the
+constraint leaves an ordinary free point at its last coordinate. The line form
+stores the line id so it follows the line's visible endpoints through a
+corner-round trim; the two-point form keeps its named points. A target may not be
+corner-round derived, already a midpoint target, or a source of another midpoint,
+and neither may a source be an existing target (no chains). The document stays
+`sewcraft.pattern/0.4`; only the constraint list gains an additive entry.
+
 A `derived_distance` constraint is a **cut dimension**. It addresses two anchors
 of one piece by `{ edge, at: 'start' | 'end' | 'edge', loop?: 'stitch' | 'cut' }`
 rather than by point id, because the loops have no entities of their own.

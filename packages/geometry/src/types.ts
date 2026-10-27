@@ -123,6 +123,7 @@ export const CONSTRAINT_TYPES = [
   'distance',
   'angle',
   'equal',
+  'midpoint',
 ] as const;
 
 export type ConstraintType = (typeof CONSTRAINT_TYPES)[number];
@@ -170,6 +171,23 @@ export type DistanceConstraint = {
   offset?: number;
 };
 
+/**
+ * A point pinned to the middle of a straight line (line form) or halfway between
+ * two points (two-point form). The target is **derived**: the solver excludes it
+ * from its variables and recomputes it from its sources, so the relation is exact
+ * and the source geometry keeps its shape.
+ */
+export type MidpointConstraint = {
+  id: EntityId;
+  type: 'midpoint';
+  /** The derived point; never a corner-round-derived point or another target. */
+  point: EntityId;
+  piece?: EntityId;
+} & (
+  | { /** The source line; its current visible endpoints are the sources. */ line: EntityId }
+  | { a: EntityId; b: EntityId }
+);
+
 export type Constraint =
   | { id: EntityId; type: 'coincident'; a: EntityId; b: EntityId; piece?: EntityId }
   | { id: EntityId; type: 'horizontal'; a: EntityId; b: EntityId; piece?: EntityId }
@@ -201,6 +219,7 @@ export type Constraint =
       b2: EntityId;
       piece?: EntityId;
     }
+  | MidpointConstraint
   | DerivedDistanceConstraint;
 
 export const ALLOWANCE_KINDS = ['seam', 'single', 'double'] as const;

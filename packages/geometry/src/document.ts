@@ -97,6 +97,11 @@ export function constraintEntityIds(constraint: Constraint): EntityId[] {
       return [constraint.a, constraint.b, constraint.c];
     case 'equal':
       return [constraint.a1, constraint.a2, constraint.b1, constraint.b2];
+    case 'midpoint':
+      // The line form references the line; its endpoints are resolved separately.
+      return 'line' in constraint
+        ? [constraint.point, constraint.line]
+        : [constraint.point, constraint.a, constraint.b];
     case 'derived_distance':
       // Anchored to piece loop edges, never to solver points.
       return [];
@@ -113,6 +118,10 @@ export function constraintPointIds(
   isLineAnchor: (id: EntityId) => boolean,
 ): EntityId[] {
   const ids = constraintEntityIds(constraint);
+  if (constraint.type === 'midpoint' && 'line' in constraint) {
+    // The line itself is validated against the line map, not as a point.
+    return [constraint.point];
+  }
   return constraint.type === 'distance' ? ids.filter((id) => !isLineAnchor(id)) : ids;
 }
 

@@ -149,3 +149,43 @@ describe('constraintMarkers', () => {
     expect(constraintMarkers(doc([]))).toEqual([]);
   });
 });
+
+describe('midpoint constraint view', () => {
+  const withLine = (constraints: Constraint[]): PatternDocument => ({
+    ...doc(constraints),
+    entities: [
+      ...doc(constraints).entities,
+      { id: 'L', kind: 'line', start: 'a', end: 'b', construction: false },
+    ],
+  });
+
+  it('labels the relation and names its three possible slots', () => {
+    expect(CONSTRAINT_LABELS.midpoint).toBe('Midpoint');
+    expect(CONSTRAINT_ROLES.midpoint).toEqual(['Point', 'Line or point A', 'Point B']);
+    expect(CONSTRAINT_ICONS.midpoint.paths).toHaveLength(2);
+    expect(CONSTRAINT_ICONS.midpoint.dots).toHaveLength(1);
+    expect(constraintValueUnit('midpoint')).toBeNull();
+    expect(isValidConstraintValue('midpoint', Number.NaN)).toBe(true);
+  });
+
+  it('places the marker on the derived point for both forms', () => {
+    const lineForm: Constraint = { id: 'm1', type: 'midpoint', point: 'c', line: 'L' };
+    const pointForm: Constraint = { id: 'm2', type: 'midpoint', point: 'a', a: 'b', b: 'c' };
+    const document = withLine([lineForm, pointForm]);
+
+    expect(constraintMarkers(document)).toEqual([
+      { id: 'm1', type: 'midpoint', label: 'Midpoint', x: 100, y: 60 },
+      { id: 'm2', type: 'midpoint', label: 'Midpoint', x: 0, y: 0 },
+    ]);
+    expect(constraintLabel(lineForm)).toBe('Midpoint');
+  });
+
+  it('skips a marker whose target or line cannot resolve', () => {
+    expect(
+      constraintMarkers(withLine([{ id: 'm', type: 'midpoint', point: 'ghost', line: 'L' }])),
+    ).toEqual([]);
+    expect(
+      constraintMarkers(withLine([{ id: 'm', type: 'midpoint', point: 'c', line: 'missing' }])),
+    ).toEqual([]);
+  });
+});

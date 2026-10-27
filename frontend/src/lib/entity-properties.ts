@@ -284,6 +284,11 @@ function constraintActsOnEntity(
         samePair(constraint.a1, constraint.a2, entity.start, entity.end) ||
         samePair(constraint.b1, constraint.b2, entity.start, entity.end)
       );
+    case 'midpoint':
+      if ('line' in constraint) {
+        return constraint.line === entity.id || constraint.point === entity.id;
+      }
+      return [constraint.point, constraint.a, constraint.b].includes(entity.id);
   }
 }
 
