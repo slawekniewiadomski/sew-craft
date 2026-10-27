@@ -35,6 +35,15 @@ projects must be recreated, and the protected surface returns once the format is
 standardised. Details: `.ai/specs/2026-10-25-piece-containers-and-annotations.md`
 (D10) and `docs/domain/command-spec.md` (Migration from spec 0.12.0).
 
+### 2026-10-27 — midpoint constraint (command spec 0.16.0)
+
+No schema bump and no migration: `sewcraft.pattern/0.4` documents may now carry a
+`midpoint` constraint, and `add_constraint` accepts it in both forms. An older
+build that meets the type fails when reading the constraint rather than rendering
+wrong geometry. Roll back by keeping the type and disabling the UI, or by
+deliberately rewriting/removing stored midpoint records; do not silently drop the
+type. Details: `.ai/specs/2026-10-27-midpoint-constraint.md`.
+
 ## Protected surfaces
 
 ### 1. HTTP API (`/api`)

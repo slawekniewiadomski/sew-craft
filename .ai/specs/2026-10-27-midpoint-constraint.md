@@ -1,8 +1,9 @@
 # Midpoint constraint — create and pin a point at an edge's middle
 
-Status: proposed — spec-only; implementation follows on a separate PR that
-references this document. The design decisions below were confirmed during the
-design conversation; there are no open questions.
+Status: implemented on this spec PR's own branch (`.ai/runs/2026-10-27-midpoint-constraint.md`).
+The design decisions below were confirmed during the design conversation; there
+are no open questions. The "separate PR" wording in the sections below is the
+original design note; the approved continuation shipped the implementation here.
 Related: `.ai/specs/2026-10-24-point-on-line.md` (the Point-tool inference this
 mirrors), `.ai/specs/2026-10-19-constraint-tools-ribbon.md` (the Constraints
 group it extends), `.ai/specs/2026-10-25-rounded-corner-line-constraints.md`
