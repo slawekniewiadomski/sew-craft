@@ -35,6 +35,12 @@ import {
   type DistanceAnchorReason,
 } from './dimension.js';
 import { CommandValidationError } from './errors.js';
+import {
+  midpointIssue,
+  midpointTargetFor,
+  regenerateMidpoints,
+  type MidpointIssue,
+} from './midpoint.js';
 import { solve } from './solver.js';
 import type { SolveOptions, SolveResult } from './solver.js';
 import {
@@ -64,6 +70,7 @@ import {
   type EntityId,
   type EntityRole,
   type LineEntity,
+  type MidpointConstraint,
   type PatternDocument,
   type Piece,
   type PieceDefaults,
@@ -502,14 +509,15 @@ export class CommandExecutionError extends Error {
   }
 }
 
-const CONSTRAINT_ARITY: Record<ConstraintType, number> = {
-  coincident: 2,
-  horizontal: 2,
-  vertical: 2,
-  point_on_line: 3,
-  distance: 2,
-  angle: 3,
-  equal: 4,
+const CONSTRAINT_ARITY: Record<ConstraintType, readonly number[]> = {
+  coincident: [2],
+  horizontal: [2],
+  vertical: [2],
+  point_on_line: [3],
+  distance: [2],
+  angle: [3],
+  equal: [4],
+  midpoint: [2, 3],
 };
 
 /**
@@ -637,7 +645,10 @@ export function solveDocument(
     return { ...entity, x: coordinate.x, y: coordinate.y };
   });
 
-  return { document: regenerateCornerRounds({ ...document, entities }), result };
+  return {
+    document: regenerateMidpoints(regenerateCornerRounds({ ...document, entities })),
+    result,
+  };
 }
 
 /**
@@ -804,6 +815,12 @@ function applyMovePoint(
   }
 
   const point = requirePoint(document, id, 'move_point');
+  if (midpointTargetFor(document, id) !== undefined) {
+    throw new CommandValidationError(
+      'move_point',
+      'This point is fixed at the midpoint; move its source line or points instead.',
+    );
+  }
   if (isCornerRoundDerived(document, id)) {
     throw new CommandValidationError(
       'move_point',
@@ -1165,6 +1182,43 @@ function distanceIssueMessage(reason: DistanceAnchorReason): string {
   }
 }
 
+/** The midpoint record for an `add_constraint` entity list, in either form. */
+function midpointConstraint(
+  id: EntityId,
+  entities: EntityId[],
+  piece?: EntityId,
+): MidpointConstraint {
+  const [point, first, second] = entities;
+  const owner = piece === undefined ? {} : { piece };
+  return entities.length === 2
+    ? { id, type: 'midpoint', point: point!, line: first!, ...owner }
+    : { id, type: 'midpoint', point: point!, a: first!, b: second!, ...owner };
+}
+
+/** The command message for one broken midpoint relation. */
+function midpointIssueMessage(issue: MidpointIssue): string {
+  switch (issue) {
+    case 'missing-target':
+      return 'midpoint: the point does not resolve';
+    case 'target-not-point':
+      return 'midpoint: the target must be a point';
+    case 'target-derived':
+      return 'This point is already derived; pick another point.';
+    case 'missing-source':
+      return 'midpoint: a source does not resolve';
+    case 'source-not-point':
+      return 'midpoint: sources must be points';
+    case 'source-not-line':
+      return 'midpoint: the source must be a straight line';
+    case 'target-source':
+      return 'midpoint: the point cannot be one of its sources';
+    case 'degenerate':
+      return 'midpoint: the sources must be distinct';
+    case 'chain':
+      return 'midpoint: a source is already a midpoint';
+  }
+}
+
 function applyAddConstraint(
   document: PatternDocument,
   command: CommandOf<'add_constraint'>,
@@ -1178,10 +1232,10 @@ function applyAddConstraint(
   }
 
   const arity = CONSTRAINT_ARITY[type];
-  if (entities.length !== arity) {
+  if (!arity.includes(entities.length)) {
     throw new CommandValidationError(
       'add_constraint',
-      `${type} needs ${arity} entities, got ${entities.length}`,
+      `${type} needs ${arity.join(' or ')} entities, got ${entities.length}`,
     );
   }
   // A driven distance measurement anchors on whatever points it measures, so a
@@ -1194,6 +1248,8 @@ function applyAddConstraint(
     if (piece !== undefined && entity?.piece !== undefined && entity.piece !== piece) {
       throw new CommandValidationError('add_constraint', `entity ${id} belongs to another piece`);
     }
+    // A midpoint's line/point roles are validated together below.
+    if (type === 'midpoint') continue;
     // A distance line anchor, missing id or unsupported kind is classified by
     // the shared issue helper below; only point anchors need the drafting rule.
     if (type === 'distance' && (entity === undefined || entity.kind !== 'point')) continue;
@@ -1213,6 +1269,9 @@ function applyAddConstraint(
   }
   if (type === 'angle' && (typeof value !== 'number' || !Number.isFinite(value))) {
     throw new CommandValidationError('add_constraint', 'angle requires a finite value');
+  }
+  if (type === 'midpoint' && value !== undefined) {
+    throw new CommandValidationError('add_constraint', 'midpoint takes no value');
   }
   if (reference !== undefined) {
     if (type !== 'distance') {
@@ -1267,6 +1326,14 @@ function applyAddConstraint(
         'add_constraint',
         'distance: a line anchor is always aligned',
       );
+    }
+  }
+
+  if (type === 'midpoint') {
+    const candidate = midpointConstraint(command.id, entities, piece);
+    const issue = midpointIssue(document, candidate);
+    if (issue !== null) {
+      throw new CommandValidationError('add_constraint', midpointIssueMessage(issue));
     }
   }
 
@@ -2001,7 +2068,7 @@ function applySetCornerRoundRadius(
   };
 
   return {
-    document: regenerateCornerRounds(documentWithRadius),
+    document: regenerateMidpoints(regenerateCornerRounds(documentWithRadius)),
     inverse: {
       id: `${command.id}:restore`,
       type: 'set_corner_round_radius',
@@ -3399,6 +3466,8 @@ function buildConstraint(
       return { id, type, a: a!, b: b!, c: c!, value: value!, ...owner };
     case 'equal':
       return { id, type, a1: a!, a2: b!, b1: c!, b2: d!, ...owner };
+    case 'midpoint':
+      return midpointConstraint(id, entities, piece);
   }
 }
 
@@ -3431,6 +3500,14 @@ function constraintToParams(
       return {
         type: 'equal',
         entities: [constraint.a1, constraint.a2, constraint.b1, constraint.b2],
+      };
+    case 'midpoint':
+      return {
+        type: 'midpoint',
+        entities:
+          'line' in constraint
+            ? [constraint.point, constraint.line]
+            : [constraint.point, constraint.a, constraint.b],
       };
   }
 }

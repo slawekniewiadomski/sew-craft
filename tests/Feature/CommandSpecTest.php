@@ -3,7 +3,7 @@
 it('exposes the command spec', function () {
     $this->getJson('/api/commands')
         ->assertOk()
-        ->assertJsonPath('version', '0.15.0')
+        ->assertJsonPath('version', '0.16.0')
         ->assertJsonStructure([
             'version',
             'commands' => [
@@ -23,7 +23,11 @@ it('exposes dimension presentation and update params', function () {
         ->assertJsonPath('commands.add_constraint.params.value', 'number?')
         ->assertJsonPath('commands.update_constraint.params.id', 'entity_id')
         ->assertJsonPath('commands.update_constraint.params.value', 'number|null?')
-        ->assertJsonPath('commands.update_constraint.inverse', 'update_constraint');
+        ->assertJsonPath('commands.update_constraint.inverse', 'update_constraint')
+        ->assertJsonPath(
+            'commands.add_constraint.params.type',
+            'coincident|horizontal|vertical|point_on_line|distance|angle|equal|midpoint',
+        );
 });
 
 it('exposes the corner round commands', function () {

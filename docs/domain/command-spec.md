@@ -134,19 +134,29 @@ whose leader disappears keeps its place and loses the leader.
   anchors in this slice. A line-anchored dimension is always `aligned`: an
   explicit `horizontal` or `vertical` is rejected. The resolved span must be
   greater than `1e-6` mm; a smaller span is rejected.
+- `midpoint` pins its first entity to the middle of a straight line
+  (`[point, line]`) or halfway between two points (`[point, a, b]`). The target
+  is **derived**: the solver excludes it from its variables and recomputes it
+  from its sources. The line form stores the line id and resolves its current
+  visible endpoints, so it follows a corner-round trim; the two-point form keeps
+  its named points. The target must be an ordinary point (not corner-round
+  derived and not already a midpoint target), and a source may not itself be a
+  midpoint target (no chains). `value`, `reference`, `orientation` and `offset`
+  are rejected.
 - inverse: `remove_constraint`
 
 Constraint param mapping:
 
-| type            | entities order             | value   |
-| --------------- | -------------------------- | ------- |
-| `coincident`    | `[a, b]`                   | —       |
-| `horizontal`    | `[a, b]`                   | —       |
-| `vertical`      | `[a, b]`                   | —       |
-| `point_on_line` | `[point, a, b]`            | —       |
-| `distance`      | `[a, b]`                   | mm      |
-| `angle`         | `[a, b, c]` (angle at `b`) | radians |
-| `equal`         | `[a1, a2, b1, b2]`         | —       |
+| type            | entities order                     | value   |
+| --------------- | ---------------------------------- | ------- |
+| `coincident`    | `[a, b]`                           | —       |
+| `horizontal`    | `[a, b]`                           | —       |
+| `vertical`      | `[a, b]`                           | —       |
+| `point_on_line` | `[point, a, b]`                    | —       |
+| `distance`      | `[a, b]`                           | mm      |
+| `angle`         | `[a, b, c]` (angle at `b`)         | radians |
+| `equal`         | `[a1, a2, b1, b2]`                 | —       |
+| `midpoint`      | `[point, line]` or `[point, a, b]` | —       |
 
 ### `update_constraint`
 
@@ -661,6 +671,15 @@ Request a solver rebuild. Typically emitted after a batch of geometry commands.
 3. Implement `applyCommand` handling in `@sewcraft/geometry` with tests.
 4. Wire any UI affordance. Emit it from the command bus — never mutate state
    directly.
+
+## Migration from spec 0.15.0
+
+`spec_version` is **0.16.0**: `add_constraint` accepts the additive `midpoint`
+type in its line (`[point, line]`) and two-point (`[point, a, b]`) forms. The
+pattern schema stays `sewcraft.pattern/0.4` and no stored document changes. An
+older build that meets a `midpoint` constraint fails when reading it rather than
+rendering wrong geometry; keep the type (and disable the UI) on rollback, or
+rewrite stored midpoint records deliberately.
 
 ## Migration from spec 0.14.0
 
