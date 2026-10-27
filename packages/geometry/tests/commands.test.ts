@@ -740,6 +740,20 @@ describe('add_constraint', () => {
     expect(applyCommand(first.document, command).document).toBe(first.document);
   });
 
+  it('replays an applied constraint as a no-op before validating its relation', () => {
+    const first = applyCommand(document, addConstraintCommand('k', 'coincident', ['a', 'b']));
+
+    // The stored relation is authoritative: a replayed id must not be re-checked
+    // against entities the document has since moved past.
+    const replay = applyCommand(
+      first.document,
+      addConstraintCommand('k', 'coincident', ['a', 'missing']),
+    );
+
+    expect(replay.document).toBe(first.document);
+    expect(replay.inverse).toBeNull();
+  });
+
   it('rejects a wrong entity count without mutating', () => {
     unchanged(document, addConstraintCommand('k', 'equal', ['a', 'b']));
   });

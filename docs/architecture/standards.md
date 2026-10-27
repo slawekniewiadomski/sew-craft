@@ -41,7 +41,10 @@ This doc is the baseline for anything those do not cover.
 
 - Command `type` is `verb_noun` in **snake_case**: `add_point`, `delete_entity`,
   `remove_constraint`. See `docs/domain/command-spec.md`.
-- The envelope keys are fixed: `id` (client ULID), `type`, `params`, `issuedAt`.
+- The envelope keys are fixed: `id`, `type`, `params`, `issuedAt`. The UI generates
+  `id` as `prefix-sequence-session`, where the tag is unique to the page load: an
+  entity id becomes a document id, so a bare counter would collide with the ids a
+  reloaded document already stores.
 - Param names are `snake_case`. Reference params name the **role**, not the type:
   `start`, `end`, `point`, `edge` — not `start_id`. Constraint tuple params keep
   the solver's names (`a`, `b`, `c`, `point`, `value`).

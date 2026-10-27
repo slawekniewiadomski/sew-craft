@@ -1231,6 +1231,12 @@ function applyAddConstraint(
   if (piece !== undefined) {
     requirePiece(document, piece, 'add_constraint');
   }
+  // A replayed command whose constraint already exists is a no-op, checked before
+  // the relation itself: re-validating it would report a stale state the document
+  // has already moved past instead of replaying cleanly.
+  if (getConstraint(document, command.id) !== undefined) {
+    return noOp(document);
+  }
 
   const arity = CONSTRAINT_ARITY[type];
   if (!arity.includes(entities.length)) {
@@ -1342,10 +1348,6 @@ function applyAddConstraint(
         'midpoint: the point is already a source of another midpoint',
       );
     }
-  }
-
-  if (getConstraint(document, command.id) !== undefined) {
-    return noOp(document);
   }
 
   const [a, b] = entities;
