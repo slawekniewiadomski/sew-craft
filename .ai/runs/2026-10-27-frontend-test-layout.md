@@ -58,8 +58,8 @@ from the spec's Phasing / Implementation Plan sections and issue #98.
 
 ### Phase 3: Finalise
 
-- [ ] 3.1 Narrow `test.include` to `tests/**` and assert nothing remains in `src`
-- [ ] 3.2 Update `docs/architecture/standards.md` and `AGENTS.md` for the new layout
+- [x] 3.1 Narrow `test.include` to `tests/**` and assert nothing remains in `src` — 8b5ce39
+- [x] 3.2 Update `docs/architecture/standards.md` and `AGENTS.md` for the new layout — 50f4699
 - [ ] 3.3 Full validation gate plus the `om-auto-review-pr 100 --autofix` pass
 - [ ] 3.4 Retitle the PR, normalize labels, flip it to ready, post the outcome comment
 
