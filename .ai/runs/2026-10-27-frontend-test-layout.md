@@ -53,8 +53,8 @@ from the spec's Phasing / Implementation Plan sections and issue #98.
 
 ### Phase 2: Remaining slices
 
-- [ ] 2.1 Move the light slices (api, router, stores, composables, assets, App.test.ts)
-- [ ] 2.2 Move views and components (components, components/sidebar, components/ui)
+- [x] 2.1 Move the light slices (api, router, stores, composables, assets, App.test.ts) — c51288b
+- [x] 2.2 Move views and components (components, components/sidebar, components/ui) — f62fb27
 
 ### Phase 3: Finalise
 
