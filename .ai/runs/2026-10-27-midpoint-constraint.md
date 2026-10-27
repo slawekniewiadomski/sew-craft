@@ -71,29 +71,29 @@ tools. The spec is the plan; there is no separate implementation PR.
 
 ### Phase 2: Geometry and command contract
 
-- [ ] 2.1 Add `midpoint` to the constraint model and reference helpers
-- [ ] 2.2 Add midpoint helpers with unit tests
-- [ ] 2.3 Substitute derived midpoint targets in the solver
-- [ ] 2.4 Validate `add_constraint`, reject `move_point`, verify cascade and undo
-- [ ] 2.5 Version the command spec to `0.16.0` in all three places
+- [x] 2.1 Add `midpoint` to the constraint model and reference helpers — 0543f91
+- [x] 2.2 Add midpoint helpers with unit tests — 0543f91
+- [x] 2.3 Substitute derived midpoint targets in the solver — 0543f91
+- [x] 2.4 Validate `add_constraint`, reject `move_point`, verify cascade and undo — 0543f91
+- [x] 2.5 Version the command spec to `0.16.0` in all three places — 0543f91
 
 ### Phase 3: Constraints-group entry point
 
-- [ ] 3.1 Add midpoint slots, prompts, labels, roles, icon and rejection reasons
-- [ ] 3.2 Resolve midpoint params and component-test the pick order
+- [x] 3.1 Add midpoint slots, prompts, labels, roles, icon and rejection reasons — 0f45c2a
+- [x] 3.2 Resolve midpoint params and component-test the pick order — 0f45c2a
 
 ### Phase 4: Inference and affordance
 
-- [ ] 4.1 Add the 8 px midpoint candidate helper and drafting endpoint variant
-- [ ] 4.2 Emit midpoint `add_point` + `add_constraint` through the shared builder
-- [ ] 4.3 Add the midpoint hover marker/hint and Point-tool click precedence
-- [ ] 4.4 Wire Line, Arc, Circle and Rectangle inference and rectangle corner mapping
-- [ ] 4.5 Cover all five tools, precedence, boundary and one-undo behaviour
+- [x] 4.1 Add the 8 px midpoint candidate helper and drafting endpoint variant — 75f4660
+- [x] 4.2 Emit midpoint `add_point` + `add_constraint` through the shared builder — 75f4660
+- [x] 4.3 Add the midpoint hover marker/hint and Point-tool click precedence — 75f4660
+- [x] 4.4 Wire Line, Arc, Circle and Rectangle inference and rectangle corner mapping — 75f4660
+- [x] 4.5 Cover all five tools, precedence, boundary and one-undo behaviour — 75f4660
 
 ### Phase 5: Documentation, validation and review
 
-- [ ] 5.1 Update architecture docs, command spec and compatibility notes
-- [ ] 5.2 Run the full validation gate
+- [x] 5.1 Update architecture docs, command spec and compatibility notes — a2bdc50
+- [x] 5.2 Run the full validation gate — gate green on 75f4660
 - [ ] 5.3 Run `om-auto-review-pr 99 --autofix` and resolve findings
 - [ ] 5.4 Update the PR body, normalize labels and report
 
