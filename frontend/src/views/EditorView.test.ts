@@ -487,6 +487,43 @@ describe('EditorView', () => {
     expect(wrapper.text()).not.toContain('This point is derived by a corner round');
   });
 
+  it('creates a derived midpoint point as one undoable gesture', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('add-point-midpoint', 'ab');
+    await flushPromises();
+
+    const created = store.document.entities.find(
+      (entity) => entity.kind === 'point' && entity.x === 50 && entity.y === 0,
+    );
+    expect(created).toBeDefined();
+    expect(store.document.constraints).toEqual([
+      {
+        id: expect.any(String),
+        type: 'midpoint',
+        piece: 'pc1',
+        point: created!.id,
+        line: 'ab',
+      },
+    ]);
+    expect(store.journal).toHaveLength(1);
+
+    await wrapper.find('[data-testid="undo"]').trigger('click');
+    expect(store.document.entities.some((entity) => entity.id === created!.id)).toBe(false);
+    expect(store.document.constraints).toEqual([]);
+  });
+
+  it('dispatches nothing when the midpoint line no longer resolves', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+    const before = store.document;
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('add-point-midpoint', 'missing');
+    await flushPromises();
+
+    expect(store.document).toBe(before);
+    expect(store.journal).toHaveLength(0);
+  });
+
   it('dispatches nothing when the point-on-line line no longer resolves', async () => {
     const { wrapper, store } = await mountLoaded(lineDoc);
     const before = store.document;

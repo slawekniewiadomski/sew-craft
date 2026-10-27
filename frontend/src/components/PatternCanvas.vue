@@ -152,7 +152,14 @@ import {
   toggleSelection,
   type SelectionMode,
 } from '@/lib/selection';
-import { nearestPoint, POINT_SNAP_TOLERANCE, snapPoint, snapToGrid } from '@/lib/snap';
+import { nearestLineMidpoint } from '@/lib/midpoint';
+import {
+  MIDPOINT_SNAP_PIXELS,
+  nearestPoint,
+  POINT_SNAP_TOLERANCE,
+  snapPoint,
+  snapToGrid,
+} from '@/lib/snap';
 import { DEFAULT_TEXT_CONTENT, leaderTargetIssue } from '@/lib/text-tool';
 import {
   fitToBounds,
@@ -365,6 +372,7 @@ const emit = defineEmits<{
   'move-point': [id: EntityId, x: number, y: number];
   'add-point': [x: number, y: number];
   'add-point-on-line': [lineId: EntityId, x: number, y: number];
+  'add-point-midpoint': [lineId: EntityId];
   'add-line': [start: DraftingEndpoint, end: DraftingEndpoint];
   'add-arc': [start: DraftingEndpoint, end: DraftingEndpoint, through: DraftingEndpoint];
   'add-curve': [points: [EntityId, EntityId, EntityId, EntityId]];
@@ -462,6 +470,16 @@ const hoveredRoundId = ref<EntityId | null>(null);
  * pointer and the projection that click would use.
  */
 const pointOnLineHover = ref<{ lineId: EntityId; pointer: Vec2; point: Vec2 } | null>(null);
+/**
+ * The visible line whose middle is under the pointer while a point-creating tool
+ * is armed. `pointer` is kept so a document edit can re-resolve the candidate.
+ */
+const midpointHover = ref<{
+  lineId: EntityId;
+  x: number;
+  y: number;
+  pointer: Vec2;
+} | null>(null);
 /** Live tangent-handle drag; the radius changes on release. */
 const tangentDrag = ref<{
   id: EntityId;
@@ -1156,14 +1174,9 @@ const pendingLineStartId = computed(() =>
  * World position of the pending start. An id is always current because the
  * document watcher clears a start whose point disappeared.
  */
-const pendingLineStart = computed<Vec2 | null>(() => {
-  const start = lineStart.value;
-  if (start === null) return null;
-  if (start.kind === 'new') return { x: start.x, y: start.y };
-
-  const point = pointById.value.get(start.id)!;
-  return { x: point.x, y: point.y };
-});
+const pendingLineStart = computed<Vec2 | null>(() =>
+  lineStart.value === null ? null : endpointPosition(props.document, lineStart.value),
+);
 /**
  * World position of the pending arc start. An id is always current because the
  * document watcher clears a gesture whose point disappeared.
@@ -1222,14 +1235,9 @@ const pendingCircleCenterId = computed(() =>
  * World position of the pending circle centre. An id is always current because
  * the document watcher clears a centre whose point disappeared.
  */
-const pendingCircleCenter = computed<Vec2 | null>(() => {
-  const center = circleCenter.value;
-  if (center === null) return null;
-  if (center.kind === 'new') return { x: center.x, y: center.y };
-
-  const point = pointById.value.get(center.id)!;
-  return { x: point.x, y: point.y };
-});
+const pendingCircleCenter = computed<Vec2 | null>(() =>
+  circleCenter.value === null ? null : endpointPosition(props.document, circleCenter.value),
+);
 /** The dashed preview radius: pending centre to the snapped pointer. Read only
  * while both the pending centre and the preview position exist. */
 const circlePreviewRadius = computed<number>(() => {
@@ -1308,6 +1316,8 @@ const rectanglePendingCorners = computed<Vec2[]>(() => {
   );
 });
 const gridStep = computed(() => niceStep(viewport.value.scale));
+/** The 8 px magnet in world units, so it stays 8 screen pixels at any zoom. */
+const midpointTolerance = computed(() => MIDPOINT_SNAP_PIXELS / viewport.value.scale);
 const gridPath = computed(() => `M ${gridStep.value} 0 L 0 0 0 ${gridStep.value}`);
 const transform = computed(() => viewportTransform(viewport.value));
 const visible = computed(() => visibleWorldRect(viewport.value, size.value));
@@ -1647,6 +1657,7 @@ function entityClass(entity: {
   role?: 'construction' | 'annotation';
 }): string {
   if (pointOnLineHover.value?.lineId === entity.id) return 'text-primary';
+  if (midpointHover.value?.lineId === entity.id) return 'text-primary';
   if (
     dimensionPickLineIds.value.has(entity.id) ||
     dimensionCandidateLineIds.value.has(entity.id) ||
@@ -1774,6 +1785,7 @@ const textLeaderHint = computed<string | null>(() => {
 
 function lineWidth(id: EntityId): number {
   return pointOnLineHover.value?.lineId === id ||
+    midpointHover.value?.lineId === id ||
     dimensionPickLineIds.value.has(id) ||
     dimensionCandidateLineIds.value.has(id) ||
     cutEdgeCandidateIds.value.has(id) ||
@@ -2329,6 +2341,17 @@ function cancelCornerRoundEdit(): void {
   editingCornerRound.value = null;
 }
 
+/** Tools that show the midpoint magnet and can create a midpoint endpoint. */
+const MIDPOINT_TOOLS = new Set<EditorTool>([
+  'add_point',
+  'add_line',
+  'add_arc',
+  'add_circle',
+  'add_rectangle',
+  'add_center_rectangle',
+  'add_3point_rectangle',
+]);
+
 /** Whether a tool drafts new geometry inside the active piece. */
 const DRAFTING_TOOLS = new Set<EditorTool>([
   'add_point',
@@ -2585,8 +2608,15 @@ function onCanvasPointerMove(event: PointerEvent): void {
     }
   }
 
+  if (MIDPOINT_TOOLS.has(props.tool) && !props.readOnly) {
+    updateMidpointHover(screen);
+  }
+
   if (props.tool === 'add_point' && !props.readOnly) {
-    updatePointOnLineHover(event, screen);
+    // The midpoint magnet wins over point-on-line, so the two hints never show
+    // at once.
+    if (midpointHover.value === null) updatePointOnLineHover(event, screen);
+    else pointOnLineHover.value = null;
   }
 
   if (props.tool === 'add_circle' && circleCenter.value !== null) {
@@ -2613,6 +2643,7 @@ function onCanvasPointerLeave(): void {
   hoveredLoopHandle.value = null;
   pointerWorld.value = null;
   pointOnLineHover.value = null;
+  midpointHover.value = null;
   textPointer.value = null;
 }
 
@@ -2704,6 +2735,12 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
+  if (event.key === 'Escape' && midpointHover.value !== null) {
+    event.preventDefault();
+    midpointHover.value = null;
+    return;
+  }
+
   if (event.key === 'Escape' && pointOnLineHover.value !== null) {
     event.preventDefault();
     pointOnLineHover.value = null;
@@ -2762,6 +2799,25 @@ function pointOnLineTarget(lineId: EntityId, world: Vec2): Vec2 | null {
   return segment === null ? null : projectPointOnLine(world, segment);
 }
 
+/**
+ * Resolve the midpoint magnet under the pointer. An existing point within the
+ * 6 mm snap wins, and no tool other than the Point tool competes for the hover.
+ */
+function updateMidpointHover(screen: Vec2): void {
+  const world = screenToWorld(viewport.value, screen);
+  if (nearestPoint(world, points.value, POINT_SNAP_TOLERANCE) !== null) {
+    midpointHover.value = null;
+    return;
+  }
+  const candidate = nearestLineMidpoint(
+    props.document,
+    world,
+    midpointTolerance.value,
+    props.activePieceId,
+  );
+  midpointHover.value = candidate === null ? null : { ...candidate, pointer: world };
+}
+
 /** Track the line the Point tool would infer, so the click is never a surprise. */
 function updatePointOnLineHover(event: Event, screen: Vec2): void {
   const hit = hitEntity(event);
@@ -2780,8 +2836,26 @@ function updatePointOnLineHover(event: Event, screen: Vec2): void {
  * as one undoable gesture; every other click keeps today's free-point behaviour.
  */
 function onAddPointPointer(hit: Hit | null, screen: Vec2): void {
+  const world = screenToWorld(viewport.value, screen);
+
+  // Point snap wins, then the midpoint magnet, then the line inference, then the
+  // grid. This mirrors `updateMidpointHover` so the click matches the marker.
+  if (nearestPoint(world, points.value, POINT_SNAP_TOLERANCE) === null) {
+    const midpoint = nearestLineMidpoint(
+      props.document,
+      world,
+      midpointTolerance.value,
+      props.activePieceId,
+    );
+    if (midpoint !== null) {
+      midpointHover.value = null;
+      pointOnLineHover.value = null;
+      emit('add-point-midpoint', midpoint.lineId);
+      return;
+    }
+  }
+
   if (hit !== null && hit.kind === 'line') {
-    const world = screenToWorld(viewport.value, screen);
     if (pointOnLineTarget(hit.id, world) !== null) {
       pointOnLineHover.value = null;
       emit('add-point-on-line', hit.id, world.x, world.y);
@@ -2825,6 +2899,7 @@ function onLinePointer(hit: Hit | null, screen: Vec2): void {
           props.document,
           screenToWorld(viewport.value, screen),
           props.activePieceId,
+          midpointTolerance.value,
         );
 
   const start = lineStart.value;
@@ -2864,6 +2939,7 @@ function onArcPointer(hit: Hit | null, screen: Vec2): void {
           props.document,
           screenToWorld(viewport.value, screen),
           props.activePieceId,
+          midpointTolerance.value,
         );
 
   const start = arcStart.value;
@@ -2903,7 +2979,12 @@ function onCirclePointer(hit: Hit | null, screen: Vec2): void {
   const endpoint: CircleEndpoint =
     hit !== null && hit.kind === 'point'
       ? { kind: 'point', id: hit.id }
-      : resolveCircleEndpoint(props.document, screenToWorld(viewport.value, screen));
+      : resolveCircleEndpoint(
+          props.document,
+          screenToWorld(viewport.value, screen),
+          props.activePieceId,
+          midpointTolerance.value,
+        );
 
   const center = circleCenter.value;
   if (center === null) {
@@ -2943,6 +3024,7 @@ function onRectanglePointer(hit: Hit | null, screen: Vec2): void {
           props.document,
           screenToWorld(viewport.value, screen),
           props.activePieceId,
+          midpointTolerance.value,
         );
 
   if (rectangleClicks.value.some((click) => sameDraftingEndpoint(click, endpoint))) return;
@@ -3112,6 +3194,7 @@ watch(
     hoveredRoundId.value = null;
     editingCornerRound.value = null;
     pointOnLineHover.value = null;
+    midpointHover.value = null;
   },
 );
 
@@ -3130,6 +3213,19 @@ watch(
     if (pointOnLine !== null) {
       const point = pointOnLineTarget(pointOnLine.lineId, pointOnLine.pointer);
       pointOnLineHover.value = point === null ? null : { ...pointOnLine, point };
+    }
+
+    // Re-resolve the midpoint magnet against the new document so a removed,
+    // trimmed or degenerate line clears or moves the signal immediately.
+    const midpoint = midpointHover.value;
+    if (midpoint !== null) {
+      const candidate = nearestLineMidpoint(
+        props.document,
+        midpoint.pointer,
+        midpointTolerance.value,
+        props.activePieceId,
+      );
+      midpointHover.value = candidate === null ? null : { ...candidate, pointer: midpoint.pointer };
     }
     if (pendingLineStartId.value !== null && !pointById.value.has(pendingLineStartId.value)) {
       lineStart.value = null;
@@ -3568,6 +3664,24 @@ watch(
             class="fill-primary stroke-primary-foreground"
             stroke-width="1"
             data-testid="point-on-line-ghost"
+          />
+        </g>
+
+        <g
+          v-if="midpointHover !== null"
+          class="pointer-events-none"
+          aria-hidden="true"
+          data-testid="midpoint-marker"
+        >
+          <path
+            :d="`M ${midpointHover.x} ${midpointHover.y - 5 / viewport.scale} L ${
+              midpointHover.x + 5 / viewport.scale
+            } ${midpointHover.y} L ${midpointHover.x} ${
+              midpointHover.y + 5 / viewport.scale
+            } L ${midpointHover.x - 5 / viewport.scale} ${midpointHover.y} Z`"
+            class="fill-primary stroke-primary-foreground"
+            stroke-width="1"
+            vector-effect="non-scaling-stroke"
           />
         </g>
 
@@ -4322,6 +4436,15 @@ watch(
       data-testid="arc-hint"
     >
       pick a point off the line
+    </p>
+
+    <p
+      v-if="midpointHover !== null"
+      class="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground shadow-sm"
+      role="status"
+      data-testid="midpoint-hint"
+    >
+      Click to create a point at this line's midpoint.
     </p>
 
     <p

@@ -525,3 +525,131 @@ describe('buildRectangleCommands three-point ownership', () => {
     ).toBe(true);
   });
 });
+
+describe('buildRectangleCommands midpoint corners', () => {
+  const sourceLine = doc([
+    pt('s1', 0, 50),
+    pt('s2', 200, 50),
+    {
+      id: 'source',
+      kind: 'line',
+      start: 's1',
+      end: 's2',
+      construction: false,
+    } as LineEntity,
+  ]);
+  const midpoint = (x: number, y: number) => ({
+    kind: 'midpoint' as const,
+    lineId: 'source',
+    x,
+    y,
+  });
+
+  it('pins a clicked midpoint to the corner it produced and skips the axes', () => {
+    const commands = buildRectangleCommands(
+      sourceLine,
+      'diagonal',
+      [fresh(0, 0), midpoint(100, 50)],
+      idGenerator(),
+    );
+
+    const constraints = commands.filter((command) => command.type === 'add_constraint');
+    expect(constraints).toEqual([
+      {
+        id: 'constraint-4',
+        type: 'add_constraint',
+        params: { type: 'midpoint', entities: ['point-3', 'source'] },
+      },
+    ]);
+    expect(commands.filter((command) => command.type === 'add_line')).toHaveLength(4);
+  });
+
+  it('maps a midpoint click to the mirrored corner in centre mode', () => {
+    const commands = buildRectangleCommands(
+      sourceLine,
+      'center',
+      [fresh(0, 0), midpoint(100, 50)],
+      idGenerator(),
+    );
+
+    expect(commands.filter((command) => command.type === 'add_constraint')).toEqual([
+      {
+        id: 'constraint-4',
+        type: 'add_constraint',
+        params: { type: 'midpoint', entities: ['point-3', 'source'] },
+      },
+    ]);
+  });
+
+  it('ignores a midpoint used as the centre, which is not a corner', () => {
+    const commands = buildRectangleCommands(
+      sourceLine,
+      'center',
+      [midpoint(100, 50), fresh(200, 100)],
+      idGenerator(),
+    );
+
+    expect(
+      commands.filter(
+        (command) => command.type === 'add_constraint' && command.params.type === 'midpoint',
+      ),
+    ).toEqual([]);
+    expect(commands.filter((command) => command.type === 'add_constraint')).toHaveLength(4);
+  });
+
+  it('falls back to the stored coordinate when the source line is gone', () => {
+    const commands = buildRectangleCommands(
+      sourceLine,
+      'diagonal',
+      [fresh(0, 0), { kind: 'midpoint', lineId: 'missing', x: 100, y: 50 }],
+      idGenerator(),
+    );
+
+    expect(commands.filter((command) => command.type === 'add_constraint')).toEqual([
+      {
+        id: 'constraint-4',
+        type: 'add_constraint',
+        params: { type: 'midpoint', entities: ['point-3', 'missing'] },
+      },
+    ]);
+  });
+
+  it('stamps the active piece on the midpoint relation', () => {
+    const commands = buildRectangleCommands(
+      sourceLine,
+      'diagonal',
+      [fresh(0, 0), midpoint(100, 50)],
+      idGenerator(),
+      'piece-1',
+    );
+
+    expect(
+      commands.filter(
+        (command) => command.type === 'add_constraint' && command.params.type === 'midpoint',
+      ),
+    ).toEqual([
+      {
+        id: 'constraint-4',
+        type: 'add_constraint',
+        params: { type: 'midpoint', entities: ['point-3', 'source'], piece: 'piece-1' },
+      },
+    ]);
+  });
+
+  it('attaches a midpoint corner in the three-point mode', () => {
+    const commands = buildRectangleCommands(
+      sourceLine,
+      'three_point',
+      [fresh(0, 0), midpoint(100, 50), fresh(0, 100)],
+      idGenerator(),
+    );
+
+    expect(
+      commands.filter(
+        (command) => command.type === 'add_constraint' && command.params.type === 'midpoint',
+      ),
+    ).toHaveLength(1);
+    // A derived corner skips the three right angles as well.
+    expect(commands.filter((command) => command.type === 'add_constraint')).toHaveLength(1);
+  });
+});
