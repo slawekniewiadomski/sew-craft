@@ -1,7 +1,7 @@
 import { createEmptyDocument, type Entity, type PatternDocument } from '@sewcraft/geometry';
 import { describe, expect, it } from 'vitest';
 
-import { buildPointMidpointCommands } from './point-midpoint';
+import { buildPointMidpointCommands } from '@/lib/point-midpoint';
 
 const point = (id: string, x: number, y: number): Entity => ({
   id,

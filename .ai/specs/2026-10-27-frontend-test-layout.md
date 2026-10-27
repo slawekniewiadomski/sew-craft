@@ -1,8 +1,9 @@
 # Frontend tests under a mirrored `tests/` directory
 
-Status: **proposed** — draft design spec (FR #98). No implementation yet; this
-document settles the test layout and the migration mechanics so the move can
-ship as one mechanical PR.
+Status: **implemented** — landed on the same PR that carried the spec (PR #100),
+after the operator approved it with `spec-ready`. Q1 took its recommended option
+(`frontend/tests/`, mirroring `frontend/src/`), so the move shipped as one
+mechanical change: 75 test files, no runtime, API or schema surface touched.
 Refs #98
 
 ## 📝 TLDR
@@ -162,12 +163,12 @@ to relocate alongside the tests.
 
 ## 📝 Open Questions
 
-- **Q1 — Where does `tests/` live?** Recommended: `frontend/tests/`, mirroring
-  `frontend/src/` (option A), with geometry and integration left alone. The
-  alternative is a repo-root `tests/` shared by every JS workspace (option C),
-  which changes how the frontend's Vitest root, tsconfig and alias reach their
-  files. This decides where 73 files land, so it is asked on the issue rather
-  than defaulted.
+- **Q1 — Where does `tests/` live? — resolved: `frontend/tests/`.** The operator
+  approved option A with `spec-ready`, so the mirror stays inside the frontend
+  workspace, where the Vitest root, tsconfig and `@/` alias already are; geometry
+  and integration keep their own runners. The 73 files the design counted became
+  75 during implementation, because `develop` gained two `src/lib` midpoint tests
+  that moved with the rest.
 
 ## 📝 Resolved assumptions (autonomous defaults)
 
@@ -179,7 +180,8 @@ to relocate alongside the tests.
 | Q5 | Add a test-layout lint/CI guard? | No new guard; document the rule in `docs/architecture/standards.md` and `AGENTS.md` | Keeps the change scoped to files moving; the 73-file count check catches omissions during migration | reversible |
 | Q6 | Mockups or screenshots? | None — this is a repository-layout change with no user-facing surface | Nothing visual changes for a user | reversible |
 
-Q1 is the only gate: the PR stays draft until the layout is confirmed.
+Q1 is the only gate, and `spec-ready` closed it: the PR implemented the layout
+and left draft state behind in the same run.
 
 ## 📋 Phasing
 

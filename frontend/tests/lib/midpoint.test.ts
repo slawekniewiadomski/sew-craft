@@ -6,7 +6,7 @@ import {
 } from '@sewcraft/geometry';
 import { describe, expect, it } from 'vitest';
 
-import { nearestLineMidpoint } from './midpoint';
+import { nearestLineMidpoint } from '@/lib/midpoint';
 
 const point = (id: string, x: number, y: number, piece?: string): Entity => ({
   id,
