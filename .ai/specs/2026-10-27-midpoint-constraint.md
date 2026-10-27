@@ -2,8 +2,8 @@
 
 Status: implemented on this spec PR's own branch (`.ai/runs/2026-10-27-midpoint-constraint.md`).
 The design decisions below were confirmed during the design conversation; there
-are no open questions. The "separate PR" wording in the sections below is the
-original design note; the approved continuation shipped the implementation here.
+are no open questions. The approved continuation shipped the implementation on
+this branch, so the PR carries both the spec and its code.
 Related: `.ai/specs/2026-10-24-point-on-line.md` (the Point-tool inference this
 mirrors), `.ai/specs/2026-10-19-constraint-tools-ribbon.md` (the Constraints
 group it extends), `.ai/specs/2026-10-25-rounded-corner-line-constraints.md`
@@ -314,8 +314,8 @@ command surface changes additively:
 ### Geometry package exports
 
 The new helpers are additive named exports; no existing signature changes. The
-package version is bumped in the implementation PR per the protected-surface rule
-for new public exports.
+package version is bumped on this branch per the protected-surface rule for new
+public exports.
 
 ## 📝 UI/UX
 
@@ -422,9 +422,10 @@ for new public exports.
 - **Coverage (medium).** The new solver branches, command validation, endpoint
   variants, hover precedence and rectangle mapping all need unit/component tests
   to hold statements, branches, functions and lines at 100 %.
-- **Delivery (low).** This PR is design-only and carries `skip-qa`; the
-  implementation PR is user-facing and needs QA evidence. The implementation must
-  keep the command spec three-way sync and the geometry package version bump.
+- **Delivery (low).** This branch carries both the design and the implementation,
+  so it is user-facing and needs QA evidence rather than `skip-qa`. The
+  implementation keeps the command spec three-way sync and the geometry package
+  version bump.
 - **Rollback (medium).** Reverting the geometry type without a document migration
   leaves stored midpoint constraints unreadable by the reverted build. Roll back
   by keeping the type and disabling the UI, or by rewriting/removing stored
@@ -444,8 +445,8 @@ for new public exports.
 
 ## 📋 Implementation Plan
 
-1. **Spec and command contract.** Land this document; in the implementation PR,
-   add `midpoint` to `CONSTRAINT_TYPES` and the `Constraint` union, update
+1. **Spec and command contract.** Land this document; on the implementation
+   branch, add `midpoint` to `CONSTRAINT_TYPES` and the `Constraint` union, update
    `constraintEntityIds`/`constraintPointIds`, and write the command-spec entry
    and `spec_version` bump in all three places.
 2. **Midpoint helpers.** Add `packages/geometry/src/midpoint.ts` with
