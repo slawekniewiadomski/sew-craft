@@ -39,6 +39,7 @@ routes/api.php            REST API routes
 config/geometry.php       Command spec exposed at GET /api/commands
 database/migrations/      projects, patterns, pattern_versions, exports
 frontend/                 Vue 3 SPA (@sewcraft/frontend)
+frontend/tests/           Vitest suite, mirroring frontend/src/ path for path
 packages/geometry/        @sewcraft/geometry — model, solver, (later) export
 docs/architecture/        System design, contracts + engineering standards
 docs/domain/              Glossary + command spec (+ JSON schema)

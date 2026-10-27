@@ -167,8 +167,13 @@ Rules:
 
 - Runners: **Vitest** for `frontend/` and `packages/geometry/`; **Pest** for the
   Laravel app.
-- Vitest test files are colocated with the code as `*.test.ts`
-  (`frontend/src/lib/utils.test.ts`).
+- Frontend Vitest tests live outside the source tree under `frontend/tests/`,
+  mirroring `frontend/src/` path for path and keeping the `*.test.ts` name
+  (`frontend/src/lib/utils.ts` → `frontend/tests/lib/utils.test.ts`); they import
+  the module under test through the `@/` alias, never a relative path. New
+  shadcn-vue components follow the same rule
+  (`frontend/tests/components/ui/<component>/<component>.test.ts`). Geometry tests
+  stay colocated with their code as `*.test.ts` under `packages/geometry/src/`.
 - Pest tests live in `tests/Unit/` or `tests/Feature/` and use `it(...)` /
   `expect()`.
 - Geometry and solver changes need unit tests covering edge cases (tolerance,

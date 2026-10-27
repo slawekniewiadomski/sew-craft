@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { ASSEMBLY_RIBBON_GROUPS, RIBBON_GROUPS, type RibbonToolGroupItem } from '@/lib/editor-ribbon';
+import {
+  ASSEMBLY_RIBBON_GROUPS,
+  RIBBON_GROUPS,
+  type RibbonToolGroupItem,
+} from '@/lib/editor-ribbon';
 
 describe('RIBBON_GROUPS', () => {
   it('groups controls into tools, features, annotation, sketching, constraints and export', () => {
