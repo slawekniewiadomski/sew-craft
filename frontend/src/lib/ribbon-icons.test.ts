@@ -23,6 +23,7 @@ describe('RIBBON_ICONS', () => {
       'fit',
       'horizontal',
       'line',
+      'midpoint',
       'mirror',
       'piece',
       'piece-add',

@@ -2,6 +2,7 @@ import {
   allPoints,
   constraintEntityIds,
   isLineAnchor,
+  midpointSources,
   type Constraint,
   type ConstraintType,
   type EntityId,
@@ -17,6 +18,7 @@ export const CONSTRAINT_LABELS: Record<ConstraintType, string> = {
   distance: 'Distance',
   angle: 'Angle',
   equal: 'Equal length',
+  midpoint: 'Midpoint',
 };
 
 /** Label for each entity slot of a constraint, in `add_constraint` order. */
@@ -28,6 +30,7 @@ export const CONSTRAINT_ROLES: Record<ConstraintType, string[]> = {
   distance: ['From', 'To'],
   angle: ['First', 'Vertex', 'Second'],
   equal: ['A start', 'A end', 'B start', 'B end'],
+  midpoint: ['Point', 'Line or point A', 'Point B'],
 };
 
 /** The unit a constraint type's numeric parameter uses, or `null` when it has none. */
@@ -91,6 +94,7 @@ export const CONSTRAINT_ICONS: Record<ConstraintType, ConstraintIcon> = {
     paths: ['M6 18 H21', 'M6 18 L20 6', 'M13 18 A7 7 0 0 0 10.7 12.72'],
   },
   equal: { paths: ['M6 9 H18', 'M6 15 H18'] },
+  midpoint: { paths: ['M4 12 H20', 'M12 8 V16'], dots: [{ cx: 12, cy: 12, r: 1.6 }] },
 };
 
 export interface ConstraintMarker {
@@ -111,10 +115,26 @@ export interface ConstraintMarker {
 export function constraintMarkers(document: PatternDocument): ConstraintMarker[] {
   const points = new Map(allPoints(document).map((point) => [point.id, point]));
 
-  return document.constraints.flatMap((constraint) => {
+  return document.constraints.flatMap((constraint): ConstraintMarker[] => {
     // Cut dimensions anchor to piece loop vertices, not solver points; the
     // canvas draws them with the dimension layer instead of an icon.
     if (constraint.type === 'derived_distance') return [];
+    // A midpoint's marker sits on the derived point; its sources are resolved
+    // through the line when the relation stores a line id.
+    if (constraint.type === 'midpoint') {
+      const target = points.get(constraint.point);
+      const sources = midpointSources(document, constraint);
+      if (target === undefined || sources === null) return [];
+      return [
+        {
+          id: constraint.id,
+          type: constraint.type,
+          label: constraintLabel(constraint),
+          x: target.x,
+          y: target.y,
+        },
+      ];
+    }
     // A line-anchored distance is drawn by the dimension layer too.
     if (
       constraint.type === 'distance' &&

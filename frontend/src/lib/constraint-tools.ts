@@ -4,8 +4,12 @@ import {
   cross,
   distance,
   dot,
+  getEntity,
+  isCornerRoundDerived,
   lineSupportAnchors,
   magnitude,
+  midpointTargetFor,
+  midpointTargets,
   sub,
   type AddConstraintParams,
   type ConstraintType,
@@ -57,6 +61,7 @@ export const CONSTRAINT_SLOTS: Record<ConstraintType, ConstraintSlot[]> = {
   distance: [{ kind: 'segment' }],
   angle: [{ kind: 'point' }, { kind: 'point' }, { kind: 'point' }],
   equal: [{ kind: 'segment' }, { kind: 'segment' }],
+  midpoint: [{ kind: 'point' }, { kind: 'segment' }],
 };
 
 export interface ConstraintPlacement {
@@ -64,7 +69,7 @@ export interface ConstraintPlacement {
   picks: ConstraintPick[];
 }
 
-export type ConstraintRejectionReason = 'curve' | 'point' | 'distinct';
+export type ConstraintRejectionReason = 'curve' | 'point' | 'distinct' | 'derived' | 'fixed';
 
 export type ConstraintPickResult =
   | { status: 'picking'; picks: ConstraintPick[] }
@@ -144,6 +149,10 @@ function hasDistinctPoints(type: ConstraintType, ids: EntityId[]): boolean {
       const samePair = (a1 === b1 && a2 === b2) || (a1 === b2 && a2 === b1);
       return !samePair;
     }
+    case 'midpoint':
+      // The line form is distinct by construction; the two-point form must name
+      // three different points.
+      return ids.length === 2 || new Set(ids).size === ids.length;
   }
 }
 
@@ -195,6 +204,13 @@ export function constraintParams(
     );
     if (line === undefined) return null;
 
+    // A midpoint stores the line id so the relation can follow the visible
+    // segment through a corner-round trim.
+    if (type === 'midpoint') {
+      ids.push(line.id);
+      continue;
+    }
+
     // Direction relations describe the line's supporting line, so a rounded end
     // names its sharp corner and the reference survives the trim. Length
     // relations keep the visible endpoints because they measure the segment.
@@ -222,6 +238,33 @@ export function applyConstraintPick(
 ): ConstraintPickResult {
   if (pick.kind === 'curve' || pick.kind === 'arc') {
     return { status: 'rejected', picks: placement.picks, reason: 'curve' };
+  }
+
+  if (placement.type === 'midpoint') {
+    const targets = midpointTargets(document);
+    // The point slot comes first: a line or second point with nothing picked
+    // yet would be placed in the segment slot and reorder the tuple.
+    if (placement.picks.length === 0 && pick.kind !== 'point') {
+      return { status: 'rejected', picks: placement.picks, reason: 'point' };
+    }
+    if (pick.kind === 'point') {
+      const isTargetSlot = placement.picks.length === 0;
+      const derived =
+        isCornerRoundDerived(document, pick.id) ||
+        midpointTargetFor(document, pick.id) !== undefined;
+      if (isTargetSlot && derived) {
+        return { status: 'rejected', picks: placement.picks, reason: 'derived' };
+      }
+      if (!isTargetSlot && targets.has(pick.id)) {
+        return { status: 'rejected', picks: placement.picks, reason: 'fixed' };
+      }
+    }
+    if (pick.kind === 'line') {
+      const line = getEntity(document, pick.id);
+      if (line?.kind === 'line' && (targets.has(line.start) || targets.has(line.end))) {
+        return { status: 'rejected', picks: placement.picks, reason: 'fixed' };
+      }
+    }
   }
 
   const candidate = [...placement.picks, pick];
@@ -273,6 +316,10 @@ export function constraintPrompt(type: ConstraintType, picks: ConstraintPick[]):
       if (picks.length === 1) return 'Pick the vertex.';
       if (picks.length === 2) return 'Pick the second ray point.';
       return 'Pick the first ray point.';
+    case 'midpoint':
+      return picks.length === 0
+        ? 'Pick the point to pin at the midpoint.'
+        : 'Pick a line, or two points.';
     case 'equal': {
       const fills = fillSlots(type, picks);
       if (fills === null) return 'Pick the first line, or two points.';
@@ -300,6 +347,10 @@ export function constraintRejection(reason: ConstraintRejectionReason): string {
       return 'Pick a point.';
     case 'distinct':
       return 'Pick distinct points.';
+    case 'derived':
+      return 'Pick a point that is not already derived.';
+    case 'fixed':
+      return 'Pick a line whose endpoints are not already fixed.';
   }
 }
 
