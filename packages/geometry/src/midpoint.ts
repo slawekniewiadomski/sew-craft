@@ -98,6 +98,23 @@ export function midpointSources(
   return { a: constraint.a, b: constraint.b };
 }
 
+/**
+ * Whether a point already feeds another midpoint as a source. Creation rejects
+ * this reverse chain; the solver reports it as a chain from the other side, so
+ * only the command core needs the check.
+ */
+export function midpointUsedAsSource(
+  context: MidpointContext,
+  pointId: EntityId,
+  exceptConstraintId?: EntityId,
+): boolean {
+  return context.constraints.some((constraint) => {
+    if (constraint.type !== 'midpoint' || constraint.id === exceptConstraintId) return false;
+    const sources = midpointSources(context, constraint);
+    return sources !== null && (sources.a === pointId || sources.b === pointId);
+  });
+}
+
 /** Every resolvable midpoint dependency, keyed by its derived target point. */
 export function midpointDependencies(context: MidpointContext): Map<EntityId, MidpointSources> {
   const dependencies = new Map<EntityId, MidpointSources>();

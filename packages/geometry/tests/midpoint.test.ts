@@ -14,6 +14,7 @@ import {
   midpointSources,
   midpointTargetFor,
   midpointTargets,
+  midpointUsedAsSource,
   regenerateMidpoints,
   solve,
   solveDocument,
@@ -269,6 +270,17 @@ describe('midpoint validation', () => {
     ).toBe('degenerate');
   });
 
+  it('reports a target that already feeds another midpoint', () => {
+    const document = documentOf(
+      [point('p', 0, 0), point('q', 4, 0), point('a', 0, 4), point('b', 6, 4), point('c', 8, 8)],
+      [{ id: 'first', type: 'midpoint', point: 'q', a: 'p', b: 'b' }],
+    );
+
+    expect(midpointUsedAsSource(document, 'p')).toBe(true);
+    expect(midpointUsedAsSource(document, 'p', 'first')).toBe(false);
+    expect(midpointUsedAsSource(document, 'a')).toBe(false);
+  });
+
   it('reports a chained source', () => {
     const document = documentOf(
       [point('p', 0, 0), point('a', 0, 0), point('b', 4, 0)],
@@ -387,6 +399,18 @@ describe('midpoint solver', () => {
         [{ id: 'm', type: 'midpoint', point: 'p', a: 'a', b: 'l' }],
       ),
     ).toThrow(/a source is not a point/);
+  });
+
+  it('rejects a reverse chain in a hand-edited document', () => {
+    expect(() =>
+      solve(
+        [point('p', 0, 0), point('q', 4, 0), point('a', 0, 4), point('b', 6, 4), point('c', 8, 8)],
+        [
+          { id: 'first', type: 'midpoint', point: 'q', a: 'p', b: 'b' },
+          { id: 'second', type: 'midpoint', point: 'p', a: 'a', b: 'c' },
+        ],
+      ),
+    ).toThrow(/a source is already a derived midpoint/);
   });
 
   it('rejects a chained midpoint in a hand-edited document', () => {
@@ -583,6 +607,29 @@ describe('midpoint command', () => {
         addMidpoint('m', 'p', ['a', 'b']),
       ),
     ).toThrow('midpoint: the sources must be distinct');
+  });
+
+  it('rejects a target that already feeds another midpoint', () => {
+    const document = documentOf([
+      point('p', 0, 0),
+      point('q', 4, 0),
+      point('a', 0, 4),
+      point('b', 6, 4),
+      point('c', 8, 8),
+    ]);
+    const first = executeCommand(document, {
+      id: 'first',
+      type: 'add_constraint',
+      params: { type: 'midpoint', entities: ['q', 'p', 'b'] },
+    }).document;
+
+    expect(() =>
+      executeCommand(first, {
+        id: 'second',
+        type: 'add_constraint',
+        params: { type: 'midpoint', entities: ['p', 'a', 'c'] },
+      }),
+    ).toThrow('midpoint: the point is already a source of another midpoint');
   });
 
   it('rejects a target that is a source and a chained source', () => {

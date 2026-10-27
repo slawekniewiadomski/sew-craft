@@ -38,6 +38,7 @@ import { CommandValidationError } from './errors.js';
 import {
   midpointIssue,
   midpointTargetFor,
+  midpointUsedAsSource,
   regenerateMidpoints,
   type MidpointIssue,
 } from './midpoint.js';
@@ -1334,6 +1335,12 @@ function applyAddConstraint(
     const issue = midpointIssue(document, candidate);
     if (issue !== null) {
       throw new CommandValidationError('add_constraint', midpointIssueMessage(issue));
+    }
+    if (midpointUsedAsSource(document, candidate.point, candidate.id)) {
+      throw new CommandValidationError(
+        'add_constraint',
+        'midpoint: the point is already a source of another midpoint',
+      );
     }
   }
 
