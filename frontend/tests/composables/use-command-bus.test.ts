@@ -2,7 +2,7 @@ import { createEmptyDocument } from '@sewcraft/geometry';
 import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { useCommandBus } from './use-command-bus';
+import { useCommandBus } from '@/composables/use-command-bus';
 
 describe('useCommandBus', () => {
   beforeEach(() => {

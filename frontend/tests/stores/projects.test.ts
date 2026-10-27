@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { projectsApi } from '@/api/projects';
 
-import { useProjectsStore } from './projects';
+import { useProjectsStore } from '@/stores/projects';
 
 vi.mock('@/api/projects', () => ({
   projectsApi: {

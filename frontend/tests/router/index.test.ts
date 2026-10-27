@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { router } from './index';
+import { router } from '@/router/index';
 
 describe('router', () => {
   it('defines the projects and editor routes', () => {

@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter, type Router } from 'vue-router';
 import { describe, expect, it } from 'vitest';
 
-import App from './App.vue';
+import App from '@/App.vue';
 
 const Stub = { template: '<div />' };
 

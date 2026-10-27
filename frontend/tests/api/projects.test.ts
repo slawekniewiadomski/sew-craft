@@ -22,7 +22,7 @@ const jsonResponse = (body: unknown, status = 200) => ({
 describe('projectsApi', () => {
   it('lists projects', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ data: [{ id: 1, name: 'Dress' }] }));
-    const { projectsApi } = await import('./projects');
+    const { projectsApi } = await import('@/api/projects');
 
     const result = await projectsApi.list();
 
@@ -37,7 +37,7 @@ describe('projectsApi', () => {
 
   it('creates a project', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ data: { id: 2, name: 'Bodice' } }, 201));
-    const { projectsApi } = await import('./projects');
+    const { projectsApi } = await import('@/api/projects');
 
     const result = await projectsApi.create({ name: 'Bodice', description: 'top' });
 
@@ -53,7 +53,7 @@ describe('projectsApi', () => {
 
   it('removes a project and tolerates an empty 204 body', async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 204, json: async () => undefined });
-    const { projectsApi } = await import('./projects');
+    const { projectsApi } = await import('@/api/projects');
 
     await expect(projectsApi.remove(3)).resolves.toBeUndefined();
     expect(fetchMock).toHaveBeenCalledWith(
@@ -64,7 +64,7 @@ describe('projectsApi', () => {
 
   it('throws an ApiError carrying the server message', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ message: 'nope' }, 500));
-    const { projectsApi, ApiError } = await import('./projects');
+    const { projectsApi, ApiError } = await import('@/api/projects');
 
     await expect(projectsApi.list()).rejects.toBeInstanceOf(ApiError);
     await expect(projectsApi.list()).rejects.toThrow('nope');
@@ -75,7 +75,7 @@ describe('projectsApi', () => {
     vi.resetModules();
     fetchMock.mockResolvedValue(jsonResponse({ data: [] }));
 
-    const { projectsApi } = await import('./projects');
+    const { projectsApi } = await import('@/api/projects');
     await projectsApi.list();
 
     expect(fetchMock).toHaveBeenCalledWith('https://example.test/api/projects', expect.anything());
@@ -95,7 +95,7 @@ describe('projectsApi', () => {
         },
       }),
     );
-    const { projectsApi } = await import('./projects');
+    const { projectsApi } = await import('@/api/projects');
 
     const result = await projectsApi.getPattern(1);
 
@@ -110,7 +110,7 @@ describe('projectsApi', () => {
         data: { id: 7, version: 13, saved_at: '2026-10-23T16:02:44Z', created: true },
       }),
     );
-    const { projectsApi } = await import('./projects');
+    const { projectsApi } = await import('@/api/projects');
     const document: PatternDocument = {
       schema: 'sewcraft.pattern/0.4',
       units: 'mm',
@@ -152,7 +152,7 @@ describe('projectsApi', () => {
         409,
       ),
     );
-    const { projectsApi, ApiError } = await import('./projects');
+    const { projectsApi, ApiError } = await import('@/api/projects');
 
     const failure = projectsApi.savePattern(1, {
       document: {
@@ -183,7 +183,7 @@ describe('projectsApi', () => {
         throw new Error('not json');
       },
     });
-    const { projectsApi } = await import('./projects');
+    const { projectsApi } = await import('@/api/projects');
 
     await expect(projectsApi.list()).rejects.toThrow('Request failed with status 500');
   });

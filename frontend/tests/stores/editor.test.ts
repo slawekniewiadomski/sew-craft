@@ -11,7 +11,7 @@ import {
 import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { useEditorStore } from './editor';
+import { useEditorStore } from '@/stores/editor';
 
 const point = (id: string, x: number, y: number, fixed = false): PointEntity => ({
   id,

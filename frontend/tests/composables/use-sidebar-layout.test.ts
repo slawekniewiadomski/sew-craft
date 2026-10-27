@@ -3,7 +3,7 @@ import { nextTick } from 'vue';
 
 import { SIDEBAR_STORAGE_KEY, type KeyValueStore } from '@/lib/sidebar-layout';
 
-import { useSidebarLayout } from './use-sidebar-layout';
+import { useSidebarLayout } from '@/composables/use-sidebar-layout';
 
 const DEFAULT_LAYOUT = { width: 320, collapsed: false };
 
