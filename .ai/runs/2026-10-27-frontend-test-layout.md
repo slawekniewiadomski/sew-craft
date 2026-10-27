@@ -60,8 +60,8 @@ from the spec's Phasing / Implementation Plan sections and issue #98.
 
 - [x] 3.1 Narrow `test.include` to `tests/**` and assert nothing remains in `src` — 8b5ce39
 - [x] 3.2 Update `docs/architecture/standards.md` and `AGENTS.md` for the new layout — 50f4699
-- [ ] 3.3 Full validation gate plus the `om-auto-review-pr 100 --autofix` pass
-- [ ] 3.4 Retitle the PR, normalize labels, flip it to ready, post the outcome comment
+- [x] 3.3 Full validation gate plus the `om-auto-review-pr 100 --autofix` pass — green at 138e26f
+- [x] 3.4 Retitle the PR, normalize labels, flip it to ready, post the outcome comment — 138e26f
 
 ## Validation
 
@@ -71,11 +71,20 @@ from the spec's Phasing / Implementation Plan sections and issue #98.
 
 ## Review
 
-- `om-auto-review-pr 100 --autofix` after the gate, as the single code-review
-  pass for this PR.
+- `om-auto-review-pr 100 --autofix` — no blockers. One major, fixed in `138e26f`:
+  the spec header still described a proposed design with Q1 open after the
+  implementation had landed, which risks a future agent re-planning shipped work.
+  One minor recorded in the same commit: the two midpoint tests that `develop`
+  added during the merge were moved with the rest, so the count is 75, not 73.
+- Merge with `develop` (`a93ee93`) was conflict-free once the move was applied;
+  it brought those two tests into `src/lib`, which is why the final step narrowed
+  `test.include` before the merge rather than after.
 
 ## Evidence
 
 - Spec: `.ai/specs/2026-10-27-frontend-test-layout.md`
 - Issue: FR #98
-- Baseline: 73 test files / 1238 tests (`frontend/`, before any change).
+- Baseline: 73 test files / 1238 tests (`frontend/`, before any change); final
+  suite 75 files / 1285 tests, both slices at 100 % coverage.
+- `find frontend/src -name '*.test.ts'` prints nothing; all 75 moved files differ
+  from their originals only in import lines.
