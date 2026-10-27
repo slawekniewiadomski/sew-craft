@@ -34,7 +34,9 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    include: ['src/**/*.test.ts'],
+    // Temporary union while tests migrate from src/ to tests/; the final step
+    // narrows this to tests/** so a stray test in src/ cannot run unnoticed.
+    include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'json-summary'],
