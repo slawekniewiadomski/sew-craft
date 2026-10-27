@@ -94,14 +94,23 @@ tools. The spec is the plan; there is no separate implementation PR.
 
 - [x] 5.1 Update architecture docs, command spec and compatibility notes — a2bdc50
 - [x] 5.2 Run the full validation gate — gate green on 75f4660
-- [ ] 5.3 Run `om-auto-review-pr 99 --autofix` and resolve findings
-- [ ] 5.4 Update the PR body, normalize labels and report
+- [x] 5.3 Run `om-auto-review-pr 99 --autofix` and resolve findings — APPROVED on b7d9b63; one major fixed in 5b99cc1
+- [x] 5.4 Update the PR body, normalize labels and report — b7d9b63
 
 ## Validation
 
 `npm run format`, `npm run typecheck`, `npm run lint`, `npm run format:check`,
 `npm run test:coverage`, `npm run build`, plus the backend Pest/Pint gate from
 `.ai/agentic.config.json`.
+
+## Review
+
+`om-auto-review-pr 99 --autofix` — **APPROVED** on `b7d9b63`. One major was found
+and fixed in `5b99cc1`: a point could become a midpoint target while already
+feeding another midpoint as a source, creating a reverse chain with a stale
+coordinate. Creation now rejects it and the solver still reports the forward
+chain. GitHub refuses a formal approving review on your own PR, so the verdict
+is recorded as a PR review comment.
 
 ## Evidence links
 
