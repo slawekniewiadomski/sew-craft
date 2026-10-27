@@ -4584,3 +4584,117 @@ describe('annotation label and target movement', () => {
     expect(wrapper.emitted('move-point')).toEqual([['b', 60, 60]]);
   });
 });
+
+describe('midpoint magnet', () => {
+  const nearMidpoint = () => screenAt({ x: 50, y: 1 });
+  const lineElement = (wrapper: VueWrapper) =>
+    wrapper.find('[data-kind="line"][data-entity-id="ab"]');
+
+  it('marks the visible middle ahead of point-on-line and offers the hint', async () => {
+    const wrapper = mountCanvas({ tool: 'add_point' });
+    const at = nearMidpoint();
+
+    hover(lineElement(wrapper).element, at.x, at.y);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="midpoint-hint"]').text()).toBe(
+      "Click to create a point at this line's midpoint.",
+    );
+    expect(wrapper.find('[data-testid="midpoint-marker"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="point-on-line-hint"]').exists()).toBe(false);
+    expect(lineElement(wrapper).classes()).toContain('text-primary');
+    expect(lineElement(wrapper).attributes('stroke-width')).toBe('3');
+  });
+
+  it('emits the midpoint gesture instead of a point-on-line or free point', () => {
+    const wrapper = mountCanvas({ tool: 'add_point' });
+    const at = nearMidpoint();
+
+    down(lineElement(wrapper).element, at.x, at.y);
+
+    expect(wrapper.emitted('add-point-midpoint')).toEqual([['ab']]);
+    expect(wrapper.emitted('add-point-on-line')).toBeUndefined();
+    expect(wrapper.emitted('add-point')).toBeUndefined();
+    expect(wrapper.find('[data-testid="midpoint-hint"]').exists()).toBe(false);
+  });
+
+  it('keeps the existing point snap and the point-on-line fallback', () => {
+    const wrapper = mountCanvas({ tool: 'add_point' });
+    const onPoint = screenAt({ x: 1, y: 1 });
+    const offZone = screenAt({ x: 20, y: 0 });
+
+    down(lineElement(wrapper).element, onPoint.x, onPoint.y);
+    expect(wrapper.emitted('add-point')).toEqual([[0, 0]]);
+    expect(wrapper.emitted('add-point-midpoint')).toBeUndefined();
+
+    down(lineElement(wrapper).element, offZone.x, offZone.y);
+    expect(wrapper.emitted('add-point-on-line')).toHaveLength(1);
+  });
+
+  it('starts a line from a midpoint endpoint', () => {
+    const wrapper = mountCanvas({ tool: 'add_line' });
+    const at = nearMidpoint();
+
+    down(lineElement(wrapper).element, at.x, at.y);
+    const empty = screenAt({ x: 20, y: 60 });
+    down(wrapper.find('[data-testid="grid"]').element, empty.x, empty.y);
+
+    const [start, end] = wrapper.emitted('add-line')![0]!;
+    expect(start).toMatchObject({ kind: 'midpoint', lineId: 'ab' });
+    expect(end).toMatchObject({ kind: 'new' });
+  });
+
+  it('clears the signal on pointer leave, Escape, tool change and a document edit', async () => {
+    const wrapper = mountCanvas({ tool: 'add_point' });
+    const at = nearMidpoint();
+
+    hover(lineElement(wrapper).element, at.x, at.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="midpoint-hint"]').exists()).toBe(true);
+
+    wrapper.find('svg').element.dispatchEvent(new MouseEvent('pointerleave', { bubbles: true }));
+    await nextTick();
+    expect(wrapper.find('[data-testid="midpoint-hint"]').exists()).toBe(false);
+
+    hover(lineElement(wrapper).element, at.x, at.y);
+    await nextTick();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+    expect(wrapper.find('[data-testid="midpoint-hint"]').exists()).toBe(false);
+
+    hover(lineElement(wrapper).element, at.x, at.y);
+    await nextTick();
+    await wrapper.setProps({ tool: 'select' });
+    expect(wrapper.find('[data-testid="midpoint-hint"]').exists()).toBe(false);
+  });
+
+  it('re-resolves the candidate when the document changes', async () => {
+    const wrapper = mountCanvas({ tool: 'add_point' });
+    const at = nearMidpoint();
+
+    hover(lineElement(wrapper).element, at.x, at.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="midpoint-hint"]').exists()).toBe(true);
+
+    await wrapper.setProps({ document: doc([...baseDoc.entities, pt('extra', 300, 300)]) });
+    expect(wrapper.find('[data-testid="midpoint-hint"]').exists()).toBe(true);
+
+    await wrapper.setProps({
+      document: doc(baseDoc.entities.filter((entity) => entity.id !== 'ab')),
+    });
+    expect(wrapper.find('[data-testid="midpoint-hint"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="midpoint-marker"]').exists()).toBe(false);
+  });
+
+  it('shows and dispatches nothing on a read-only document', async () => {
+    const wrapper = mountCanvas({ tool: 'add_point', readOnly: true });
+    const at = nearMidpoint();
+
+    hover(lineElement(wrapper).element, at.x, at.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="midpoint-hint"]').exists()).toBe(false);
+
+    down(lineElement(wrapper).element, at.x, at.y);
+    expect(wrapper.emitted('add-point-midpoint')).toBeUndefined();
+  });
+});

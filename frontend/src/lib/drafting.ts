@@ -2,6 +2,7 @@ import {
   allPoints,
   isAnnotation,
   isCornerRoundDerived,
+  lineMidpoint,
   type Command,
   type EntityId,
   getEntity,
@@ -9,7 +10,8 @@ import {
   type Vec2,
 } from '@sewcraft/geometry';
 
-import { snapPoint } from './snap';
+import { nearestLineMidpoint } from './midpoint';
+import { nearestPoint, snapPoint, snapToGrid } from './snap';
 
 /** Millimetre tolerance for treating two new coordinates as the same endpoint. */
 export const ENDPOINT_TOLERANCE = 0.001;
@@ -19,7 +21,9 @@ export const ENDPOINT_TOLERANCE = 0.001;
  * coordinate that only becomes a point when the gesture commits.
  */
 export type DraftingEndpoint =
-  { kind: 'point'; id: EntityId } | { kind: 'new'; x: number; y: number };
+  | { kind: 'point'; id: EntityId }
+  | { kind: 'midpoint'; lineId: EntityId; x: number; y: number }
+  | { kind: 'new'; x: number; y: number };
 
 /**
  * Resolve a bare-canvas click for a drafting tool: the snapped position is reused
@@ -31,6 +35,7 @@ export function resolveDraftingEndpoint(
   document: PatternDocument,
   world: Vec2,
   activePieceId?: EntityId | null,
+  midpointTolerance?: number,
 ): DraftingEndpoint {
   // Annotation points are sewing marks, never drafting anchors; an active piece
   // also keeps a gesture inside its own container.
@@ -42,10 +47,25 @@ export function resolveDraftingEndpoint(
         point.piece === undefined ||
         point.piece === activePieceId),
   );
-  const snapped = snapPoint(
-    world,
-    points.map((point) => ({ x: point.x, y: point.y })),
-  );
+  const coordinates = points.map((point) => ({ x: point.x, y: point.y }));
+
+  // Precedence: an existing point snap wins, then the line midpoint magnet, then
+  // the grid. Without a tolerance the resolution is exactly the old point/grid
+  // snap, so tools that do not opt in keep their behaviour.
+  const nearest = nearestPoint(world, coordinates);
+  if (nearest !== null) {
+    const existing = points.find((point) => point.x === nearest.x && point.y === nearest.y)!;
+    return { kind: 'point', id: existing.id };
+  }
+
+  if (midpointTolerance !== undefined) {
+    const midpoint = nearestLineMidpoint(document, world, midpointTolerance, activePieceId);
+    if (midpoint !== null) {
+      return { kind: 'midpoint', lineId: midpoint.lineId, x: midpoint.x, y: midpoint.y };
+    }
+  }
+
+  const snapped = snapToGrid(world);
   const existing = points.find((point) => point.x === snapped.x && point.y === snapped.y);
 
   return existing === undefined
@@ -106,11 +126,10 @@ export function resolveLeaderEndpoint(
     : { kind: 'point', id: existing.id };
 }
 
-/** Same point id, or coordinates within {@link ENDPOINT_TOLERANCE}. */ export function sameDraftingEndpoint(
-  a: DraftingEndpoint,
-  b: DraftingEndpoint,
-): boolean {
+/** Same point id, midpoint line, or coordinates within {@link ENDPOINT_TOLERANCE}. */
+export function sameDraftingEndpoint(a: DraftingEndpoint, b: DraftingEndpoint): boolean {
   if (a.kind === 'point' && b.kind === 'point') return a.id === b.id;
+  if (a.kind === 'midpoint' && b.kind === 'midpoint') return a.lineId === b.lineId;
   if (a.kind === 'new' && b.kind === 'new') {
     return Math.abs(a.x - b.x) <= ENDPOINT_TOLERANCE && Math.abs(a.y - b.y) <= ENDPOINT_TOLERANCE;
   }
@@ -125,9 +144,9 @@ export function endpointMissing(
   document: PatternDocument,
   endpoint: DraftingEndpoint | null,
 ): boolean {
-  return (
-    endpoint !== null && endpoint.kind === 'point' && getEntity(document, endpoint.id) === undefined
-  );
+  if (endpoint === null) return false;
+  if (endpoint.kind === 'midpoint') return lineMidpoint(document, endpoint.lineId) === null;
+  return endpoint.kind === 'point' && getEntity(document, endpoint.id) === undefined;
 }
 
 /**
@@ -141,6 +160,11 @@ export function endpointPosition(
   endpoint: DraftingEndpoint,
 ): Vec2 | null {
   if (endpoint.kind === 'new') return { x: endpoint.x, y: endpoint.y };
+  if (endpoint.kind === 'midpoint') {
+    // Follow a trim or a moved source line live; the stored coordinate is the
+    // fallback for a line that still exists but cannot resolve.
+    return lineMidpoint(document, endpoint.lineId) ?? { x: endpoint.x, y: endpoint.y };
+  }
 
   const entity = getEntity(document, endpoint.id);
   if (entity === undefined || entity.kind !== 'point') return null;
@@ -168,5 +192,20 @@ export function resolveEndpointCommands(
       ...(role === undefined ? {} : { role }),
     },
   });
+
+  // A midpoint endpoint lands its relation immediately after its point, before
+  // the geometry that uses it, so the whole gesture is one journal entry.
+  if (endpoint.kind === 'midpoint') {
+    commands.push({
+      id: nextId('constraint'),
+      type: 'add_constraint',
+      params: {
+        type: 'midpoint',
+        entities: [id, endpoint.lineId],
+        ...(piece === undefined ? {} : { piece }),
+      },
+    });
+  }
+
   return id;
 }

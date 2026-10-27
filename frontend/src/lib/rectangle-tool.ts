@@ -1,12 +1,18 @@
 import {
   allPoints,
+  lineMidpoint,
   type Command,
   type EntityId,
   type PatternDocument,
   type Vec2,
 } from '@sewcraft/geometry';
 
-import { endpointPosition, sameDraftingEndpoint, type DraftingEndpoint } from './drafting';
+import {
+  ENDPOINT_TOLERANCE,
+  endpointPosition,
+  sameDraftingEndpoint,
+  type DraftingEndpoint,
+} from './drafting';
 
 /**
  * How a rectangle gesture derives its four corners: two opposite corners, a
@@ -187,9 +193,24 @@ export function buildRectangleCommands(
   const corners = rectangleCorners(document, mode, clicks);
   if (corners === null) return [];
 
+  // A midpoint click must attach its relation to the corner it produced. Corner
+  // positions are compared rather than click indices because each mode derives a
+  // different corner per click (a centre click produces no corner at all).
+  const midpointByCorner = new Map<number, EntityId>();
+  for (const click of clicks) {
+    if (click.kind !== 'midpoint') continue;
+    const position = lineMidpoint(document, click.lineId) ?? { x: click.x, y: click.y };
+    const index = corners.findIndex(
+      (corner) =>
+        Math.abs(corner.x - position.x) <= ENDPOINT_TOLERANCE &&
+        Math.abs(corner.y - position.y) <= ENDPOINT_TOLERANCE,
+    );
+    if (index !== -1) midpointByCorner.set(index, click.lineId);
+  }
+
   const commands: Command[] = [];
   let reusedCorner = false;
-  const ids = corners.map((corner): EntityId => {
+  const ids = corners.map((corner, index): EntityId => {
     const existing = pointAt(document, corner);
     if (existing !== null) {
       reusedCorner = true;
@@ -202,6 +223,19 @@ export function buildRectangleCommands(
       type: 'add_point',
       params: { x: corner.x, y: corner.y, ...(piece === undefined ? {} : { piece }) },
     });
+
+    const midpointLine = midpointByCorner.get(index);
+    if (midpointLine !== undefined) {
+      commands.push({
+        id: nextId('constraint'),
+        type: 'add_constraint',
+        params: {
+          type: 'midpoint',
+          entities: [id, midpointLine],
+          ...(piece === undefined ? {} : { piece }),
+        },
+      });
+    }
     return id;
   });
 
@@ -217,7 +251,9 @@ export function buildRectangleCommands(
     });
   });
 
-  if (reusedCorner) return commands;
+  // A reused or midpoint-constrained corner may already carry relations, and
+  // `add_constraint` cannot detect a conflict, so skip the rectangle's own axes.
+  if (reusedCorner || midpointByCorner.size > 0) return commands;
 
   if (mode === 'three_point') {
     // Three right angles make a rectangle; the fourth angle follows the other three.

@@ -131,6 +131,7 @@ import type { PanelId } from '@/lib/editor-panels';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 import { entityProperties } from '@/lib/entity-properties';
 import { buildLineCommands, type LineEndpoint } from '@/lib/line-tool';
+import { buildPointMidpointCommands } from '@/lib/point-midpoint';
 import { buildPointOnLineCommands } from '@/lib/point-on-line';
 import { buildRectangleCommands, type RectangleMode } from '@/lib/rectangle-tool';
 import { buildTextCommands, textContentError } from '@/lib/text-tool';
@@ -1184,6 +1185,23 @@ function onAddPointOnLine(lineId: EntityId, x: number, y: number): void {
   run(() => dispatchGroup(commands));
 }
 
+/**
+ * One gesture: the point at the line's visible middle and its `midpoint`
+ * relation, as a single journal entry. `null` means the line no longer resolves,
+ * so nothing is dispatched.
+ */
+function onAddPointMidpoint(lineId: EntityId): void {
+  const commands = buildPointMidpointCommands(
+    pattern.value,
+    lineId,
+    nextCommandId,
+    /* v8 ignore next -- the canvas only exists inside a piece tab */
+    activePieceId.value ?? undefined,
+  );
+  if (commands === null) return;
+  run(() => dispatchGroup(commands));
+}
+
 /** One gesture: new endpoints become points, then the line, as a single entry. */
 function onAddLine(start: LineEndpoint, end: LineEndpoint): void {
   run(() =>
@@ -2134,6 +2152,7 @@ onBeforeUnmount(() => {
             @add-text="onAddText"
             @add-point="onAddPoint"
             @add-point-on-line="onAddPointOnLine"
+            @add-point-midpoint="onAddPointMidpoint"
             @add-line="onAddLine"
             @add-curve="onAddCurve"
             @add-arc="onAddArc"

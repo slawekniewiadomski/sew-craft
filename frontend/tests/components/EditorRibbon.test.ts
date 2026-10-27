@@ -84,6 +84,7 @@ const RIBBON_LABELS = [
   'Distance',
   'Angle',
   'Equal length',
+  'Midpoint',
   'Download SVG',
 ];
 
@@ -100,7 +101,7 @@ describe('EditorRibbon', () => {
     const wrapper = mountRibbon();
 
     const buttons = wrapper.findAll('[role="toolbar"] button');
-    expect(buttons).toHaveLength(26);
+    expect(buttons).toHaveLength(27);
     expect(buttons.every((button) => button.find('svg').exists())).toBe(true);
     expect(buttons.map((button) => button.attributes('aria-label'))).toEqual(RIBBON_LABELS);
     expect(wrapper.findAll('button').every((button) => button.find('svg').exists())).toBe(true);

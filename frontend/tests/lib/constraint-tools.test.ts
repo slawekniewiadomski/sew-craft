@@ -1,6 +1,9 @@
 import {
   applyCommand,
+  allPoints,
   createEmptyDocument,
+  isCornerRoundDerived,
+  type Constraint,
   type CurveEntity,
   type Entity,
   type LineEntity,
@@ -94,6 +97,7 @@ describe('CONSTRAINT_TOOLS', () => {
       { id: 'constraint-distance', type: 'distance', label: 'Distance' },
       { id: 'constraint-angle', type: 'angle', label: 'Angle' },
       { id: 'constraint-equal', type: 'equal', label: 'Equal length' },
+      { id: 'constraint-midpoint', type: 'midpoint', label: 'Midpoint' },
     ]);
   });
 });
@@ -103,6 +107,7 @@ describe('CONSTRAINT_SLOTS', () => {
     expect(CONSTRAINT_SLOTS.horizontal).toEqual([{ kind: 'segment' }]);
     expect(CONSTRAINT_SLOTS.point_on_line).toEqual([{ kind: 'point' }, { kind: 'segment' }]);
     expect(CONSTRAINT_SLOTS.equal).toEqual([{ kind: 'segment' }, { kind: 'segment' }]);
+    expect(CONSTRAINT_SLOTS.midpoint).toEqual([{ kind: 'point' }, { kind: 'segment' }]);
   });
 });
 
@@ -545,5 +550,96 @@ describe('constraintInitialValue', () => {
     expect(constraintInitialValue('angle', [point('a'), point('b'), point('f')], document)).toBe(
       '',
     );
+  });
+});
+
+describe('midpoint constraint', () => {
+  const point = (id: string): ConstraintPick => ({ id, kind: 'point' });
+  const line = (id: string): ConstraintPick => ({ id, kind: 'line' });
+  const withConstraints = (constraints: Constraint[]): PatternDocument => ({
+    ...document,
+    constraints,
+  });
+  const pinned = withConstraints([{ id: 'm', type: 'midpoint', point: 'a', a: 'c', b: 'd' }]);
+
+  it('pins a point to a line id in one ready tuple', () => {
+    expect(applyConstraintPick({ type: 'midpoint', picks: [] }, point('f'), document)).toEqual({
+      status: 'picking',
+      picks: [point('f')],
+    });
+    expect(
+      applyConstraintPick({ type: 'midpoint', picks: [point('f')] }, line('ab'), document),
+    ).toEqual({
+      status: 'ready',
+      picks: [point('f'), line('ab')],
+      params: { type: 'midpoint', entities: ['f', 'ab'] },
+    });
+  });
+
+  it('accepts two points as the second form', () => {
+    expect(
+      applyConstraintPick(
+        { type: 'midpoint', picks: [point('f'), point('a')] },
+        point('b'),
+        document,
+      ),
+    ).toEqual({
+      status: 'ready',
+      picks: [point('f'), point('a'), point('b')],
+      params: { type: 'midpoint', entities: ['f', 'a', 'b'] },
+    });
+  });
+
+  it('asks for the point before the segment', () => {
+    expect(applyConstraintPick({ type: 'midpoint', picks: [] }, line('ab'), document)).toEqual({
+      status: 'rejected',
+      picks: [],
+      reason: 'point',
+    });
+  });
+
+  it('rejects an already-derived target point', () => {
+    expect(applyConstraintPick({ type: 'midpoint', picks: [] }, point('a'), pinned)).toEqual({
+      status: 'rejected',
+      picks: [],
+      reason: 'derived',
+    });
+
+    const derived = allPoints(roundedDocument).find((candidate) =>
+      isCornerRoundDerived(roundedDocument, candidate.id),
+    )!;
+    expect(
+      applyConstraintPick(
+        { type: 'midpoint', picks: [] },
+        { id: derived.id, kind: 'point' },
+        roundedDocument,
+      ),
+    ).toEqual({ status: 'rejected', picks: [], reason: 'derived' });
+  });
+
+  it('rejects a line whose endpoint is already fixed at a midpoint', () => {
+    expect(
+      applyConstraintPick({ type: 'midpoint', picks: [point('f')] }, line('ab'), pinned),
+    ).toEqual({ status: 'rejected', picks: [point('f')], reason: 'fixed' });
+  });
+
+  it('rejects a second point that is already a midpoint target', () => {
+    expect(
+      applyConstraintPick({ type: 'midpoint', picks: [point('f')] }, point('a'), pinned),
+    ).toEqual({ status: 'rejected', picks: [point('f')], reason: 'fixed' });
+  });
+
+  it('prompts for the point, then the line or two points', () => {
+    expect(constraintPrompt('midpoint', [])).toBe('Pick the point to pin at the midpoint.');
+    expect(constraintPrompt('midpoint', [point('f')])).toBe('Pick a line, or two points.');
+  });
+
+  it('explains both midpoint rejections', () => {
+    expect(constraintRejection('derived')).toBe('Pick a point that is not already derived.');
+    expect(constraintRejection('fixed')).toBe('Pick a line whose endpoints are not already fixed.');
+  });
+
+  it('prunes a midpoint line whose endpoint vanished', () => {
+    expect(prunePicks([line('bad')], document)).toEqual([]);
   });
 });

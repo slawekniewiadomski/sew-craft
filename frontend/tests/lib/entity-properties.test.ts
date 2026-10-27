@@ -676,3 +676,32 @@ describe('annotation text view model', () => {
     });
   });
 });
+
+describe('entityProperties midpoint relations', () => {
+  const lineForm: Constraint = { id: 'line-mid', type: 'midpoint', point: 'c', line: 'l1' };
+  const pointForm: Constraint = { id: 'point-mid', type: 'midpoint', point: 'd', a: 'a', b: 'b' };
+  const document = doc({ constraints: [lineForm, pointForm] });
+
+  it('lists a line-form relation on its line and its target', () => {
+    expect(entityProperties(document, 'l1')?.constraints.map((row) => row.id)).toEqual([
+      'line-mid',
+    ]);
+    expect(entityProperties(document, 'c')?.constraints.map((row) => row.id)).toEqual(['line-mid']);
+  });
+
+  it('lists a two-point relation on its target and both sources', () => {
+    expect(entityProperties(document, 'd')?.constraints.map((row) => row.id)).toEqual([
+      'point-mid',
+    ]);
+    expect(entityProperties(document, 'a')?.constraints.map((row) => row.id)).toEqual([
+      'point-mid',
+    ]);
+    expect(entityProperties(document, 'b')?.constraints.map((row) => row.id)).toEqual([
+      'point-mid',
+    ]);
+  });
+
+  it('leaves an unrelated entity alone', () => {
+    expect(entityProperties(document, 'l2')?.constraints).toEqual([]);
+  });
+});

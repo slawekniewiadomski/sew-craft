@@ -173,6 +173,7 @@ describe('RIBBON_GROUPS', () => {
       'constraint-distance',
       'constraint-angle',
       'constraint-equal',
+      'constraint-midpoint',
     ]);
     expect(constraints.every((item) => item.kind === 'constraint')).toBe(true);
     expect(constraints[1]).toMatchObject({

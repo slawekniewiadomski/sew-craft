@@ -1,5 +1,11 @@
 import { resolveSetValue } from './dimension.js';
 import { constraintEntityIds, constraintPointIds } from './document.js';
+import {
+  midpointDependencies,
+  midpointIssue,
+  midpointTargets,
+  type MidpointIssue,
+} from './midpoint.js';
 import type { Constraint, Entity, EntityId, LineEntity, PointEntity } from './types.js';
 import { cross, dot, sub, type Vec2 } from './vector.js';
 
@@ -62,12 +68,28 @@ export function solve(
   );
   const isLineAnchor = (id: EntityId): boolean => lineById.has(id);
   const variableIds: EntityId[] = [];
+  // `entities` may omit the points (legacy call sites), so seed the context with
+  // both planes; duplicates are harmless to the lookups.
+  const context = { entities: [...points, ...entities], constraints };
 
   /** The authored point a line endpoint still lies on, or the endpoint itself. */
   const supportAnchor = (id: EntityId): EntityId => supportAnchors.get(id) ?? id;
 
+  // A midpoint target is derived, not a variable; validate every relation before
+  // excluding it so a hand-edited chain or dangling source fails loudly.
+  for (const constraint of constraints) {
+    if (constraint.type !== 'midpoint') continue;
+    const issue = midpointIssue(context, constraint);
+    if (issue !== null) {
+      throw new Error(
+        `Constraint "${constraint.id}" midpoint ${midpointIssueMessage(issue, constraint.point)}`,
+      );
+    }
+  }
+  const midpointTargetIds = midpointTargets(context);
+
   for (const point of points) {
-    if (!point.fixed) variableIds.push(point.id);
+    if (!point.fixed && !midpointTargetIds.has(point.id)) variableIds.push(point.id);
   }
 
   for (const constraint of constraints) {
@@ -110,6 +132,7 @@ export function solve(
   // Referenced dimensions follow a source chain, so resolve every driving value
   // once per solve instead of once per residual (and per solver iteration).
   const drivingValues = resolvedDrivingValues(constraints);
+  const midpointDeps = midpointDependencies(context);
 
   const readState = (x: Float64Array): Map<EntityId, Vec2> => {
     const state = new Map<EntityId, Vec2>();
@@ -119,6 +142,13 @@ export function solve(
     variableIds.forEach((id, i) => {
       state.set(id, { x: x[2 * i]!, y: x[2 * i + 1]! });
     });
+    // Derived targets follow their sources on every evaluation. Validation above
+    // guarantees both sources exist, so a lookup always resolves.
+    for (const [id, sources] of midpointDeps) {
+      const a = state.get(sources.a)!;
+      const b = state.get(sources.b)!;
+      state.set(id, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    }
     return state;
   };
 
@@ -207,7 +237,32 @@ export function solve(
 
 /** Whether a constraint adds an equation the solver must satisfy. */
 function hasDrivingValue(constraint: Constraint, drivingValues: Map<EntityId, number>): boolean {
+  if (constraint.type === 'midpoint' || constraint.type === 'derived_distance') return false;
   return constraint.type !== 'distance' || drivingValues.has(constraint.id);
+}
+
+/** The solver's validation message for one broken midpoint relation. */
+function midpointIssueMessage(issue: MidpointIssue, target: EntityId): string {
+  switch (issue) {
+    case 'missing-target':
+      return `target references unknown point: ${target}`;
+    case 'target-not-point':
+      return `target ${target} is not a point`;
+    case 'target-derived':
+      return `target ${target} is already owned by another derived relation`;
+    case 'missing-source':
+      return 'a source does not resolve';
+    case 'source-not-point':
+      return 'a source is not a point';
+    case 'source-not-line':
+      return 'the line source is not a straight line';
+    case 'target-source':
+      return 'the target cannot be one of its sources';
+    case 'degenerate':
+      return 'the sources are coincident';
+    case 'chain':
+      return 'a source is already a derived midpoint';
+  }
 }
 
 /**
@@ -336,6 +391,9 @@ function residuals(
         values.push(Math.hypot(a2.x - a1.x, a2.y - a1.y) - Math.hypot(b2.x - b1.x, b2.y - b1.y));
         break;
       }
+      case 'midpoint':
+        // The target is substituted in `readState`; the relation adds no residual.
+        break;
       case 'derived_distance':
         // A cut dimension measures derived geometry and adds no equation.
         break;
