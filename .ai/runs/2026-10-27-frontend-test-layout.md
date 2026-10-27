@@ -46,10 +46,10 @@ from the spec's Phasing / Implementation Plan sections and issue #98.
 
 ### Phase 1: Foundation and the lib slice
 
-- [ ] 1.1 Record the baseline (73 files / 1238 tests) and land this run plan
-- [ ] 1.2 Widen discovery: temporary `test.include` union plus `tests` in tsconfig
-- [ ] 1.3 Move the 31 `src/lib` tests to `tests/lib` with `@/lib/...` imports
-- [ ] 1.4 Verify the lib slice: 73 files, typecheck, 100 % coverage
+- [x] 1.1 Record the baseline (73 files / 1238 tests) and land this run plan — 000d899
+- [x] 1.2 Widen discovery: temporary `test.include` union plus `tests` in tsconfig — a8c189e
+- [x] 1.3 Move the 31 `src/lib` tests to `tests/lib` with `@/lib/...` imports — 4590540
+- [x] 1.4 Verify the lib slice: 73 files, typecheck, 100 % coverage — gate green on 4590540
 
 ### Phase 2: Remaining slices
 
