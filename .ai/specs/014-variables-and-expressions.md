@@ -45,8 +45,8 @@ dangling dimension `reference`.
 
 ## 📝 Proposed Solution
 
-1. `PatternDocument.variables?: Variable[]` — `{ slug, name, value }`, document
-   level, shared by every piece.
+1. `PatternDocument.variables?: Variable[]` — `{ slug, name, value, comment? }`,
+   document level, shared by every piece.
 2. Parameter fields become `Param = number | { expr: string; lastKnown: number }`.
    Affected: `DistanceConstraint.value`, `CornerRound.radius`, `Allowance.width`,
    `AllowancePreset.width` (which covers `PatternDefaults.allowance` and
@@ -73,6 +73,8 @@ export interface Variable {
   name: string;
   /** Literal millimetres, or a formula over other variables. */
   value: Param;
+  /** Optional free text, trimmed, 0–120 characters; absent or empty means none. */
+  comment?: string;
 }
 
 /** A parameter: a literal millimetres value, or a formula with its last result. */
@@ -87,6 +89,8 @@ export type Param = number | { expr: string; lastKnown: number };
   rename and on delete-and-recreate of a different variable.
 - `name` must be unique case-insensitively, or `set_variable` is rejected. Slugs
   are always unique by construction.
+- `comment` is optional and carries no uniqueness or resolution rule; an empty
+  string normalizes to absent, and the panel truncates it with a tooltip.
 - `lastKnown` is written by every command that stores an expression, and is never
   recomputed on read; it is the value the parameter keeps if its formula later
   breaks.
@@ -131,18 +135,20 @@ New commands (all in `packages/geometry/src/commands.ts` `Command` union,
 
 ### `set_variable`
 
-- params: `slug: string`, `value: number | { expr }` — or `name` with `value` to
-  mint a slug
-- Validates the slug grammar, name uniqueness, and the formula (parses, slugs
-  exist, no cycle, finite, positive). Stores `{ expr, lastKnown }` for a formula.
+- params: `slug: string`, `value: number | { expr }`, `comment?: string` — or
+  `name` with `value` to mint a slug
+- Validates the slug grammar, name uniqueness, the comment length, and the formula
+  (parses, slugs exist, no cycle, finite, positive). Stores `{ expr, lastKnown }`
+  for a formula.
 - Re-applying with a byte-identical slug is an update no-op.
 - inverse: `remove_variable` for a fresh slug, otherwise the previous `value`.
 
 ### `update_variable`
 
-- params: `slug: string`, and any of `name`, `value`
+- params: `slug: string`, and any of `name`, `value`, `comment`
 - Rename changes `name` only; the slug survives so formulas keep resolving.
-- inverse: the previous `name`/`value`.
+  `comment: null` clears it.
+- inverse: the previous `name`/`value`/`comment`.
 
 ### `remove_variable`
 
@@ -176,9 +182,28 @@ New commands (all in `packages/geometry/src/commands.ts` `Command` union,
 
 - **Variables panel** — a new `PanelId` `'variables'`, rail glyph `constraints` at
   first (a dedicated glyph can come later), available in `piece` mode only (see
-  `frontend/src/lib/editor-panels.ts`). Rows: display name (editable inline), the
-  formula or value, and the resolved number. Add, rename, delete. Empty state
-  explains what a variable is with one example.
+  `frontend/src/lib/editor-panels.ts`). One plain table, no cards:
+
+  | Name       | Value          | Type    | Comment          |
+  | ---------- | -------------- | ------- | ---------------- |
+  | Bust (cm)  | 88             | Number  | Body measurement |
+  | Ease       | `v_bust_cm/10` | Formula | Design ease      |
+
+  - `Name` and `Comment` are inline-editable text cells; `Value` is the same
+    formula-aware input the inspectors use; `Type` is derived, never stored:
+    `Number` for a literal, `Formula` for `{ expr }`.
+  - The value cell shows the formula text, so the table reads as the source of
+    truth; a formula's resolved millimetres appear on hover/focus and in the
+    inspector, not as a fifth column.
+  - Columns are sized name 1fr, value 84px, type 56px, comment 1fr, and the
+    comment cell truncates with a title when the panel is at its 240 px minimum.
+    At the 320 px default the table stays readable without horizontal scroll;
+    below that the comment column collapses to an icon with a tooltip.
+  - Row actions: delete on the row (an icon shown on hover and focus), and a
+    `+ New` button in the section heading. There is no separate detail pane.
+  - Empty state (via `SidebarEmpty`) names the idea with one example:
+    "Name a measurement once — `Bust (cm) = 88`, then use `v_bust_cm/4 + 2` in a
+    dimension."
 - **Formula entry** — the dimension value box (and radius/allowance inputs)
   becomes a text input. Typing a number behaves exactly as today. Typing anything
   containing an operator, a letter or `(` switches the field to formula mode on
@@ -259,6 +284,8 @@ New commands (all in `packages/geometry/src/commands.ts` `Command` union,
 
 - [ ] Editing a variable updates every dependent dimension, radius and allowance
       in one solve.
+- [ ] A variable's name, value, type and comment round-trip through save and
+      reload, and the panel table stays readable at the 240 px minimum width.
 - [ ] Renaming a variable changes no formula and moves no geometry.
 - [ ] A cyclic, unknown-slug or non-finite formula is rejected at write time with
       a named offset; nothing half-applied.

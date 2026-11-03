@@ -22,7 +22,7 @@ half of 012 stays deferred.
 ## Decision
 
 1. **Variables live in the pattern document**, as `variables?: Variable[]` with
-   `{ slug, name, value }`, shared by every piece. No separate DB table and no
+   `{ slug, name, value, comment? }`, shared by every piece. No separate DB table and no
    API surface beyond the command layer yet, so a document always describes
    itself and save/export stay self-contained.
 2. **Expressions are available on pattern parameters**, not on every number: a
