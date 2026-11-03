@@ -1,5 +1,11 @@
 export type EntityId = string;
 
+/**
+ * A linear unit a formula literal may carry. Every stored value is millimetres,
+ * so a unit only scales its literal at parse time.
+ */
+export type Unit = 'mm' | 'cm';
+
 export const PATTERN_SCHEMA = 'sewcraft.pattern/0.4';
 
 export type PatternSchema = typeof PATTERN_SCHEMA;
