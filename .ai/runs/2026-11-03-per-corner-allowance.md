@@ -37,8 +37,9 @@ Phases mirror the spec's Phasing; Steps are the spec's Implementation Plan steps
 2. Bridge identity: `LoopSegment.round` set in `walkLoop` from `roundBetween`.
 3. Offset step option: `OffsetOptions.tangentStep`, join turn test,
    `pieceCutLoop` passes 10°.
-4. Per-segment resolver: three cases (own / shared / split), odd segment to the
-   wider half, fold projection for `pieceFoldLines`.
+4. Per-segment resolver: three cases (own / shared / split), five projection for
+   `pieceFoldLines`. A bridge always flattens into 16 chords, so the split is
+   symmetric and needs no odd-segment tie-break.
 5. Regions: `pieceBandRegions` tiling the band (edge strips with wedge halves,
    round crescents, split halves owned by edges).
 6. Guards: retire `requireRoundedAllowancesMatch`, `roundedNeighbours` and the
