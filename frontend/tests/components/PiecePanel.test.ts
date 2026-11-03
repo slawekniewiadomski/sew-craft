@@ -300,27 +300,18 @@ describe('PiecePanel loop state and actions', () => {
 
     const broken = mountPanel({ broken: true, metrics: null });
     expect(broken.find('[data-testid="entity-piece-loop-state"]').text()).toContain(
-      'Cut loop broken',
+      'Broken · repair or clear',
     );
   });
 
-  it('emits Set, Clear and Activate', async () => {
+  it('emits Set and Clear', async () => {
     const wrapper = mountPanel({}, { prefix: 'drawer' });
 
     await wrapper.find('[data-testid="drawer-set-cut-loop"]').trigger('click');
     await wrapper.find('[data-testid="drawer-clear-cut-loop"]').trigger('click');
-    await wrapper.find('[data-testid="drawer-piece-activate"]').trigger('click');
 
     expect(wrapper.emitted('set-cut-loop')).toEqual([['p1']]);
     expect(wrapper.emitted('clear-cut-loop')).toEqual([['p1']]);
-    expect(wrapper.emitted('activate')).toEqual([['p1']]);
-  });
-
-  it('marks the active piece', () => {
-    const wrapper = mountPanel({}, { active: true });
-
-    expect(wrapper.find('[data-testid="entity-piece"]').classes()).toContain('border-primary');
-    expect(wrapper.find('[data-testid="entity-piece-activate"]').text()).toBe('Active');
   });
 
   it('emits the per-piece allowance override', async () => {

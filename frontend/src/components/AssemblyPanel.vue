@@ -3,8 +3,10 @@ import type { AllowanceKind, Assembly, EntityId, PatternDocument } from '@sewcra
 import { computed } from 'vue';
 
 import PieceParametersForm from '@/components/PieceParametersForm.vue';
+import SidebarButton from '@/components/sidebar/SidebarButton.vue';
 import SidebarField from '@/components/sidebar/SidebarField.vue';
-import SidebarHeading from '@/components/sidebar/SidebarHeading.vue';
+import SidebarInput from '@/components/sidebar/SidebarInput.vue';
+import SidebarSection from '@/components/sidebar/SidebarSection.vue';
 import { defaultAllowanceSummary } from '@/lib/allowance-defaults';
 import { formatDimensionValue } from '@/lib/dimensions';
 import { tabLabel } from '@/lib/tabs';
@@ -125,19 +127,18 @@ function pieceDefault(
 </script>
 
 <template>
-  <div class="space-y-3">
-    <section class="space-y-1.5" data-testid="assembly-selection">
-      <SidebarHeading label="Selection" />
+  <div>
+    <SidebarSection label="Selection" data-testid="assembly-selection">
       <p v-if="instance === null" class="text-2xs text-muted-foreground">
         Select an instance to inspect it.
       </p>
       <template v-else>
-        <dl class="space-y-1">
+        <dl class="space-y-2">
           <SidebarField label="X">
-            <input
+            <SidebarInput
               type="number"
               step="0.1"
-              class="h-7 w-20 rounded-sm border px-2 text-[13px] tabular-nums"
+              class="w-20 tabular-nums"
               :value="coordinate(instance.x)"
               aria-label="Instance X"
               data-testid="instance-x"
@@ -145,10 +146,10 @@ function pieceDefault(
             />
           </SidebarField>
           <SidebarField label="Y">
-            <input
+            <SidebarInput
               type="number"
               step="0.1"
-              class="h-7 w-20 rounded-sm border px-2 text-[13px] tabular-nums"
+              class="w-20 tabular-nums"
               :value="coordinate(instance.y)"
               aria-label="Instance Y"
               data-testid="instance-y"
@@ -156,10 +157,10 @@ function pieceDefault(
             />
           </SidebarField>
           <SidebarField label="Angle">
-            <input
+            <SidebarInput
               type="number"
               step="1"
-              class="h-7 w-20 rounded-sm border px-2 text-[13px] tabular-nums"
+              class="w-20 tabular-nums"
               :value="degrees(instance.rotation)"
               aria-label="Instance angle in degrees"
               data-testid="instance-angle"
@@ -167,39 +168,32 @@ function pieceDefault(
             />
           </SidebarField>
         </dl>
-        <button
-          type="button"
-          class="h-7 rounded-sm border px-2 text-2xs font-medium"
-          :aria-pressed="instance.mirrored === true ? 'true' : 'false'"
-          :class="instance.mirrored === true ? 'bg-accent text-accent-foreground' : ''"
-          data-testid="instance-mirror"
-          @click="toggleMirror"
-        >
-          {{ instance.mirrored === true ? 'Mirrored' : 'Mirror' }}
-        </button>
-        <div class="flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            class="h-7 rounded-sm border px-2 text-2xs font-medium"
+        <div class="mt-2 flex flex-wrap gap-1.5">
+          <SidebarButton
+            :aria-pressed="instance.mirrored === true ? 'true' : 'false'"
+            :class="instance.mirrored === true ? 'bg-accent text-accent-foreground' : ''"
+            data-testid="instance-mirror"
+            @click="toggleMirror"
+          >
+            {{ instance.mirrored === true ? 'Mirrored' : 'Mirror' }}
+          </SidebarButton>
+          <SidebarButton
             :data-testid="`instance-open-piece-${instance.piece}`"
             @click="emit('open-piece', instance.piece)"
           >
             Open piece tab
-          </button>
-          <button
-            type="button"
-            class="h-7 rounded-sm border px-2 text-2xs font-medium"
+          </SidebarButton>
+          <SidebarButton
             data-testid="instance-remove"
             @click="emit('remove-instance', instance.id)"
           >
             Remove instance
-          </button>
+          </SidebarButton>
         </div>
       </template>
-    </section>
+    </SidebarSection>
 
-    <section v-if="piece !== null" class="space-y-1.5 border-t pt-2" data-testid="assembly-piece">
-      <SidebarHeading label="Piece" />
+    <SidebarSection v-if="piece !== null" label="Piece" data-testid="assembly-piece">
       <PieceParametersForm
         :piece="piece"
         :inherited="inherited"
@@ -208,32 +202,31 @@ function pieceDefault(
         @update-piece="piecePatch"
         @set-default="pieceDefault"
       />
-    </section>
+    </SidebarSection>
 
-    <section class="space-y-1.5 border-t pt-2" data-testid="assembly-details">
-      <SidebarHeading label="Assembly" />
-      <SidebarField label="Name">
-        <input
-          type="text"
-          maxlength="80"
-          class="h-7 w-40 rounded-sm border px-2 text-[13px]"
-          :value="props.assembly.name"
-          :aria-label="`Name for assembly ${props.assembly.id}`"
-          data-testid="assembly-name"
-          @change="assemblyName"
-        />
-      </SidebarField>
-      <SidebarField label="Placed">
-        <span data-testid="assembly-instance-count">
-          {{ props.assembly.instances.length }}
-          {{ props.assembly.instances.length === 1 ? 'instance' : 'instances' }}
-        </span>
-      </SidebarField>
-      <SidebarField label="Tab">
-        <span data-testid="assembly-tab-label">
-          {{ tabLabel(props.document, { kind: 'assembly', id: props.assembly.id }) }}
-        </span>
-      </SidebarField>
-    </section>
+    <SidebarSection label="Assembly" data-testid="assembly-details">
+      <dl class="space-y-2">
+        <SidebarField label="Name">
+          <SidebarInput
+            maxlength="80"
+            :value="props.assembly.name"
+            :aria-label="`Name for assembly ${props.assembly.id}`"
+            data-testid="assembly-name"
+            @change="assemblyName"
+          />
+        </SidebarField>
+        <SidebarField label="Placed">
+          <span data-testid="assembly-instance-count">
+            {{ props.assembly.instances.length }}
+            {{ props.assembly.instances.length === 1 ? 'instance' : 'instances' }}
+          </span>
+        </SidebarField>
+        <SidebarField label="Tab">
+          <span data-testid="assembly-tab-label">
+            {{ tabLabel(props.document, { kind: 'assembly', id: props.assembly.id }) }}
+          </span>
+        </SidebarField>
+      </dl>
+    </SidebarSection>
   </div>
 </template>

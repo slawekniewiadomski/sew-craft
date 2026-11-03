@@ -2,7 +2,10 @@
 import type { AllowanceKind, Piece } from '@sewcraft/geometry';
 import { computed } from 'vue';
 
+import SidebarButton from '@/components/sidebar/SidebarButton.vue';
 import SidebarField from '@/components/sidebar/SidebarField.vue';
+import SidebarInput from '@/components/sidebar/SidebarInput.vue';
+import SidebarSelect from '@/components/sidebar/SidebarSelect.vue';
 import type { AllowanceChoice } from '@/lib/allowance-defaults';
 import { parseAllowanceWidth } from '@/lib/allowance-width';
 
@@ -153,11 +156,9 @@ function kindChanged(event: Event): void {
 
 <template>
   <fieldset class="contents" :disabled="props.readOnly">
-    <dl class="space-y-1" :data-testid="testId('form')">
+    <dl class="space-y-2" :data-testid="testId('form')">
       <SidebarField label="Name">
-        <input
-          type="text"
-          class="h-7 w-40 rounded-sm border px-2 text-[13px]"
+        <SidebarInput
           :value="props.piece.name ?? ''"
           :aria-label="`Name for piece ${props.piece.id}`"
           :data-testid="testId('name')"
@@ -165,11 +166,11 @@ function kindChanged(event: Event): void {
         />
       </SidebarField>
       <SidebarField label="Quantity">
-        <input
+        <SidebarInput
           type="number"
           min="1"
           step="1"
-          class="h-7 w-20 rounded-sm border px-2 text-[13px] tabular-nums"
+          class="w-20 tabular-nums"
           :value="props.piece.quantity ?? 1"
           :aria-label="`Quantity for piece ${props.piece.id}`"
           :data-testid="testId('quantity')"
@@ -177,9 +178,8 @@ function kindChanged(event: Event): void {
         />
       </SidebarField>
       <SidebarField label="Default allowance">
-        <div class="flex flex-wrap items-center gap-1.5">
-          <select
-            class="h-7 rounded-sm border px-1.5 text-2xs"
+        <div class="flex flex-wrap items-center justify-end gap-1.5">
+          <SidebarSelect
             :value="defaultMode"
             :aria-label="`Default allowance mode for piece ${props.piece.id}`"
             :data-testid="testId('default-mode')"
@@ -188,10 +188,9 @@ function kindChanged(event: Event): void {
             <option value="inherit">Inherit</option>
             <option value="none">None</option>
             <option value="preset">Preset</option>
-          </select>
+          </SidebarSelect>
           <template v-if="defaultMode === 'preset'">
-            <select
-              class="h-7 rounded-sm border px-1.5 text-2xs"
+            <SidebarSelect
               :value="defaultKind"
               :aria-label="`Default allowance kind for piece ${props.piece.id}`"
               :data-testid="testId('default-kind')"
@@ -200,12 +199,12 @@ function kindChanged(event: Event): void {
               <option v-for="option in ALLOWANCE_KINDS" :key="option.value" :value="option.value">
                 {{ option.label }}
               </option>
-            </select>
-            <input
+            </SidebarSelect>
+            <SidebarInput
               type="number"
               min="0.1"
               step="0.1"
-              class="h-7 w-16 rounded-sm border px-1.5 text-2xs tabular-nums"
+              class="w-16 tabular-nums"
               :value="defaultWidth"
               :aria-label="`Default allowance width for piece ${props.piece.id}`"
               :data-testid="testId('default-width')"
@@ -216,10 +215,8 @@ function kindChanged(event: Event): void {
         </div>
       </SidebarField>
       <SidebarField label="Fabric">
-        <input
-          type="text"
+        <SidebarInput
           maxlength="120"
-          class="h-7 w-40 rounded-sm border px-2 text-[13px]"
           :value="props.piece.fabric ?? ''"
           :aria-label="`Fabric for piece ${props.piece.id}`"
           :data-testid="testId('fabric')"
@@ -236,21 +233,16 @@ function kindChanged(event: Event): void {
             :data-testid="testId('color')"
             @change="colorChanged"
           />
-          <button
-            type="button"
-            class="h-7 rounded-sm border px-2 text-2xs font-medium"
-            :data-testid="testId('color-clear')"
-            @click="clearColor"
-          >
+          <SidebarButton :data-testid="testId('color-clear')" @click="clearColor">
             Clear
-          </button>
+          </SidebarButton>
         </div>
       </SidebarField>
       <SidebarField label="Notes">
         <textarea
           rows="2"
           maxlength="500"
-          class="w-44 rounded-sm border px-2 py-1 text-[13px]"
+          class="w-44 max-w-full rounded-sm border px-2 py-1 text-xs"
           :value="props.piece.notes ?? ''"
           :aria-label="`Notes for piece ${props.piece.id}`"
           :data-testid="testId('notes')"

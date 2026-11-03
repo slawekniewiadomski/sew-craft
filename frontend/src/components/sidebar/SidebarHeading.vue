@@ -8,12 +8,12 @@ defineProps<{
 
 <template>
   <h3
-    class="mb-1.5 flex items-center gap-1.5 text-2xs font-semibold tracking-[0.06em] text-muted-foreground uppercase"
+    class="flex min-w-0 items-baseline gap-1.5 text-2xs font-semibold tracking-[0.06em] text-muted-foreground uppercase"
   >
     <span class="min-w-0 truncate">{{ label }}</span>
     <span
       v-if="count !== undefined && count > 0"
-      class="ml-auto shrink-0 rounded-sm border px-1 font-medium tabular-nums"
+      class="shrink-0 font-medium tabular-nums"
       data-testid="heading-count"
       >{{ count }}</span
     >

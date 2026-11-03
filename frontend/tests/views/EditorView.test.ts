@@ -524,6 +524,31 @@ describe('EditorView', () => {
     expect(store.journal).toHaveLength(0);
   });
 
+  it('draws between two midpoints as one undoable gesture', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+    const before = store.document.entities.filter((entity) => entity.kind === 'line').length;
+
+    wrapper
+      .findComponent(PatternCanvas)
+      .vm.$emit(
+        'add-line',
+        { kind: 'midpoint', lineId: 'ab', x: 50, y: 0 },
+        { kind: 'midpoint', lineId: 'bc', x: 100, y: 50 },
+      );
+    await flushPromises();
+
+    expect(store.journal).toHaveLength(1);
+    expect(store.document.entities.filter((entity) => entity.kind === 'line')).toHaveLength(
+      before + 1,
+    );
+    expect(
+      store.document.constraints.filter((constraint) => constraint.type === 'midpoint'),
+    ).toEqual([
+      expect.objectContaining({ point: expect.any(String), line: 'ab' }),
+      expect.objectContaining({ point: expect.any(String), line: 'bc' }),
+    ]);
+  });
+
   it('dispatches nothing when the point-on-line line no longer resolves', async () => {
     const { wrapper, store } = await mountLoaded(lineDoc);
     const before = store.document;
@@ -4001,7 +4026,7 @@ describe('EditorView edge cases', () => {
     confirm.mockRestore();
   });
 
-  it('closes the Add piece picker and activates a piece from the card', async () => {
+  it('closes the Add piece picker and switches back to a piece tab', async () => {
     const { wrapper } = await mountLoaded({
       ...pieceDoc,
       pieces: [...pieceDoc.pieces, { id: 'p2', name: 'Sleeve', edges: [], allowances: [] }],
@@ -4022,7 +4047,6 @@ describe('EditorView edge cases', () => {
 
     await wrapper.find('[data-testid="tab-piece-p1"]').trigger('click');
     await flushPromises();
-    await wrapper.find('[data-testid="piece-drawer-piece-activate"]').trigger('click');
     expect(wrapper.findComponent(PatternCanvas).exists()).toBe(true);
   });
 
