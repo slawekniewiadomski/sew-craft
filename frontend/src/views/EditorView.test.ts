@@ -4026,7 +4026,7 @@ describe('EditorView edge cases', () => {
     confirm.mockRestore();
   });
 
-  it('closes the Add piece picker and activates a piece from the card', async () => {
+  it('closes the Add piece picker and switches back to a piece tab', async () => {
     const { wrapper } = await mountLoaded({
       ...pieceDoc,
       pieces: [...pieceDoc.pieces, { id: 'p2', name: 'Sleeve', edges: [], allowances: [] }],
@@ -4047,7 +4047,6 @@ describe('EditorView edge cases', () => {
 
     await wrapper.find('[data-testid="tab-piece-p1"]').trigger('click');
     await flushPromises();
-    await wrapper.find('[data-testid="piece-drawer-piece-activate"]').trigger('click');
     expect(wrapper.findComponent(PatternCanvas).exists()).toBe(true);
   });
 

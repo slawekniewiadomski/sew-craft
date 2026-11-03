@@ -133,20 +133,32 @@ Laravel-idiomatic, matching `docs/architecture/data-model.md`:
 
 ### Sidebar UI contract (Reviewed)
 
-Every editor sidebar surface uses one scale and one set of primitives, so a new
-drawer has a pattern to follow instead of inventing classes. The scale lives in
-`frontend/src/assets/main.css` as the `--text-2xs` token; the primitives live in
-`frontend/src/components/sidebar/`.
+Every editor sidebar surface uses one scale, one spacing rhythm and one set of
+primitives, so a new panel has a pattern to follow instead of inventing classes.
+The scale lives in `frontend/src/assets/main.css` as the `--text-2xs` token; the
+primitives live in `frontend/src/components/sidebar/`.
 
-| Role                | Classes                                                                                   | Where                                        |
-| ------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------- |
-| Panel header        | `text-2xs font-medium tracking-wide text-muted-foreground uppercase`                      | `EditorSidebar` panel title                  |
-| Sub-section heading | `text-2xs font-semibold tracking-[0.06em] text-muted-foreground uppercase`, plus `mb-1.5` | `SidebarHeading` inside panel bodies         |
-| Field label         | `text-2xs text-muted-foreground`                                                          | `SidebarField` `dt` and standalone `<label>` |
-| Field value         | `text-[13px] font-medium tabular-nums text-foreground`                                    | `SidebarField` `dd` and read-only values     |
-| Object title        | `text-[13px] font-semibold`                                                               | Inspector header, piece name                 |
-| Metadata            | `font-mono text-2xs text-muted-foreground`                                                | ids, endpoints, source refs                  |
-| Secondary sentence  | `text-2xs leading-snug text-muted-foreground`                                             | hints, empty-state text                      |
+| Role                | Classes                                                                                  | Where                                        |
+| ------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------- |
+| Panel header        | `text-2xs font-medium tracking-wide text-muted-foreground uppercase`                     | `EditorSidebar` panel title                  |
+| Sub-section heading | `text-2xs font-semibold tracking-[0.06em] text-muted-foreground uppercase`               | `SidebarSection` heading                     |
+| Field label         | `text-2xs text-muted-foreground`                                                         | `SidebarField` `dt` and standalone `<label>` |
+| Field value         | `text-[13px] font-medium tabular-nums text-foreground`                                   | `SidebarField` `dd` and read-only values     |
+| Object title        | `text-[13px] font-semibold`                                                              | Inspector header, piece name                 |
+| Metadata            | `font-mono text-2xs text-muted-foreground`                                               | ids, endpoints, source refs                  |
+| Secondary sentence  | `text-2xs leading-snug text-muted-foreground`                                            | hints, empty-state text                      |
+| Control             | `h-7` (28 px), `rounded-sm`, `text-xs`; `SidebarInput`, `SidebarSelect`, `SidebarButton` | every panel form control                     |
+
+Spacing rhythm — one gutter and one rhythm everywhere, never a per-panel inset:
+
+| Gap                       | Value                                     | Owner                                       |
+| ------------------------- | ----------------------------------------- | ------------------------------------------- |
+| Panel gutter (left/right) | 12 px `px-3`                              | `EditorSidebar` body, header, `SidebarStat` |
+| Body padding (top/bottom) | 12 px `py-3`                              | `EditorSidebar` body                        |
+| Between sections          | 12 px `mt-3` + one `border-t` `pt-3` rule | `SidebarSection`                            |
+| Heading to section body   | 8 px `mb-2`                               | `SidebarSection` header row                 |
+| Between field rows        | 8 px `space-y-2`                          | the panel's `<dl>`/list                     |
+| Label to control          | 8 px `gap-2`                              | `SidebarField`                              |
 
 Rules:
 
@@ -161,6 +173,12 @@ Rules:
 - `Pill` has one shape and three tones: neutral, accent, danger.
 - Empty panels use `SidebarEmpty`, not a bare muted sentence.
 - Workspace stats live in the `SidebarStat` status footer, not inside a panel body.
+- Panels do not own their gutter: `EditorSidebar` pads the body, so no panel adds
+  its own outer padding or a bordered card around its content.
+- One heading per level. The panel header names the section; a `SidebarSection`
+  heading names a group inside it and never repeats the panel title.
+- Low-frequency content (per-edge allowances, derived measurements) sits in a
+  `<details>` disclosure rather than expanding the panel by default.
 - Sections are rail tabs with one panel visible at a time; the rail carries the
   counts and a chevron collapses the panel. Do not reintroduce stacked drawers.
 

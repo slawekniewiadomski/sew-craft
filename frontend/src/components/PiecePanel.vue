@@ -5,8 +5,11 @@ import { computed, ref, watch } from 'vue';
 import PieceParametersForm from '@/components/PieceParametersForm.vue';
 import Pill from '@/components/sidebar/Pill.vue';
 import SidebarAction from '@/components/sidebar/SidebarAction.vue';
+import SidebarButton from '@/components/sidebar/SidebarButton.vue';
 import SidebarField from '@/components/sidebar/SidebarField.vue';
 import SidebarHeading from '@/components/sidebar/SidebarHeading.vue';
+import SidebarInput from '@/components/sidebar/SidebarInput.vue';
+import SidebarSelect from '@/components/sidebar/SidebarSelect.vue';
 import type { AllowanceChoice } from '@/lib/allowance-defaults';
 import { parseAllowanceWidth } from '@/lib/allowance-width';
 import { formatDimensionValue } from '@/lib/dimensions';
@@ -29,14 +32,11 @@ const props = withDefaults(
     defaultAllowance?: AllowanceChoice;
     /** The preset the piece's own default inherits when it has no override. */
     inheritedDefault?: AllowanceChoice;
-    /** Whether this is the active piece every new entity belongs to. */
-    active?: boolean;
   }>(),
   {
     prefix: 'entity',
     defaultAllowance: () => ({ kind: 'seam' as const, width: 10 }),
     inheritedDefault: () => ({ kind: 'seam' as const, width: 10 }),
-    active: false,
   },
 );
 
@@ -67,7 +67,6 @@ const emit = defineEmits<{
   'remove-piece': [id: EntityId];
   'set-cut-loop': [id: EntityId];
   'clear-cut-loop': [id: EntityId];
-  activate: [id: EntityId];
 }>();
 
 /** Allowance kinds offered by the piece editor; `none` removes the allowance. */
@@ -166,17 +165,24 @@ function applyAll(): void {
 
 <template>
   <section
-    class="space-y-2 rounded-md border p-2.5"
-    :class="props.active ? 'border-primary ring-1 ring-primary' : ''"
+    class="mt-3 space-y-3 border-t pt-3 first-of-type:mt-0 first-of-type:border-t-0 first-of-type:pt-0"
     :aria-labelledby="testId('piece-heading')"
     :data-testid="testId('piece')"
   >
     <div class="flex items-center justify-between gap-2">
-      <SidebarHeading
-        :id="testId('piece-heading')"
-        :label="props.label"
-        :data-testid="testId('piece-heading')"
-      />
+      <div class="flex min-w-0 items-baseline gap-1.5">
+        <SidebarHeading
+          :id="testId('piece-heading')"
+          :label="props.label"
+          :data-testid="testId('piece-heading')"
+        />
+        <span
+          class="truncate font-mono text-2xs text-muted-foreground"
+          :data-testid="testId('piece-id')"
+        >
+          {{ props.summary.id }}
+        </span>
+      </div>
       <SidebarAction
         icon="delete"
         :label="`Remove piece ${props.summary.id}`"
@@ -185,83 +191,44 @@ function applyAll(): void {
       />
     </div>
 
-    <dl class="space-y-1">
-      <SidebarField label="Id" mono :data-testid="testId('piece-id')">
-        {{ props.summary.id }}
-      </SidebarField>
-      <div class="text-2xs text-muted-foreground" :data-testid="testId('piece-parameters')">
-        <PieceParametersForm
-          :piece="props.piece"
-          :inherited="props.inheritedDefault"
-          :prefix="props.prefix"
-          @update-piece="(patch) => emit('update-piece', props.summary.id, patch)"
-          @set-default="(value) => emit('set-piece-default', props.summary.id, value)"
-        />
-      </div>
+    <PieceParametersForm
+      :piece="props.piece"
+      :inherited="props.inheritedDefault"
+      :prefix="props.prefix"
+      @update-piece="(patch) => emit('update-piece', props.summary.id, patch)"
+      @set-default="(value) => emit('set-piece-default', props.summary.id, value)"
+    />
+
+    <dl class="space-y-2">
       <SidebarField label="Finished" :data-testid="testId('piece-finished')">
         {{ props.summary.hasLoop ? pieceSizeText(props.summary.metrics?.finished) : 'No cut loop' }}
       </SidebarField>
       <SidebarField label="Cut" :data-testid="testId('piece-cut')">
         {{ props.summary.hasLoop ? pieceSizeText(props.summary.metrics?.cut) : 'No cut loop' }}
       </SidebarField>
-      <SidebarField label="Cut loop">
-        <span :data-testid="testId('piece-loop-state')">
-          {{
-            props.summary.hasLoop
-              ? props.summary.broken
-                ? 'Cut loop broken · repair or clear'
-                : 'Captured'
-              : 'No cut loop'
-          }}
-        </span>
-      </SidebarField>
-      <SidebarField label="Owned">
-        <span :data-testid="testId('piece-entity-count')">
-          {{ props.summary.entityCount }} entities
-        </span>
-      </SidebarField>
-      <SidebarField label="Cut area" :data-testid="testId('piece-cut-area')">
-        {{ areaText(props.summary.metrics?.cutArea) }}
-      </SidebarField>
-      <SidebarField label="Allowance area" :data-testid="testId('piece-allowance-area')">
-        {{ areaText(props.summary.metrics?.allowanceArea) }}
-      </SidebarField>
     </dl>
 
-    <div class="flex flex-wrap gap-1.5 border-t pt-2">
-      <button
-        type="button"
-        class="h-7 rounded-sm border px-2 text-2xs font-medium"
+    <div class="flex flex-wrap gap-1.5">
+      <SidebarButton
         :data-testid="testId('set-cut-loop')"
         @click="emit('set-cut-loop', props.summary.id)"
       >
         Set cut loop
-      </button>
-      <button
-        type="button"
-        class="h-7 rounded-sm border px-2 text-2xs font-medium disabled:opacity-50"
+      </SidebarButton>
+      <SidebarButton
         :disabled="!props.summary.hasLoop"
         :data-testid="testId('clear-cut-loop')"
         @click="emit('clear-cut-loop', props.summary.id)"
       >
         Clear cut loop
-      </button>
-      <button
-        type="button"
-        class="h-7 rounded-sm border px-2 text-2xs font-medium"
-        :class="props.active ? 'bg-primary text-primary-foreground' : ''"
-        :data-testid="testId('piece-activate')"
-        @click="emit('activate', props.summary.id)"
-      >
-        {{ props.active ? 'Active' : 'Make active' }}
-      </button>
+      </SidebarButton>
     </div>
 
-    <div class="space-y-1.5 border-t pt-2" data-testid="piece-all">
-      <div class="flex flex-wrap items-center gap-1.5">
-        <span class="min-w-0 flex-1 text-2xs text-muted-foreground">All edges</span>
-        <select
-          class="h-7 rounded-sm border px-1.5 text-2xs"
+    <div class="space-y-2 rounded-md bg-muted/60 p-2" data-testid="piece-all">
+      <div class="flex items-center gap-1.5">
+        <span class="shrink-0 text-2xs text-muted-foreground">All edges</span>
+        <SidebarSelect
+          class="min-w-0 flex-1"
           :value="allKind"
           :aria-label="`Allowance kind for all edges of piece ${props.summary.id}`"
           :data-testid="testId('piece-all-kind')"
@@ -274,12 +241,14 @@ function applyAll(): void {
           >
             {{ option.label }}
           </option>
-        </select>
-        <input
+        </SidebarSelect>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <SidebarInput
           type="number"
           min="0.1"
           step="0.1"
-          class="h-7 w-16 rounded-sm border px-1.5 text-2xs tabular-nums"
+          class="w-16 tabular-nums"
           :value="allKind === 'none' ? '' : allWidth"
           :disabled="allKind === 'none'"
           :aria-label="`Finished width for all edges of piece ${props.summary.id}`"
@@ -287,59 +256,100 @@ function applyAll(): void {
           @change="allWidthChanged"
         />
         <span class="text-2xs text-muted-foreground">mm</span>
-        <button
-          type="button"
-          class="h-7 rounded-sm border px-2 text-2xs font-medium disabled:opacity-50"
+        <Pill v-if="allMixed" tone="neutral" :data-testid="testId('piece-all-mixed')">Mixed</Pill>
+        <SidebarButton
+          class="ml-auto"
           :disabled="!canApplyAll"
           :data-testid="testId('piece-all-apply')"
           @click="applyAll"
         >
           Apply
-        </button>
+        </SidebarButton>
       </div>
-      <span v-if="allMixed" :data-testid="testId('piece-all-mixed')">
-        <Pill tone="neutral">Mixed</Pill>
-      </span>
     </div>
 
-    <ul class="space-y-1.5 border-t pt-2" :aria-label="`Allowances for piece ${props.summary.id}`">
-      <li
-        v-for="row in props.summary.allowances"
-        :key="row.edge"
-        class="flex flex-wrap items-center gap-1.5"
-        :data-testid="testId(`piece-allowance-${row.edge}`)"
+    <details class="group border-t pt-3">
+      <summary
+        class="flex cursor-pointer list-none items-center justify-between gap-2 text-2xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden"
       >
-        <span class="min-w-0 flex-1 truncate font-mono text-2xs text-muted-foreground">
-          {{ row.edge }}
+        <span>
+          Per-edge allowances
+          <span class="ml-1 tabular-nums">{{ props.summary.allowances.length }}</span>
         </span>
-        <select
-          class="h-7 rounded-sm border px-1.5 text-2xs"
-          :value="row.kind"
-          :aria-label="`Allowance kind for edge ${row.edge}`"
-          :data-testid="testId(`piece-kind-${row.edge}`)"
-          @change="allowanceKind(row, $event)"
+        <span aria-hidden="true" class="transition-transform group-open:rotate-180">⌄</span>
+      </summary>
+      <ul class="mt-2 space-y-2" :aria-label="`Allowances for piece ${props.summary.id}`">
+        <li
+          v-for="row in props.summary.allowances"
+          :key="row.edge"
+          class="flex flex-wrap items-center gap-1.5"
+          :data-testid="testId(`piece-allowance-${row.edge}`)"
         >
-          <option
-            v-for="option in ALLOWANCE_KIND_OPTIONS"
-            :key="option.value"
-            :value="option.value"
+          <span class="min-w-0 flex-1 truncate font-mono text-2xs text-muted-foreground">
+            {{ row.edge }}
+          </span>
+          <SidebarSelect
+            class="w-24"
+            :value="row.kind"
+            :aria-label="`Allowance kind for edge ${row.edge}`"
+            :data-testid="testId(`piece-kind-${row.edge}`)"
+            @change="allowanceKind(row, $event)"
           >
-            {{ option.label }}
-          </option>
-        </select>
-        <input
-          type="number"
-          min="0.1"
-          step="0.1"
-          class="h-7 w-16 rounded-sm border px-1.5 text-2xs tabular-nums"
-          :value="row.width > 0 ? row.width : ''"
-          :disabled="row.kind === 'none'"
-          :aria-label="`Finished width for edge ${row.edge}`"
-          :data-testid="testId(`piece-width-${row.edge}`)"
-          @change="allowanceWidth(row, $event)"
-        />
-        <span class="text-2xs text-muted-foreground">mm</span>
-      </li>
-    </ul>
+            <option
+              v-for="option in ALLOWANCE_KIND_OPTIONS"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </SidebarSelect>
+          <SidebarInput
+            type="number"
+            min="0.1"
+            step="0.1"
+            class="w-16 tabular-nums"
+            :value="row.width > 0 ? row.width : ''"
+            :disabled="row.kind === 'none'"
+            :aria-label="`Finished width for edge ${row.edge}`"
+            :data-testid="testId(`piece-width-${row.edge}`)"
+            @change="allowanceWidth(row, $event)"
+          />
+          <span class="text-2xs text-muted-foreground">mm</span>
+        </li>
+      </ul>
+    </details>
+
+    <details class="group border-t pt-3">
+      <summary
+        class="flex cursor-pointer list-none items-center justify-between gap-2 text-2xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden"
+      >
+        <span>Measurements</span>
+        <span aria-hidden="true" class="transition-transform group-open:rotate-180">⌄</span>
+      </summary>
+      <dl class="mt-2 space-y-2">
+        <SidebarField label="Cut loop">
+          <span :data-testid="testId('piece-loop-state')">
+            {{
+              props.summary.hasLoop
+                ? props.summary.broken
+                  ? 'Broken · repair or clear'
+                  : 'Captured'
+                : 'No cut loop'
+            }}
+          </span>
+        </SidebarField>
+        <SidebarField label="Owned">
+          <span :data-testid="testId('piece-entity-count')">
+            {{ props.summary.entityCount }} entities
+          </span>
+        </SidebarField>
+        <SidebarField label="Cut area" :data-testid="testId('piece-cut-area')">
+          {{ areaText(props.summary.metrics?.cutArea) }}
+        </SidebarField>
+        <SidebarField label="Allowance area" :data-testid="testId('piece-allowance-area')">
+          {{ areaText(props.summary.metrics?.allowanceArea) }}
+        </SidebarField>
+      </dl>
+    </details>
   </section>
 </template>
