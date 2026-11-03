@@ -1,5 +1,4 @@
 import {
-  allowanceForEdge,
   cornerRoundGeometry,
   cornerRounds,
   documentSeams,

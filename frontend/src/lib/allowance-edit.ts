@@ -74,7 +74,6 @@ export function allowanceEditCommands(
     if (round === undefined) continue;
     const own = cornerAllowanceForRound(piece, target.round);
     const before = allowanceForEdge(piece, round.ends[0].line);
-    const after = allowanceForEdge(piece, round.ends[1].line);
     // The state owns the rule; a corner reports `inherited` only when both edges
     // exist and agree, which is exactly when a single base is well defined.
     const inherited =
