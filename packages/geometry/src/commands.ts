@@ -36,6 +36,15 @@ import {
 } from './dimension.js';
 import { CommandValidationError } from './errors.js';
 import {
+  ExpressionError,
+  evaluateLength,
+  isExpressionParam,
+  resolveParam,
+  resolveVariable,
+  sameParam,
+  type VariableScope,
+} from './expression.js';
+import {
   midpointIssue,
   midpointTargetFor,
   midpointUsedAsSource,
@@ -72,6 +81,7 @@ import {
   type EntityRole,
   type LineEntity,
   type MidpointConstraint,
+  type Param,
   type PatternDocument,
   type Piece,
   type PieceDefaults,
@@ -85,6 +95,43 @@ import {
 
 /** Seam allowance applied to an edge when the command omits an explicit width. */
 export const DEFAULT_SEAM_ALLOWANCE = 10;
+
+/**
+ * Validate a millimetre parameter and, for a formula, record what it resolves to
+ * right now. Commands only ever store a formula that already resolves, so a read
+ * never has to invent a number.
+ */
+function requireLengthParam(
+  document: PatternDocument,
+  commandType: CommandType,
+  param: Param,
+  label: string,
+): Param {
+  if (!isExpressionParam(param)) {
+    if (!Number.isFinite(param) || param <= 0) {
+      throw new CommandValidationError(
+        commandType,
+        `${label} must be a finite number greater than 0`,
+      );
+    }
+    return param;
+  }
+
+  let value: number;
+  try {
+    value = evaluateLength(param.expr, { lookup: (slug) => resolveVariable(document, slug) });
+  } catch (error) {
+    const detail = error instanceof ExpressionError ? error.message : String(error);
+    throw new CommandValidationError(commandType, `${label} is not a valid formula: ${detail}`);
+  }
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new CommandValidationError(
+      commandType,
+      `${label} must be a finite number greater than 0`,
+    );
+  }
+  return { expr: param.expr, lastKnown: value };
+}
 
 /** The longest assembly name `create_assembly`/`update_assembly` accepts. */
 export const MAX_ASSEMBLY_NAME_LENGTH = 80;
@@ -166,7 +213,8 @@ export interface AddConstraintParams {
   entities: EntityId[];
   /** The piece the constraint belongs to. Required by schema 0.3 commands. */
   piece?: EntityId;
-  value?: number;
+  /** A distance's driving value: millimetres or a formula; an angle's radians. */
+  value?: Param;
   /** Source dimension id for a `distance` constraint; exclusive with `value`. */
   reference?: EntityId;
   /** Measurement axis for `distance` constraints; ignored for other types. */
@@ -177,8 +225,8 @@ export interface AddConstraintParams {
 
 export interface UpdateConstraintParams {
   id: EntityId;
-  /** A number sets the value; `null` clears a distance to driven. */
-  value?: number | null;
+  /** A value or formula sets it; `null` clears a distance to driven. */
+  value?: Param | null;
   /** A source dimension id links; `null` unlinks and keeps the current value. */
   reference?: EntityId | null;
   orientation?: DimensionOrientation;
@@ -191,7 +239,7 @@ export interface RemoveConstraintParams {
 
 export interface AddSeamAllowanceParams {
   edge: EntityId;
-  width?: number;
+  width?: Param;
   side?: SeamSide;
 }
 
@@ -201,19 +249,19 @@ export interface RemoveSeamAllowanceParams {
 
 export interface SetSeamAllowanceParams {
   id: EntityId;
-  width?: number;
+  width?: Param;
   side?: SeamSide;
 }
 
 export interface AddCornerRoundParams {
   first: EntityId;
   second: EntityId;
-  radius: number;
+  radius: Param;
 }
 
 export interface SetCornerRoundRadiusParams {
   id: EntityId;
-  radius: number;
+  radius: Param;
 }
 
 export interface RemoveCornerRoundParams {
@@ -247,7 +295,7 @@ export interface SetPieceDefaultAllowanceParams {
   /** `inherit` drops the override, `none` stores an explicit null, `preset` sets one. */
   mode: 'inherit' | 'none' | 'preset';
   /** Finished width in millimetres; required for `preset`. */
-  width?: number;
+  width?: Param;
   /** Omitted means `seam`. */
   kind?: AllowanceKind;
 }
@@ -335,7 +383,7 @@ export interface DeletePieceParams {
 
 export interface SetDefaultAllowanceParams {
   /** Finished width in millimetres; required unless `remove` is true. */
-  width?: number;
+  width?: Param;
   /** Omitted means `seam`. */
   kind?: AllowanceKind;
   /** Clear the default so new pieces start with no allowance. */
@@ -346,7 +394,7 @@ export interface SetPieceAllowanceParams {
   piece: EntityId;
   edge: EntityId;
   /** Finished width in millimetres; required unless `remove` is true. */
-  width?: number;
+  width?: Param;
   kind?: AllowanceKind;
   /** Remove the edge's allowance entirely. */
   remove?: boolean;
@@ -634,6 +682,7 @@ export function solveDocument(
     options,
     document.entities,
     supportAnchors,
+    document,
   );
   if (!result.converged) {
     return { document, result };
@@ -1095,6 +1144,7 @@ function applyDeleteEntity(
   const constraints = captureBrokenDependents(
     working.constraints,
     working.constraints.filter((constraint) => !constraintEntityIds(constraint).includes(id)),
+    working,
   );
 
   // Restoring the entity plus its cascade-removed constraints and seams is not a
@@ -1111,11 +1161,15 @@ function applyDeleteEntity(
  * drove with, keep the dangling `reference`, and leave the constraint in place.
  * Broken dependents are never deleted as a side effect.
  */
-function captureBrokenDependents(previous: Constraint[], next: Constraint[]): Constraint[] {
+function captureBrokenDependents(
+  previous: Constraint[],
+  next: Constraint[],
+  scope: VariableScope,
+): Constraint[] {
   return next.map((constraint) => {
     if (constraint.type !== 'distance' || constraint.reference === undefined) return constraint;
-    const before = resolveSetValue(previous, constraint);
-    if (before === null || resolveSetValue(next, constraint) !== null) return constraint;
+    const before = resolveSetValue(previous, constraint, scope);
+    if (before === null || resolveSetValue(next, constraint, scope) !== null) return constraint;
     return { ...constraint, lastKnownValue: before };
   });
 }
@@ -1264,15 +1318,9 @@ function applyAddConstraint(
     else requireDraftingPoint(document, id, 'add_constraint');
   }
 
-  if (
-    type === 'distance' &&
-    value !== undefined &&
-    (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)
-  ) {
-    throw new CommandValidationError(
-      'add_constraint',
-      'distance requires a finite value > 0 when provided',
-    );
+  let storedValue = value;
+  if (type === 'distance' && value !== undefined) {
+    storedValue = requireLengthParam(document, 'add_constraint', value, 'distance value');
   }
   if (type === 'angle' && (typeof value !== 'number' || !Number.isFinite(value))) {
     throw new CommandValidationError('add_constraint', 'angle requires a finite value');
@@ -1359,7 +1407,7 @@ function applyAddConstraint(
     command.id,
     type,
     entities,
-    value,
+    storedValue,
     orientation,
     offset,
     reference,
@@ -1418,6 +1466,7 @@ function applyUpdateConstraint(
     );
   }
 
+  let nextValue = value;
   if (value === null) {
     if (constraint.type !== 'distance') {
       throw new CommandValidationError(
@@ -1426,10 +1475,9 @@ function applyUpdateConstraint(
       );
     }
   } else if (value !== undefined) {
-    if (constraint.type === 'distance' && (!Number.isFinite(value) || value <= 0)) {
-      throw new CommandValidationError('update_constraint', 'distance requires a finite value > 0');
-    }
-    if (constraint.type === 'angle' && !Number.isFinite(value)) {
+    if (constraint.type === 'distance') {
+      nextValue = requireLengthParam(document, 'update_constraint', value, 'distance value');
+    } else if (typeof value !== 'number' || !Number.isFinite(value)) {
       throw new CommandValidationError('update_constraint', 'angle requires a finite value');
     }
   }
@@ -1468,7 +1516,14 @@ function applyUpdateConstraint(
     }
   }
 
-  const updated = updatedConstraint(document, constraint, value, reference, orientation, offset);
+  const updated = updatedConstraint(
+    document,
+    constraint,
+    nextValue,
+    reference,
+    orientation,
+    offset,
+  );
   if (updated === null) {
     return noOp(document);
   }
@@ -1480,7 +1535,7 @@ function applyUpdateConstraint(
   return {
     document: {
       ...document,
-      constraints: captureBrokenDependents(document.constraints, constraints),
+      constraints: captureBrokenDependents(document.constraints, constraints, document),
     },
     // A previous broken link cannot be expressed as a command param, so undo
     // falls back to the journal snapshot for that transition.
@@ -1516,14 +1571,14 @@ function previousStateParams(
 function updatedConstraint(
   document: PatternDocument,
   constraint: DistanceConstraint | Extract<Constraint, { type: 'angle' }>,
-  value: number | null | undefined,
+  value: Param | null | undefined,
   reference: EntityId | null | undefined,
   orientation: DimensionOrientation | undefined,
   offset: number | undefined,
 ): UpdatedConstraint | null {
   if (constraint.type === 'angle') {
-    // Validation rejects presentation fields and `null` for angles, so a value is present.
-    const nextValue = value!;
+    // Validation rejects presentation fields, formulas and `null` for angles.
+    const nextValue = value as number;
     if (nextValue === constraint.value) return null;
     return {
       constraint: { ...constraint, value: nextValue },
@@ -1614,6 +1669,7 @@ function applyRemoveConstraint(
   const constraints = captureBrokenDependents(
     document.constraints,
     document.constraints.filter((candidate) => candidate.id !== id),
+    document,
   );
 
   if (constraint.type === 'derived_distance') {
@@ -1649,18 +1705,26 @@ function requireSeamSide(
   return side as SeamSide;
 }
 
+/**
+ * Legacy seams store a plain number, so a formula is resolved when the seam is
+ * written. Piece allowances keep the formula; this deprecated surface does not.
+ */
+function requireSeamWidth(
+  document: PatternDocument,
+  commandType: 'add_seam_allowance' | 'set_seam_allowance',
+  width: Param | undefined,
+): number {
+  const param = width ?? DEFAULT_SEAM_ALLOWANCE;
+  const resolved = requireLengthParam(document, commandType, param, 'width');
+  return isExpressionParam(resolved) ? resolved.lastKnown : resolved;
+}
+
 function applyAddSeamAllowance(
   document: PatternDocument,
   command: CommandOf<'add_seam_allowance'>,
 ): CommandApplication {
   const { edge } = command.params;
-  const width = command.params.width ?? DEFAULT_SEAM_ALLOWANCE;
-  if (!Number.isFinite(width) || width <= 0) {
-    throw new CommandValidationError(
-      'add_seam_allowance',
-      'width must be a finite number greater than 0',
-    );
-  }
+  const width = requireSeamWidth(document, 'add_seam_allowance', command.params.width);
   const side =
     command.params.side === undefined
       ? 'left'
@@ -1750,12 +1814,8 @@ function applySetSeamAllowance(
   if (width === undefined && requestedSide === undefined) {
     throw new CommandValidationError('set_seam_allowance', 'width or side is required');
   }
-  if (width !== undefined && (!Number.isFinite(width) || width <= 0)) {
-    throw new CommandValidationError(
-      'set_seam_allowance',
-      'width must be a finite number greater than 0',
-    );
-  }
+  const nextWidth =
+    width === undefined ? undefined : requireSeamWidth(document, 'set_seam_allowance', width);
   const side =
     requestedSide === undefined ? undefined : requireSeamSide('set_seam_allowance', requestedSide);
 
@@ -1764,15 +1824,15 @@ function applySetSeamAllowance(
     throw new CommandValidationError('set_seam_allowance', `seam ${id} does not exist`);
   }
 
-  const nextWidth = width ?? seam.width;
+  const storedWidth = nextWidth ?? seam.width;
   const nextSide = side ?? seamSide(seam);
-  if (seam.width === nextWidth && seamSide(seam) === nextSide) {
+  if (seam.width === storedWidth && seamSide(seam) === nextSide) {
     return noOp(document);
   }
 
   const seams = documentSeams(document).map((candidate) =>
     candidate.id === id
-      ? { ...candidate, width: nextWidth, ...(side === undefined ? {} : { side }) }
+      ? { ...candidate, width: storedWidth, ...(side === undefined ? {} : { side }) }
       : candidate,
   );
 
@@ -1801,7 +1861,9 @@ function applyAddCornerRound(
   document: PatternDocument,
   command: CommandOf<'add_corner_round'>,
 ): CommandApplication {
-  const { first, second, radius } = command.params;
+  const { first, second } = command.params;
+  const radius = requireLengthParam(document, 'add_corner_round', command.params.radius, 'radius');
+  const radiusValue = resolveParam(document, radius);
   if (cornerRounds(document).some((round) => round.id === command.id)) {
     return noOp(document);
   }
@@ -1880,7 +1942,7 @@ function applyAddCornerRound(
     second,
     lineB.start === corner ? lineB.end : lineB.start,
   );
-  const geometry = cornerRoundGeometry(document, corner, anchorA, anchorB, radius);
+  const geometry = cornerRoundGeometry(document, corner, anchorA, anchorB, radiusValue);
   if (geometry.geometry === null) {
     throw new CommandValidationError('add_corner_round', geometry.error);
   }
@@ -1902,10 +1964,10 @@ function applyAddCornerRound(
   if (maximum === null) {
     throw new CommandValidationError('add_corner_round', 'The corner cannot be rounded.');
   }
-  if (radius > maximum + 1e-9) {
+  if (radiusValue > maximum + 1e-9) {
     throw new CommandValidationError(
       'add_corner_round',
-      `Radius ${radiusText(radius)} mm is too large for these lines; the maximum is ${radiusText(maximum)} mm.`,
+      `Radius ${radiusText(radiusValue)} mm is too large for these lines; the maximum is ${radiusText(maximum)} mm.`,
     );
   }
 
@@ -2039,18 +2101,25 @@ function applySetCornerRoundRadius(
   document: PatternDocument,
   command: CommandOf<'set_corner_round_radius'>,
 ): CommandApplication {
-  const { id, radius } = command.params;
+  const { id } = command.params;
+  const radius = requireLengthParam(
+    document,
+    'set_corner_round_radius',
+    command.params.radius,
+    'radius',
+  );
+  const radiusValue = resolveParam(document, radius);
   const round = cornerRounds(document).find((candidate) => candidate.id === id);
   if (round === undefined) {
     throw new CommandValidationError('set_corner_round_radius', `unknown corner round: ${id}`);
   }
-  if (!Number.isFinite(radius) || radius < 0.001) {
+  if (radiusValue < 0.001) {
     throw new CommandValidationError(
       'set_corner_round_radius',
       'Radius must be a finite number of at least 0.001 mm.',
     );
   }
-  if (round.radius === radius) {
+  if (sameParam(round.radius, radius)) {
     return noOp(document);
   }
 
@@ -2061,10 +2130,10 @@ function applySetCornerRoundRadius(
       'The corner can no longer be rounded.',
     );
   }
-  if (radius > maximum + 1e-9) {
+  if (radiusValue > maximum + 1e-9) {
     throw new CommandValidationError(
       'set_corner_round_radius',
-      `Radius ${radiusText(radius)} mm is too large for these lines; the maximum is ${radiusText(maximum)} mm.`,
+      `Radius ${radiusText(radiusValue)} mm is too large for these lines; the maximum is ${radiusText(maximum)} mm.`,
     );
   }
 
@@ -2234,11 +2303,12 @@ function resolveCreateAllowance(
     return effectivePieceAllowance(document, piece);
   }
 
-  return requireAllowancePreset(type, allowance);
+  return requireAllowancePreset(document, type, allowance);
 }
 
-/** Validate and copy one allowance preset. */
+/** Validate and copy one allowance preset, recording a formula's current value. */
 function requireAllowancePreset(
+  document: PatternDocument,
   commandType: CommandType,
   preset: AllowancePreset,
 ): AllowancePreset {
@@ -2248,30 +2318,26 @@ function requireAllowancePreset(
       'allowance must be "default", "none" or a preset',
     );
   }
-  if (!Number.isFinite(preset.width) || preset.width <= 0) {
-    throw new CommandValidationError(
-      commandType,
-      'allowance width must be a finite number greater than 0',
-    );
-  }
+  const width = requireLengthParam(document, commandType, preset.width, 'allowance width');
   if (preset.kind !== undefined && !ALLOWANCE_KINDS.includes(preset.kind)) {
     throw new CommandValidationError(commandType, `unknown allowance kind: ${String(preset.kind)}`);
   }
 
   return {
-    width: preset.width,
+    width,
     ...(preset.kind === undefined ? {} : { kind: preset.kind }),
   };
 }
 
 /** Validate a per-piece defaults object, copying its preset. */
 function requirePieceDefaults(
+  document: PatternDocument,
   commandType: CommandType,
   defaults: PieceDefaults | undefined,
 ): PieceDefaults | undefined {
   if (defaults === undefined) return undefined;
   if (defaults.allowance === null) return { allowance: null };
-  return { allowance: requireAllowancePreset(commandType, defaults.allowance) };
+  return { allowance: requireAllowancePreset(document, commandType, defaults.allowance) };
 }
 
 /** Reject a non-finite coordinate or rotation. */
@@ -2425,7 +2491,7 @@ function applyCreatePiece(
   requireQuantity('create_piece', quantity);
   requirePieceName('create_piece', name);
   const nextColor = requirePieceColor('create_piece', color);
-  const nextDefaults = requirePieceDefaults('create_piece', defaults);
+  const nextDefaults = requirePieceDefaults(document, 'create_piece', defaults);
 
   const piece: Piece = { id: command.id, edges: [], allowances: [] };
   if (name !== undefined) piece.name = name.trim();
@@ -2712,7 +2778,7 @@ function applySetPieceDefaultAllowance(
     defaults = { allowance: null };
   } else if (mode === 'preset') {
     defaults = {
-      allowance: requireAllowancePreset('set_piece_default_allowance', {
+      allowance: requireAllowancePreset(document, 'set_piece_default_allowance', {
         width: command.params.width ?? Number.NaN,
         ...(command.params.kind === undefined ? {} : { kind: command.params.kind }),
       }),
@@ -3152,12 +3218,13 @@ function applySetDefaultAllowance(
     };
   }
 
-  if (width === undefined || !Number.isFinite(width) || width <= 0) {
+  if (width === undefined) {
     throw new CommandValidationError(
       'set_default_allowance',
       'width must be a finite number greater than 0',
     );
   }
+  const nextWidth = requireLengthParam(document, 'set_default_allowance', width, 'width');
   if (kind !== undefined && !ALLOWANCE_KINDS.includes(kind)) {
     throw new CommandValidationError(
       'set_default_allowance',
@@ -3166,12 +3233,16 @@ function applySetDefaultAllowance(
   }
 
   const nextKind = kind ?? 'seam';
-  if (current !== null && current.width === width && (current.kind ?? 'seam') === nextKind) {
+  if (
+    current !== null &&
+    sameParam(current.width, nextWidth) &&
+    (current.kind ?? 'seam') === nextKind
+  ) {
     return noOp(document);
   }
 
   return {
-    document: { ...document, defaults: { allowance: { width, kind: nextKind } } },
+    document: { ...document, defaults: { allowance: { width: nextWidth, kind: nextKind } } },
     inverse:
       current === null
         ? {
@@ -3263,12 +3334,13 @@ function applySetPieceAllowance(
     };
   }
 
-  if (width === undefined || !Number.isFinite(width) || width <= 0) {
+  if (width === undefined) {
     throw new CommandValidationError(
       'set_piece_allowance',
       'width must be a finite number greater than 0',
     );
   }
+  const nextWidth = requireLengthParam(document, 'set_piece_allowance', width, 'width');
   if (kind !== undefined && !ALLOWANCE_KINDS.includes(kind)) {
     throw new CommandValidationError(
       'set_piece_allowance',
@@ -3276,10 +3348,10 @@ function applySetPieceAllowance(
     );
   }
 
-  const next: Allowance = { edge, width, ...(kind === undefined ? {} : { kind }) };
+  const next: Allowance = { edge, width: nextWidth, ...(kind === undefined ? {} : { kind }) };
   if (
     existing !== undefined &&
-    existing.width === width &&
+    sameParam(existing.width, nextWidth) &&
     effectiveKind(existing) === effectiveKind(next)
   ) {
     return noOp(document);
@@ -3439,7 +3511,7 @@ function buildConstraint(
   id: EntityId,
   type: ConstraintType,
   entities: EntityId[],
-  value: number | undefined,
+  value: Param | undefined,
   orientation: DimensionOrientation | undefined,
   offset: number | undefined,
   reference?: EntityId,
@@ -3472,7 +3544,8 @@ function buildConstraint(
         ...(offset === undefined ? {} : { offset }),
       };
     case 'angle':
-      return { id, type, a: a!, b: b!, c: c!, value: value!, ...owner };
+      // `add_constraint` rejects a non-numeric angle value before building it.
+      return { id, type, a: a!, b: b!, c: c!, value: value as number, ...owner };
     case 'equal':
       return { id, type, a1: a!, a2: b!, b1: c!, b2: d!, ...owner };
     case 'midpoint':

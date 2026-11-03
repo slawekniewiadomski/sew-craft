@@ -1,5 +1,6 @@
 import { getEntity, entityPoints, type Bounds } from './document.js';
 import { roundBridge } from './corner-round.js';
+import { resolveParam, sameParam, type VariableScope } from './expression.js';
 import { isAnnotation, isCut } from './roles.js';
 import {
   edgePolyline,
@@ -72,9 +73,10 @@ export interface PieceMetrics {
 
 export type PieceValidation = { ok: true } | { ok: false; message: string; edge?: EntityId };
 
-/** The finished width a kind contributes to the cut distance. */
-export function allowanceDistance(allowance: Allowance): number {
-  return allowance.kind === 'double' ? allowance.width * 2 : allowance.width;
+/** The finished width a kind contributes to the cut distance, resolved from the document. */
+export function allowanceDistance(allowance: Allowance, scope: VariableScope = {}): number {
+  const width = resolveParam(scope, allowance.width);
+  return allowance.kind === 'double' ? width * 2 : width;
 }
 
 /** The allowance for one loop edge, or `undefined` when it has none. */
@@ -348,7 +350,7 @@ function sharedAllowance(
   if (before === undefined || after === undefined) {
     return before === after ? { allowance: undefined } : null;
   }
-  if (before.width !== after.width || (before.kind ?? 'seam') !== (after.kind ?? 'seam')) {
+  if (!sameParam(before.width, after.width) || (before.kind ?? 'seam') !== (after.kind ?? 'seam')) {
     return null;
   }
   return { allowance: before };
@@ -359,6 +361,7 @@ function sharedAllowance(
  * `null` when a bridge joins two edges whose allowances disagree.
  */
 function loopDistances(
+  document: PatternDocument,
   piece: Piece,
   edges: readonly PieceEdgeEntity[],
   segments: readonly LoopSegment[],
@@ -388,9 +391,9 @@ function loopDistances(
         ? 0
         : fold
           ? allowance.kind === 'double'
-            ? allowance.width
+            ? resolveParam(document, allowance.width)
             : 0
-          : allowanceDistance(allowance);
+          : allowanceDistance(allowance, document);
     for (let i = 0; i < segment.points.length - 1; i += 1) distances.push(width);
   }
 
@@ -422,11 +425,12 @@ function orientedPolylines(document: PatternDocument, piece: Piece): LoopSegment
 export function pieceLoop(document: PatternDocument, piece: Piece): PieceLoop | null {
   const segments = orientedPolylines(document, piece);
   if (segments === null) return null;
-  return loopFromSegments(piece, pieceEdges(document, piece), segments);
+  return loopFromSegments(document, piece, pieceEdges(document, piece), segments);
 }
 
 /** Resolve one loop from its already-oriented segments and per-edge allowances. */
 function loopFromSegments(
+  document: PatternDocument,
   piece: Piece,
   edges: readonly PieceEdgeEntity[],
   segments: LoopSegment[],
@@ -445,7 +449,7 @@ function loopFromSegments(
     }
   }
 
-  const unsigned = loopDistances(piece, edges, segments, false);
+  const unsigned = loopDistances(document, piece, edges, segments, false);
   if (unsigned === null) return null;
 
   const sign = signedArea(boundary) > 0 ? -1 : 1;
@@ -484,12 +488,12 @@ export function pieceFoldLines(document: PatternDocument, piece: Piece): Vec2[][
   const segments = orientedPolylines(document, piece);
   if (segments === null) return [];
 
-  const loop = loopFromSegments(piece, pieceEdges(document, piece), segments);
+  const loop = loopFromSegments(document, piece, pieceEdges(document, piece), segments);
   if (loop === null) return [];
 
   // `loopFromSegments` above already rejected a bridge whose two edges carry
   // different allowances, so the fold distances resolve for the same segments.
-  const unsigned = loopDistances(piece, pieceEdges(document, piece), segments, true)!;
+  const unsigned = loopDistances(document, piece, pieceEdges(document, piece), segments, true)!;
   if (unsigned.every((distance) => distance === 0)) return [];
 
   const sign = signedArea(loop.points) > 0 ? -1 : 1;

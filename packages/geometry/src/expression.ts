@@ -1,4 +1,4 @@
-import type { Unit } from './types.js';
+import type { ExpressionParam, Param, Unit, Variable } from './types.js';
 
 /** Largest nesting of parentheses or unary signs the parser accepts. */
 export const MAX_EXPRESSION_DEPTH = 64;
@@ -338,4 +338,67 @@ export function evaluateLength(source: string, context: ExpressionContext): numb
     throw new ExpressionError('dimension', `expected a length, got ${found}`, 0);
   }
   return result.value;
+}
+
+/** The document fields a formula needs: its variables. */
+export interface VariableScope {
+  variables?: readonly Variable[] | undefined;
+}
+
+/** Whether two parameters store the same thing; a formula compares by its text. */
+export function sameParam(a: Param, b: Param): boolean {
+  if (typeof a === 'number' || typeof b === 'number') return a === b;
+  return a.expr === b.expr;
+}
+
+/** Whether a parameter carries a formula rather than a literal number. */
+export function isExpressionParam(param: Param): param is ExpressionParam {
+  return typeof param !== 'number';
+}
+
+/**
+ * One variable as a dimensioned quantity, or `null` when it is missing, cyclic,
+ * not a length or ratio, or its formula does not resolve. `chain` holds the slugs
+ * already being resolved on this branch, so a cycle breaks instead of recursing.
+ */
+export function resolveVariable(
+  scope: VariableScope,
+  slug: string,
+  chain: ReadonlySet<string> = new Set<string>(),
+): Quantity | null {
+  if (chain.has(slug)) return null;
+  const variable = scope.variables?.find((candidate) => candidate.slug === slug);
+  if (variable === undefined) return null;
+
+  const branch = new Set(chain);
+  branch.add(slug);
+
+  if (!isExpressionParam(variable.value)) {
+    const value = variable.value * UNIT_SCALE[variable.unit];
+    return Number.isFinite(value) ? { value, exponent: 1 } : null;
+  }
+
+  try {
+    const result = evaluateQuantity(variable.value.expr, {
+      lookup: (name) => resolveVariable(scope, name, branch),
+    });
+    // A variable may hold a length or a ratio; anything else is not usable.
+    return result.exponent === 0 || result.exponent === 1 ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A parameter's millimetres. A literal is already millimetres; a formula resolves
+ * through the document's variables, and falls back to the number it last resolved
+ * to when it no longer does, so a deleted variable never blocks a solve.
+ */
+export function resolveParam(scope: VariableScope, param: Param): number {
+  if (!isExpressionParam(param)) return param;
+  try {
+    return evaluateLength(param.expr, { lookup: (slug) => resolveVariable(scope, slug) });
+  } catch {
+    return param.lastKnown;
+  }
 }

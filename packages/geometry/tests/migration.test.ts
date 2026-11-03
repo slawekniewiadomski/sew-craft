@@ -97,7 +97,7 @@ describe('normalizeDocument', () => {
 
     const migrated = normalizeDocument(current);
 
-    expect(migrated.schema).toBe('sewcraft.pattern/0.4');
+    expect(migrated.schema).toBe('sewcraft.pattern/0.5');
     expect(migrated.pieces).toEqual([]);
   });
 
@@ -153,11 +153,12 @@ describe('normalizeDocument', () => {
 });
 
 describe('known pattern schemas', () => {
-  it('lists only the current schema', () => {
-    expect(KNOWN_PATTERN_SCHEMAS).toEqual(['sewcraft.pattern/0.4']);
+  it('lists the current schema and the 0.4 subset it still reads', () => {
+    expect(KNOWN_PATTERN_SCHEMAS).toEqual(['sewcraft.pattern/0.5', 'sewcraft.pattern/0.4']);
   });
 
-  it('accepts the schema this build understands', () => {
+  it('accepts the schema this build understands and the 0.4 subset', () => {
+    expect(isKnownPatternSchema('sewcraft.pattern/0.5')).toBe(true);
     expect(isKnownPatternSchema('sewcraft.pattern/0.4')).toBe(true);
   });
 
@@ -165,7 +166,7 @@ describe('known pattern schemas', () => {
     expect(isKnownPatternSchema('sewcraft.pattern/0.1')).toBe(false);
     expect(isKnownPatternSchema('sewcraft.pattern/0.2')).toBe(false);
     expect(isKnownPatternSchema('sewcraft.pattern/0.3')).toBe(false);
-    expect(isKnownPatternSchema('sewcraft.pattern/0.5')).toBe(false);
+    expect(isKnownPatternSchema('sewcraft.pattern/0.6')).toBe(false);
     expect(isKnownPatternSchema('')).toBe(false);
   });
 });

@@ -233,7 +233,7 @@ describe('piece metadata', () => {
 
   it('uses the encoded schema version in the comment', () => {
     expect(svg(documentOf(), piece())).toContain(
-      '<!-- sewcraft:svg schema="sewcraft.pattern/0.4" generated="2026-10-22T00:00:00.000Z" -->',
+      '<!-- sewcraft:svg schema="sewcraft.pattern/0.5" generated="2026-10-22T00:00:00.000Z" -->',
     );
   });
 });

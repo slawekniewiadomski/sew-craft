@@ -1,4 +1,5 @@
 import { getEntity } from './document.js';
+import { resolveParam, type VariableScope } from './expression.js';
 import { pieceById, resolvePieceAnchor, type CutAnchorResolution } from './piece.js';
 import type {
   Constraint,
@@ -311,11 +312,13 @@ function isUsableValue(value: number): boolean {
  */
 function resolveConstraintValue(
   constraints: readonly Constraint[],
+  scope: VariableScope,
   constraint: DistanceConstraint,
   visited: Set<EntityId>,
 ): number | null {
   if (constraint.value !== undefined) {
-    return isUsableValue(constraint.value) ? constraint.value : null;
+    const value = resolveParam(scope, constraint.value);
+    return isUsableValue(value) ? value : null;
   }
 
   const reference = constraint.reference;
@@ -325,7 +328,7 @@ function resolveConstraintValue(
 
   const source = distanceById(constraints, reference);
   if (source === null) return null;
-  return resolveConstraintValue(constraints, source, visited);
+  return resolveConstraintValue(constraints, scope, source, visited);
 }
 
 /**
@@ -335,8 +338,9 @@ function resolveConstraintValue(
 export function resolveSetValue(
   constraints: readonly Constraint[],
   constraint: DistanceConstraint,
+  scope: VariableScope = {},
 ): number | null {
-  return resolveConstraintValue(constraints, constraint, new Set());
+  return resolveConstraintValue(constraints, scope, constraint, new Set());
 }
 
 /** The state of a dimension, derived from its fields and the document. */
@@ -346,7 +350,9 @@ export function dimensionState(
 ): DimensionState {
   if (constraint.value !== undefined) return 'set';
   if (constraint.reference === undefined) return 'driven';
-  return resolveSetValue(document.constraints, constraint) === null ? 'broken' : 'referenced';
+  return resolveSetValue(document.constraints, constraint, document) === null
+    ? 'broken'
+    : 'referenced';
 }
 
 /** True when a dimension only measures the sketch and adds no solver equation. */
@@ -379,11 +385,13 @@ export function resolveDimensionValue(
   document: PatternDocument,
   constraint: DistanceConstraint,
 ): number | null {
-  if (constraint.value !== undefined) return constraint.value;
+  if (constraint.value !== undefined) return resolveParam(document, constraint.value);
   if (constraint.reference === undefined) {
     return measureDistanceDimension(document, constraint);
   }
-  return resolveSetValue(document.constraints, constraint) ?? constraint.lastKnownValue ?? null;
+  return (
+    resolveSetValue(document.constraints, constraint, document) ?? constraint.lastKnownValue ?? null
+  );
 }
 
 /**
@@ -437,7 +445,7 @@ export function referenceCandidates(
       candidate.type === 'distance' &&
       candidate.id !== constraint.id &&
       !samePointPair(candidate, constraint.a, constraint.b) &&
-      resolveSetValue(document.constraints, candidate) !== null &&
+      resolveSetValue(document.constraints, candidate, document) !== null &&
       !createsReferenceCycle(document.constraints, constraint.id, candidate.id),
   );
 }

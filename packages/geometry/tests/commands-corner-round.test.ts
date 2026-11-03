@@ -253,7 +253,7 @@ describe('add_corner_round', () => {
 
   it('rejects invalid, oversized and colliding geometry', () => {
     expect(() => applyCommand(rightAngle(), addRound('r', 0))).toThrow(
-      'Radius must be a finite number of at least 0.001 mm.',
+      'radius must be a finite number greater than 0',
     );
 
     const spike = documentOf(
@@ -419,6 +419,13 @@ describe('set_corner_round_radius', () => {
         id: 'set',
         type: 'set_corner_round_radius',
         params: { id: 'r1', radius: 0 },
+      }),
+    ).toThrow('radius must be a finite number greater than 0');
+    expect(() =>
+      applyCommand(document, {
+        id: 'set',
+        type: 'set_corner_round_radius',
+        params: { id: 'r1', radius: 0.0005 },
       }),
     ).toThrow('Radius must be a finite number of at least 0.001 mm.');
     expect(() =>
