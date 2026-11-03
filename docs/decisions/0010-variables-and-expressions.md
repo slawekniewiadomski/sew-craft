@@ -22,9 +22,9 @@ half of 012 stays deferred.
 ## Decision
 
 1. **Variables live in the pattern document**, as `variables?: Variable[]` with
-   `{ slug, name, value, comment? }`, shared by every piece. No separate DB table and no
-   API surface beyond the command layer yet, so a document always describes
-   itself and save/export stay self-contained.
+   `{ slug, name, unit, value, comment? }`, shared by every piece. No separate DB
+   table and no API surface beyond the command layer yet, so a document always
+   describes itself and save/export stay self-contained.
 2. **Expressions are available on pattern parameters**, not on every number: a
    dimension's driving value, a corner-round radius, an allowance width, and the
    document and piece allowance presets. Positions and presentation (point
@@ -42,23 +42,30 @@ half of 012 stays deferred.
 5. **Variables may be defined with expressions too**, so `v_ease = v_bust/10` and
    `v_bodice = v_bust/4 + v_ease` work. Cycles are possible for the first time
    and are detected per evaluation, not per document.
-6. **Evaluation lives in `@sewcraft/geometry`** as a small deterministic
+6. **A variable declares its unit — mm or cm — and the evaluator does dimension
+   algebra.** A bare numeric literal is dimensionless; a suffixed one (`5cm`,
+   `2 mm`) carries a length; a variable is a length. Addition needs equal
+   dimensions with automatic cm↔mm conversion, multiplication and division
+   combine them, and every parameter resolves to a length in mm. A formula may
+   produce a dimensionless ratio, which is a legal variable but not a legal
+   parameter. Units change entry and display, never the solver's millimetres.
+7. **Evaluation lives in `@sewcraft/geometry`** as a small deterministic
    tokenizer + recursive-descent evaluator. No `eval`, no dependency, no
    `Function` constructor, no surprises beyond IEEE doubles. Rounding is
    presentation only; full precision reaches the solver and export.
-7. **A write must resolve, a read must not fail.** Every command storing an
-   expression validates it (parses, slugs exist, no cycle, finite, positive where
-   the field requires it) and records `lastKnown`. A parameter only breaks later,
-   when a variable it names is deleted: it then keeps its last resolved number,
-   exactly as a dangling `reference` keeps `lastKnownValue`, and the document
-   keeps solving.
-8. **Everything mutates through commands** — `set_variable`, `update_variable`,
+8. **A write must resolve, a read must not fail.** Every command storing an
+   expression validates it (parses, slugs exist, no cycle, dimensions agree,
+   finite, positive where the field requires it) and records `lastKnown`. A
+   parameter only breaks later, when a variable it names is deleted: it then keeps
+   its last resolved number, exactly as a dangling `reference` keeps
+   `lastKnownValue`, and the document keeps solving.
+9. **Everything mutates through commands** — `set_variable`, `update_variable`,
    `remove_variable`, and every existing parameter command accepting `Param` — so
    undo, autosave and the agent interface need no special cases.
-9. **Schema bump** to `sewcraft.pattern/0.5`. The addition is a superset of 0.4
-   (absent `variables`, plain numbers still valid), so 0.4 documents load
-   unchanged; the disk format moves so a 0.5 document is not silently opened by
-   an older build.
+10. **Schema bump** to `sewcraft.pattern/0.5`. The addition is a superset of 0.4
+    (absent `variables`, plain numbers still valid), so 0.4 documents load
+    unchanged; the disk format moves so a 0.5 document is not silently opened by
+    an older build.
 
 ## Consequences
 
@@ -68,8 +75,13 @@ half of 012 stays deferred.
 - Every write path that takes a width or radius gains validation it did not need
   before; that is the main cost of the union.
 - Cycles become representable in stored data and must be detected per evaluation.
+- Units bring dimension checking into every write: a mismatched formula is
+  rejected with a readable reason, so the document never stores a length the
+  solver would read as an area. This is the main new source of validation code.
+- Ratios are possible and useful (`v_ease_ratio = v_ease/v_bust`), but they are
+  legal only as variables, not as distances, radii or allowances.
 - Formulas are an automation surface only in the arithmetic sense: no name in the
-  grammar resolves to anything but a number, and a slug is a lookup key, not a
+  grammar resolves to anything but a quantity, and a slug is a lookup key, not a
   property access.
 - Coverage stays at 100%: the grammar has a small, enumerable set of failure
   modes, each with a test.
@@ -80,9 +92,13 @@ half of 012 stays deferred.
 
 - **Named numbers only, no parser.** Cheaper and enough for simple layout work,
   but the first real use (`bust / 4 + 2`) forces a second, breaking schema change.
-- **Expressions with functions and units** (`min`, `max`, `abs`, `cm`/`in`).
-  Closer to spec 012's end state, but adds a unit system and a bigger grammar
-  before anyone has proven the basics.
+- **Expressions with functions** (`min`, `max`, `abs`). Still deferred: the
+  grammar is a few hundred lines and each function is a new coverage surface.
+- **Label-only units, no conversion.** Cheapest, but `Bust (cm) = 88` would mean
+  88 mm while reading as centimetres, which is a trap in a drafting tool.
+- **Convert at the edges only, no dimension algebra.** Values convert to mm at
+  entry and formulas are dimensionless, which silently accepts `v_bust_cm *
+v_waist` and lets the maker build a length out of two lengths.
 - **Reuse an OSS expression library** (mathjs, expr-eval). Rejected: the package
   must stay dependency-light and the supported grammar is a few hundred lines.
 - **Expressions on literally every number**, including point coordinates and
@@ -102,7 +118,8 @@ half of 012 stays deferred.
 
 ## Revisit when
 
-Patterns need shared measurement sets across projects, grading by size, or unit
-conversion inside formulas — that is where variables either grow into spec 012 or
-move out of the document into a project-level measurement library. Also revisit if
-formula-driven placement becomes a real drafting need rather than a curiosity.
+Patterns need shared measurement sets across projects, grading by size, or units
+beyond mm and cm (`in`, `ft`, and paper sizes) — that is where variables either
+grow into spec 012 or move out of the document into a project-level measurement
+library. Also revisit if formula-driven placement becomes a real drafting need
+rather than a curiosity.

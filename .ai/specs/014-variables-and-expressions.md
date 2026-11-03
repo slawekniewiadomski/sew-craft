@@ -11,14 +11,16 @@ Pattern schema: `0.4` → `0.5`
 ## 📝 TLDR
 
 A drafter names a measurement once (`Bust (cm) = 88`) and writes
-`v_bust/4 + 2` wherever a length, radius or allowance is set. Variables live in
-the pattern document, formulas use a stable slug rather than the display name, and
-every parameter field becomes `number | { expr, lastKnown }`. A formula is
-resolved on read by a small deterministic evaluator in `@sewcraft/geometry`; the
-solver, `flatten` and export keep their shapes, because a formula is substituted
-before any of them runs. A write must resolve; a parameter breaks only when a
-variable it names is deleted, and then it keeps its last number, exactly like a
-dangling dimension `reference`.
+`v_bust_cm/4 + 2cm` wherever a length, radius or allowance is set. Variables live
+in the pattern document with their own unit (mm or cm), formulas use a stable slug
+rather than the display name, and every parameter field becomes
+`number | { expr, lastKnown }`. The evaluator does dimension algebra, so adding a
+length to a plain number is an error rather than a silent millimetre assumption,
+and every parameter resolves to a length in mm. Resolution happens on read in
+`@sewcraft/geometry`; the solver, `flatten` and export keep their shapes, because
+a formula is substituted before any of them runs. A write must resolve; a
+parameter breaks only when a variable it names is deleted, and then it keeps its
+last number, exactly like a dangling dimension `reference`.
 
 ## 📝 Problem Statement
 
@@ -45,15 +47,15 @@ dangling dimension `reference`.
 
 ## 📝 Proposed Solution
 
-1. `PatternDocument.variables?: Variable[]` — `{ slug, name, value, comment? }`,
+1. `PatternDocument.variables?: Variable[]` — `{ slug, name, unit, value, comment? }`,
    document level, shared by every piece.
 2. Parameter fields become `Param = number | { expr: string; lastKnown: number }`.
    Affected: `DistanceConstraint.value`, `CornerRound.radius`, `Allowance.width`,
    `AllowancePreset.width` (which covers `PatternDefaults.allowance` and
    `PieceDefaults.allowance`).
-3. `packages/geometry/src/expression.ts` — tokenizer, parser, evaluator, cycle
-   detection, plus `resolveParam(document, param)` and
-   `resolveVariable(document, slug, visited)`.
+3. `packages/geometry/src/expression.ts` — tokenizer, unit-aware parser, evaluator
+   returning a millimetre quantity with a length exponent, cycle detection, plus
+   `resolveParam(document, param)` and `resolveVariable(document, slug, visited)`.
 4. Single resolution seam per reader: `resolveConstraintValue` returns the
    resolved number, `piece.ts`/`flatten.ts` call `resolveParam` where they read a
    radius or width, and `resolveDimensionValue` keeps its signature so the canvas
@@ -65,13 +67,18 @@ dangling dimension `reference`.
 ## 📝 Data Model
 
 ```ts
+/** A length unit a variable is written and read in. Canonical storage is mm. */
+export type Unit = 'mm' | 'cm';
+
 /** A named value in the document, referenced by formulas through its slug. */
 export interface Variable {
   /** Stable machine identifier in formulas: `v_` + slug of the name at creation. */
   slug: string;
   /** Free-form display name, trimmed, 1–60 characters, unique case-insensitively. */
   name: string;
-  /** Literal millimetres, or a formula over other variables. */
+  /** The unit a literal `value` is written in, and the unit the table shows. */
+  unit: Unit;
+  /** A literal in `unit`, or a formula over other variables and unit literals. */
   value: Param;
   /** Optional free text, trimmed, 0–120 characters; absent or empty means none. */
   comment?: string;
@@ -82,6 +89,12 @@ export type Param = number | { expr: string; lastKnown: number };
 ```
 
 - `variables` is optional so a 0.4 document loads and resolves to "no variables".
+- `unit` is required on every variable, defaulting to `mm` on creation. A literal
+  `value` is read in that unit (`{ unit: 'cm', value: 88 }` is 880 mm); a formula
+  value ignores the literal unit and its declared unit is the unit the table
+  displays, so switching cm → mm converts the shown number, not the geometry.
+- A variable whose formula evaluates to a ratio shows no unit and is marked
+  `Ratio` in the type column; it cannot be used where a length is required.
 - `slug` grammar: `^v_[a-z0-9_]{1,40}$`. Minted at creation from `name`:
   ASCII-fold, lowercase, any run of non-alphanumerics → `_`, trim leading and
   trailing `_`, prefix `v_`, truncate to 40 characters after the prefix, then
@@ -105,23 +118,36 @@ Grammar (recursive descent, precedence climbing):
 expr    := term (('+' | '-') term)*
 term    := factor (('*' | '/') factor)*
 factor  := ('+' | '-') factor | primary
-primary := number | slug | '(' expr ')'
+primary := number unit? | slug | '(' expr ')'
 number  := [0-9]+ ('.' [0-9]+)?        // no exponent, no sign (unary minus is a node)
+unit    := 'mm' | 'cm'                  // case-insensitive, space optional
 slug    := 'v_' [a-z0-9_]+
 ```
 
-- Whitespace is insignificant. Anything else — `,`, `%`, `^`, `**`, identifiers
-  without the `v_` prefix, a trailing operator, unbalanced parentheses — is a
-  `CommandValidationError` naming the offset.
-- Evaluation is left-associative IEEE-754 double arithmetic in millimetres.
+- Whitespace is insignificant. Anything else — `,`, `%`, `^`, `**`, `in`, an
+  identifier without the `v_` prefix, a trailing operator, unbalanced
+  parentheses — is a `CommandValidationError` naming the offset.
+- **Quantities.** Every sub-expression evaluates to a value in canonical
+  millimetres plus an integer length exponent: `0` is a ratio, `1` a length, `2`
+  an area. A suffixed literal (`5cm` = 50) and a variable both carry exponent 1;
+  a bare literal is exponent 0.
+- **Dimension rules.** `+` and `-` require equal exponents and convert cm to mm
+  first (`v_bust_cm/4 + 2cm` is legal, `v_bust_cm/4 + 2` is not: a length plus a
+  plain number). `*` and `/` add and subtract exponents. Unary `-` keeps the
+  exponent.
+- A variable's value may be a length or a ratio; anything else
+  (`v_a * v_b`, an area) is rejected. A parameter always requires a length, so
+  `update_constraint { value: { expr: 'v_bust_cm/v_waist' } }` is rejected with
+  "expected a length, got a ratio".
+- Evaluation is left-associative IEEE-754 double arithmetic, in millimetres.
 - `/` by zero yields a non-finite result, which is rejected at write time, so a
   stored `lastKnown` is always finite.
 - Recursion depth is bounded at 64 nested parentheses or unary signs, so a
   hand-crafted document cannot exhaust the stack.
-- Variable values use the same grammar, so `v_ease = v_bust/10` is legal. A slug
-  repeating in its own chain (`a → b → a`) is a **cycle**: rejected at write time
-  by walking the chain with a `visited` set, the same shape `resolveConstraintValue`
-  uses.
+- Variable values use the same grammar, so `v_ease = v_bust_cm/10` is legal. A
+  slug repeating in its own chain (`a → b → a`) is a **cycle**: rejected at write
+  time by walking the chain with a `visited` set, the same shape
+  `resolveConstraintValue` uses.
 - Result range: finite, and positive where the field requires it (`radius > 0`,
   `width > 0`). A formula may legitimately be negative only where a negative
   literal is already legal — which today is nowhere, since every parameter is a
@@ -135,20 +161,24 @@ New commands (all in `packages/geometry/src/commands.ts` `Command` union,
 
 ### `set_variable`
 
-- params: `slug: string`, `value: number | { expr }`, `comment?: string` — or
-  `name` with `value` to mint a slug
+- params: `slug: string`, `value: number | { expr }`, `unit?: 'mm' | 'cm'`
+  (default `mm`), `comment?: string` — or `name` with `value` to mint a slug
 - Validates the slug grammar, name uniqueness, the comment length, and the formula
-  (parses, slugs exist, no cycle, finite, positive). Stores `{ expr, lastKnown }`
-  for a formula.
+  (parses, slugs exist, no cycle, dimensions agree, result is a length or ratio,
+  finite, positive). Stores `{ expr, lastKnown }` for a formula.
 - Re-applying with a byte-identical slug is an update no-op.
-- inverse: `remove_variable` for a fresh slug, otherwise the previous `value`.
+- inverse: `remove_variable` for a fresh slug, otherwise the previous
+  `value`/`unit`.
 
 ### `update_variable`
 
-- params: `slug: string`, and any of `name`, `value`, `comment`
+- params: `slug: string`, and any of `name`, `unit`, `value`, `comment`
 - Rename changes `name` only; the slug survives so formulas keep resolving.
   `comment: null` clears it.
-- inverse: the previous `name`/`value`/`comment`.
+- A `unit` change **converts** a literal value to the new unit so the measurement
+  is preserved (`88 cm` → `880 mm`); a formula value keeps its formula and only
+  its display unit changes. Dependents never move because of a unit switch.
+- inverse: the previous `name`/`unit`/`value`/`comment`.
 
 ### `remove_variable`
 
@@ -184,25 +214,31 @@ New commands (all in `packages/geometry/src/commands.ts` `Command` union,
   first (a dedicated glyph can come later), available in `piece` mode only (see
   `frontend/src/lib/editor-panels.ts`). One plain table, no cards:
 
-  | Name       | Value          | Type    | Comment          |
-  | ---------- | -------------- | ------- | ---------------- |
-  | Bust (cm)  | 88             | Number  | Body measurement |
-  | Ease       | `v_bust_cm/10` | Formula | Design ease      |
+  | Name       | Value            | Unit | Type    | Comment          |
+  | ---------- | ---------------- | ---- | ------- | ---------------- |
+  | Bust (cm)  | 88               | cm   | Number  | Body measurement |
+  | Ease       | `v_bust_cm/10`   | mm   | Formula | Design ease      |
+  | Fit ratio  | `v_ease/v_bust`  | —    | Ratio   | Used for grading |
 
-  - `Name` and `Comment` are inline-editable text cells; `Value` is the same
+  - `Name`, `Unit` and `Comment` are inline-editable cells; `Value` is the same
     formula-aware input the inspectors use; `Type` is derived, never stored:
-    `Number` for a literal, `Formula` for `{ expr }`.
+    `Number` for a literal, `Formula` for `{ expr }`, `Ratio` when the formula's
+    dimension is dimensionless (and then `Unit` shows `—`).
+  - `Unit` is a two-option select (`mm`, `cm`). Changing it converts a literal
+    value so the measurement is preserved; a formula keeps its text and only the
+    displayed unit changes. This is the only cell that can move a dependent
+    number without moving the geometry, so it commits on change, not on blur.
   - The value cell shows the formula text, so the table reads as the source of
     truth; a formula's resolved millimetres appear on hover/focus and in the
-    inspector, not as a fifth column.
-  - Columns are sized name 1fr, value 84px, type 56px, comment 1fr, and the
-    comment cell truncates with a title when the panel is at its 240 px minimum.
-    At the 320 px default the table stays readable without horizontal scroll;
-    below that the comment column collapses to an icon with a tooltip.
+    inspector, not as a column.
+  - Columns are sized name 1fr, value 84px, unit 48px, type 56px, comment 1fr.
+    At the 320 px default the comment truncates first; at the 240 px minimum the
+    comment collapses to an icon with a tooltip and `Type` collapses to its
+    marker (ƒ for formula, ∅ for ratio).
   - Row actions: delete on the row (an icon shown on hover and focus), and a
     `+ New` button in the section heading. There is no separate detail pane.
   - Empty state (via `SidebarEmpty`) names the idea with one example:
-    "Name a measurement once — `Bust (cm) = 88`, then use `v_bust_cm/4 + 2` in a
+    "Name a measurement once — `Bust (cm) = 88`, then use `v_bust_cm/4 + 2cm` in a
     dimension."
 - **Formula entry** — the dimension value box (and radius/allowance inputs)
   becomes a text input. Typing a number behaves exactly as today. Typing anything
@@ -231,6 +267,16 @@ New commands (all in `packages/geometry/src/commands.ts` `Command` union,
 - **Rename:** no formula changes; only the panel label moves.
 - **Duplicate name:** rejected (case-insensitive), with the existing variable
   named in the error.
+- **Dimension mismatch:** `v_bust_cm/4 + 2` (length + plain number) and
+  `v_bust_cm + 3mm` (both lengths, legal) are decided by the exponent rule;
+  `v_bust_cm * v_waist` is an area and is rejected as a variable value with
+  "expected a length or ratio, got mm²".
+- **Ratio where a length belongs:** a ratio variable inside a dimension formula is
+  rejected with "expected a length, got a ratio"; a ratio inside another variable's
+  formula is fine.
+- **Unit switch:** changing `Bust (cm)` from `cm` to `mm` rewrites its literal
+  `88` → `880` and moves nothing; a formula-valued variable keeps its formula and
+  only the displayed unit changes.
 - **Cycle:** rejected at write time; a hand-edited document containing one is
   rejected on the command that touches it and resolves to `lastKnown` on read if
   it arrives through a load.
@@ -261,8 +307,8 @@ New commands (all in `packages/geometry/src/commands.ts` `Command` union,
   document of identical geometry.
 - **Coverage.** The grammar's failure branches are the bulk of new tests; the spec
   keeps the grammar deliberately small so 100% stays achievable rather than waived.
-- **Not covered:** measurement sets, grading, unit conversion, variables in
-  positions, variables in text labels.
+- **Not covered:** measurement sets, grading, units beyond mm and cm, functions
+  (`min`, `max`, `abs`), variables in positions, variables in text labels.
 
 ## ❓ Open Questions (resolved)
 
@@ -279,13 +325,18 @@ New commands (all in `packages/geometry/src/commands.ts` `Command` union,
 7. **Entry** → type the formula in the value box; a picker inserts slugs.
 8. **Label display** → resolved number only, in canvas and export.
 9. **Precision** → full double internally; rounding is presentation only.
+10. **Unit semantics** → full dimension algebra: suffixed literals and variables
+    carry a length, addition needs equal dimensions, parameters resolve to mm.
+11. **Unit set** → `mm` and `cm` only; imperial waits for the measurement library.
 
 ## ✅ Acceptance criteria
 
 - [ ] Editing a variable updates every dependent dimension, radius and allowance
       in one solve.
-- [ ] A variable's name, value, type and comment round-trip through save and
-      reload, and the panel table stays readable at the 240 px minimum width.
+- [ ] A variable's name, value, unit, type and comment round-trip through save
+      and reload, and the panel table stays readable at the 240 px minimum width.
+- [ ] `88 cm` and `880 mm` resolve to the same millimetres, `5cm + 2mm` is 52, and
+      switching a literal variable's unit preserves the measurement.
 - [ ] Renaming a variable changes no formula and moves no geometry.
 - [ ] A cyclic, unknown-slug or non-finite formula is rejected at write time with
       a named offset; nothing half-applied.
@@ -300,23 +351,26 @@ New commands (all in `packages/geometry/src/commands.ts` `Command` union,
 
 ## 📋 Phasing
 
-1. **Evaluator** — `expression.ts` plus tests: grammar, precedence, unary signs,
-   depth bound, unknown slug, cycle, non-finite. No document change yet.
-2. **Model** — `Variable`, `Param`, schema `0.5`, `resolveParam`, `resolveVariable`,
-   reader migration, 0.4 load test.
-3. **Commands** — `set_variable`, `update_variable`, `remove_variable`, the
-   parameter unions, inverses, `captureBrokenDependents` extension, spec JSON +
-   `config/geometry.php` at `0.17.0`.
-4. **UI** — Variables panel, formula inputs with live result and inline errors,
-   broken-parameter flag.
+1. **Evaluator** — `expression.ts` plus tests: grammar, unit suffixes, dimension
+   algebra, precedence, unary signs, depth bound, unknown slug, cycle, non-finite.
+   No document change yet.
+2. **Model** — `Variable`, `Unit`, `Param`, schema `0.5`, `resolveParam`,
+   `resolveVariable`, reader migration, 0.4 load test.
+3. **Commands** — `set_variable`, `update_variable`, `remove_variable` including
+   the unit conversion on switch, the parameter unions, inverses,
+   `captureBrokenDependents` extension, spec JSON + `config/geometry.php` at
+   `0.17.0`.
+4. **UI** — Variables panel table (name, value, unit, type, comment), formula
+   inputs with live result and inline errors, broken-parameter flag.
 5. **Evidence** — integration test through the real API and a browser pass on the
    panel and a formula dimension.
 
 ## 📋 Implementation Plan
 
-- `packages/geometry/src/expression.ts` — tokenizer, parser, `evaluate`,
-  `resolveVariable`, `resolveParam`, exported types; unit tests beside it.
-- `packages/geometry/src/types.ts` — `Variable`, `Param`, `variables?` on
+- `packages/geometry/src/expression.ts` — tokenizer with unit suffixes, parser,
+  quantity evaluation with length exponents, `resolveVariable`, `resolveParam`,
+  exported types; unit tests beside it.
+- `packages/geometry/src/types.ts` — `Variable`, `Unit`, `Param`, `variables?` on
   `PatternDocument`, field type changes, `PATTERN_SCHEMA` → `0.5`.
 - `packages/geometry/src/dimension.ts` — `resolveConstraintValue` resolves a
   `Param`; `dimensionState` treats an unresolved formula as broken.
