@@ -3,7 +3,7 @@
 it('exposes the command spec', function () {
     $this->getJson('/api/commands')
         ->assertOk()
-        ->assertJsonPath('version', '0.16.0')
+        ->assertJsonPath('version', '0.17.0')
         ->assertJsonStructure([
             'version',
             'commands' => [
@@ -20,9 +20,9 @@ it('exposes dimension presentation and update params', function () {
         ->assertJsonPath('commands.add_constraint.params.orientation', 'aligned|horizontal|vertical?')
         ->assertJsonPath('commands.add_constraint.params.offset', 'number?')
         ->assertJsonPath('commands.add_constraint.params.piece', 'entity_id')
-        ->assertJsonPath('commands.add_constraint.params.value', 'number?')
+        ->assertJsonPath('commands.add_constraint.params.value', 'number|expression?')
         ->assertJsonPath('commands.update_constraint.params.id', 'entity_id')
-        ->assertJsonPath('commands.update_constraint.params.value', 'number|null?')
+        ->assertJsonPath('commands.update_constraint.params.value', 'number|expression|null?')
         ->assertJsonPath('commands.update_constraint.inverse', 'update_constraint')
         ->assertJsonPath(
             'commands.add_constraint.params.type',
@@ -35,13 +35,27 @@ it('exposes the corner round commands', function () {
         ->assertOk()
         ->assertJsonPath('commands.add_corner_round.params.first', 'entity_id')
         ->assertJsonPath('commands.add_corner_round.params.second', 'entity_id')
-        ->assertJsonPath('commands.add_corner_round.params.radius', 'number')
+        ->assertJsonPath('commands.add_corner_round.params.radius', 'number|expression')
         ->assertJsonPath('commands.add_corner_round.inverse', 'remove_corner_round')
         ->assertJsonPath('commands.set_corner_round_radius.params.id', 'entity_id')
-        ->assertJsonPath('commands.set_corner_round_radius.params.radius', 'number')
+        ->assertJsonPath('commands.set_corner_round_radius.params.radius', 'number|expression')
         ->assertJsonPath('commands.set_corner_round_radius.inverse', 'set_corner_round_radius')
         ->assertJsonPath('commands.remove_corner_round.params.id', 'entity_id')
         ->assertJsonPath('commands.remove_corner_round.inverse', 'add_corner_round');
+});
+
+it('exposes the variable commands', function () {
+    $this->getJson('/api/commands')
+        ->assertOk()
+        ->assertJsonPath('commands.set_variable.params.slug', 'string?')
+        ->assertJsonPath('commands.set_variable.params.unit', 'mm|cm?')
+        ->assertJsonPath('commands.set_variable.params.value', 'number|expression')
+        ->assertJsonPath('commands.set_variable.inverse', 'remove_variable')
+        ->assertJsonPath('commands.update_variable.params.slug', 'string')
+        ->assertJsonPath('commands.update_variable.params.value', 'number|expression?')
+        ->assertJsonPath('commands.update_variable.inverse', 'update_variable')
+        ->assertJsonPath('commands.remove_variable.params.slug', 'string')
+        ->assertJsonPath('commands.remove_variable.inverse', 'set_variable');
 });
 
 it('exposes the arc command', function () {
@@ -90,7 +104,7 @@ it('exposes the piece commands', function () {
         ->assertJsonPath('commands.delete_piece.params.id', 'entity_id')
         ->assertJsonPath('commands.set_piece_allowance.params.piece', 'entity_id')
         ->assertJsonPath('commands.set_piece_allowance.params.edge', 'entity_id')
-        ->assertJsonPath('commands.set_piece_allowance.params.width', 'number?')
+        ->assertJsonPath('commands.set_piece_allowance.params.width', 'number|expression?')
         ->assertJsonPath('commands.set_piece_allowance.params.kind', 'seam|single|double?')
         ->assertJsonPath('commands.set_piece_allowance.params.remove', 'bool?')
         ->assertJsonPath('commands.set_piece_allowance.inverse', 'set_piece_allowance');
@@ -127,7 +141,7 @@ it('retires move_piece', function () {
 it('exposes the default allowance command', function () {
     $this->getJson('/api/commands')
         ->assertOk()
-        ->assertJsonPath('commands.set_default_allowance.params.width', 'number?')
+        ->assertJsonPath('commands.set_default_allowance.params.width', 'number|expression?')
         ->assertJsonPath('commands.set_default_allowance.params.kind', 'seam|single|double?')
         ->assertJsonPath('commands.set_default_allowance.params.remove', 'bool?')
         ->assertJsonPath('commands.set_default_allowance.inverse', 'set_default_allowance');

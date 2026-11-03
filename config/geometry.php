@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.16.0',
+    'spec_version' => '0.17.0',
 
     /*
     |--------------------------------------------------------------------------
@@ -117,7 +117,7 @@ return [
                 'type' => 'coincident|horizontal|vertical|point_on_line|distance|angle|equal|midpoint',
                 'entities' => 'entity_id[]',
                 'piece' => 'entity_id',
-                'value' => 'number?',
+                'value' => 'number|expression?',
                 'reference' => 'entity_id?',
                 'orientation' => 'aligned|horizontal|vertical?',
                 'offset' => 'number?',
@@ -128,7 +128,7 @@ return [
             'description' => 'Change a dimensional constraint value or its dimension presentation. Null clears a distance to driven. A cut dimension accepts only orientation and offset.',
             'params' => [
                 'id' => 'entity_id',
-                'value' => 'number|null?',
+                'value' => 'number|expression|null?',
                 'reference' => 'entity_id|null?',
                 'orientation' => 'aligned|horizontal|vertical?',
                 'offset' => 'number?',
@@ -147,7 +147,7 @@ return [
             'params' => [
                 'first' => 'entity_id',
                 'second' => 'entity_id',
-                'radius' => 'number',
+                'radius' => 'number|expression',
             ],
             'inverse' => 'remove_corner_round',
         ],
@@ -155,7 +155,7 @@ return [
             'description' => 'Change the radius of a corner round and regenerate its tangent points and arc.',
             'params' => [
                 'id' => 'entity_id',
-                'radius' => 'number',
+                'radius' => 'number|expression',
             ],
             'inverse' => 'set_corner_round_radius',
         ],
@@ -233,10 +233,39 @@ return [
             'params' => [
                 'piece' => 'entity_id',
                 'mode' => 'inherit|none|preset',
-                'width' => 'number?',
+                'width' => 'number|expression?',
                 'kind' => 'seam|single|double?',
             ],
             'inverse' => 'set_piece_default_allowance',
+        ],
+        'set_variable' => [
+            'description' => 'Create a named measurement, or update the one stored under the same slug. A formula value must resolve to a length or a ratio; its result is recorded as lastKnown.',
+            'params' => [
+                'slug' => 'string?',
+                'name' => 'string?',
+                'unit' => 'mm|cm?',
+                'value' => 'number|expression',
+                'comment' => 'string|null?',
+            ],
+            'inverse' => 'remove_variable',
+        ],
+        'update_variable' => [
+            'description' => 'Rename a variable, change its unit, value or comment. The slug never moves, so formulas keep resolving; a unit change converts a literal and leaves a formula as written.',
+            'params' => [
+                'slug' => 'string',
+                'name' => 'string?',
+                'unit' => 'mm|cm?',
+                'value' => 'number|expression?',
+                'comment' => 'string|null?',
+            ],
+            'inverse' => 'update_variable',
+        ],
+        'remove_variable' => [
+            'description' => 'Remove a variable. Every dependent formula keeps the number it was showing and adds no value until the variable is recreated with the same slug.',
+            'params' => [
+                'slug' => 'string',
+            ],
+            'inverse' => 'set_variable',
         ],
         'create_assembly' => [
             'description' => 'Create an empty assembly and append its tab. The default name is "Assembly N".',
@@ -303,7 +332,7 @@ return [
             'params' => [
                 'piece' => 'entity_id',
                 'edge' => 'entity_id',
-                'width' => 'number?',
+                'width' => 'number|expression?',
                 'kind' => 'seam|single|double?',
                 'remove' => 'bool?',
             ],
@@ -312,7 +341,7 @@ return [
         'set_default_allowance' => [
             'description' => 'Set, change or clear the allowance copied onto newly created pieces. Width is the finished width in mm; remove clears it.',
             'params' => [
-                'width' => 'number?',
+                'width' => 'number|expression?',
                 'kind' => 'seam|single|double?',
                 'remove' => 'bool?',
             ],
