@@ -34,7 +34,9 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    include: ['src/**/*.test.ts'],
+    // Tests live in tests/, mirroring src/ path for path; a test left in src/
+    // must not be collected, so the glob never points back at the source tree.
+    include: ['tests/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'json-summary'],
