@@ -195,6 +195,10 @@ Rules:
   shadcn-vue components follow the same rule
   (`frontend/tests/components/ui/<component>/<component>.test.ts`). Geometry tests
   stay colocated with their code as `*.test.ts` under `packages/geometry/src/`.
+- Vitest runs files in parallel, never tests inside one file, so a heavy suite is
+  split by topic into several files that share fixtures, mounts and hooks from a
+  `tests/**/support/` module. One long view suite would otherwise set the wall
+  time for the whole run.
 - Pest tests live in `tests/Unit/` or `tests/Feature/` and use `it(...)` /
   `expect()`.
 - Geometry and solver changes need unit tests covering edge cases (tolerance,

@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run",
+    "test:changed": "vitest run --changed",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "lint": "eslint ."
