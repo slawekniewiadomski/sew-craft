@@ -15,7 +15,7 @@ runtime source of truth is `config/geometry.php`, exposed at `GET /api/commands`
 }
 ```
 
-## Commands (v0.15)
+## Commands (v0.17)
 
 ### `add_point`
 
@@ -262,6 +262,8 @@ sketch.
   construction flag.
 - Both lines must have the same `construction` flag; the arc and tangent points
   inherit it.
+- A piece's two lines may carry different allowances: the bridge then splits in
+  half at its midpoint, one half per edge.
 - `radius` must be finite, at least `0.001`, and fit both lines while leaving at
   least `0.001` mm of each line outside the tangent point. The corner angle must
   be strictly between `0°` and `180°` with a `1°` guard at each end.
@@ -480,6 +482,27 @@ Set, change or remove the allowance of one loop edge of a piece.
 - inverse: `set_piece_allowance` with the previous width and kind, or with
   `remove: true` when the edge previously had no allowance.
 
+Changing one side of a rounded corner is allowed: the round's crescent splits in
+half at its midpoint, each half following the edge on its side.
+
+### `set_piece_corner_allowance`
+
+Set, change or remove the allowance of one rounded corner of a piece. Unlike an
+edge allowance there is no `kind`: a corner is always seam-like, so the number is
+the distance the cut line moves.
+
+- params: `piece: entity_id`, `round: entity_id`, `cutWidth?: number` (mm, cut
+  distance), `remove?: bool`
+- `round` must be a corner round whose two lines are both in that piece's loop.
+- `remove: true` drops the corner's own width and takes no `cutWidth`, so the
+  crescent inherits its edges again; removing an entry that is not there is a
+  no-op.
+- Otherwise `cutWidth` is required, finite and greater than `0`. The entry is
+  keyed by round, so a second call replaces rather than appends. Re-applying the
+  stored value is a no-op with `inverse: null`.
+- inverse: `set_piece_corner_allowance` with the previous `cutWidth`, or with
+  `remove: true` when the corner previously had none.
+
 ### `set_default_allowance`
 
 Set, change or clear the allowance that `create_piece` copies onto a new piece.
@@ -662,7 +685,8 @@ Request a solver rebuild. Typically emitted after a batch of geometry commands.
 - A cut anchor names an edge of its own piece and a pair of anchors resolves to
   two distinct points.
 - A piece allowance is `> 0` and the edge is in the piece; an allowance width is
-  the finished width.
+  the finished width. A corner allowance is `> 0`, names a round of that piece and
+  is the cut distance.
 
 ## Adding a command
 
@@ -671,6 +695,15 @@ Request a solver rebuild. Typically emitted after a batch of geometry commands.
 3. Implement `applyCommand` handling in `@sewcraft/geometry` with tests.
 4. Wire any UI affordance. Emit it from the command bus — never mutate state
    directly.
+
+## Migration from spec 0.16.0
+
+`spec_version` is **0.17.0**. Additive: `set_piece_corner_allowance` stores one
+cut width per corner round in the optional `piece.cornerAllowances` array, inside
+`sewcraft.pattern/0.4`. `set_piece_allowance` and `add_corner_round` lose their
+equal-allowance rejection; a rounded corner whose two edges differ now renders a
+crescent split in half at its midpoint. An older build keeps the field but draws
+the inherited width, so its cut line, area and export are wrong without an error.
 
 ## Migration from spec 0.15.0
 

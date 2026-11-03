@@ -67,11 +67,17 @@ interface Allowance {
   kind: 'seam' | 'single' | 'double';
 }
 
+interface CornerAllowance {
+  round: EntityId; // the corner round this width belongs to
+  cutWidth: number; // millimetres, the distance the cut line moves
+}
+
 interface Piece {
   id: EntityId;
   name?: string;
   edges: EntityId[]; // closed chain, in loop order
   allowances: Allowance[];
+  cornerAllowances?: CornerAllowance[];
   quantity?: number; // defaults to 1
   notes?: string;
   fabric?: string;
@@ -84,6 +90,24 @@ interface Piece {
 `double` adds `2 * width` and also yields a fold line at the finished width.
 There is no stored side: the outward direction follows from the walk's winding,
 so a piece keeps offsetting outward when its edges are reversed.
+
+A corner round's band resolves per **boundary segment**, not per edge
+(`resolveLoopSegments` in `piece.ts`): a stored edge's own allowance; else, on a
+bridge, the round's own `CornerAllowance`; else the width both adjacent edges
+agree on; else one half per edge, split at the vertex nearest half the bridge's
+arc length, so a split half belongs to the edge on its side. A corner has no
+`kind` and no fold line: its stored number is the cut distance. Because a line and
+a flattened arc meet at a visible angle (≈2.8°), a distance change there would
+otherwise fit a long miter; `pieceCutLoop` passes `OffsetOptions.tangentStep`
+(10°) so a change cuts square across instead.
+
+`pieceBandRegions(document, piece)` returns that resolution as geometry: one
+closed polygon per target (`{ kind: 'edge' }` or `{ kind: 'round' }`) that tiles
+the band exactly once. An edge region spans its own segment run plus half of each
+sharp-corner wedge (split from the stitch vertex to the cut join, or a bevel's
+midpoint); a round region spans the crescent, and a split crescent contributes its
+halves to the adjacent edge regions. A target with no band is absent, and a
+compacted or self-intersecting cut loop yields no regions.
 
 `validatePiece` accepts only cut line/curve/arc edges owned by the piece, at
 least three of them, forming one closed chain: every edge continues at the vertex
@@ -392,7 +416,11 @@ the document.
 The per-edge path is the **legacy** route, kept for seams on edges outside any
 piece. Edges that belong to a piece are offset by `pieceCutLoop`, which uses
 `offsetVariablePolyline` so each loop segment can carry its own distance and every
-loop vertex gets a join. Both routes share `edgePolyline`,
+loop vertex gets a join. It also passes `tangentStep`, so a distance change at a
+nearly-tangent vertex (a round's tangent, a split crescent's midpoint) cuts a
+straight step instead of fitting a miter that would run far outside the piece.
+Every other caller leaves the option at `0`, which keeps its joins exactly as
+before. Both routes share `edgePolyline`,
 `findSelfIntersections` and the same left/right sign convention.
 
 ## Corner rounds (`corner-round.ts`)

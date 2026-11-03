@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://sewcraft.local/schemas/command-spec-0.16.json",
+  "$id": "https://sewcraft.local/schemas/command-spec-0.17.json",
   "title": "SewCraft Command Spec",
-  "schema": "sewcraft.command-spec/0.16",
-  "spec_version": "0.16.0",
+  "schema": "sewcraft.command-spec/0.17",
+  "spec_version": "0.17.0",
   "units": "mm",
   "envelope": {
     "id": "ULID string, client-generated, unique",
@@ -42,7 +42,7 @@
       "inverse": "delete_entity"
     },
     "add_curve": {
-      "description": "Create a cubic B\u00e9zier curve through four control points.",
+      "description": "Create a cubic Bézier curve through four control points.",
       "params": {
         "p0": "entity_id",
         "p1": "entity_id",
@@ -285,6 +285,16 @@
         "remove": "bool?"
       },
       "inverse": "set_piece_allowance"
+    },
+    "set_piece_corner_allowance": {
+      "description": "Set, change or remove the allowance of one rounded corner of a piece. The width is the cut distance in mm; a corner has no fold kind.",
+      "params": {
+        "piece": "entity_id",
+        "round": "entity_id",
+        "cutWidth": "number?",
+        "remove": "bool?"
+      },
+      "inverse": "set_piece_corner_allowance"
     },
     "set_default_allowance": {
       "description": "Set, change or clear the allowance copied onto newly created pieces.",

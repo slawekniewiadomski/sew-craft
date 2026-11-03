@@ -133,6 +133,7 @@ can be written when it changes.
         { "edge": "l1", "width": 10, "kind": "double" },
         { "edge": "l2", "width": 10 },
       ],
+      "cornerAllowances": [{ "round": "cr1", "cutWidth": 20 }],
       "quantity": 2,
       "notes": "Cut two mirrored",
       "fabric": "Linen",
@@ -204,6 +205,12 @@ allowance, which is how a shared edge (cut on the stitch line) is expressed.
 adds a fold line at `width`. `name` and `quantity` are optional (quantity omitted
 means 1). Derived geometry is never stored: the stitch loop, cut loop, fold lines,
 metrics and cut bounds are recomputed from the document on read.
+
+`cornerAllowances` is optional and holds at most one entry per corner round: a
+`round` id and the **cut** distance that crescent uses, which wins over the width
+its two edges agree on. A round with no entry inherits that width, or splits in
+half when the two edges differ. Entries naming a round the piece does not hold are
+ignored when resolving and dropped when the loop changes.
 
 `notes`, `fabric` and `color` are optional piece parameters: free text trimmed to
 500 and 120 characters, and a stored `#rrggbb` colour used for the tab dot and the
