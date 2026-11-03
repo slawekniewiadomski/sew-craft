@@ -1,6 +1,6 @@
 # Per-corner seam allowance
 
-Status: proposed — the direction questions were settled in conversation (D1–D5);
+Status: proposed — the direction questions were settled in conversation (D1–D6);
 no open questions block this spec
 Builds on: `.ai/specs/2026-10-22-pieces-and-allowance.md`,
 `.ai/specs/2026-10-20-corner-rounding-tool.md`,
@@ -16,14 +16,15 @@ Pattern schema: `sewcraft.pattern/0.4` unchanged (one optional field)
 ## 📝 TLDR
 
 A rounded corner should carry its **own** allowance width, so the green crescent
-across the round can be 20 mm while its two edges stay at 10 mm, and that
-crescent should be **selectable and editable by itself** on the canvas. Today an
-allowance belongs to a loop edge only, a round is a derived bridge that inherits
-whatever its two edges agree on, and the whole band is one non-interactive path.
-Proposed future behaviour: a piece stores an optional width per corner round, the
-band is split into one region per round, and a click on a crescent edits that
-corner. The width is absolute millimetres; with none set the crescent inherits its
-edges, or splits in half when they disagree.
+across the round can be 20 mm while its two edges stay at 10 mm — and the whole
+green band should be split into regions you can click one at a time, or Cmd/Ctrl
+into a set and edit together. Today an allowance belongs to a loop edge only, a
+round is a derived bridge that inherits whatever its two edges agree on, and the
+whole band is one non-interactive path. Proposed future behaviour: a piece stores
+an optional width per corner round, every edge strip and every round is its own
+region, one click edits one region and a multi-selection edits them in one undo
+step. Corner widths are absolute millimetres; with none set the crescent inherits
+its edges, or splits in half when they disagree.
 
 ## 📝 Problem Statement
 
@@ -60,6 +61,11 @@ edges, or splits in half when they disagree.
   - Nothing in the band is selectable: the band is one even-odd path built from
     the cut and stitch loops (`PatternCanvas.vue:1107-1133`, rendered at
     `:3309-3320`) inside a `pointer-events-none` layer.
+  - **The band is all-or-nothing as an editing surface.** Allowances are edited one
+    edge at a time in the card, or all of them at once with **Apply** on the
+    edges row (`onSetAllAllowances`, `EditorView.vue:997-1014`). There is no way to
+    say "these three edges and this corner to 15 mm" — the edge rows cannot target
+    a subset, and Apply cannot reach a corner at all.
 - **The workaround is lossy:** remove the round, set both edges to the wider
   value, re-round, then remove the extra width from the two edges. Every step
   moves the cut loop, and the corner cannot simply be "doubled".
@@ -81,13 +87,14 @@ edges, or splits in half when they disagree.
 | B | **Store the width on the `CornerRound` record** | The round *is* the corner, so the data reads naturally. Cost: a round is piece-independent geometry (`types.ts:380-404`) that exists before a piece owns its lines and survives the piece being re-cut; the piece owns the loop the width affects, and allowances already live there. Deleting a piece would orphan the value | Rejected — allowance is piece-scoped |
 | C | **Multiplier of the neighbours** (`× 2` stored) | Follows later edge edits. Cost: breaks down exactly when the two edges disagree, which is the state this feature exists to create; a corner would change width when an unrelated edge is edited | Rejected — settled against (D2) |
 | D | **Taper the extra width into the neighbours** | A smoother cut line. Cost: needs a width ramp *inside* a segment, which the document cannot store and the offsetter only approximates; the maker still cuts a step in practice | Rejected — settled against (D1) |
-| E | **Split every region, including edge strips, and make all of them selectable** | The whole band becomes a selection surface. Cost: an edge is already selectable by clicking its line, and a sharp corner's wedge would need an arbitrary owner or a bisector rule; no measured need | Deferred — edges keep today's behaviour (R4) |
+| E | **Make the whole band selectable — edge strips, rounds, and the sharp-corner wedges split by the bisector** | One consistent selection surface for every allowance, so "these three, not the rest" and "all of these to 15 mm" both work without touching the rest of the piece. Cost: the wedge needs an ownership rule, every region must be hit-tested, and the card needs a selection-scoped editor | **Adopted** — the maker asked for it (D4 revised, D6) |
 
 Option A wins because the loop is already a **per-segment** distance field: a
 bridge is a run of boundary segments and nothing in the offsetter requires its
 segments to share a distance. Option B puts the value on the wrong lifetime;
-C and D were ruled out in conversation; E adds selection semantics the ask does
-not need.
+C and D were ruled out in conversation. E is no longer deferred: the ask is to
+select parts of the band, and a region per allowance target is the only way to
+express "these three, not the rest".
 
 ### Behaviour under the recommended option
 
@@ -127,19 +134,31 @@ not need.
    segment count leaves a middle segment, give it to the **wider** half so
    reversing the stored loop direction cannot flip the halves. A zero-length
    bridge does not split and takes the incoming edge's cut distance.
-5. **Regions.** `pieceRoundBands()` returns one entry per round with a band: the
-   crescent as one closed polygon, or two when split. A polygon follows the
-   stitch arc forward and the cut loop back, including the join points the step
-   adds at each end, so its outline is exactly the line the maker would draw to
-   separate one region from the next.
-6. **Selection.** With the Select tool, a press that lands on a crescent (and not
-   on an entity or dimension) selects that corner; the piece card opens its
-   corner row. Moving the pointer over the piece draws every round's separation
-   line; moving over a crescent highlights that one. Nothing new is stored on the
-   document — the selection is view state.
-7. **Editing.** The corner row in the piece card takes a width in millimetres,
-   **Inherit** (remove the entry) and **Double** (write `2 × the current base`).
-   A doubled corner is therefore the literal number 20, not a stored multiplier.
+5. **Regions partition the whole band.** `pieceBandRegions()` returns one region per
+   *allowance target* — an edge strip or a round crescent — each with a closed
+   polygon and its target (`{ kind: 'edge', edge }` or `{ kind: 'round', round }`).
+   An edge region covers its own span plus **half of each sharp-corner wedge**,
+   split from the stitch vertex to the cut join (the miter point, or a bevel's
+   midpoint), so every point of the band belongs to exactly one region. A round
+   region covers the crescent when the corner has a single width; when it splits,
+   **each half joins the adjacent edge's region** (D6), so the split never leaves
+   a dead area. A target with no band is absent, and a compacted or
+   self-intersecting cut loop yields no regions at all.
+6. **Selection: one or many.** With the Select tool, a click on a region replaces
+   the selection with it; Cmd/Ctrl-click toggles it; the existing subtract
+   modifier removes it. Hovering the piece draws every region boundary and
+   highlights the region under the pointer. Entity and dimension picks still win
+   over a region, and the selection is view state — nothing new is stored on the
+   document.
+7. **Editing one or many.** One selected region edits through its own row in the
+   piece card (the per-edge rows that exist today, the new per-corner rows). Two
+   or more show a **Selected regions** editor above them: one width field with a
+   mixed state, **Apply** (one `dispatchGroup`, one undo step), **Double** and
+   **Inherit**. Kind is offered only when every selected target is an edge; once a
+   corner is in the set the field is a **cut width** and each edge's finished width
+   is derived from its own kind (a double-fold edge stores half the entered
+   number), so one number means one cut distance across the set. A doubled corner
+   is therefore the literal number 20, not a stored multiplier.
 8. **Exports and measurements follow automatically.** SVG, assembly shapes, cut
    area and allowance area all read the cut loop (`pieceCutLoop`,
    `export.ts`), so a corner width changes them with no export branch.
@@ -167,15 +186,15 @@ and is not what gets cut.
 
 ```mermaid
 flowchart LR
-  C["PatternCanvas<br/>crescent hover + click"] --> E["EditorView<br/>selectedCornerId (view state)"]
-  E --> P["PiecePanel<br/>Rounded corners rows"]
-  P --> K["command core<br/>set_piece_corner_allowance"]
-  K --> D["PatternDocument<br/>piece.cornerAllowances[]"]
+  C["PatternCanvas<br/>region hover + click + ⌘/Ctrl"] --> E["EditorView<br/>selectedAllowanceTargets (view state)"]
+  E --> P["PiecePanel<br/>target rows + Selected regions"]
+  P --> K["command core<br/>set_piece_allowance / set_piece_corner_allowance"]
+  K --> D["PatternDocument<br/>piece.allowances / cornerAllowances"]
   D --> R["piece.ts<br/>per-segment widths<br/>corner width / shared / split"]
   R --> L["pieceCutLoop<br/>cut loop + joins"]
-  L --> V["PatternCanvas<br/>band + crescent regions"]
+  L --> V["PatternCanvas<br/>band + regions"]
   L --> X["export / assembly / metrics"]
-  R --> B["pieceRoundBands<br/>region polygons"]
+  R --> B["pieceBandRegions<br/>target + polygon per region"]
   B --> V
 ```
 
@@ -206,12 +225,19 @@ cannot render one width and export another.
   - `pieceCutLoop` (`piece.ts:466-476`) passes
     `{ closed: true, tangentStep: TANGENT_STEP }` so a distance change at a
     bridge end or the split midpoint cuts square.
-  - `pieceRoundBands(document, piece): RoundBand[]`, `RoundBand =
-    { round, state: 'own' | 'inherited' | 'split', parts: Vec2[][] }`. Skips
-    rounds whose band is empty, and returns `[]` when the cut loop is compacted
+  - `pieceBandRegions(document, piece): BandRegion[]`, `BandRegion =
+    { target: { kind: 'edge'; edge } | { kind: 'round'; round }, polygon: Vec2[] }`.
+    Every region is one closed polygon, and together they tile the band exactly
+    once: an edge region spans its own segments plus half of each adjacent wedge,
+    a round region spans the crescent, and a split crescent contributes its halves
+    to the two adjacent edge regions instead of a region of its own. A target with
+    no band is absent. Returns `[]` when the cut loop is compacted
     (`cut.vertices.length !== loop.points.length`, the case `pieceCutEdge` already
     guards at `piece.ts:567-569`) or self-intersecting, where the band is drawn as
-    an error and no region is offered.
+    an error and nothing is pickable.
+  - `allowanceRegionState(piece, round)` — `'own' | 'inherited' | 'split' | 'none'`
+    for the card row, kept in this package beside `cornerAllowanceForRound` so the
+    row, the parenthesised hint and the region cannot disagree.
 - `commands.ts` — the new command (below); `requireRoundedAllowancesMatch`,
   `roundedNeighbours`, and the `allowancesAgree` call in `add_corner_round`
   retire. `allowancesAgree` itself goes if nothing else reads it.
@@ -223,34 +249,39 @@ cannot render one width and export another.
 ### Frontend
 
 - `frontend/src/lib/allowance-regions.ts` (new, pure) — `pointInPolygon`,
-  `roundRegionAt(document, piece, world)` returning the round whose crescent
+  `allowanceRegionAt(document, piece, world)` returning the region whose polygon
   contains the point (walk order, first match, stable), and
   `pieceContainsPoint(document, piece, world)` for the hover that reveals the
-  separators. Both are unit-tested; neither touches Vue.
+  region boundaries. Both are unit-tested; neither touches Vue.
 - `frontend/src/lib/pieces.ts` — `PieceCornerRow`
   (`round`, `radius`, `cutWidth: number | null`, `inherited: number | null`,
   `halves: number[]`, `state: 'own' | 'inherited' | 'split' | 'none' | 'broken'`)
-  and `PieceSummary.corners`, built from `cornerRounds()` + `pieceRoundBands()`.
+  and `PieceSummary.corners`, built from `cornerRounds()` + `allowanceRegionState()`.
+  `PieceSummary` also carries the piece's `regions` (target + polygon) so the
+  canvas and the card read one list.
 - `PatternCanvas.vue` —
-  - a `piece-corner-layer` between the band (`:3309`) and the cut loop (`:3554`)
-    drawing each band part as a path: fill inherits the band tint, stroke only
+  - a `piece-region-layer` between the band (`:3309`) and the cut loop (`:3554`)
+    drawing every region as one path: fill inherits the band tint, stroke only
     while the piece is hovered (thin) or the region is hovered/selected (thick);
-  - pointer state `hoveredRoundId` set in `onCanvasPointerMove`
-    (`:2571-2600`) and cleared in `onCanvasPointerLeave` (`:2639-2645`), active
-    only for the Select tool with allowances visible and not `readOnly`;
-  - a press inside a crescent that resolves to no entity/dimension
-    (`hitEntity`, `:1814-1821`) starts the marquee as it does today; the crescent
-    is selected on **release**, and only when the gesture did not become a
-    marquee or a pan, so a drag from inside the band still marquees;
-  - new props/emits `selectedCornerId` / `update:selectedCornerId`.
-- `EditorView.vue` — `selectedCornerId` ref beside `selectedEntityIds`
+  - pointer state `hoveredRegion` set in `onCanvasPointerMove` (`:2571-2600`) and
+    cleared in `onCanvasPointerLeave` (`:2639-2645`), active only for the Select
+    tool with allowances visible and not `readOnly`;
+  - a press inside a region that resolves to no entity/dimension
+    (`hitEntity`, `:1814-1821`) starts the marquee as it does today; on release an
+    unmoved press picks the region with `selectionModeFrom`'s replace/add/subtract
+    rules, so a drag from inside the band still marquees;
+  - new props/emits `selectedAllowanceTargets` /
+    `update:selectedAllowanceTargets`.
+- `EditorView.vue` — `selectedAllowanceTargets` ref beside `selectedEntityIds`
   (`:192`), cleared by Escape, a tool change, a piece tab change, a click that
-  selects something else, and a document change that drops the round; the
-  `set-piece-corner-allowance` handler mirrors `onSetPieceAllowance`
-  (`:1453-1468`).
-- `PiecePanel.vue` — a **Rounded corners** block after *Per-edge allowances*
-  (`:271-320`), rows keyed by round, plus the **Double** and **Inherit** actions.
-  The card is rendered twice (drawer and inspector), so both gain it for free.
+  selects something else, and a document change that drops a selected target; the
+  single-target handlers mirror `onSetPieceAllowance` (`:1453-1468`), and the bulk
+  handler mirrors `onSetAllAllowances` (`:997-1014`) — one `dispatchGroup` mixing
+  `set_piece_allowance` and `set_piece_corner_allowance`.
+- `PiecePanel.vue` — a **Selected regions** editor above the *Per-edge allowances*
+  block (`:271-320`) when two or more regions are selected, and a **Rounded
+  corners** block after it; rows highlight when their target is selected. The card
+  is rendered twice (drawer and inspector), so both gain it for free.
 - `frontend/src/lib/corner-round.ts` — `hasAllowanceMismatch` and its three call
   sites retire, together with the `allowance` rejection reason.
 - `frontend/src/lib/command-ids.ts` — one new id prefix for the command.
@@ -367,39 +398,65 @@ entry.
 ## 📝 UI/UX
 
 Mockup: `assets/per-corner-allowance/mockup-01-regions.html` (four states: today,
-the split crescent, a 20 mm corner beside 10 mm edges, and the split-in-half
-fallback).
+the whole band partitioned with two regions selected, a 20 mm corner beside 10 mm
+edges, and the split fallback with each half owned by its edge).
 
 ### Canvas
 
 | Pointer state | What is drawn |
 | ------------- | ------------- |
-| Select tool, pointer inside the piece's cut loop, no region hovered | Every round's separation line, thin, 0.75 px |
-| Pointer over a crescent | That region fills stronger, 1.5 px outline |
-| Crescent selected | Strongest fill, solid outline; the piece card scrolls to its row |
+| Select tool, pointer inside the piece's cut loop, no region hovered | Every region boundary, thin, 0.75 px — edges, wedges and round tangents alike |
+| Pointer over a region | That region fills stronger, 1.5 px outline |
+| Region selected | Strongest fill, solid outline; the piece card highlights its row |
+| Two or more selected | Same strongest fill on each, and the card opens the selection editor |
 | Drawing tools, or allowances hidden | Nothing: no region outlines, no picks (R3) |
 
-- Click selects the corner and clears the entity/dimension selection (clicks stay
-  exclusive, like every other canvas pick). A modified click is **not** handled
-  here and falls through to the existing behaviour.
+- A click on a region replaces the selection with it and clears the
+  entity/dimension selection, like every other exclusive canvas pick.
+  Cmd/Ctrl-click toggles a region in or out; the subtract modifier removes it.
+  Entity and dimension picks still win, and a modified press that lands on nothing
+  keeps today's behaviour.
 - **Release decides.** A press that resolves no entity or dimension
   (`hitEntity`, `:1814-1821`) behaves as it does today — marquee, or pan on
-  touch — and on pointer-up an unmoved press inside a crescent selects the corner
-  instead. A press that became a marquee or a pan selects nothing, and an entity
-  or dimension hit always wins over a region. The gesture sits after the
+  touch — and on pointer-up an unmoved press inside a region picks it. A press
+  that became a marquee or a pan selects nothing. The gesture sits after the
   `moveMode` return (`:2407-2411`), the cross-piece guard (`:2415-2423`) and the
   constraint and round-corner tool returns (`:2429-2439`), and never runs when
   `readOnly` is true.
 - **Touch.** A tap on empty canvas currently clears the selection and pans
-  (`:2445-2451`). A tap inside a crescent selects the corner instead and does not
-  pan; panning anywhere else is unchanged.
+  (`:2445-2451`). A tap inside a region replaces the selection with that region
+  and does not pan; touch has no modifier, so multi-selection is pointer-only.
+  Panning anywhere else is unchanged.
 - `Escape` clears the selection.
 
 ```
-[Select]  hover the piece ─▶ separators at every round
-          click a crescent ─▶ corner selected, piece card shows its row
-          click elsewhere  ─▶ today's behaviour (select entity, clear, marquee)
+[Select]  hover the piece ─▶ region boundaries everywhere
+          click a strip   ─▶ that edge selected
+          click a crescent─▶ that corner selected (or its edge, when split)
+          ⌘/Ctrl-click    ─▶ add or remove one region from the set
+          drag            ─▶ marquee, as today
 ```
+
+### Piece card — *Selected regions*
+
+Shown when two or more regions are selected, above the per-edge block. Editing one
+region needs no editor: its own row is the editor.
+
+| Selection | Editor |
+| --------- | ------ |
+| One edge | That edge's row in *Per-edge allowances* |
+| One round | That corner's row in *Rounded corners* |
+| Two or more, all edges | Kind · finished width · Apply · Double · Inherit |
+| Two or more, any round | **Cut width** only (each edge derives its finished width from its own kind) · Apply · Double · Inherit |
+
+- **Apply** writes one `dispatchGroup` — one undo step — of
+  `set_piece_allowance` for each selected edge and
+  `set_piece_corner_allowance` for each selected round.
+- **Double** writes `2 × the current base`; with a mixed selection it doubles each
+  target's own base, so a 10 mm edge and a 20 mm corner become 20 and 40.
+- **Inherit** removes the entry where one exists and leaves edges alone, so a
+  mixed selection partly reverts.
+- The count and a mixed-width pill sit in the editor's heading (`3 regions · mixed`).
 
 ### Piece card — *Rounded corners*
 
@@ -417,18 +474,21 @@ fallback).
 - **Inherit** removes the entry; on edges that disagree the row becomes `split`.
 - An invalid or unchanged number snaps back without a command, like the per-edge
   rows (`PiecePanel.vue:127-139`).
-- The selected row is highlighted, so canvas selection and the card agree.
+- A row whose target is selected is highlighted, so canvas selection and the card
+  agree; a split half on the canvas belongs to its edge, so it highlights the edge
+  row rather than the corner row.
 - The row's unit is **cut** millimetres, matching the command param; for a seam or
   single-fold neighbour the two numbers coincide, so the label reads as ordinary
   width in the common case.
 
 ### Accessibility
 
-- The crescents are decorative (`aria-hidden`); the card rows are the keyboard
-  path, each with an `aria-label` naming the radius and state, and the width input
-  keeps the existing `min`/`step` contract.
+- The regions and their boundaries are decorative (`aria-hidden`); the card is the
+  keyboard path, each row with an `aria-label` naming its target and state, the
+  width inputs keeping the existing `min`/`step` contract, and the selection
+  editor reachable because it sits in the card rather than only on the canvas.
 - Selection changes announce through the canvas's existing live region; the
-  separators are never the only signal of a state.
+  region boundaries are never the only signal of a state.
 
 ## 📝 Edge Cases & Failure Scenarios
 
@@ -439,14 +499,19 @@ fallback).
 | Round deleted | Entry removed with it; no stale id |
 | Piece loop replaced | Entries for rounds no longer inside are dropped |
 | Edge deleted (cascades the round) | Entry removed with the round; snapshot undo restores both |
-| Neighbours disagree, no corner width | Two halves, one step at the midpoint; the piece resolves and the band renders |
-| Neighbours disagree and one has no allowance | One half is empty; only the other has a band |
+| Neighbours disagree, no corner width | Two halves, one step at the midpoint; the piece resolves, the band renders, and each half is part of its neighbour's edge region |
+| Neighbours disagree and one has no allowance | One half is empty; the other joins its edge's region |
+| Sharp corner between two edges | The wedge is split from the stitch vertex to the cut join; each half belongs to one edge, so the band has no ownerless area. A bevel join splits at the bevel's midpoint |
+| An edge with no allowance, or a round with none | Its band is empty, so it has no region and nothing to pick |
 | Degenerate or zero-length bridge | No split; the incoming edge's cut distance applies |
 | Self-intersecting cut loop (compacted vertices) | No regions; band and cut loop render exactly as today; no picks |
 | Piece loop does not resolve (a deleted edge) | No regions and read-only corner rows; the card already reports the broken loop |
 | Duplicate entry in a hand-edited document | First entry wins when resolving; the next rewrite drops the extra |
-| Touch device | A tap inside a crescent selects it; a tap anywhere else still clears and pans |
-| Two crescents overlap on a very short edge | Both render; the hit test takes the first in walk order, deterministically |
+| Touch device | A tap inside a region replaces the selection with it; a tap anywhere else still clears and pans. No multi-select on touch |
+| Two regions overlap on a very short edge | Both render; the hit test takes the first in walk order, deterministically |
+| Band interior click | Now selects a region where it used to do nothing; a drag still marquees, so nothing else changes |
+| Mixed selection with a double-fold edge | The editor's number is a cut width, so the edge stores half of it and keeps its fold line; the corner stores it as its cut width |
+| Selected edge or round disappears | Dropped from the selection on the next document change; the rest stay selected |
 | Small width difference (e.g. 12 mm beside 10 mm) | Still a clean step: `tangentStep` returns the two offset points. Without it the miter branch would accept a ≈42 mm spike |
 | Shallow corner (turn ≤ 10°) whose edges differ | The cut now steps instead of a possible miter spike — a deliberate behaviour change of the cut loop, recorded in `geometry-core.md` |
 | Very large corner width, or a tiny round | The cut loop may self-intersect: no regions, the band shows the existing error state, and the value is never silently clamped |
@@ -488,12 +553,26 @@ fallback).
   the equal-allowance rule on purpose; this one supersedes it with the answers in
   *Reversal*. A reviewer who disagrees should say so there, not discover it in a
   diff.
+- **Two units in one editor (medium, product).** A mixed selection stores a cut
+  width on corners and a finished width on edges, so a double-fold edge in the
+  set halves the entered number. The label changes to *cut width* and the rule is
+  stated, but a maker who reads one number as one visible band will see the hem
+  cut at twice the corner's distance.
+- **Wedge ownership is a new geometric rule (medium).** Splitting a sharp wedge
+  from the stitch vertex to the cut join has to tile without gaps or overlaps,
+  including a bevel join with two cut points. A wrong split leaves an unclickable
+  sliver or a region that overlaps its neighbour, so the tests sample points
+  rather than only counting polygons.
+- **The pick surface grows from one band to N regions (low).** N is small (edges
+  plus rounds) and the hit test only runs when no entity was hit, but the release
+  rule and the marquee must be pinned by tests — including the band interior,
+  which used to be a no-op.
 - **Hit-testing steals clicks (low).** Region picks sit behind entity and
   dimension picks, and only a click (not a drag) selects, so existing selection
   and marquee keep working. Both rules need tests, not only a manual pass.
 - **Selection drift (low).** A loop edit, a deleted round or a piece tab change
-  must clear `selectedCornerId`; a stale id would highlight a row that no longer
-  exists.
+  must drop targets from `selectedAllowanceTargets` (and clear it when nothing is
+  left); a stale target would highlight a row that no longer exists.
 - **`double` adjacency (low).** A double-fold edge (cut distance `2 × width`)
   next to a corner width makes a taller step and ends its fold line at the
   tangent; both follow from the per-segment resolver and are covered by tests.
@@ -508,20 +587,22 @@ fallback).
 | D1 | Does a wider corner taper into its neighbours or step at the tangent points? | **Step.** What you cut, and the offsetter already produces it |
 | D2 | Absolute width or a multiplier of the neighbours? | **Absolute millimetres**, stored per round; later edge edits leave it alone |
 | D3 | Two edges with different allowances meet at a round, no corner width | **Split the crescent in half**, each half following its own edge |
-| D4 | Which regions are editable? | **Rounded corners only**; sharp corners stay part of their edge strips |
+| D4 | Which regions are editable? | **The whole band**: every edge strip and every round, with sharp-corner wedges split by the bisector (revised from "rounded corners only" when multi-select was asked for) |
 | D5 | When are the split lines visible? | **On hover** of the piece, not permanently |
+| D6 | Two edges disagree, so the crescent splits. What does a click on one half do? | **Selects the edge on that side** — the half is that edge's allowance continuing around the round, not a new unit |
 
 ## ✅ Resolved assumptions (non-blocking)
 
 | # | Assumption | Why | Status |
 | - | ---------- | --- | ------ |
-| R1 | The corner is edited from a row in the piece card, not a popover on the canvas | The card is already the single home for allowances and is mounted twice (drawer and inspector), so the row costs one block, not a new component | Reversible |
+| R1 | Editing lives in the piece card: one row per target, plus a selection-scoped editor when several are picked — no popover on the canvas | The card is already the single home for allowances and is mounted twice (drawer and inspector), so the work is one block, not a new component | Reversible |
 | R2 | A corner stores a cut width only — no `seam`/`single`/`double` kind, no fold line | `double` already means double fold; offering it next to a "Double" action would read as the same thing. The field is named `cutWidth` so it cannot be mistaken for a finished width. A kind can be added later without breaking the field | Reversible |
 | R3 | Regions and separators are screen-only, drawn only with the Select tool and only while allowances are shown | Keeps the drawing tools clean and keeps the export unchanged; the same rule the band and seam layers already follow | Reversible |
-| R4 | Edge strips stay non-selectable; an edge is still selected by clicking its line | The ask is the corner; a strip pick would compete with line picks for no benefit | Reversible |
-| R5 | No new tool, command category or ribbon entry; the Select tool gains the pick | Smallest surface, and the canvas already owns selection gestures | Reversible |
-| R6 | The corner selection lives in view state, never in the document | It is not part of the pattern; storing it would make undo and autosave churn | Reversible |
-| R7 | Overlapping crescents resolve in walk order | Deterministic and testable; no nearest-centroid search needed | Reversible |
+| R4 | A region click replaces what the band interior used to do (nothing), and entity picks still win | The band was `pointer-events-none`; making the interior a target is the feature. Keeping entity picks first means lines, points and dimensions behave exactly as before | Reversible |
+| R5 | No new tool, command category or ribbon entry; the Select tool gains the pick, and bulk edits reuse `dispatchGroup` | Smallest surface, and the canvas already owns selection gestures; no new bulk command to version | Reversible |
+| R6 | The region selection lives in view state, never in the document | It is not part of the pattern; storing it would make undo and autosave churn | Reversible |
+| R7 | Overlapping regions resolve in walk order | Deterministic and testable; no nearest-centroid search needed | Reversible |
+| R8 | A mixed selection's number is a cut width; kind is offered only when every target is an edge | One number should mean one cut distance across the set, and a corner has no kind to match | Reversible |
 
 ## ✅ Acceptance criteria
 
@@ -532,15 +613,18 @@ fallback).
 2. Rounding a corner whose two edges have different allowances succeeds and
    renders a split crescent; setting one side of an existing round no longer
    throws.
-3. `pieceRoundBands` returns one polygon for an own/inherited crescent and two
-   for a split one, and `[]` for a piece whose cut loop is compacted or
-   self-intersecting.
-4. With the Select tool, hovering the piece reveals separators only at rounds;
-   hovering and clicking a crescent selects it; clicking a line still selects the
-   line; a drag inside the band still marquees; a touch tap selects instead of
-   panning.
-5. The corner row offers a cut width, Inherit and Double, with Double writing
-   twice the base and disabled while the crescent is split, broken or absent.
+3. `pieceBandRegions` tiles the band exactly once: every sampled interior point
+   belongs to one region, each edge region includes half of its two wedges, a
+   split crescent contributes its halves to the adjacent edge regions, and a
+   compacted or self-intersecting cut loop yields none.
+4. With the Select tool, a click on an edge strip selects that edge; a click on a
+   crescent selects that corner; a click on a split half selects the edge on that
+   side; Cmd/Ctrl-click adds and removes; a drag inside the band still marquees; a
+   touch tap replaces the selection; clicking a line still selects the line.
+5. One selected region edits through its own row; two or more open the **Selected
+   regions** editor, where Apply writes one undo step covering both kinds, a
+   double-fold edge in the set stores half the entered number, and Double doubles
+   each target's own base.
 6. `set_piece_corner_allowance` validates its inputs, replaces instead of
    duplicating, no-ops on an unchanged value, and its inverse restores the
    previous value (or removes the entry).
@@ -561,13 +645,13 @@ real — Phases 1–2 land usable data with no canvas surface, so the work can s
 after Phase 2 without a half-built document model.
 
 - **Phase 1 — Model and geometry.** `CornerAllowance`, the `tangentStep` offset
-  option, the per-segment resolver, the split rule, `pieceRoundBands`, and the
-  retirement of the two guards. Nothing renders differently for a piece with no
-  rounds, and nothing non-piece changes at all.
+  option, the per-segment resolver, the split rule, `pieceBandRegions` (edges,
+  wedges, rounds) and the retirement of the two guards. Nothing non-piece
+  changes at all.
 - **Phase 2 — Command and contract.** `set_piece_corner_allowance`, cleanup on
   round/edge/loop changes, three-way command-spec sync at `0.17.0`.
-- **Phase 3 — Surface.** Card rows, canvas regions, hover, selection and the
-  Double/Inherit actions.
+- **Phase 3 — Surface.** Regions, hover, single and multi-selection, the card
+  rows and the selection-scoped editor with Double/Inherit and bulk Apply.
 - **Phase 4 — Docs and verification.** The remaining docs, the compatibility
   note, the full gate and a browser pass with screenshots.
 
@@ -596,10 +680,12 @@ visible and editable; Phase 4 verifies.
    tie-break under a reversed walk), zero-length bridge, and a `double`
    neighbour's fold line stopping at the tangent. `npm run test:coverage` stays at
    100 %.
-5. **Step 5 — Regions.** Add `pieceRoundBands` and build a crescent polygon from
-   the stitch span and the cut vertices, including the step's join points. Tests:
-   one part, two parts, no band, compacted cut loop, self-intersecting cut loop, a
-   round with one side empty.
+5. **Step 5 — Regions.** Add `pieceBandRegions`: an edge region's polygon (its
+   span plus half of each wedge, split from the stitch vertex to the cut join or
+   the bevel midpoint), the round crescent, and the two halves a split contributes
+   to its neighbours. Tests: the regions tile sampled points with no gap and no
+   overlap, a sharp and a bevel join, a round with one side empty, no band,
+   compacted and self-intersecting cut loops.
 6. **Step 6 — Guards.** Remove `requireRoundedAllowancesMatch` (and
    `roundedNeighbours`), and the allowance check in `add_corner_round`. Tests: the
    formerly rejected edits now succeed, every other rejection stays, the retired
@@ -613,24 +699,28 @@ visible and editable; Phase 4 verifies.
    `0.17.0`, add the *Migration from spec 0.16.0* section, widen the
    `set_piece_allowance`/`add_corner_round` wording and the shared validation
    list, and move `CommandSpecTest`'s hard-coded version.
-9. **Step 9 — Frontend data.** `PieceCornerRow` in `PieceSummary`,
-   `allowance-regions.ts` with `pointInPolygon`, `roundRegionAt` and
-   `pieceContainsPoint`, and the `set-piece-corner-allowance` dispatch path in
-   `EditorView`. Tests: row states including broken, point-in-polygon edges,
-   first-match order, the command payload.
-10. **Step 10 — Canvas.** The corner layer, hover, click selection with the
-    marquee threshold, touch-tap handling, the guard ordering, the clear rules and
-    `selectedCornerId` wiring. Component tests: the separator set, the hover, the
-    click, the marquee, the touch tap, the clearing rules, `readOnly` and
-    `moveMode`.
+9. **Step 9 — Frontend data.** `PieceCornerRow` and `PieceSummary.regions`,
+   `allowance-regions.ts` with `pointInPolygon`, `allowanceRegionAt` and
+   `pieceContainsPoint`, the `set-piece-corner-allowance` dispatch path, and the
+   bulk handler that turns a selection plus one value into a `dispatchGroup`. Tests:
+   row states including broken, point-in-polygon edges, first-match order, both
+   command payloads, the mixed-unit derivation and the double-fold halving.
+10. **Step 10 — Canvas.** The region layer, hover, click and Cmd/Ctrl selection,
+    the release rule with the marquee threshold, touch-tap handling, the guard
+    ordering, the clear rules and `selectedAllowanceTargets` wiring. Component
+    tests: the boundary set, the hover, replace/add/subtract, the marquee, the
+    touch tap, the clearing rules, `readOnly` and `moveMode`.
 11. **Step 11 — Card.** The *Rounded corners* block with the cut-width field,
-    **Inherit**, **Double**, the split pill, the broken state and the selected
-    row. Component tests: each state, the Double base, the disabled cases, the
-    snap-back, the selected highlight.
+    **Inherit**, **Double**, the split pill, the broken state and row highlights,
+    plus the *Selected regions* editor with its kind/width rules and Apply.
+    Component tests: each row state, the Double base, the disabled cases, the
+    snap-back, the selected highlight, the mixed selection's label and the bulk
+    dispatch.
 12. **Step 12 — Docs.** `geometry-core.md`, `data-model.md`, `glossary.md`,
     `BACKWARD_COMPATIBILITY.md`.
 13. **Step 13 — Verification.** The full gate plus a browser pass over: a 20 mm
     corner beside 10 mm edges, a 12 mm corner beside 10 mm (the spike case), a
-    split crescent, rounding an unequal pair, selection via canvas and via the
-    card, a `double` neighbour, and a hidden allowance layer. Screenshots attached
-    to the PR when a provider is available.
+    split crescent whose halves select their edges, rounding an unequal pair,
+    single selection from the canvas and from the card, a Cmd/Ctrl multi-selection
+    applied in one step, a `double` neighbour, and a hidden allowance layer.
+    Screenshots attached to the PR when a provider is available.
