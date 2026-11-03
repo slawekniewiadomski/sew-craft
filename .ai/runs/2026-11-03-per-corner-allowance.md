@@ -76,29 +76,31 @@ Phases mirror the spec's Phasing; Steps are the spec's Implementation Plan steps
 
 ## Progress
 
+PR: #103
+
 > Convention: `- [ ]` pending, `- [x]` done. Append ` — <commit sha>` when a step lands. Do not rename step titles.
 
 ### Phase 1: Model and geometry
 
-- [ ] 1.1 Types and helper
-- [ ] 1.2 Bridge identity
-- [ ] 1.3 Offset step option
-- [ ] 1.4 Per-segment resolver
-- [ ] 1.5 Regions
-- [ ] 1.6 Guards
+- [x] 1.1 Types and helper — fe83d71
+- [x] 1.2 Bridge identity — fe83d71
+- [x] 1.3 Offset step option — fe83d71
+- [x] 1.4 Per-segment resolver — fe83d71
+- [x] 1.5 Regions — fe83d71
+- [x] 1.6 Guards — fe83d71
 
 ### Phase 2: Command and contract
 
-- [ ] 2.1 Corner allowance command
-- [ ] 2.2 Command spec sync
+- [x] 2.1 Corner allowance command — fe83d71
+- [x] 2.2 Command spec sync — 61e3ad5
 
 ### Phase 3: Surface
 
-- [ ] 3.1 Frontend data and dispatch
-- [ ] 3.2 Canvas regions and selection
-- [ ] 3.3 Card rows and selection editor
+- [x] 3.1 Frontend data and dispatch — aea98c9
+- [x] 3.2 Canvas regions and selection — aea98c9
+- [x] 3.3 Card rows and selection editor — aea98c9
 
 ### Phase 4: Docs and verification
 
-- [ ] 4.1 Docs
-- [ ] 4.2 Verification
+- [x] 4.1 Docs — 61e3ad5
+- [x] 4.2 Verification — gate green (see PR)
