@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 
-import SidebarButton from './SidebarButton.vue';
+import SidebarButton from '@/components/sidebar/SidebarButton.vue';
 
 describe('SidebarButton', () => {
   it('renders an inline button with its chrome and label', () => {

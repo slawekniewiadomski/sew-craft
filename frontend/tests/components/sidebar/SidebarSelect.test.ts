@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 
-import SidebarSelect from './SidebarSelect.vue';
+import SidebarSelect from '@/components/sidebar/SidebarSelect.vue';
 
 describe('SidebarSelect', () => {
   it('renders the shared picker chrome with its options', () => {

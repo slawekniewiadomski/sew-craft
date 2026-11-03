@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 
-import SidebarSection from './SidebarSection.vue';
+import SidebarSection from '@/components/sidebar/SidebarSection.vue';
 
 describe('SidebarSection', () => {
   it('renders a labelled section with its content', () => {

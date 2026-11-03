@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 
-import SidebarInput from './SidebarInput.vue';
+import SidebarInput from '@/components/sidebar/SidebarInput.vue';
 
 describe('SidebarInput', () => {
   it('renders the shared field chrome and forwards attributes', () => {

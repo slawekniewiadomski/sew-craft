@@ -17,11 +17,11 @@ describe('nextCommandId', () => {
 
     random.mockReturnValue(0.111);
     vi.resetModules();
-    const first = await import('./command-ids');
+    const first = await import('@/lib/command-ids');
 
     random.mockReturnValue(0.999);
     vi.resetModules();
-    const second = await import('./command-ids');
+    const second = await import('@/lib/command-ids');
 
     const before = first.nextCommandId('point');
     const after = second.nextCommandId('point');
