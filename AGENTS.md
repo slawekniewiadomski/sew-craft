@@ -71,6 +71,7 @@ docker compose run --rm app php artisan test
 npm install                          # installs all workspaces
 npm run dev                          # Vite dev server on :5173
 npm test                             # Vitest for every workspace
+npm run test:changed -w @sewcraft/frontend  # Vitest, only files affected by the diff
 npm run test:coverage                # Vitest + v8 coverage (100% gate)
 npm run lint                         # ESLint for every workspace
 npm run build                        # typecheck + production build
