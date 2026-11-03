@@ -2599,7 +2599,13 @@ onBeforeUnmount(() => {
                   class="text-2xs leading-snug text-destructive"
                   :data-testid="`dimension-broken-${dimension.id}`"
                 >
-                  Source {{ dimension.sourceId }} is missing. Type a value or press # to re-link.
+                  <template v-if="dimension.sourceId !== null">
+                    Source {{ dimension.sourceId }} is missing. Type a value or press # to re-link.
+                  </template>
+                  <template v-else>
+                    A variable it uses is missing, so it keeps its last value. Type a value or fix
+                    the formula.
+                  </template>
                 </p>
 
                 <div v-if="dimension.sourceId !== null" class="flex flex-wrap items-center gap-1.5">

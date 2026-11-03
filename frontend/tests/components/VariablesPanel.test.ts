@@ -86,7 +86,7 @@ describe('VariablesPanel', () => {
   it('emits a unit change, a comment and a remove', async () => {
     const wrapper = mountPanel(documentOf([variable()]));
 
-    await wrapper.find('[data-testid="variable-unit-bust"]').setValue('mm');
+    await wrapper.find('[data-testid="variable-unit-bust"]').trigger('click');
     expect(wrapper.emitted('set-unit')?.[0]).toEqual(['bust', 'mm']);
 
     const comment = wrapper.find('[data-testid="variable-comment-bust"]');
@@ -98,6 +98,12 @@ describe('VariablesPanel', () => {
 
     await wrapper.find('[data-testid="variable-remove-bust"]').trigger('click');
     expect(wrapper.emitted('remove')?.[0]).toEqual(['bust']);
+  });
+
+  it('switches a millimetre variable to centimetres', async () => {
+    const wrapper = mountPanel(documentOf([variable({ slug: 'ease', unit: 'mm', value: 8 })]));
+    await wrapper.find('[data-testid="variable-unit-ease"]').trigger('click');
+    expect(wrapper.emitted('set-unit')?.[0]).toEqual(['ease', 'cm']);
   });
 
   it('flags a broken formula and hides mutation controls when read-only', () => {

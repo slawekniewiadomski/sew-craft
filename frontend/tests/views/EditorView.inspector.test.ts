@@ -1631,7 +1631,7 @@ describe('EditorView variables panel', () => {
     await wrapper.find(`[data-testid="variable-comment-${added.slug}"]`).setValue('design ease');
     expect(store.document.variables![1]!.comment).toBe('design ease');
 
-    await wrapper.find('[data-testid="variable-unit-bust"]').setValue('mm');
+    await wrapper.find('[data-testid="variable-unit-bust"]').trigger('click');
     expect(store.document.variables![0]!.value).toBe(880);
 
     await wrapper.find(`[data-testid="variable-remove-${added.slug}"]`).trigger('click');

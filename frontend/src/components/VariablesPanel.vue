@@ -48,8 +48,8 @@ function onValue(slug: string, current: string, event: Event): void {
   emit('set-value', slug, value);
 }
 
-function onUnit(slug: string, event: Event): void {
-  emit('set-unit', slug, (event.target as HTMLSelectElement).value as Unit);
+function onUnit(slug: string, unit: Unit): void {
+  emit('set-unit', slug, unit);
 }
 
 /** Commit a comment edit; empty text clears it. */
@@ -74,18 +74,18 @@ const typeLabel: Record<string, string> = { number: 'Number', formula: 'Formula'
 
     <table v-if="rows.length > 0" class="w-full table-fixed border-collapse text-left">
       <colgroup>
-        <col class="w-[28%]" />
-        <col class="w-24" />
-        <col class="w-14" />
-        <col class="w-16" />
+        <col class="w-[26%]" />
+        <col class="w-[64px]" />
+        <col class="w-[34px]" />
+        <col class="w-[54px]" />
         <col />
       </colgroup>
       <thead>
         <tr class="text-2xs uppercase tracking-[0.07em] text-muted-foreground">
-          <th class="pb-1 pr-1 font-semibold">Name</th>
-          <th class="pb-1 pr-1 font-semibold">Value</th>
-          <th class="pb-1 pr-1 font-semibold">Unit</th>
-          <th class="pb-1 pr-1 font-semibold">Type</th>
+          <th class="pb-1 pr-0.5 font-semibold">Name</th>
+          <th class="pb-1 pr-0.5 font-semibold">Value</th>
+          <th class="pb-1 pr-0.5 font-semibold">Unit</th>
+          <th class="pb-1 pr-0.5 font-semibold">Type</th>
           <th class="pb-1 font-semibold">Comment</th>
         </tr>
       </thead>
@@ -96,7 +96,7 @@ const typeLabel: Record<string, string> = { number: 'Number', formula: 'Formula'
           class="border-t border-border/70 align-middle hover:bg-muted/60"
           :data-testid="`variable-${row.slug}`"
         >
-          <td class="py-1 pr-1">
+          <td class="py-1 pr-0.5">
             <div class="flex items-center gap-1">
               <SidebarInput
                 class="h-6 min-w-0 flex-1 text-xs font-medium"
@@ -116,9 +116,9 @@ const typeLabel: Record<string, string> = { number: 'Number', formula: 'Formula'
               />
             </div>
           </td>
-          <td class="py-1 pr-1">
+          <td class="py-1 pr-0.5">
             <SidebarInput
-              class="h-6 w-full font-mono text-2xs"
+              class="h-6 w-full px-0.5 font-mono text-[10px]"
               :value="row.valueText"
               :readonly="props.readOnly"
               :title="row.resolved"
@@ -127,20 +127,20 @@ const typeLabel: Record<string, string> = { number: 'Number', formula: 'Formula'
               @change="onValue(row.slug, row.valueText, $event)"
             />
           </td>
-          <td class="py-1 pr-1">
-            <SidebarSelect
-              class="h-6 w-full text-2xs"
-              :value="row.unit"
+          <td class="py-1 pr-0.5">
+            <button
+              type="button"
+              class="h-6 w-full rounded-sm border px-0.5 font-mono text-2xs disabled:opacity-50"
               :disabled="props.readOnly"
-              :aria-label="`Unit for variable ${row.slug}`"
+              :title="`Unit ${row.unit}; click to switch`"
+              :aria-label="`Unit for variable ${row.slug}: ${row.unit}`"
               :data-testid="`variable-unit-${row.slug}`"
-              @change="onUnit(row.slug, $event)"
+              @click="onUnit(row.slug, row.unit === 'mm' ? 'cm' : 'mm')"
             >
-              <option value="mm">mm</option>
-              <option value="cm">cm</option>
-            </SidebarSelect>
+              {{ row.unit }}
+            </button>
           </td>
-          <td class="py-1 pr-1">
+          <td class="py-1 pr-0.5">
             <Pill
               :tone="row.broken ? 'danger' : row.type === 'number' ? 'neutral' : 'accent'"
               :data-testid="`variable-type-${row.slug}`"
@@ -150,7 +150,7 @@ const typeLabel: Record<string, string> = { number: 'Number', formula: 'Formula'
           </td>
           <td class="py-1">
             <SidebarInput
-              class="h-6 w-full text-2xs"
+              class="h-6 w-full px-0.5 text-2xs"
               :value="row.comment"
               :readonly="props.readOnly"
               maxlength="120"
