@@ -1605,3 +1605,56 @@ describe('EditorView dimension selection', () => {
     expect(wrapper.find('[data-testid="sidebar-tab-count-properties"]').text()).toBe('1');
   });
 });
+
+describe('EditorView variables panel', () => {
+  const documentWithVariable = (): PatternDocument => ({
+    ...createEmptyDocument(),
+    variables: [{ slug: 'bust', name: 'Bust (cm)', unit: 'cm', value: 88, comment: 'over bust' }],
+  });
+
+  it('adds, renames, edits, re-units and removes a variable from the panel', async () => {
+    const { wrapper, store } = await mountLoaded(documentWithVariable());
+    await openPanel(wrapper, 'variables');
+
+    await wrapper.find('[data-testid="add-variable"]').trigger('click');
+    await nextTick();
+    expect(store.document.variables).toHaveLength(2);
+    const added = store.document.variables![1]!;
+    expect(added.name).toBe('Variable 2');
+
+    await wrapper.find(`[data-testid="variable-name-${added.slug}"]`).setValue('Ease');
+    expect(store.document.variables![1]!.name).toBe('Ease');
+
+    await wrapper.find(`[data-testid="variable-value-${added.slug}"]`).setValue('$bust/10');
+    expect(store.document.variables![1]!.value).toEqual({ expr: '$bust/10', lastKnown: 88 });
+
+    await wrapper.find(`[data-testid="variable-comment-${added.slug}"]`).setValue('design ease');
+    expect(store.document.variables![1]!.comment).toBe('design ease');
+
+    await wrapper.find('[data-testid="variable-unit-bust"]').setValue('mm');
+    expect(store.document.variables![0]!.value).toBe(880);
+
+    await wrapper.find(`[data-testid="variable-remove-${added.slug}"]`).trigger('click');
+    expect(store.document.variables).toHaveLength(1);
+  });
+
+  it('starts from an empty document with no variables list', async () => {
+    const { wrapper, store } = await mountLoaded(createEmptyDocument());
+    await openPanel(wrapper, 'variables');
+    expect(wrapper.text()).toContain('No variables yet.');
+
+    await wrapper.find('[data-testid="add-variable"]').trigger('click');
+    await nextTick();
+    expect(store.document.variables?.[0]?.name).toBe('Variable 1');
+  });
+
+  it('keeps the document unchanged when a formula does not resolve', async () => {
+    const { wrapper, store } = await mountLoaded(documentWithVariable());
+    await openPanel(wrapper, 'variables');
+
+    const before = store.document.variables![0]!.value;
+    await wrapper.find('[data-testid="variable-value-bust"]').setValue('$missing + 1mm');
+    expect(store.document.variables![0]!.value).toEqual(before);
+    expect(wrapper.text()).toContain('unknown variable $missing');
+  });
+});

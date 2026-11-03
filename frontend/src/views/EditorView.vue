@@ -69,6 +69,7 @@ import SidebarSection from '@/components/sidebar/SidebarSection.vue';
 import SidebarSelect from '@/components/sidebar/SidebarSelect.vue';
 import SidebarStat from '@/components/sidebar/SidebarStat.vue';
 import SelectionSummary from '@/components/SelectionSummary.vue';
+import VariablesPanel from '@/components/VariablesPanel.vue';
 import UpgradeDocumentDialog from '@/components/UpgradeDocumentDialog.vue';
 import { useCommandBus } from '@/composables/use-command-bus';
 import { useSidebarLayout } from '@/composables/use-sidebar-layout';
@@ -76,6 +77,7 @@ import { defaultAllowanceSummary } from '@/lib/allowance-defaults';
 import { parseAllowanceWidth } from '@/lib/allowance-width';
 import { buildCircleCommands, type CircleEndpoint } from '@/lib/circle-tool';
 import { nextCommandId } from '@/lib/command-ids';
+import type { VariableValueInput } from '@/lib/variables';
 import {
   applyConstraintPick,
   constraintInitialValue,
@@ -369,6 +371,7 @@ const panelCounts = computed<Partial<Record<PanelId, number>>>(() => ({
   outline: edges.value.length,
   dimensions: dimensions.value.length,
   constraints: otherConstraints.value.length,
+  variables: (pattern.value.variables ?? []).length,
 }));
 
 const EDGE_KIND_LABELS: Record<'line' | 'curve' | 'arc' | 'circle', string> = {
@@ -628,6 +631,62 @@ const cornerRoundInitial = computed(() =>
     ? ''
     : formatCornerRadius(defaultCornerRadius(cornerRoundMax.value)),
 );
+
+/** Add a variable with a unique placeholder name; the panel renames it inline. */
+function onAddVariable(): void {
+  const count = (pattern.value.variables ?? []).length + 1;
+  run(() =>
+    dispatch({
+      id: nextCommandId('variable'),
+      type: 'set_variable',
+      params: { name: `Variable ${count}`, value: 0 },
+    }),
+  );
+}
+
+function onRenameVariable(slug: string, name: string): void {
+  run(() =>
+    dispatch({
+      id: nextCommandId('variable'),
+      type: 'update_variable',
+      params: { slug, name },
+    }),
+  );
+}
+
+function onSetVariableValue(slug: string, value: VariableValueInput): void {
+  run(() =>
+    dispatch({
+      id: nextCommandId('variable'),
+      type: 'update_variable',
+      params: { slug, value },
+    }),
+  );
+}
+
+function onSetVariableUnit(slug: string, unit: 'mm' | 'cm'): void {
+  run(() =>
+    dispatch({
+      id: nextCommandId('variable'),
+      type: 'update_variable',
+      params: { slug, unit },
+    }),
+  );
+}
+
+function onSetVariableComment(slug: string, comment: string | null): void {
+  run(() =>
+    dispatch({
+      id: nextCommandId('variable'),
+      type: 'update_variable',
+      params: { slug, comment },
+    }),
+  );
+}
+
+function onRemoveVariable(slug: string): void {
+  run(() => dispatch({ id: nextCommandId('variable'), type: 'remove_variable', params: { slug } }));
+}
 
 function run(action: () => void): boolean {
   try {
@@ -2555,6 +2614,19 @@ onBeforeUnmount(() => {
               icon="dimension"
               message="No dimensions yet."
               hint="Pick the dimension tool in the ribbon, then two points on the canvas."
+            />
+          </template>
+
+          <template #variables>
+            <VariablesPanel
+              :document="pattern"
+              :read-only="editor.readOnly"
+              @create="onAddVariable"
+              @rename="onRenameVariable"
+              @set-value="onSetVariableValue"
+              @set-unit="onSetVariableUnit"
+              @set-comment="onSetVariableComment"
+              @remove="onRemoveVariable"
             />
           </template>
 
