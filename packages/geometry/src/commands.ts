@@ -108,10 +108,10 @@ export const DEFAULT_SEAM_ALLOWANCE = 10;
 function requireLengthParam(
   document: PatternDocument,
   commandType: CommandType,
-  param: Param,
+  param: ParamInput,
   label: string,
 ): Param {
-  if (!isExpressionParam(param)) {
+  if (typeof param === 'number') {
     if (!Number.isFinite(param) || param <= 0) {
       throw new CommandValidationError(
         commandType,
@@ -221,7 +221,7 @@ export interface AddConstraintParams {
   /** The piece the constraint belongs to. Required by schema 0.3 commands. */
   piece?: EntityId;
   /** A distance's driving value: millimetres or a formula; an angle's radians. */
-  value?: Param;
+  value?: ParamInput;
   /** Source dimension id for a `distance` constraint; exclusive with `value`. */
   reference?: EntityId;
   /** Measurement axis for `distance` constraints; ignored for other types. */
@@ -233,7 +233,7 @@ export interface AddConstraintParams {
 export interface UpdateConstraintParams {
   id: EntityId;
   /** A value or formula sets it; `null` clears a distance to driven. */
-  value?: Param | null;
+  value?: ParamInput | null;
   /** A source dimension id links; `null` unlinks and keeps the current value. */
   reference?: EntityId | null;
   orientation?: DimensionOrientation;
@@ -246,7 +246,7 @@ export interface RemoveConstraintParams {
 
 export interface AddSeamAllowanceParams {
   edge: EntityId;
-  width?: Param;
+  width?: ParamInput;
   side?: SeamSide;
 }
 
@@ -256,19 +256,19 @@ export interface RemoveSeamAllowanceParams {
 
 export interface SetSeamAllowanceParams {
   id: EntityId;
-  width?: Param;
+  width?: ParamInput;
   side?: SeamSide;
 }
 
 export interface AddCornerRoundParams {
   first: EntityId;
   second: EntityId;
-  radius: Param;
+  radius: ParamInput;
 }
 
 export interface SetCornerRoundRadiusParams {
   id: EntityId;
-  radius: Param;
+  radius: ParamInput;
 }
 
 export interface RemoveCornerRoundParams {
@@ -329,7 +329,7 @@ export interface SetPieceDefaultAllowanceParams {
   /** `inherit` drops the override, `none` stores an explicit null, `preset` sets one. */
   mode: 'inherit' | 'none' | 'preset';
   /** Finished width in millimetres; required for `preset`. */
-  width?: Param;
+  width?: ParamInput;
   /** Omitted means `seam`. */
   kind?: AllowanceKind;
 }
@@ -417,7 +417,7 @@ export interface DeletePieceParams {
 
 export interface SetDefaultAllowanceParams {
   /** Finished width in millimetres; required unless `remove` is true. */
-  width?: Param;
+  width?: ParamInput;
   /** Omitted means `seam`. */
   kind?: AllowanceKind;
   /** Clear the default so new pieces start with no allowance. */
@@ -428,7 +428,7 @@ export interface SetPieceAllowanceParams {
   piece: EntityId;
   edge: EntityId;
   /** Finished width in millimetres; required unless `remove` is true. */
-  width?: Param;
+  width?: ParamInput;
   kind?: AllowanceKind;
   /** Remove the edge's allowance entirely. */
   remove?: boolean;
@@ -1361,7 +1361,8 @@ function applyAddConstraint(
     else requireDraftingPoint(document, id, 'add_constraint');
   }
 
-  let storedValue = value;
+  let storedValue: Param | undefined =
+    value === undefined ? undefined : typeof value === 'number' ? value : undefined;
   if (type === 'distance' && value !== undefined) {
     storedValue = requireLengthParam(document, 'add_constraint', value, 'distance value');
   }
@@ -1509,7 +1510,7 @@ function applyUpdateConstraint(
     );
   }
 
-  let nextValue = value;
+  let nextValue: Param | null | undefined;
   if (value === null) {
     if (constraint.type !== 'distance') {
       throw new CommandValidationError(
@@ -1517,12 +1518,15 @@ function applyUpdateConstraint(
         'only distance constraints can be cleared to driven',
       );
     }
-  } else if (value !== undefined) {
-    if (constraint.type === 'distance') {
-      nextValue = requireLengthParam(document, 'update_constraint', value, 'distance value');
-    } else if (typeof value !== 'number' || !Number.isFinite(value)) {
-      throw new CommandValidationError('update_constraint', 'angle requires a finite value');
-    }
+    nextValue = null;
+  } else if (value === undefined) {
+    nextValue = undefined;
+  } else if (constraint.type === 'distance') {
+    nextValue = requireLengthParam(document, 'update_constraint', value, 'distance value');
+  } else if (typeof value === 'number' && Number.isFinite(value)) {
+    nextValue = value;
+  } else {
+    throw new CommandValidationError('update_constraint', 'angle requires a finite value');
   }
   if (orientation !== undefined) {
     if (constraint.type !== 'distance') {
@@ -1755,7 +1759,7 @@ function requireSeamSide(
 function requireSeamWidth(
   document: PatternDocument,
   commandType: 'add_seam_allowance' | 'set_seam_allowance',
-  width: Param | undefined,
+  width: ParamInput | undefined,
 ): number {
   const param = width ?? DEFAULT_SEAM_ALLOWANCE;
   const resolved = requireLengthParam(document, commandType, param, 'width');
@@ -2353,7 +2357,7 @@ function resolveCreateAllowance(
 function requireAllowancePreset(
   document: PatternDocument,
   commandType: CommandType,
-  preset: AllowancePreset,
+  preset: { width: ParamInput; kind?: AllowanceKind },
 ): AllowancePreset {
   if (typeof preset !== 'object' || preset === null) {
     throw new CommandValidationError(

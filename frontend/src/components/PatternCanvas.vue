@@ -86,6 +86,7 @@ import {
   type CornerRoundLabel,
   type CornerRoundPicks,
 } from '@/lib/corner-round';
+import { formulaIssue } from '@/lib/formula';
 import {
   dimensionAccessibleName,
   dimensionLabelWidth,
@@ -2215,11 +2216,17 @@ function selectReference(id: EntityId): void {
   emit('update-dimension', editing.id, { reference: id });
 }
 
-/** Enter: apply a set, driven, unlink or reference edit; keep a typo editable. */
+/** A formula is applicable only when it resolves; a typo stays editable. */
+function formulaEditIsUsable(expr: string): boolean {
+  return formulaIssue(props.document, expr) === null;
+}
+
+/** Enter: apply a set, formula, driven, unlink or reference edit; keep a typo editable. */
 function applyDimensionEdit(): void {
   const editing = editingDimension.value!;
   const edit = parseDimensionEdit(editing.value);
   if (edit.kind === 'invalid') return;
+  if (edit.kind === 'formula' && !formulaEditIsUsable(edit.expr)) return;
 
   const patch = dimensionPatchForEdit(edit, optionsFor(editing.id));
   if (patch === null) return;
@@ -2238,6 +2245,7 @@ function finishDimensionEdit(): void {
   const edit = parseDimensionEdit(editing.value);
   editingDimension.value = null;
   if (edit.kind === 'invalid') return;
+  if (edit.kind === 'formula' && !formulaEditIsUsable(edit.expr)) return;
 
   const patch = dimensionPatchForEdit(edit, optionsFor(editing.id));
   if (patch !== null) emit('update-dimension', editing.id, patch);

@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import type { AllowanceKind, EntityId, PatternDocument, Piece } from '@sewcraft/geometry';
+import type {
+  AllowanceKind,
+  EntityId,
+  ParamInput,
+  PatternDocument,
+  Piece,
+} from '@sewcraft/geometry';
 import { computed, ref, watch } from 'vue';
 
 import PieceParametersForm from '@/components/PieceParametersForm.vue';
@@ -58,7 +64,7 @@ const emit = defineEmits<{
     value:
       | { mode: 'inherit' }
       | { mode: 'none' }
-      | { mode: 'preset'; width: number; kind: AllowanceKind },
+      | { mode: 'preset'; width: ParamInput; kind: AllowanceKind },
   ];
   'set-piece-allowance': [
     piece: EntityId,

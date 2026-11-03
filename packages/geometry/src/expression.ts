@@ -389,6 +389,15 @@ export function resolveVariable(
   }
 }
 
+/** A formula's millimetres, or `null` when it no longer resolves to a length. */
+export function resolveExpression(scope: VariableScope, expr: string): number | null {
+  try {
+    return evaluateLength(expr, { lookup: (slug) => resolveVariable(scope, slug) });
+  } catch {
+    return null;
+  }
+}
+
 /**
  * A parameter's millimetres. A literal is already millimetres; a formula resolves
  * through the document's variables, and falls back to the number it last resolved

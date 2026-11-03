@@ -2148,6 +2148,39 @@ describe('PatternCanvas', () => {
     expect(wrapper.emitted('update-dimension')).toBeUndefined();
   });
 
+  it('commits a formula and keeps an unresolved one editable', async () => {
+    const document: PatternDocument = {
+      ...dimensionDoc,
+      variables: [{ slug: 'bust', name: 'Bust', unit: 'mm', value: 880 }],
+    };
+    const wrapper = mountCanvas({ document });
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await flushPromises();
+
+    await wrapper.find('[data-testid="dimension-editor"]').setValue('$bust / 4');
+    await wrapper.find('[data-testid="dimension-editor"]').trigger('keydown', { key: 'Enter' });
+    await nextTick();
+    expect(wrapper.emitted('update-dimension')).toEqual([['w', { value: { expr: '$bust / 4' } }]]);
+
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await flushPromises();
+    await wrapper.find('[data-testid="dimension-editor"]').setValue('$gone / 4');
+    await wrapper.find('[data-testid="dimension-editor"]').trigger('keydown', { key: 'Enter' });
+    await nextTick();
+    expect(wrapper.emitted('update-dimension')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="dimension-editor"]').trigger('keydown', { key: 'Escape' });
+    await nextTick();
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await flushPromises();
+    await wrapper.find('[data-testid="dimension-editor"]').setValue('$gone / 4');
+    await wrapper.find('[data-testid="dimension-editor"]').trigger('blur');
+    await nextTick();
+    expect(wrapper.emitted('update-dimension')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="dimension-editor"]').exists()).toBe(false);
+  });
+
   it('commits a valid blur and discards an invalid one', async () => {
     const wrapper = mountCanvas({ document: dimensionDoc });
 

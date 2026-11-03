@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   applyCommand,
   createEmptyDocument,
+  dimensionState,
+  dimensionValue,
   normalizeDocument,
   pieceMetrics,
   resolveParam,
@@ -207,6 +209,47 @@ describe('variables in the document', () => {
     const legacy = { ...createEmptyDocument(), schema: 'sewcraft.pattern/0.4' };
     const normalized = normalizeDocument(legacy as PatternDocument);
     expect(normalized.variables).toBeUndefined();
+  });
+});
+
+describe('a broken formula dimension', () => {
+  const entities = [point('a', 0, 0), point('b', 100, 0)];
+
+  function broken(): PatternDocument {
+    return documentOf(entities, [], {
+      constraints: [{ id: 'd', type: 'distance', a: 'a', b: 'b', value: formula('$gone / 4', 55) }],
+    });
+  }
+
+  it('reports broken, shows its last number and drives nothing', () => {
+    const document = broken();
+    const constraint = document.constraints[0]!;
+    if (constraint.type !== 'distance') throw new Error('expected a distance');
+
+    expect(dimensionState(document, constraint)).toBe('broken');
+    expect(dimensionValue(document, constraint)).toBe(55);
+
+    const solved = solveDocument(document).document.entities.filter(
+      (entity): entity is PointEntity => entity.kind === 'point',
+    );
+    expect(solved[1]!.x).toBeCloseTo(100, 6);
+  });
+
+  it('reports no value for a stored literal that cannot drive', () => {
+    const document = documentOf(entities, [], {
+      constraints: [{ id: 'd', type: 'distance', a: 'a', b: 'b', value: 0 }],
+    });
+    const constraint = document.constraints[0]!;
+    if (constraint.type !== 'distance') throw new Error('expected a distance');
+    expect(dimensionValue(document, constraint)).toBeNull();
+  });
+
+  it('resolves again once the variable exists', () => {
+    const document: PatternDocument = { ...broken(), variables: [variable('gone', 400)] };
+    const constraint = document.constraints[0]!;
+    if (constraint.type !== 'distance') throw new Error('expected a distance');
+    expect(dimensionState(document, constraint)).toBe('set');
+    expect(dimensionValue(document, constraint)).toBe(100);
   });
 });
 

@@ -24,6 +24,7 @@ import {
   seamForEdge,
   toSvgPiece,
   usesCutEdgeAnchor,
+  type ParamInput,
 } from '@sewcraft/geometry';
 import type {
   AddConstraintParams,
@@ -1530,7 +1531,9 @@ function onSetPieceAllowance(
 function onSetPieceDefault(
   piece: EntityId,
   value:
-    { mode: 'inherit' } | { mode: 'none' } | { mode: 'preset'; width: number; kind: AllowanceKind },
+    | { mode: 'inherit' }
+    | { mode: 'none' }
+    | { mode: 'preset'; width: ParamInput; kind: AllowanceKind },
 ): void {
   run(() =>
     dispatch({
@@ -1650,7 +1653,7 @@ function applyCornerRound(radius: number): void {
   if (applied) exitCornerRound();
 }
 
-function setCornerRoundRadius(id: EntityId, radius: number): void {
+function setCornerRoundRadius(id: EntityId, radius: ParamInput): void {
   run(() =>
     dispatch({
       id: nextCommandId('corner-round-radius'),

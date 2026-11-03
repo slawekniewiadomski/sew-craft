@@ -96,11 +96,12 @@ describe('parseDimensionEdit', () => {
     expect(parseDimensionEdit(' 12.5 ')).toEqual({ kind: 'set', value: 12.5 });
   });
 
-  it('rejects zero, negative, infinite and non-numeric input', () => {
+  it('rejects zero and negative numbers and reads other text as a formula', () => {
     expect(parseDimensionEdit('0')).toEqual({ kind: 'invalid' });
     expect(parseDimensionEdit('-5')).toEqual({ kind: 'invalid' });
-    expect(parseDimensionEdit('Infinity')).toEqual({ kind: 'invalid' });
-    expect(parseDimensionEdit('abc')).toEqual({ kind: 'invalid' });
+    expect(parseDimensionEdit('abc')).toEqual({ kind: 'formula', expr: 'abc' });
+    expect(parseDimensionEdit('= $bust/4')).toEqual({ kind: 'formula', expr: '$bust/4' });
+    expect(parseDimensionEdit('=')).toEqual({ kind: 'invalid' });
   });
 
   it('maps a leading # to a reference search text', () => {
@@ -185,6 +186,9 @@ describe('dimension state presentation', () => {
     ];
 
     expect(dimensionPatchForEdit({ kind: 'set', value: 10 }, options)).toEqual({ value: 10 });
+    expect(dimensionPatchForEdit({ kind: 'formula', expr: '$bust/4' }, options)).toEqual({
+      value: { expr: '$bust/4' },
+    });
     expect(dimensionPatchForEdit({ kind: 'driven' }, options)).toEqual({ value: null });
     expect(dimensionPatchForEdit({ kind: 'unlink' }, options)).toEqual({ reference: null });
     expect(dimensionPatchForEdit({ kind: 'reference', text: 'A' }, options)).toEqual({
