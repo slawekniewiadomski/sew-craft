@@ -36,12 +36,14 @@ half of 012 stays deferred.
    map keyed by entity and field name that can silently desync.
 4. **Formulas use a stable machine slug, not the display name.** A variable's
    `name` is free-form (`Bust (cm)`); its `slug` is minted once at creation
-   (`v_bust_cm`) and never changes, so renaming is a pure rename and never
-   re-parses a formula. The UI shows names in the panel, slugs inside formulas,
-   and the picker inserts the slug.
-5. **Variables may be defined with expressions too**, so `v_ease = v_bust/10` and
-   `v_bodice = v_bust/4 + v_ease` work. Cycles are possible for the first time
-   and are detected per evaluation, not per document.
+   (`bust_cm`) and never changes, so renaming is a pure rename and never
+   re-parses a formula. Formulas write it with a `$` sigil (`$bust_cm`), the way a
+   spreadsheet or a CAD expression field does: the sigil marks the token as a
+   reference instead of a name the parser has to guess at. The UI shows names in
+   the panel, `$slug` inside formulas, and the picker inserts the token.
+5. **Variables may be defined with expressions too**, so `$ease = $bust/10` and
+   `$bodice = $bust/4 + $ease` work. Cycles are possible for the first time and
+   are detected per evaluation, not per document.
 6. **A variable declares its unit — mm or cm — and the evaluator does dimension
    algebra.** A bare numeric literal is dimensionless; a suffixed one (`5cm`,
    `2 mm`) carries a length; a variable is a length. Addition needs equal
@@ -78,7 +80,7 @@ half of 012 stays deferred.
 - Units bring dimension checking into every write: a mismatched formula is
   rejected with a readable reason, so the document never stores a length the
   solver would read as an area. This is the main new source of validation code.
-- Ratios are possible and useful (`v_ease_ratio = v_ease/v_bust`), but they are
+- Ratios are possible and useful (`$ease_ratio = $ease/$bust`), but they are
   legal only as variables, not as distances, radii or allowances.
 - Formulas are an automation surface only in the arithmetic sense: no name in the
   grammar resolves to anything but a quantity, and a slug is a lookup key, not a
@@ -97,8 +99,8 @@ half of 012 stays deferred.
 - **Label-only units, no conversion.** Cheapest, but `Bust (cm) = 88` would mean
   88 mm while reading as centimetres, which is a trap in a drafting tool.
 - **Convert at the edges only, no dimension algebra.** Values convert to mm at
-  entry and formulas are dimensionless, which silently accepts `v_bust_cm *
-v_waist` and lets the maker build a length out of two lengths.
+  entry and formulas stay dimensionless, so `$bust_cm * $waist` silently reads as
+  a length instead of an area.
 - **Reuse an OSS expression library** (mathjs, expr-eval). Rejected: the package
   must stay dependency-light and the supported grammar is a few hundred lines.
 - **Expressions on literally every number**, including point coordinates and

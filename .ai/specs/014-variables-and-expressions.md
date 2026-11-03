@@ -11,7 +11,7 @@ Pattern schema: `0.4` → `0.5`
 ## 📝 TLDR
 
 A drafter names a measurement once (`Bust (cm) = 88`) and writes
-`v_bust_cm/4 + 2cm` wherever a length, radius or allowance is set. Variables live
+`$bust_cm/4 + 2cm` wherever a length, radius or allowance is set. Variables live
 in the pattern document with their own unit (mm or cm), formulas use a stable slug
 rather than the display name, and every parameter field becomes
 `number | { expr, lastKnown }`. The evaluator does dimension algebra, so adding a
@@ -72,7 +72,7 @@ export type Unit = 'mm' | 'cm';
 
 /** A named value in the document, referenced by formulas through its slug. */
 export interface Variable {
-  /** Stable machine identifier in formulas: `v_` + slug of the name at creation. */
+  /** Stable identifier; formulas write it with a `$` sigil: `$bust_cm`. */
   slug: string;
   /** Free-form display name, trimmed, 1–60 characters, unique case-insensitively. */
   name: string;
@@ -95,11 +95,13 @@ export type Param = number | { expr: string; lastKnown: number };
   displays, so switching cm → mm converts the shown number, not the geometry.
 - A variable whose formula evaluates to a ratio shows no unit and is marked
   `Ratio` in the type column; it cannot be used where a length is required.
-- `slug` grammar: `^v_[a-z0-9_]{1,40}$`. Minted at creation from `name`:
-  ASCII-fold, lowercase, any run of non-alphanumerics → `_`, trim leading and
-  trailing `_`, prefix `v_`, truncate to 40 characters after the prefix, then
-  de-duplicate with `_2`, `_3`… Slugs never change after creation, including on
-  rename and on delete-and-recreate of a different variable.
+- `slug` grammar: `^[a-z][a-z0-9_]{0,39}$`, stored **without** the `$`; formulas
+  write `$` + slug (`$bust_cm`). Minted at creation from `name`: ASCII-fold,
+  lowercase, any run of non-alphanumerics → `_`, trim leading and trailing `_`,
+  prefix `v` when the name starts with a digit or is empty, truncate to 40
+  characters, then de-duplicate with `_2`, `_3`… Slugs never change after
+  creation, including on rename and on delete-and-recreate of a different
+  variable.
 - `name` must be unique case-insensitively, or `set_variable` is rejected. Slugs
   are always unique by construction.
 - `comment` is optional and carries no uniqueness or resolution rule; an empty
@@ -107,8 +109,8 @@ export type Param = number | { expr: string; lastKnown: number };
 - `lastKnown` is written by every command that stores an expression, and is never
   recomputed on read; it is the value the parameter keeps if its formula later
   breaks.
-- Rejected as variables: `slugs` that would collide with a JS keyword are
-  impossible because of the `v_` prefix, so the grammar needs no keyword list.
+- Slugs can never collide with a JS keyword or with a unit, because a formula
+  token always starts with `$`, so the grammar needs no keyword list.
 
 ## 📝 Expression Language
 
@@ -121,30 +123,30 @@ factor  := ('+' | '-') factor | primary
 primary := number unit? | slug | '(' expr ')'
 number  := [0-9]+ ('.' [0-9]+)?        // no exponent, no sign (unary minus is a node)
 unit    := 'mm' | 'cm'                  // case-insensitive, space optional
-slug    := 'v_' [a-z0-9_]+
+slug    := '$' [a-z] [a-z0-9_]*        // $bust_cm
 ```
 
-- Whitespace is insignificant. Anything else — `,`, `%`, `^`, `**`, `in`, an
-  identifier without the `v_` prefix, a trailing operator, unbalanced
+- Whitespace is insignificant. Anything else — `,`, `%`, `^`, `**`, `in`, a bare
+  identifier without `$` (`bust_cm`), a trailing operator, unbalanced
   parentheses — is a `CommandValidationError` naming the offset.
 - **Quantities.** Every sub-expression evaluates to a value in canonical
   millimetres plus an integer length exponent: `0` is a ratio, `1` a length, `2`
   an area. A suffixed literal (`5cm` = 50) and a variable both carry exponent 1;
   a bare literal is exponent 0.
 - **Dimension rules.** `+` and `-` require equal exponents and convert cm to mm
-  first (`v_bust_cm/4 + 2cm` is legal, `v_bust_cm/4 + 2` is not: a length plus a
+  first (`$bust_cm/4 + 2cm` is legal, `$bust_cm/4 + 2` is not: a length plus a
   plain number). `*` and `/` add and subtract exponents. Unary `-` keeps the
   exponent.
 - A variable's value may be a length or a ratio; anything else
-  (`v_a * v_b`, an area) is rejected. A parameter always requires a length, so
-  `update_constraint { value: { expr: 'v_bust_cm/v_waist' } }` is rejected with
+  (`$a * $b`, an area) is rejected. A parameter always requires a length, so
+  `update_constraint { value: { expr: '$bust_cm/$waist' } }` is rejected with
   "expected a length, got a ratio".
 - Evaluation is left-associative IEEE-754 double arithmetic, in millimetres.
 - `/` by zero yields a non-finite result, which is rejected at write time, so a
   stored `lastKnown` is always finite.
 - Recursion depth is bounded at 64 nested parentheses or unary signs, so a
   hand-crafted document cannot exhaust the stack.
-- Variable values use the same grammar, so `v_ease = v_bust_cm/10` is legal. A
+- Variable values use the same grammar, so `$ease = $bust_cm/10` is legal. A
   slug repeating in its own chain (`a → b → a`) is a **cycle**: rejected at write
   time by walking the chain with a `visited` set, the same shape
   `resolveConstraintValue` uses.
@@ -161,8 +163,9 @@ New commands (all in `packages/geometry/src/commands.ts` `Command` union,
 
 ### `set_variable`
 
-- params: `slug: string`, `value: number | { expr }`, `unit?: 'mm' | 'cm'`
-  (default `mm`), `comment?: string` — or `name` with `value` to mint a slug
+- params: `slug: string` (bare, no `$`), `value: number | { expr }`,
+  `unit?: 'mm' | 'cm'` (default `mm`), `comment?: string` — or `name` with
+  `value` to mint a slug
 - Validates the slug grammar, name uniqueness, the comment length, and the formula
   (parses, slugs exist, no cycle, dimensions agree, result is a length or ratio,
   finite, positive). Stores `{ expr, lastKnown }` for a formula.
@@ -217,8 +220,8 @@ New commands (all in `packages/geometry/src/commands.ts` `Command` union,
   | Name       | Value            | Unit | Type    | Comment          |
   | ---------- | ---------------- | ---- | ------- | ---------------- |
   | Bust (cm)  | 88               | cm   | Number  | Body measurement |
-  | Ease       | `v_bust_cm/10`   | mm   | Formula | Design ease      |
-  | Fit ratio  | `v_ease/v_bust`  | —    | Ratio   | Used for grading |
+  | Ease       | `$bust_cm/10`   | mm   | Formula | Design ease      |
+  | Fit ratio  | `$ease/$bust`  | —    | Ratio   | Used for grading |
 
   - `Name`, `Unit` and `Comment` are inline-editable cells; `Value` is the same
     formula-aware input the inspectors use; `Type` is derived, never stored:
@@ -230,7 +233,8 @@ New commands (all in `packages/geometry/src/commands.ts` `Command` union,
     number without moving the geometry, so it commits on change, not on blur.
   - The value cell shows the formula text, so the table reads as the source of
     truth; a formula's resolved millimetres appear on hover/focus and in the
-    inspector, not as a column.
+    inspector, not as a column. The name cell's title carries the token, so
+    `Bust (cm)` reveals `$bust_cm` without a second column.
   - Columns are sized name 1fr, value 84px, unit 48px, type 56px, comment 1fr.
     At the 320 px default the comment truncates first; at the 240 px minimum the
     comment collapses to an icon with a tooltip and `Type` collapses to its
@@ -238,19 +242,19 @@ New commands (all in `packages/geometry/src/commands.ts` `Command` union,
   - Row actions: delete on the row (an icon shown on hover and focus), and a
     `+ New` button in the section heading. There is no separate detail pane.
   - Empty state (via `SidebarEmpty`) names the idea with one example:
-    "Name a measurement once — `Bust (cm) = 88`, then use `v_bust_cm/4 + 2cm` in a
+    "Name a measurement once — `Bust (cm) = 88`, then use `$bust_cm/4 + 2cm` in a
     dimension."
 - **Formula entry** — the dimension value box (and radius/allowance inputs)
   becomes a text input. Typing a number behaves exactly as today. Typing anything
   containing an operator, a letter or `(` switches the field to formula mode on
   commit; `=` as the first character forces it. A variable picker next to the
-  field inserts a slug at the caret.
+  field shows `Bust (cm) · $bust_cm` and inserts the `$` token at the caret.
 - **Live result** — under a formula field, the resolved millimetres at the
   existing 1 µm display precision. Errors render inline and block the commit,
-  naming the offset: `unknown variable v_bst at 4`.
-- **Unknown slug** — an inline error plus a one-click "create variable
-  `v_bust`" that mints a variable named after the slug (the user renames it in the
-  panel). No silent auto-creation on blur.
+  naming the offset: `unknown variable $bst at 4`.
+- **Unknown token** — an inline error plus a one-click "create `$bust`" that
+  mints a variable whose name defaults to `bust` and whose token is `$bust` (the
+  user renames it in the panel). No silent auto-creation on blur.
 - **Label** — canvas and SVG export show the resolved number only, at the existing
   precision (`number.ts`). The formula shows in the inspector, and in the panel.
 - **Broken parameter after a delete** — the dimension or allowance keeps showing
@@ -267,9 +271,9 @@ New commands (all in `packages/geometry/src/commands.ts` `Command` union,
 - **Rename:** no formula changes; only the panel label moves.
 - **Duplicate name:** rejected (case-insensitive), with the existing variable
   named in the error.
-- **Dimension mismatch:** `v_bust_cm/4 + 2` (length + plain number) and
-  `v_bust_cm + 3mm` (both lengths, legal) are decided by the exponent rule;
-  `v_bust_cm * v_waist` is an area and is rejected as a variable value with
+- **Dimension mismatch:** `$bust_cm/4 + 2` (length + plain number) and
+  `$bust_cm + 3mm` (both lengths, legal) are decided by the exponent rule;
+  `$bust_cm * $waist` is an area and is rejected as a variable value with
   "expected a length or ratio, got mm²".
 - **Ratio where a length belongs:** a ratio variable inside a dimension formula is
   rejected with "expected a length, got a ratio"; a ratio inside another variable's
@@ -318,11 +322,11 @@ New commands (all in `packages/geometry/src/commands.ts` `Command` union,
 2. **Storage** → union at each field, `number | { expr, lastKnown }`.
 3. **Nesting** → variables may reference other variables.
 4. **Name rules** → free-form display names, referenced in formulas by a stable
-   slug minted at creation.
+   `$` slug minted at creation.
 5. **Delete semantics** → dependents stay, broken, with `lastKnown`.
 6. **UI surface** → a Variables sidebar panel plus formula fields in the existing
    inspectors.
-7. **Entry** → type the formula in the value box; a picker inserts slugs.
+7. **Entry** → type the formula in the value box; a picker inserts `$` tokens.
 8. **Label display** → resolved number only, in canvas and export.
 9. **Precision** → full double internally; rounding is presentation only.
 10. **Unit semantics** → full dimension algebra: suffixed literals and variables
@@ -338,8 +342,9 @@ New commands (all in `packages/geometry/src/commands.ts` `Command` union,
 - [ ] `88 cm` and `880 mm` resolve to the same millimetres, `5cm + 2mm` is 52, and
       switching a literal variable's unit preserves the measurement.
 - [ ] Renaming a variable changes no formula and moves no geometry.
-- [ ] A cyclic, unknown-slug or non-finite formula is rejected at write time with
-      a named offset; nothing half-applied.
+- [ ] A cyclic, unknown-$token or non-finite formula is rejected at write time
+      with a named offset; a bare identifier (`bust_cm` without `$`) is rejected
+      too; nothing half-applied.
 - [ ] Deleting a referenced variable leaves dependents showing their last number,
       and the sketch still solves.
 - [ ] Recreating the same slug re-links the dependents.
@@ -352,8 +357,8 @@ New commands (all in `packages/geometry/src/commands.ts` `Command` union,
 ## 📋 Phasing
 
 1. **Evaluator** — `expression.ts` plus tests: grammar, unit suffixes, dimension
-   algebra, precedence, unary signs, depth bound, unknown slug, cycle, non-finite.
-   No document change yet.
+   algebra, precedence, unary signs, depth bound, unknown `$` token, cycle,
+   non-finite. No document change yet.
 2. **Model** — `Variable`, `Unit`, `Param`, schema `0.5`, `resolveParam`,
    `resolveVariable`, reader migration, 0.4 load test.
 3. **Commands** — `set_variable`, `update_variable`, `remove_variable` including
