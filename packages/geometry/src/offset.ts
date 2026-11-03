@@ -19,6 +19,13 @@ export interface OffsetOptions {
   join?: JoinStyle;
   /** Miter length limit, as a multiple of the offset distance. Defaults to `4`. */
   miterLimit?: number;
+  /**
+   * Radians within which a vertex whose adjacent distances differ cuts a straight
+   * step across instead of fitting a miter. Defaults to `0`, which only joins
+   * exactly parallel segments that way. A tangent between a line and a flattened
+   * arc turns by a few degrees, so a piece cut loop passes a small tolerance.
+   */
+  tangentStep?: number;
 }
 
 export interface SelfIntersection {
@@ -120,14 +127,16 @@ function joinVariablePoints(
   distanceB: number,
   join: JoinStyle,
   miterLimit: number,
+  tangentStep: number,
 ): Vec2[] {
   const normalA = leftNormal(directionA);
   const normalB = leftNormal(directionB);
   const incoming = add(center, scale(normalA, distanceA));
   const outgoing = add(center, scale(normalB, distanceB));
   const turn = cross(directionA, directionB);
+  const differs = Math.abs(distanceA - distanceB) > EPSILON;
 
-  if (Math.abs(turn) <= EPSILON) {
+  if (Math.abs(turn) <= EPSILON || (differs && tangentStep > 0 && Math.abs(turn) <= tangentStep)) {
     // Parallel segments: same direction keeps one offset unless the distances
     // differ, a reversal has no miter and bevels across.
     if (dot(directionA, directionB) <= 0) return [incoming, outgoing];
@@ -222,7 +231,12 @@ export function offsetVariablePolylineDetailed(
   distances: readonly number[],
   options: OffsetOptions = {},
 ): VariableOffsetResult {
-  const { closed = false, join = 'miter', miterLimit = DEFAULT_MITER_LIMIT } = options;
+  const {
+    closed = false,
+    join = 'miter',
+    miterLimit = DEFAULT_MITER_LIMIT,
+    tangentStep = 0,
+  } = options;
   const expected = closed ? points.length : Math.max(points.length - 1, 0);
   if (distances.length !== expected) {
     const source = points.slice();
@@ -264,6 +278,7 @@ export function offsetVariablePolylineDetailed(
         perSegment[j]!,
         join,
         miterLimit,
+        tangentStep,
       );
       vertices.push({ start: output.length, end: output.length + joinPoints.length });
       output.push(...joinPoints);
@@ -282,6 +297,7 @@ export function offsetVariablePolylineDetailed(
       perSegment[j]!,
       join,
       miterLimit,
+      tangentStep,
     );
     vertices.push({ start: output.length, end: output.length + joinPoints.length });
     output.push(...joinPoints);
