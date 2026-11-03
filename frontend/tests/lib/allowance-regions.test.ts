@@ -1,12 +1,13 @@
-import { createEmptyDocument, pieceBandRegions, type Entity, type Piece } from '@sewcraft/geometry';
+import {
+  createEmptyDocument,
+  pieceBandRegions,
+  pieceCutLoop,
+  type Entity,
+  type Piece,
+} from '@sewcraft/geometry';
 import { describe, expect, it } from 'vitest';
 
-import {
-  allowanceRegionAt,
-  cutLoopContains,
-  pieceContainsPoint,
-  regionAt,
-} from '@/lib/allowance-regions';
+import { cutLoopContains, regionAt } from '@/lib/allowance-regions';
 
 const entities: Entity[] = [
   { id: 'a', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
@@ -45,7 +46,6 @@ describe('allowance regions', () => {
     for (const region of regions) {
       const point = centroid(region.polygon);
       expect(regionAt(regions, point)).toBe(region);
-      expect(allowanceRegionAt(document, piece, point)).toEqual(region);
     }
   });
 
@@ -53,17 +53,13 @@ describe('allowance regions', () => {
     const regions = pieceBandRegions(document, piece);
 
     expect(regionAt(regions, { x: 100, y: 100 })).toBeNull();
-    expect(allowanceRegionAt(document, piece, { x: 500, y: 500 })).toBeNull();
+    expect(regionAt(regions, { x: 500, y: 500 })).toBeNull();
   });
 
   it('knows the cut loop', () => {
-    expect(pieceContainsPoint(document, piece, { x: 100, y: 100 })).toBe(true);
-    expect(pieceContainsPoint(document, piece, { x: 500, y: 500 })).toBe(false);
+    const cut = pieceCutLoop(document, piece);
+    expect(cutLoopContains(cut, { x: 100, y: 100 })).toBe(true);
+    expect(cutLoopContains(cut, { x: 500, y: 500 })).toBe(false);
     expect(cutLoopContains(null, { x: 100, y: 100 })).toBe(false);
-
-    const broken: Piece = { id: 'p2', edges: [], allowances: [] };
-    expect(pieceContainsPoint({ ...document, pieces: [broken] }, broken, { x: 0, y: 0 })).toBe(
-      false,
-    );
   });
 });

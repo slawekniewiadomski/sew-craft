@@ -175,13 +175,12 @@ edges on every read. The piece stores no round and keeps its `edges` and
 directly again. `validatePiece` and `pieceLoop` share one assembly routine, so
 both accept and reject exactly the same gaps.
 
-The bridge carries the allowance of the two edges it joins. Both must agree —
-both absent, or the same `width` and effective `kind` (an omitted kind means
-`seam`) — because a single tangent offset exists only for one distance. A
-disagreeing pair is rejected by `add_corner_round` and `set_piece_allowance`;
-a hand-edited document that contains one cannot resolve its loop. The cut loop
-offsets the arc outward like any other segment, and `pieceFoldLines` draws the
-double-fold fold line around it too.
+The bridge resolves its own width: the round's `CornerAllowance` when it has one,
+else the width both adjacent edges agree on, else a split in half at the arc's
+midpoint (see _Pieces_). A differing pair is therefore allowed by both
+`add_corner_round` and `set_piece_allowance`. The cut loop offsets the arc outward
+like any other segment, and `pieceFoldLines` draws the double-fold fold line around
+it too.
 
 Derived functions in `piece.ts` return `null` or `[]` rather than throwing when
 a reference goes stale, so a deleted point degrades every consumer to an absent

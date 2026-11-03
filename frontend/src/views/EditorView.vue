@@ -417,6 +417,10 @@ const orphanHint = computed(() =>
 const selectionStatus = computed(() => {
   const dimensions = selectedDimensionIds.value.length;
   const entities = selectedEntityIds.value.length;
+  const regions = selectedAllowanceTargets.value.length;
+  if (regions > 0) {
+    return regions === 1 ? '1 region selected' : `${regions} regions selected`;
+  }
   if (dimensions > 0 && entities > 0) {
     return `${entities} ${entities === 1 ? 'entity' : 'entities'} and ${dimensions} ${
       dimensions === 1 ? 'dimension' : 'dimensions'

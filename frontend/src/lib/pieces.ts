@@ -42,7 +42,7 @@ export interface PieceCornerRow {
   cutWidth: number | null;
   /** The cut distance both edges agree on, or `null` when they differ or are absent. */
   inherited: number | null;
-  /** Each half's cut distance when the crescent splits, in walk order. */
+  /** Each half's cut distance when the crescent splits, in the round's end order. */
   halves: number[];
   state: 'own' | 'inherited' | 'split' | 'none' | 'broken';
 }

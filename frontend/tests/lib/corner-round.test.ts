@@ -90,7 +90,6 @@ describe('corner-round pick state', () => {
       mixed: 'Both lines must be cut edges or both construction.',
       'third-edge': 'The corner is shared by more than two edges of this kind.',
       seam: 'Remove the seam allowance first.',
-      allowance: 'Both edges need the same allowance to round this corner.',
       sharp: 'The corner is too sharp for a round.',
       straight: 'The lines are straight; there is no corner to round.',
       'no-direction': 'The line has no direction.',
@@ -412,7 +411,7 @@ describe('applyCornerRoundPick', () => {
     });
   });
 
-  it('rejects a line pair whose piece allowances differ', () => {
+  it('accepts a line pair whose piece allowances differ', () => {
     let document = executeCommand(square(), {
       id: 'piece',
       type: 'create_piece',
@@ -429,14 +428,13 @@ describe('applyCornerRoundPick', () => {
       params: { piece: 'piece', edge: 'ab', width: 10 },
     }).document;
 
-    expect(applyCornerRoundPick({ first: 'ab', second: null }, 'bc', document)).toEqual({
-      status: 'rejected',
-      picks: { first: 'ab', second: null },
-      reason: 'allowance',
+    expect(applyCornerRoundPick({ first: 'ab', second: null }, 'bc', document)).toMatchObject({
+      status: 'ready',
+      corner: 'b',
     });
   });
 
-  it('rejects a corner point whose piece allowances differ', () => {
+  it('accepts a corner point whose piece allowances differ', () => {
     let document = executeCommand(square(), {
       id: 'piece',
       type: 'create_piece',
@@ -453,10 +451,9 @@ describe('applyCornerRoundPick', () => {
       params: { piece: 'piece', edge: 'ab', width: 10 },
     }).document;
 
-    expect(applyCornerRoundPick(emptyCornerRoundPicks(), 'b', document)).toEqual({
-      status: 'rejected',
-      picks: emptyCornerRoundPicks(),
-      reason: 'allowance',
+    expect(applyCornerRoundPick(emptyCornerRoundPicks(), 'b', document)).toMatchObject({
+      status: 'ready',
+      corner: 'b',
     });
   });
 
@@ -773,7 +770,7 @@ describe('roundableCorners', () => {
     expect(roundableCorners(document)).toEqual(['b']);
   });
 
-  it('skips a corner whose piece allowances differ or are absent on one side', () => {
+  it('offers every corner whatever the piece allowances are', () => {
     let document = executeCommand(square(), {
       id: 'piece',
       type: 'create_piece',
@@ -789,20 +786,10 @@ describe('roundableCorners', () => {
       type: 'set_piece_allowance',
       params: { piece: 'piece', edge: 'ab', width: 10 },
     }).document;
-    expect(roundableCorners(document)).toEqual(['c', 'd']);
+    expect(roundableCorners(document)).toEqual(['a', 'b', 'c', 'd']);
 
-    const kinds = executeCommand(square(), {
-      id: 'piece',
-      type: 'create_piece',
-      params: {},
-    }).document;
-    document = executeCommand(document, {
-      id: 'loop',
-      type: 'set_piece_loop',
-      params: { piece: 'piece', edges: ['ab', 'bc', 'cd', 'da'], allowance: 'none' },
-    }).document;
     const withKinds: PatternDocument = {
-      ...kinds,
+      ...document,
       pieces: [
         {
           id: 'piece',
@@ -814,7 +801,8 @@ describe('roundableCorners', () => {
         },
       ],
     };
-    expect(roundableCorners(withKinds)).toEqual(['d']);
+    // A differing pair rounds into a split crescent instead of being hidden.
+    expect(roundableCorners(withKinds)).toEqual(['a', 'b', 'c', 'd']);
   });
 
   it('ignores a piece that does not contain both edge lines', () => {

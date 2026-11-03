@@ -480,6 +480,9 @@ const hoveredRoundId = ref<EntityId | null>(null);
 /** The allowance region under the pointer, and whether the pointer is inside its piece. */
 const hoveredRegion = ref<BandTarget | null>(null);
 const bandHovered = ref(false);
+
+/** A touch that pressed on a region: a tap picks it, a drag still pans. */
+const touchRegion = ref<{ target: BandTarget; start: Vec2 } | null>(null);
 /**
  * The straight line the Point tool would constrain a click to, with the raw
  * pointer and the projection that click would use.
@@ -2507,22 +2510,20 @@ function onPointerDown(event: PointerEvent): void {
     case 'select': {
       const mode = selectionModeFrom(event);
       if (hit === null) {
-        const region =
-          regionAt(bandRegions.value, screenToWorld(viewport.value, screen))?.target ?? null;
+        const region = props.showAllowances
+          ? (regionAt(bandRegions.value, screenToWorld(viewport.value, screen))?.target ?? null)
+          : null;
 
-        // A touch tap picks the region instead of panning; there is no modifier,
-        // so it always replaces the selection.
-        if (event.pointerType === 'touch' && region !== null) {
-          selectAllowanceRegion(region, 'replace');
-          break;
-        }
-
-        // Touch keeps its single tap/pan; a mouse or pen drag is a marquee.
+        // Touch keeps its single tap/pan; a mouse or pen drag is a marquee. A
+        // press on a region remembers it and still pans, so a drag pans and a
+        // tap picks it on release.
         if (event.pointerType === 'touch') {
           if (mode === 'replace') {
             emit('update:selectedEntityIds', []);
             emit('update:selectedDimensionIds', []);
+            emit('update:selectedAllowanceTargets', []);
           }
+          touchRegion.value = region === null ? null : { target: region, start: screen };
           beginPan(screen);
         } else {
           startMarquee(screen, mode, region);
@@ -2637,6 +2638,9 @@ function onPointerMove(event: PointerEvent): void {
   } else if (panState.value) {
     const dx = screen.x - panState.value.start.x;
     const dy = screen.y - panState.value.start.y;
+    if (touchRegion.value !== null && Math.hypot(dx, dy) >= MARQUEE_THRESHOLD) {
+      touchRegion.value = null;
+    }
     viewport.value = panBy(panState.value.origin, dx, dy);
   } else if (dragState.value) {
     const world = snapToGrid(screenToWorld(viewport.value, screen));
@@ -2741,6 +2745,7 @@ function cancelPointerInteraction(): void {
   dragState.value = null;
   moveDrag.value = null;
   panState.value = null;
+  touchRegion.value = null;
   tangentDrag.value = null;
   removePointerListeners();
 }
@@ -2750,6 +2755,15 @@ function onPointerCancel(): void {
 }
 
 function onPointerUp(): void {
+  if (touchRegion.value !== null) {
+    const pick = touchRegion.value;
+    touchRegion.value = null;
+    panState.value = null;
+    removePointerListeners();
+    selectAllowanceRegion(pick.target, 'replace');
+    return;
+  }
+
   if (moveDrag.value) {
     const { dx, dy } = moveDrag.value;
     moveDrag.value = null;
@@ -3149,7 +3163,7 @@ function selectAllowanceRegion(target: BandTarget, mode: SelectionMode): void {
       ? [target]
       : mode === 'add'
         ? current.some((candidate) => bandTargetKey(candidate) === key)
-          ? current
+          ? current.filter((candidate) => bandTargetKey(candidate) !== key)
           : [...current, target]
         : current.filter((candidate) => bandTargetKey(candidate) !== key);
 
@@ -3197,12 +3211,16 @@ function finishMarquee(): void {
     if (state.mode === 'replace') {
       emit('update:selectedEntityIds', []);
       emit('update:selectedDimensionIds', []);
+      emit('update:selectedAllowanceTargets', []);
     }
     return;
   }
 
   // The marquee is the one gesture that may leave both selections non-empty:
   // replace with no hits clears its kind, additive/subtractive with no hits keeps it.
+  // A marquee never picks regions: a replace marquee clears them with the rest.
+  if (state.mode === 'replace') emit('update:selectedAllowanceTargets', []);
+
   emit('update:selectedEntityIds', applySelection(props.selectedEntityIds, hits, state.mode));
   emit(
     'update:selectedDimensionIds',

@@ -7,6 +7,7 @@ import {
   cornerAllowanceState,
   createEmptyDocument,
   pieceBandRegions,
+  loopBounds,
   pieceById,
   pieceCutLoop,
   pieceLoop,
@@ -390,5 +391,60 @@ describe('band regions', () => {
   it('offers no regions when the piece has no loop', () => {
     const empty: Piece = { id: 'p', edges: [], allowances: [] };
     expect(pieceBandRegions({ ...createEmptyDocument(), pieces: [empty] }, empty)).toEqual([]);
+  });
+});
+
+describe('band regions at awkward joins', () => {
+  it('splits a bevel join without leaving a gap', () => {
+    // A 26° apex: its miter would run past the limit, so the cut loop bevels it.
+    const entities: Entity[] = [
+      point('a', 200, -46),
+      point('b', 0, 0),
+      point('c', 200, 46),
+      line('ab', 'a', 'b'),
+      line('bc', 'b', 'c'),
+      line('ca', 'c', 'a'),
+    ];
+    const edges = ['ab', 'bc', 'ca'];
+    const piece: Piece = {
+      id: 'p',
+      edges,
+      allowances: edges.map((edge) => ({ edge, width: 10 })),
+    };
+    const document: PatternDocument = { ...createEmptyDocument(), entities, pieces: [piece] };
+
+    const loop = pieceLoop(document, piece)!;
+    const cut = pieceCutLoop(document, piece)!;
+    const bevel = loop.points.findIndex((point) => point.x === 0 && point.y === 0);
+    expect(cut.vertices[bevel]!.end - cut.vertices[bevel]!.start).toBe(2);
+
+    const regions = pieceBandRegions(document, piece);
+    expect(regions).toHaveLength(3);
+    const band = regions.reduce((sum, region) => sum + area(region), 0);
+    expect(band).toBeCloseTo(pieceMetrics(document, piece)!.allowanceArea);
+
+    for (let segment = 0; segment < loop.points.length; segment += 1) {
+      const sample = segmentSample(loop, cut, segment);
+      if (sample === null) continue;
+      expect(regions.filter((region) => pointInPolygon(region.polygon, sample))).toHaveLength(1);
+    }
+    const atBevel = vertexSample(loop, cut, bevel);
+    if (atBevel !== null) {
+      expect(regions.filter((region) => pointInPolygon(region.polygon, atBevel))).toHaveLength(1);
+    }
+  });
+
+  it('steps a small width difference instead of spiking', () => {
+    const { document, piece } = roundedPiece(tenMillimetres, [{ round: 'round-1', cutWidth: 12 }]);
+    const loop = pieceLoop(document, piece)!;
+    const cut = pieceCutLoop(document, piece)!;
+    const bounds = loopBounds(cut.points)!;
+    const stitch = loopBounds(loop.points)!;
+
+    // Without the tangent step the miter here runs about 42 mm outside the piece.
+    expect(bounds.max.x - stitch.max.x).toBeLessThan(15);
+    expect(bounds.min.y).toBeGreaterThan(stitch.min.y - 15);
+    expect(cut.vertices[2]!.end - cut.vertices[2]!.start).toBe(2);
+    expect(cut.vertices[18]!.end - cut.vertices[18]!.start).toBe(2);
   });
 });

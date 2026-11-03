@@ -296,7 +296,9 @@ Restore a rounded corner.
   previous construction flag, deletes the tangent points, control points, radius
   centre and arc, and removes the feature. A line with a round at its other end
   keeps that round.
-- inverse: `add_corner_round` with the original lines and radius.
+- Drops that round's `cornerAllowances` entry from any piece that held it.
+- inverse: `add_corner_round` with the original lines and radius. It mints a new
+  round id, so the undo does not restore the corner's own width.
 
 ### `create_piece`
 
@@ -330,7 +332,8 @@ Store the piece's **cut loop**, or clear it with an empty list.
   from the piece's effective default (its own override, else the document
   default) and keeps existing widths. `'none'` adds none; an object copies that
   preset. Changing either default never rewrites an existing allowance. Clearing
-  removes the loop and its allowances.
+  removes the loop, its allowances and its corner allowances; replacing the loop
+  drops corner allowances whose round is no longer inside it.
 - A loop is stored rather than derived so corner rounds keep working; editing a
   loop edge later leaves the loop **broken** until it is repaired or cleared.
 - inverse: `null`; the journal snapshot restores the previous loop and allowances.

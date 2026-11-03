@@ -4809,7 +4809,8 @@ describe('allowance band regions', () => {
     move(screen.x + 60, screen.y + 60);
     up();
 
-    expect(wrapper.emitted('update:selectedAllowanceTargets')).toBeUndefined();
+    // The marquee clears the region selection; it never picks one.
+    expect(wrapper.emitted('update:selectedAllowanceTargets')?.at(-1)).toEqual([[]]);
     expect(wrapper.emitted('marquee-change')?.at(-1)).toEqual([false]);
   });
 
@@ -4820,11 +4821,13 @@ describe('allowance band regions', () => {
     const screen = screenOf(document, point);
 
     downTouch(wrapper.find('svg').element, screen.x, screen.y);
+    // The tap still starts a pan; releasing without moving picks the region.
+    up();
 
     expect(wrapper.emitted('update:selectedAllowanceTargets')?.at(-1)).toEqual([[target]]);
   });
 
-  it('adds and subtracts regions with the selection modifiers', () => {
+  it('adds and subtracts regions with the selection modifiers', async () => {
     const document = bandPiece(true);
     const regions = pieceBandRegions(document, document.pieces[0]!);
     const first = regions[0]!;
@@ -4833,25 +4836,54 @@ describe('allowance band regions', () => {
       x: region.polygon.reduce((sum, p) => sum + p.x, 0) / region.polygon.length,
       y: region.polygon.reduce((sum, p) => sum + p.y, 0) / region.polygon.length,
     });
+    const emitted = (wrapper: VueWrapper) =>
+      wrapper.emitted('update:selectedAllowanceTargets')?.at(-1)?.[0] as BandTarget[];
 
     const wrapper = mountCanvas({ document, selectedAllowanceTargets: [first.target] });
     const svg = wrapper.find('svg').element;
-
     const secondScreen = screenOf(document, centre(second));
+    const firstScreen = screenOf(document, centre(first));
+
     down(svg, secondScreen.x, secondScreen.y, 0, { ctrlKey: true });
     up();
-    expect(wrapper.emitted('update:selectedAllowanceTargets')?.at(-1)).toEqual([
-      [first.target, second.target],
-    ]);
+    expect(emitted(wrapper)).toEqual([first.target, second.target]);
 
-    const again = screenOf(document, centre(first));
-    down(svg, again.x, again.y, 0, { ctrlKey: true });
+    // Ctrl-clicking a selected region toggles it out of the set.
+    await wrapper.setProps({ selectedAllowanceTargets: [first.target, second.target] });
+    down(svg, secondScreen.x, secondScreen.y, 0, { ctrlKey: true });
     up();
-    expect(wrapper.emitted('update:selectedAllowanceTargets')?.at(-1)).toEqual([[first.target]]);
+    expect(emitted(wrapper)).toEqual([first.target]);
 
-    down(svg, again.x, again.y, 0, { ctrlKey: true, shiftKey: true });
+    await wrapper.setProps({ selectedAllowanceTargets: [first.target] });
+    down(svg, firstScreen.x, firstScreen.y, 0, { ctrlKey: true, shiftKey: true });
     up();
+    expect(emitted(wrapper)).toEqual([]);
+  });
+
+  it('ignores regions while the allowance layer is hidden', () => {
+    const document = bandPiece(true);
+    const wrapper = mountCanvas({ document, showAllowances: false });
+    const { point } = regionCentre(document);
+    const screen = screenOf(document, point);
+
+    down(wrapper.find('svg').element, screen.x, screen.y);
+    up();
+
+    // The click clears the selection instead of picking the invisible region.
     expect(wrapper.emitted('update:selectedAllowanceTargets')?.at(-1)).toEqual([[]]);
+  });
+
+  it('pans instead of picking when a touch drag starts in a region', () => {
+    const document = bandPiece(true);
+    const wrapper = mountCanvas({ document });
+    const { point, target } = regionCentre(document);
+    const screen = screenOf(document, point);
+
+    downTouch(wrapper.find('svg').element, screen.x, screen.y);
+    move(screen.x + 60, screen.y + 60);
+    up();
+
+    expect(wrapper.emitted('update:selectedAllowanceTargets')?.at(-1)).not.toEqual([[target]]);
   });
 
   it('highlights the region under the pointer and clears it with the tool', async () => {

@@ -2,6 +2,7 @@ import {
   allowanceDistance,
   allowanceForEdge,
   cornerAllowanceForRound,
+  cornerAllowanceState,
   cornerRounds,
   type AllowanceKind,
   type BandTarget,
@@ -74,11 +75,11 @@ export function allowanceEditCommands(
     const own = cornerAllowanceForRound(piece, target.round);
     const before = allowanceForEdge(piece, round.ends[0].line);
     const after = allowanceForEdge(piece, round.ends[1].line);
-    const shared =
-      before !== undefined &&
-      after !== undefined &&
-      before.width === after.width &&
-      (before.kind ?? 'seam') === (after.kind ?? 'seam');
+    // The state owns the rule; a corner reports `inherited` only when both edges
+    // exist and agree, which is exactly when a single base is well defined.
+    const inherited =
+      cornerAllowanceState(piece, round.id, [round.ends[0].line, round.ends[1].line]) ===
+      'inherited';
 
     if (edit.mode === 'set') {
       commands.push({
@@ -86,7 +87,7 @@ export function allowanceEditCommands(
         type: 'set_piece_corner_allowance',
         params: { piece: piece.id, round: target.round, cutWidth: edit.cutWidth! },
       });
-    } else if (edit.mode === 'double' && (own !== undefined || shared)) {
+    } else if (edit.mode === 'double' && (own !== undefined || inherited)) {
       const base = own !== undefined ? own.cutWidth : allowanceDistance(before!);
       commands.push({
         id: nextId('corner-allowance'),

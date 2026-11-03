@@ -1,13 +1,4 @@
-import {
-  pieceBandRegions,
-  pieceCutLoop,
-  pointInPolygon,
-  type BandRegion,
-  type PatternDocument,
-  type Piece,
-  type PieceCutLoop,
-  type Vec2,
-} from '@sewcraft/geometry';
+import { pointInPolygon, type BandRegion, type PieceCutLoop, type Vec2 } from '@sewcraft/geometry';
 
 /**
  * The region under a world point, or `null` where the band has none. Regions are
@@ -20,18 +11,4 @@ export function regionAt(regions: readonly BandRegion[], point: Vec2): BandRegio
 /** Whether a world point is inside a piece's cut loop, where its band is shown. */
 export function cutLoopContains(cut: PieceCutLoop | null, point: Vec2): boolean {
   return cut !== null && pointInPolygon(cut.points, point);
-}
-
-/** The allowance region under a world point of one piece. */
-export function allowanceRegionAt(
-  document: PatternDocument,
-  piece: Piece,
-  point: Vec2,
-): BandRegion | null {
-  return regionAt(pieceBandRegions(document, piece), point);
-}
-
-/** Whether a world point is inside the piece's cut loop. */
-export function pieceContainsPoint(document: PatternDocument, piece: Piece, point: Vec2): boolean {
-  return cutLoopContains(pieceCutLoop(document, piece), point);
 }

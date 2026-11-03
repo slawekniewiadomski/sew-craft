@@ -34,7 +34,6 @@ export type CornerRoundRejectionReason =
   | 'mixed'
   | 'third-edge'
   | 'seam'
-  | 'allowance'
   | 'sharp'
   | 'straight'
   | 'no-direction'
@@ -163,8 +162,6 @@ export function cornerRoundRejection(reason: CornerRoundRejectionReason): string
       return 'The corner is shared by more than two edges of this kind.';
     case 'seam':
       return 'Remove the seam allowance first.';
-    case 'allowance':
-      return 'Both edges need the same allowance to round this corner.';
     case 'sharp':
       return 'The corner is too sharp for a round.';
     case 'straight':
@@ -174,25 +171,6 @@ export function cornerRoundRejection(reason: CornerRoundRejectionReason): string
     case 'radius':
       return 'The corner cannot be rounded.';
   }
-}
-
-/**
- * Whether a piece containing both lines carries different allowances on them,
- * which a rounded corner's single bridge offset cannot express.
- */
-function hasAllowanceMismatch(
-  document: PatternDocument,
-  first: EntityId,
-  second: EntityId,
-): boolean {
-  return document.pieces.some((piece) => {
-    if (!piece.edges.includes(first) || !piece.edges.includes(second)) return false;
-
-    const a = allowanceForEdge(piece, first);
-    const b = allowanceForEdge(piece, second);
-    if (a === undefined || b === undefined) return a !== b;
-    return a.width !== b.width || (a.kind ?? 'seam') !== (b.kind ?? 'seam');
-  });
 }
 
 /** Every point that can define a roundable corner right now. */
@@ -209,8 +187,6 @@ export function roundableCorners(document: PatternDocument): EntityId[] {
     if (lines.length !== 2) continue;
     if (lines[0]!.construction !== lines[1]!.construction) continue;
     if (lines.some((line) => seamEdges.has(line.id))) continue;
-    if (hasAllowanceMismatch(document, lines[0]!.id, lines[1]!.id)) continue;
-
     corners.push(point.id);
   }
 
@@ -243,10 +219,6 @@ function applyCornerPointPick(
   if (documentSeams(document).some((seam) => seam.edge === lineA.id || seam.edge === lineB.id)) {
     return { status: 'rejected', picks, reason: 'seam' };
   }
-  if (hasAllowanceMismatch(document, lineA.id, lineB.id)) {
-    return { status: 'rejected', picks, reason: 'allowance' };
-  }
-
   const anchorA = lineEndpointAnchor(
     document,
     lineA.id,
@@ -342,9 +314,6 @@ export function applyCornerRoundPick(
     documentSeams(document).some((seam) => seam.edge === id)
   ) {
     return { status: 'rejected', picks, reason: 'seam' };
-  }
-  if (hasAllowanceMismatch(document, picks.first, id)) {
-    return { status: 'rejected', picks, reason: 'allowance' };
   }
   const meeting = document.entities.filter(
     (entity) =>
