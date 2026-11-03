@@ -2240,6 +2240,7 @@ onBeforeUnmount(() => {
               v-if="activePiece && activePieceSummary"
               :summary="activePieceSummary"
               :piece="activePiece"
+              :document="pattern"
               :default-allowance="defaultAllowance"
               :inherited-default="defaultAllowance"
               :label="activePiece.name ?? 'Piece'"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AllowanceKind, EntityId, Piece } from '@sewcraft/geometry';
+import type { AllowanceKind, EntityId, PatternDocument, Piece } from '@sewcraft/geometry';
 import { computed, ref, watch } from 'vue';
 
 import PieceParametersForm from '@/components/PieceParametersForm.vue';
@@ -32,6 +32,8 @@ const props = withDefaults(
     defaultAllowance?: AllowanceChoice;
     /** The preset the piece's own default inherits when it has no override. */
     inheritedDefault?: AllowanceChoice;
+    /** The document the piece belongs to, so a formula width resolves. */
+    document?: PatternDocument;
   }>(),
   {
     prefix: 'entity',
@@ -193,6 +195,7 @@ function applyAll(): void {
 
     <PieceParametersForm
       :piece="props.piece"
+      :document="props.document"
       :inherited="props.inheritedDefault"
       :prefix="props.prefix"
       @update-piece="(patch) => emit('update-piece', props.summary.id, patch)"

@@ -21,6 +21,7 @@ import {
   type Entity,
   type EntityId,
   type PatternDocument,
+  resolveParam,
 } from '@sewcraft/geometry';
 
 import { constraintLabel } from './constraint-view';
@@ -372,7 +373,7 @@ export function entityProperties(
           )
           .map((round) => ({
             id: round.id,
-            radius: round.radius,
+            radius: resolveParam(document, round.radius),
             corner: round.corner,
             lines: [round.ends[0].line, round.ends[1].line],
             anchors: [round.ends[0].anchor, round.ends[1].anchor],

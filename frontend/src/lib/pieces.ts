@@ -1,5 +1,6 @@
 import {
   allowanceDistance,
+  resolveParam,
   allowanceForEdge,
   getEntity,
   pieceEntities,
@@ -48,7 +49,7 @@ export interface PieceSummary {
 }
 
 /** The allowance editor rows for a piece, one per loop edge. */
-export function pieceAllowanceRows(piece: Piece): PieceAllowanceRow[] {
+export function pieceAllowanceRows(document: PatternDocument, piece: Piece): PieceAllowanceRow[] {
   return piece.edges.map((edge) => {
     const allowance = allowanceForEdge(piece, edge);
     if (allowance === undefined) {
@@ -57,8 +58,8 @@ export function pieceAllowanceRows(piece: Piece): PieceAllowanceRow[] {
     return {
       edge,
       kind: allowance.kind ?? 'seam',
-      width: allowance.width,
-      cutDistance: allowanceDistance(allowance),
+      width: resolveParam(document, allowance.width),
+      cutDistance: allowanceDistance(allowance, document),
     };
   });
 }
@@ -72,8 +73,8 @@ export function pieceSummary(document: PatternDocument, piece: Piece): PieceSumm
     name: piece.name ?? null,
     quantity: piece.quantity ?? 1,
     edges: [...piece.edges],
-    allowances: pieceAllowanceRows(piece),
-    uniform: uniformAllowance(piece),
+    allowances: pieceAllowanceRows(document, piece),
+    uniform: uniformAllowance(document, piece),
     metrics,
     hasLoop,
     broken: hasLoop && metrics === null,

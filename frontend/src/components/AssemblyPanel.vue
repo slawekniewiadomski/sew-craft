@@ -196,6 +196,7 @@ function pieceDefault(
     <SidebarSection v-if="piece !== null" label="Piece" data-testid="assembly-piece">
       <PieceParametersForm
         :piece="piece"
+        :document="props.document"
         :inherited="inherited"
         :read-only="props.readOnly"
         prefix="assembly-piece"

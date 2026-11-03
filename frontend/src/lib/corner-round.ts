@@ -15,6 +15,7 @@ import {
   type PatternDocument,
   type PointEntity,
   type Vec2,
+  resolveParam,
 } from '@sewcraft/geometry';
 
 import { curvePath } from './canvas-render';
@@ -483,12 +484,13 @@ export function cornerRoundLabel(
   const corner = pointOf(document, round.corner);
   if (corner === undefined) return null;
 
+  const radius = resolveParam(document, round.radius);
   const geometry = cornerRoundGeometry(
     document,
     round.corner,
     round.ends[0].anchor,
     round.ends[1].anchor,
-    round.radius,
+    radius,
   );
   if (geometry.geometry === null) return null;
 
@@ -502,11 +504,11 @@ export function cornerRoundLabel(
   const dy = mid.y - corner.y;
   const length = Math.hypot(dx, dy);
 
-  const text = formatCornerRadius(round.radius);
+  const text = formatCornerRadius(radius);
 
   return {
     id: round.id,
-    radius: round.radius,
+    radius,
     x: mid.x,
     y: mid.y,
     outwardX: dx / length,

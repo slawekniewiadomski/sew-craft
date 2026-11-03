@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import type { AllowanceKind, Piece } from '@sewcraft/geometry';
+import {
+  resolveParam,
+  type AllowanceKind,
+  type PatternDocument,
+  type Piece,
+} from '@sewcraft/geometry';
 import { computed } from 'vue';
 
 import SidebarButton from '@/components/sidebar/SidebarButton.vue';
@@ -17,8 +22,10 @@ const props = withDefaults(
     /** Prefix for the controls' data-testids. */
     prefix?: string;
     readOnly?: boolean;
+    /** The document the piece belongs to; its variables resolve a formula width. */
+    document?: PatternDocument;
   }>(),
-  { prefix: 'piece-parameters', readOnly: false },
+  { prefix: 'piece-parameters', readOnly: false, document: undefined },
 );
 
 const emit = defineEmits<{
@@ -53,7 +60,7 @@ const defaultMode = computed<'inherit' | 'none' | 'preset'>(() => {
 const defaultWidth = computed(() =>
   props.piece.defaults?.allowance === null || props.piece.defaults === undefined
     ? props.inherited.width
-    : props.piece.defaults.allowance.width,
+    : resolveParam(props.document ?? {}, props.piece.defaults.allowance.width),
 );
 
 const defaultKind = computed<AllowanceKind>(() => {

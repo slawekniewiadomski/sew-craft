@@ -117,7 +117,7 @@ const squarePiece = (document: PatternDocument): Piece => document.pieces[0]!;
 
 describe('pieceAllowanceRows / pieceSummary', () => {
   it('reports one row per loop edge with its kind, width and cut distance', () => {
-    const rows = pieceAllowanceRows(squarePiece(squareDocument()));
+    const rows = pieceAllowanceRows(squareDocument(), squarePiece(squareDocument()));
 
     expect(rows).toEqual([
       { edge: 'ab', kind: 'seam', width: 10, cutDistance: 10 },

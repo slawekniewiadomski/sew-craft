@@ -359,7 +359,7 @@ describe('EditorView persistence', () => {
       'Unsupported project format',
     );
     expect(wrapper.find('[data-testid="saved-schema"]').text()).toBe('sewcraft.pattern/0.2');
-    expect(wrapper.find('[data-testid="editor-schema"]').text()).toBe('sewcraft.pattern/0.4');
+    expect(wrapper.find('[data-testid="editor-schema"]').text()).toBe('sewcraft.pattern/0.5');
     expect(wrapper.find('[data-testid="read-only-pill"]').exists()).toBe(true);
     expect(store.readOnly).toBe(true);
 
@@ -447,7 +447,7 @@ describe('EditorView persistence', () => {
   it('never migrates a newer schema and offers read-only or cancel', async () => {
     setLoadedDocument({
       ...createEmptyDocument(),
-      schema: 'sewcraft.pattern/0.5',
+      schema: 'sewcraft.pattern/0.6',
     } as unknown as PatternDocument);
 
     const pinia = createPinia();
@@ -472,7 +472,7 @@ describe('EditorView persistence', () => {
     await flushPromises();
 
     expect(store.readOnly).toBe(true);
-    expect(store.document.schema).toBe('sewcraft.pattern/0.5');
+    expect(store.document.schema).toBe('sewcraft.pattern/0.6');
     expect(vi.mocked(projectsApi.savePattern)).not.toHaveBeenCalled();
   });
 

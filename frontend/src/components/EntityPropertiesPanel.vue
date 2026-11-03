@@ -557,6 +557,7 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
       v-if="props.entity.piece && storedPiece"
       :summary="props.entity.piece"
       :piece="storedPiece"
+      :document="props.document"
       :default-allowance="defaultAllowanceSummary(props.document)"
       :inherited-default="defaultAllowanceSummary(props.document)"
       label="Piece"

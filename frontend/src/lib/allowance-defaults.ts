@@ -1,5 +1,6 @@
 import {
   effectiveDefaultAllowance,
+  resolveParam,
   type AllowanceKind,
   type PatternDocument,
   type Piece,
@@ -18,14 +19,14 @@ export function defaultAllowanceSummary(document: PatternDocument): AllowanceCho
   const preset = effectiveDefaultAllowance(document);
   return preset === null
     ? { kind: 'none', width: 0 }
-    : { kind: kindOf(preset), width: preset.width };
+    : { kind: kindOf(preset), width: resolveParam(document, preset.width) };
 }
 
 /**
  * The one allowance every loop edge of a piece shares, or `null` when they
  * differ. A piece whose edges all have no allowance yields the `none` choice.
  */
-export function uniformAllowance(piece: Piece): AllowanceChoice | null {
+export function uniformAllowance(document: PatternDocument, piece: Piece): AllowanceChoice | null {
   const byEdge = new Map(piece.allowances.map((allowance) => [allowance.edge, allowance]));
   const values = piece.edges.map((edge) => byEdge.get(edge));
 
@@ -34,13 +35,16 @@ export function uniformAllowance(piece: Piece): AllowanceChoice | null {
   const first = values[0];
   if (first === undefined) return null;
   if (values.some((allowance) => allowance === undefined)) return null;
+  const firstWidth = resolveParam(document, first.width);
   if (
     values.some(
-      (allowance) => allowance!.width !== first.width || kindOf(allowance!) !== kindOf(first),
+      (allowance) =>
+        resolveParam(document, allowance!.width) !== firstWidth ||
+        kindOf(allowance!) !== kindOf(first),
     )
   ) {
     return null;
   }
 
-  return { kind: kindOf(first), width: first.width };
+  return { kind: kindOf(first), width: firstWidth };
 }
