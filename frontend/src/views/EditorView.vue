@@ -1700,7 +1700,7 @@ function onConstraintPick(pick: ConstraintPick): void {
   }
 }
 
-function applyConstraintValue(value: number): void {
+function applyConstraintValue(value: ParamInput): void {
   const params = pendingConstraint.value!;
 
   if (dispatchConstraint({ ...params, value })) {
@@ -2264,6 +2264,7 @@ onBeforeUnmount(() => {
         :rejection="constraintRejectionMessage"
         :value-ready="constraintValueReady"
         :initial-value="constraintInitial"
+        :document="pattern"
         @apply="applyConstraintValue"
         @cancel="exitConstraint"
       />

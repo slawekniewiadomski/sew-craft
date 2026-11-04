@@ -485,6 +485,26 @@ describe('EditorView', () => {
     expect(wrapper.findComponent(PatternCanvas).props('constraintPicks')).toEqual([]);
   });
 
+  it('sets a distance from a formula over the document variables', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...lineDoc,
+      variables: [{ slug: 'bust', name: 'Bust', unit: 'mm', value: 880 }],
+    });
+
+    await wrapper.find('[data-testid="constraint-distance"]').trigger('click');
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+
+    await wrapper.find('[data-testid="constraint-value"]').setValue('$bust / 4');
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+
+    expect(store.document.constraints).toEqual([
+      expect.objectContaining({ type: 'distance', value: { expr: '$bust / 4', lastKnown: 220 } }),
+    ]);
+    expect(wrapper.find('[data-testid="constraint-value"]').exists()).toBe(false);
+  });
+
   it('prefills angle in degrees and dispatches radians', async () => {
     const { wrapper, store } = await mountLoaded(lineDoc);
 
