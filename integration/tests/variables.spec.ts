@@ -114,10 +114,10 @@ test('drives a dimension from the variables panel and flags it when broken', asy
     fullPage: false,
   });
 
-  // The dimension drawer reports the resolved value while the formula holds.
+  // The dimension drawer edits the formula as written.
   await page.locator('[data-testid="sidebar-tab-dimensions"]').click();
   await expect(page.locator('[data-testid="dimension-state-d"]')).toHaveText('Set');
-  await expect(page.locator('[data-testid="dimension-value-d"]')).toHaveValue('220');
+  await expect(page.locator('[data-testid="dimension-value-d"]')).toHaveValue('$bust / 4');
   await page.screenshot({
     path: '../.ai/runs/assets/2026-11-03-variables-and-expressions/03-formula-dimension.png',
     fullPage: false,
@@ -128,7 +128,10 @@ test('drives a dimension from the variables panel and flags it when broken', asy
   await page.locator('[data-testid="variable-remove-bust"]').click();
   await page.locator('[data-testid="sidebar-tab-dimensions"]').click();
   await expect(page.locator('[data-testid="dimension-state-d"]')).toHaveText('Broken');
-  await expect(page.locator('[data-testid="dimension-value-d"]')).toHaveValue('220');
+  await expect(page.locator('[data-testid="dimension-value-d"]')).toHaveValue('$bust / 4');
+  await expect(page.locator('[data-testid="dimension-broken-d"]')).toContainText(
+    'keeps its last value',
+  );
   await page.screenshot({
     path: '../.ai/runs/assets/2026-11-03-variables-and-expressions/04-broken-formula.png',
     fullPage: false,
