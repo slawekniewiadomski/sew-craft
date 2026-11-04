@@ -1668,6 +1668,37 @@ describe('EditorView variables panel', () => {
     expect(store.document.variables?.[0]?.name).toBe('Variable 1');
   });
 
+  it('offers the document variables in the drawer when a $ token is typed', async () => {
+    const document: PatternDocument = {
+      ...seededDocument,
+      variables: [
+        { slug: 'bust', name: 'Bust', unit: 'mm', value: 880 },
+        { slug: 'waist', name: 'Waist', unit: 'mm', value: 720 },
+      ],
+    };
+    const { wrapper } = await mountLoaded(document);
+    await openPanel(wrapper, 'dimensions');
+
+    const input = wrapper.find('[data-testid="dimension-value-width"]');
+    await input.setValue('$b');
+    expect(wrapper.find('[data-testid="dimension-variables-width"]').exists()).toBe(true);
+
+    await input.trigger('keydown', { key: 'ArrowDown' });
+    await input.trigger('keydown', { key: 'Enter' });
+    expect((input.element as HTMLInputElement).value).toBe('$bust');
+
+    await input.setValue('$w');
+    await wrapper.find('[data-testid="dimension-variable-width-waist"]').trigger('mousedown');
+    expect((input.element as HTMLInputElement).value).toBe('$waist');
+
+    await input.setValue('$b');
+    await input.trigger('keydown', { key: 'ArrowUp' });
+    await input.trigger('keydown', { key: 'x' });
+    expect(wrapper.find('[data-testid="dimension-variables-width"]').exists()).toBe(true);
+    await input.trigger('keydown', { key: 'Escape' });
+    expect(wrapper.find('[data-testid="dimension-variables-width"]').exists()).toBe(false);
+  });
+
   it('edits a dimension formula from the drawer and reports an unresolved one', async () => {
     const document: PatternDocument = {
       ...seededDocument,

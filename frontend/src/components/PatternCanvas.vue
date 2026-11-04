@@ -91,7 +91,7 @@ import {
   type CornerRoundLabel,
   type CornerRoundPicks,
 } from '@/lib/corner-round';
-import { formulaIssue } from '@/lib/formula';
+import { formulaIssue, insertVariableToken, variableOptions, variableQuery } from '@/lib/formula';
 import {
   dimensionAccessibleName,
   dimensionLabelWidth,
@@ -1629,6 +1629,58 @@ const dimensionEditor = computed(() => {
 /** The `#` picker's transient state; `null` while the field is not linking. */
 const dimensionPicker = ref<{ text: string; activeIndex: number } | null>(null);
 
+/** The `$` picker's transient state; `null` while no token is being typed. */
+const variablePicker = ref<{ query: string; activeIndex: number } | null>(null);
+
+/** The variables the open `$` picker offers for the text being typed. */
+const variablePickerOptions = computed(() => {
+  const query = variablePicker.value!.query.toLowerCase();
+  return variableOptions(props.document).filter(
+    (option) => option.slug.includes(query) || option.name.toLowerCase().includes(query),
+  );
+});
+
+/** Arrow keys move the `$` picker, Enter inserts the token, Escape closes it. */
+function onVariablePickerKeydown(event: KeyboardEvent): boolean {
+  const picker = variablePicker.value;
+  if (picker === null) return false;
+  const count = variablePickerOptions.value.length;
+
+  if (event.key === 'ArrowDown' && count > 0) {
+    variablePicker.value = { query: picker.query, activeIndex: (picker.activeIndex + 1) % count };
+    return true;
+  }
+  if (event.key === 'ArrowUp' && count > 0) {
+    variablePicker.value = {
+      query: picker.query,
+      activeIndex: (picker.activeIndex - 1 + count) % count,
+    };
+    return true;
+  }
+  if (event.key === 'Escape') {
+    variablePicker.value = null;
+    return true;
+  }
+  if (event.key === 'Enter' && count > 0) {
+    const input = editingDimension.value!;
+    const option = variablePickerOptions.value[Math.min(picker.activeIndex, count - 1)]!;
+    editingDimension.value = {
+      id: input.id,
+      value: insertVariableToken(input.value, option.slug),
+    };
+    variablePicker.value = null;
+    return true;
+  }
+  return false;
+}
+
+/** Insert a picked variable token and keep the editor open. */
+function selectVariable(slug: string): void {
+  const editing = editingDimension.value!;
+  editingDimension.value = { id: editing.id, value: insertVariableToken(editing.value, slug) };
+  variablePicker.value = null;
+}
+
 /** The dimension the inline editor is editing, used to resolve link targets. */
 const editingConstraint = computed<DistanceConstraint>(() => {
   const editing = editingDimension.value!;
@@ -2239,10 +2291,16 @@ function onDimensionEditInput(event: Event): void {
   dimensionPicker.value = isReferenceEditText(value)
     ? { text: referenceSearchText(value), activeIndex: 0 }
     : null;
+  const query = variableQuery(value);
+  variablePicker.value = query === null ? null : { query, activeIndex: 0 };
 }
 
 /** Arrow keys move the picker, Enter links or commits, Escape closes or cancels. */
 function onDimensionEditorKeydown(event: KeyboardEvent): void {
+  if (onVariablePickerKeydown(event)) {
+    event.preventDefault();
+    return;
+  }
   if (dimensionPicker.value !== null) {
     if (event.key === 'ArrowDown') {
       event.preventDefault();
@@ -2309,6 +2367,7 @@ function applyDimensionEdit(): void {
 function finishDimensionEdit(): void {
   const editing = editingDimension.value;
   dimensionPicker.value = null;
+  variablePicker.value = null;
   if (editing === null) return;
 
   const edit = parseDimensionEdit(editing.value);
@@ -2323,6 +2382,7 @@ function finishDimensionEdit(): void {
 function cancelDimensionEdit(): void {
   editingDimension.value = null;
   dimensionPicker.value = null;
+  variablePicker.value = null;
 }
 
 /** Show a round's handles while its line or arc is hovered. */
@@ -4682,5 +4742,28 @@ watch(
       :active-index="pickerActiveIndex"
       @select="selectReference"
     />
+
+    <ul
+      v-if="variablePicker !== null && dimensionEditor !== null && variablePickerOptions.length > 0"
+      class="absolute z-20 w-44 overflow-auto rounded-md border bg-background p-1 text-xs shadow-sm"
+      :style="{ left: `${dimensionEditor.x}px`, top: `${dimensionEditor.y + 18}px` }"
+      data-testid="dimension-variable-list"
+      :aria-label="`Variables for dimension ${dimensionEditor.id}`"
+    >
+      <li v-for="option in variablePickerOptions" :key="option.slug">
+        <button
+          type="button"
+          class="flex w-full items-baseline justify-between gap-2 rounded-sm px-1.5 py-1 text-left hover:bg-muted"
+          :data-testid="`dimension-variable-${option.slug}`"
+          @mousedown.prevent="selectVariable(option.slug)"
+        >
+          <span class="truncate">
+            {{ option.name }}
+            <span class="font-mono text-muted-foreground">${{ option.slug }}</span>
+          </span>
+          <span class="shrink-0 text-muted-foreground">{{ option.resolved }}</span>
+        </button>
+      </li>
+    </ul>
   </div>
 </template>
