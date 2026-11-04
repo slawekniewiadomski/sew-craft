@@ -2260,6 +2260,8 @@ function labelClass(label: DimensionLabelView): string {
       return 'fill-destructive';
     case 'driven':
       return 'fill-muted-foreground';
+    case 'formula':
+      return 'fill-dimension-formula';
     case 'set':
       return 'fill-foreground';
   }

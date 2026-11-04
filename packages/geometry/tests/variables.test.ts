@@ -248,7 +248,7 @@ describe('a broken formula dimension', () => {
     const document: PatternDocument = { ...broken(), variables: [variable('gone', 400)] };
     const constraint = document.constraints[0]!;
     if (constraint.type !== 'distance') throw new Error('expected a distance');
-    expect(dimensionState(document, constraint)).toBe('set');
+    expect(dimensionState(document, constraint)).toBe('formula');
     expect(dimensionValue(document, constraint)).toBe(100);
   });
 });

@@ -287,12 +287,13 @@ export function constraintOffset(constraint: { offset?: number }): number {
 }
 
 /**
- * The five states a dimension can be in. `set` and `referenced` drive the
- * sketch; `driven` measures it; `derived` measures a piece's cut loop and never
- * reaches the solver; `broken` is a reference whose source no longer resolves
- * and therefore drives nothing.
+ * The states a dimension can be in. `set` and `referenced` drive the sketch, and
+ * so does `formula` — a value written as a formula over the document's
+ * variables. `driven` measures it; `derived` measures a piece's cut loop and
+ * never reaches the solver; `broken` is a reference or formula that no longer
+ * resolves and therefore drives nothing.
  */
-export type DimensionState = 'set' | 'driven' | 'referenced' | 'broken' | 'derived';
+export type DimensionState = 'set' | 'formula' | 'driven' | 'referenced' | 'broken' | 'derived';
 
 /** The `distance` constraint with this id, or `null` when absent or another type. */
 function distanceById(constraints: readonly Constraint[], id: EntityId): DistanceConstraint | null {
@@ -353,13 +354,10 @@ export function dimensionState(
   constraint: DistanceConstraint,
 ): DimensionState {
   if (constraint.value !== undefined) {
-    if (
-      isExpressionParam(constraint.value) &&
-      resolveSetValue(document.constraints, constraint, document) === null
-    ) {
-      return 'broken';
-    }
-    return 'set';
+    if (!isExpressionParam(constraint.value)) return 'set';
+    return resolveSetValue(document.constraints, constraint, document) === null
+      ? 'broken'
+      : 'formula';
   }
   if (constraint.reference === undefined) return 'driven';
   return resolveSetValue(document.constraints, constraint, document) === null

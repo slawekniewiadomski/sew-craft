@@ -131,6 +131,7 @@ describe('formatDimensionLabel', () => {
     expect(formatDimensionLabel(100.1234, 'referenced')).toBe('[100.123]');
     expect(formatDimensionLabel(100.1234, 'broken')).toBe('[100.123]');
     expect(formatDimensionLabel(100.1234, 'derived')).toBe('100.123 cut');
+    expect(formatDimensionLabel(100.1234, 'formula')).toBe('ƒ 100.123');
   });
 });
 
@@ -141,6 +142,7 @@ describe('dimension state presentation', () => {
     expect(dimensionStateLabel('referenced')).toBe('Referenced');
     expect(dimensionStateLabel('broken')).toBe('Broken');
     expect(dimensionStateLabel('derived')).toBe('Cut');
+    expect(dimensionStateLabel('formula')).toBe('Formula');
   });
 
   it('maps every state to a pill tone', () => {
@@ -149,10 +151,12 @@ describe('dimension state presentation', () => {
     expect(dimensionTone('referenced')).toBe('accent');
     expect(dimensionTone('derived')).toBe('accent');
     expect(dimensionTone('broken')).toBe('danger');
+    expect(dimensionTone('formula')).toBe('formula');
   });
 
   it('builds an accessible name that does not rely on color', () => {
     expect(dimensionAccessibleName(120, 'set')).toBe('Dimension 120 millimetres');
+    expect(dimensionAccessibleName(120, 'formula')).toBe('Formula dimension, 120 millimetres');
     expect(dimensionAccessibleName(120, 'driven')).toBe(
       'Driven dimension, measured 120 millimetres',
     );
