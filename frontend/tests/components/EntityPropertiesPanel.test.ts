@@ -405,6 +405,9 @@ describe('EntityPropertiesPanel', () => {
       .trigger('mousedown');
     expect((input.element as HTMLInputElement).value).toBe('$waist');
 
+    await input.setValue('$bust');
+    expect(wrapper.find('[data-testid="entity-dimension-variables-width"]').exists()).toBe(false);
+
     await input.setValue('$b');
     await input.trigger('keydown', { key: 'ArrowUp' });
     await input.trigger('keydown', { key: 'ArrowDown' });
@@ -475,6 +478,9 @@ describe('EntityPropertiesPanel', () => {
       .find('[data-testid="entity-corner-radius-variable-r1-waist"]')
       .trigger('mousedown');
     expect((input.element as HTMLInputElement).value).toBe('$waist');
+
+    await input.setValue('$bust');
+    expect(wrapper.find('[data-testid="entity-corner-radius-variables-r1"]').exists()).toBe(false);
 
     await input.setValue('$b');
     await input.trigger('keydown', { key: 'ArrowUp' });

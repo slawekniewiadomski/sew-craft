@@ -11,6 +11,7 @@ import {
   type CornerRound,
   type EntityId,
   type LineEntity,
+  type Param,
   type ParamInput,
   type PatternDocument,
   type PointEntity,
@@ -166,6 +167,18 @@ export function parseCornerRadiusField(scope: VariableScope, text: string): Corn
 /** Millimetre text rounded to the field precision. */
 export function formatCornerRadius(radius: number): string {
   return String(Math.round(radius * 1000) / 1000);
+}
+
+/** The radius field's text: the stored formula, else the rounded number. */
+export function formatCornerRadiusParam(param: Param): string {
+  return typeof param === 'number' ? formatCornerRadius(param) : param.expr;
+}
+
+/** Whether a field's read parameter already matches the stored one. */
+export function sameCornerRadiusParam(stored: Param, next: ParamInput): boolean {
+  return typeof stored === 'number' || typeof next === 'number'
+    ? stored === next
+    : stored.expr === next.expr;
 }
 
 /** Prompt text for the tool's current pick state. */

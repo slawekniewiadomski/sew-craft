@@ -51,6 +51,7 @@ import {
   parseParamEdit,
   variableOptions,
   variableQuery,
+  variableQueryIsComplete,
 } from '@/lib/formula';
 import { defaultAllowanceSummary } from '@/lib/allowance-defaults';
 
@@ -200,7 +201,9 @@ function onDimensionInput(dimension: DimensionSummary, event: Event): void {
   dimensionDrafts.value[dimension.id] = { text: input.value, issue: '' };
   variableQueryText.value = query ?? '';
   variablePicker.value =
-    query === null ? null : { field: 'dimension', id: dimension.id, activeIndex: 0 };
+    query === null || variableQueryIsComplete(props.document, query)
+      ? null
+      : { field: 'dimension', id: dimension.id, activeIndex: 0 };
   onPickerInput(dimension.id, event);
 }
 
@@ -210,7 +213,10 @@ function onCornerRadiusInput(round: CornerRoundSummary, event: Event): void {
   const query = variableQuery(input.value);
   radiusDrafts.value[round.id] = { text: input.value, issue: '' };
   variableQueryText.value = query ?? '';
-  variablePicker.value = query === null ? null : { field: 'round', id: round.id, activeIndex: 0 };
+  variablePicker.value =
+    query === null || variableQueryIsComplete(props.document, query)
+      ? null
+      : { field: 'round', id: round.id, activeIndex: 0 };
 }
 
 function onCornerRadiusKeydown(round: CornerRoundSummary, event: KeyboardEvent): void {

@@ -80,6 +80,11 @@ export function variableQuery(text: string): string | null {
   return match === null ? null : match[1]!;
 }
 
+/** Whether a typed `$query` already names a whole variable slug. */
+export function variableQueryIsComplete(document: FormulaScope, query: string): boolean {
+  return (document.variables ?? []).some((variable) => variable.slug === query);
+}
+
 /** Replace the `$partial` at the caret with a full token. */
 export function insertVariableToken(text: string, slug: string): string {
   return text.replace(/\$[a-z0-9_]*$/, `$${slug}`);

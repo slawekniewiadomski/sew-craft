@@ -2195,6 +2195,9 @@ describe('PatternCanvas', () => {
     await wrapper.find('[data-testid="dimension-variable-waist"]').trigger('mousedown');
     expect((editor.element as HTMLInputElement).value).toBe('$waist');
 
+    await editor.setValue('$bust');
+    expect(wrapper.find('[data-testid="dimension-variable-list"]').exists()).toBe(false);
+
     await editor.setValue('$b');
     await editor.trigger('keydown', { key: 'ArrowUp' });
     await editor.trigger('keydown', { key: 'x' });
@@ -2912,6 +2915,102 @@ describe('PatternCanvas', () => {
     // Removing the focused input makes the browser fire a trailing blur.
     await input.trigger('blur');
     expect(wrapper.emitted('set-corner-round-radius')).toEqual([['r1', 12]]);
+  });
+
+  it('edits the round radius to a variable in the inline field', async () => {
+    const wrapper = mountCanvas({
+      document: {
+        ...roundedSquare(),
+        variables: [
+          { slug: 'radius', name: 'Radius', unit: 'mm', value: 12 },
+          { slug: 'seam', name: 'Seam', unit: 'mm', value: 6 },
+        ],
+      },
+      selectedEntityIds: ['ab'],
+    });
+
+    await wrapper.find('[data-testid="corner-round-label-r1"]').trigger('dblclick');
+    await flushPromises();
+
+    const input = wrapper.find('[data-testid="corner-round-editor"]');
+    await input.setValue('$radius');
+    expect(wrapper.find('[data-testid="corner-round-variable-list"]').exists()).toBe(false);
+
+    await input.trigger('keydown', { key: 'Enter' });
+    expect(wrapper.emitted('set-corner-round-radius')).toEqual([['r1', { expr: '$radius' }]]);
+    expect(wrapper.find('[data-testid="corner-round-editor"]').exists()).toBe(false);
+  });
+
+  it('offers variables while editing a round radius and inserts the token', async () => {
+    const wrapper = mountCanvas({
+      document: {
+        ...roundedSquare(),
+        variables: [
+          { slug: 'radius', name: 'Radius', unit: 'mm', value: 12 },
+          { slug: 'seam', name: 'Seam', unit: 'mm', value: 6 },
+        ],
+      },
+      selectedEntityIds: ['ab'],
+    });
+
+    await wrapper.find('[data-testid="corner-round-label-r1"]').trigger('dblclick');
+    await flushPromises();
+
+    const input = wrapper.find('[data-testid="corner-round-editor"]');
+    await input.setValue('$s');
+    expect(wrapper.find('[data-testid="corner-round-variable-list"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="corner-round-variable-seam"]').text()).toContain('$seam');
+
+    await input.trigger('keydown', { key: 'ArrowDown' });
+    await input.trigger('keydown', { key: 'Enter' });
+    expect((input.element as HTMLInputElement).value).toBe('$seam');
+    expect(wrapper.find('[data-testid="corner-round-variable-list"]').exists()).toBe(false);
+
+    await input.trigger('keydown', { key: 'Enter' });
+    expect(wrapper.emitted('set-corner-round-radius')).toEqual([['r1', { expr: '$seam' }]]);
+  });
+
+  it('opens a stored formula, keeps an unchanged radius and accepts a literal', async () => {
+    const document: PatternDocument = {
+      ...roundedSquare(),
+      variables: [{ slug: 'seam', name: 'Seam', unit: 'mm', value: 12 }],
+    };
+    const formulaDoc = executeCommand(document, {
+      id: 'set',
+      type: 'set_corner_round_radius',
+      params: { id: 'r1', radius: { expr: '$seam' } },
+    }).document;
+    const wrapper = mountCanvas({ document: formulaDoc, selectedEntityIds: ['ab'] });
+
+    await wrapper.find('[data-testid="corner-round-label-r1"]').trigger('dblclick');
+    await flushPromises();
+    const input = wrapper.find('[data-testid="corner-round-editor"]');
+    expect((input.element as HTMLInputElement).value).toBe('$seam');
+
+    await input.trigger('keydown', { key: 'Enter' });
+    expect(wrapper.emitted('set-corner-round-radius')).toBeUndefined();
+
+    await wrapper.find('[data-testid="corner-round-label-r1"]').trigger('dblclick');
+    await flushPromises();
+    await wrapper.find('[data-testid="corner-round-editor"]').setValue('12');
+    await wrapper.find('[data-testid="corner-round-editor"]').trigger('keydown', { key: 'Enter' });
+    expect(wrapper.emitted('set-corner-round-radius')).toEqual([['r1', 12]]);
+  });
+
+  it('keeps an unresolved formula open and discards it on blur', async () => {
+    const wrapper = mountCanvas({ document: roundedSquare(), selectedEntityIds: ['ab'] });
+
+    await wrapper.find('[data-testid="corner-round-label-r1"]').trigger('dblclick');
+    await flushPromises();
+    const input = wrapper.find('[data-testid="corner-round-editor"]');
+    await input.setValue('$missing');
+    await input.trigger('keydown', { key: 'Enter' });
+    expect(wrapper.find('[data-testid="corner-round-editor"]').exists()).toBe(true);
+    expect(wrapper.emitted('set-corner-round-radius')).toBeUndefined();
+
+    await input.trigger('blur');
+    expect(wrapper.find('[data-testid="corner-round-editor"]').exists()).toBe(false);
+    expect(wrapper.emitted('set-corner-round-radius')).toBeUndefined();
   });
 
   it('ignores a double-click on a curve that is not a rounded corner', async () => {

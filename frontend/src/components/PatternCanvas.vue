@@ -49,6 +49,8 @@ import {
   measureDistanceDimension,
   measureLinearDimension,
   MIN_RADIUS,
+  type Param,
+  type ParamInput,
   type PatternDocument,
   type Piece,
   pieceCutLoop,
@@ -88,13 +90,21 @@ import {
   cornerRoundLabel,
   cornerRoundPreview,
   formatCornerRadius,
-  parseCornerRadius,
+  formatCornerRadiusParam,
+  parseCornerRadiusField,
   roundableCorners,
+  sameCornerRadiusParam,
   tangentDragRadius,
   type CornerRoundLabel,
   type CornerRoundPicks,
 } from '@/lib/corner-round';
-import { formulaIssue, insertVariableToken, variableOptions, variableQuery } from '@/lib/formula';
+import {
+  formulaIssue,
+  insertVariableToken,
+  variableOptions,
+  variableQuery,
+  variableQueryIsComplete,
+} from '@/lib/formula';
 import {
   dimensionAccessibleName,
   dimensionLabelWidth,
@@ -401,7 +411,7 @@ const emit = defineEmits<{
   'add-cut-dimension': [placement: CutDimensionPlacement];
   'update-dimension': [id: EntityId, patch: DimensionPatch];
   'round-corner-pick': [id: EntityId];
-  'set-corner-round-radius': [id: EntityId, radius: number];
+  'set-corner-round-radius': [id: EntityId, radius: ParamInput];
   'move-piece': [dx: number, dy: number];
   'activate-piece': [id: EntityId];
   'cross-piece': [id: EntityId];
@@ -520,7 +530,7 @@ const tangentDrag = ref<{
 const editingCornerRound = ref<{
   id: EntityId;
   value: string;
-  startRadius: number;
+  startParam: Param;
   x: number;
   y: number;
 } | null>(null);
@@ -1648,8 +1658,22 @@ const variablePickerOptions = computed(() => {
   );
 });
 
+/** Insert a picked variable token into whichever inline editor is open. */
+function applyVariableToken(slug: string, target: 'dimension' | 'corner-round'): void {
+  if (target === 'dimension') {
+    const editing = editingDimension.value!;
+    editingDimension.value = { id: editing.id, value: insertVariableToken(editing.value, slug) };
+    return;
+  }
+  const editing = editingCornerRound.value!;
+  editingCornerRound.value = { ...editing, value: insertVariableToken(editing.value, slug) };
+}
+
 /** Arrow keys move the `$` picker, Enter inserts the token, Escape closes it. */
-function onVariablePickerKeydown(event: KeyboardEvent): boolean {
+function onVariablePickerKeydown(
+  event: KeyboardEvent,
+  target: 'dimension' | 'corner-round',
+): boolean {
   const picker = variablePicker.value;
   if (picker === null) return false;
   const count = variablePickerOptions.value.length;
@@ -1670,12 +1694,8 @@ function onVariablePickerKeydown(event: KeyboardEvent): boolean {
     return true;
   }
   if (event.key === 'Enter' && count > 0) {
-    const input = editingDimension.value!;
     const option = variablePickerOptions.value[Math.min(picker.activeIndex, count - 1)]!;
-    editingDimension.value = {
-      id: input.id,
-      value: insertVariableToken(input.value, option.slug),
-    };
+    applyVariableToken(option.slug, target);
     variablePicker.value = null;
     return true;
   }
@@ -1683,9 +1703,8 @@ function onVariablePickerKeydown(event: KeyboardEvent): boolean {
 }
 
 /** Insert a picked variable token and keep the editor open. */
-function selectVariable(slug: string): void {
-  const editing = editingDimension.value!;
-  editingDimension.value = { id: editing.id, value: insertVariableToken(editing.value, slug) };
+function selectVariable(slug: string, target: 'dimension' | 'corner-round'): void {
+  applyVariableToken(slug, target);
   variablePicker.value = null;
 }
 
@@ -2342,12 +2361,15 @@ function onDimensionEditInput(event: Event): void {
     ? { text: referenceSearchText(value), activeIndex: 0 }
     : null;
   const query = variableQuery(value);
-  variablePicker.value = query === null ? null : { query, activeIndex: 0 };
+  variablePicker.value =
+    query === null || variableQueryIsComplete(props.document, query)
+      ? null
+      : { query, activeIndex: 0 };
 }
 
 /** Arrow keys move the picker, Enter links or commits, Escape closes or cancels. */
 function onDimensionEditorKeydown(event: KeyboardEvent): void {
-  if (onVariablePickerKeydown(event)) {
+  if (onVariablePickerKeydown(event, 'dimension')) {
     event.preventDefault();
     return;
   }
@@ -2473,11 +2495,12 @@ function commitTangentDrag(): void {
 async function openCornerRoundEditor(round: CornerRound, x: number, y: number): Promise<void> {
   editingCornerRound.value = {
     id: round.id,
-    value: formatCornerRadius(radiusOf(round)),
-    startRadius: radiusOf(round),
+    value: formatCornerRadiusParam(round.radius),
+    startParam: round.radius,
     x,
     y,
   };
+  variablePicker.value = null;
   await nextTick();
   cornerRoundInput.value!.focus();
   cornerRoundInput.value!.select();
@@ -2496,21 +2519,42 @@ function onCurveDoubleClick(id: EntityId, event: MouseEvent): void {
 
 function onCornerRoundEditInput(event: Event): void {
   const editing = editingCornerRound.value!;
-  editingCornerRound.value = {
-    ...editing,
-    value: (event.target as HTMLInputElement).value,
-  };
+  const value = (event.target as HTMLInputElement).value;
+  editingCornerRound.value = { ...editing, value };
+  const query = variableQuery(value);
+  variablePicker.value =
+    query === null || variableQueryIsComplete(props.document, query)
+      ? null
+      : { query, activeIndex: 0 };
 }
 
-/** Enter: apply a valid radius, otherwise keep editing to fix the typo. */
+/** Arrow keys drive the `$` picker; Enter commits, Escape cancels. */
+function onCornerRoundEditorKeydown(event: KeyboardEvent): void {
+  if (onVariablePickerKeydown(event, 'corner-round')) {
+    event.preventDefault();
+    return;
+  }
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    applyCornerRoundEdit();
+    return;
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    cancelCornerRoundEdit();
+  }
+}
+
+/** Enter: apply a valid radius or formula, otherwise keep editing to fix it. */
 function applyCornerRoundEdit(): void {
   const editing = editingCornerRound.value!;
-  const radius = parseCornerRadius(editing.value);
-  if (radius === null) return;
+  const field = parseCornerRadiusField(props.document, editing.value);
+  if (field.kind === 'invalid') return;
 
   editingCornerRound.value = null;
-  if (radius !== editing.startRadius) {
-    emit('set-corner-round-radius', editing.id, radius);
+  variablePicker.value = null;
+  if (!sameCornerRadiusParam(editing.startParam, field.param)) {
+    emit('set-corner-round-radius', editing.id, field.param);
   }
 }
 
@@ -2520,15 +2564,17 @@ function finishCornerRoundEdit(): void {
   if (editingCornerRound.value === null) return;
 
   const editing = editingCornerRound.value;
-  const radius = parseCornerRadius(editing.value);
+  const field = parseCornerRadiusField(props.document, editing.value);
   editingCornerRound.value = null;
-  if (radius !== null && radius !== editing.startRadius) {
-    emit('set-corner-round-radius', editing.id, radius);
+  variablePicker.value = null;
+  if (field.kind === 'param' && !sameCornerRadiusParam(editing.startParam, field.param)) {
+    emit('set-corner-round-radius', editing.id, field.param);
   }
 }
 
 function cancelCornerRoundEdit(): void {
   editingCornerRound.value = null;
+  variablePicker.value = null;
 }
 
 /** Tools that show the midpoint magnet and can create a midpoint endpoint. */
@@ -4830,14 +4876,16 @@ watch(
       ref="cornerRoundInput"
       :value="editingCornerRound.value"
       type="text"
-      inputmode="decimal"
       class="absolute z-20 w-20 -translate-x-1/2 -translate-y-1/2 rounded-md border bg-background px-1 py-0.5 text-center text-xs shadow-sm"
       :style="{ left: `${editingCornerRound.x}px`, top: `${editingCornerRound.y}px` }"
       data-testid="corner-round-editor"
       :aria-label="`Corner round ${editingCornerRound.id} radius in millimetres`"
+      role="combobox"
+      aria-autocomplete="list"
+      :aria-expanded="variablePicker !== null"
+      :aria-controls="variablePicker === null ? undefined : 'corner-round-variable-list'"
       @input="onCornerRoundEditInput"
-      @keydown.enter.prevent.stop="applyCornerRoundEdit"
-      @keydown.esc.prevent.stop="cancelCornerRoundEdit"
+      @keydown="onCornerRoundEditorKeydown"
       @blur="finishCornerRoundEdit"
     />
 
@@ -4863,7 +4911,33 @@ watch(
           type="button"
           class="flex w-full items-baseline justify-between gap-2 rounded-sm px-1.5 py-1 text-left hover:bg-muted"
           :data-testid="`dimension-variable-${option.slug}`"
-          @mousedown.prevent="selectVariable(option.slug)"
+          @mousedown.prevent="selectVariable(option.slug, 'dimension')"
+        >
+          <span class="truncate">
+            {{ option.name }}
+            <span class="font-mono text-muted-foreground">${{ option.slug }}</span>
+          </span>
+          <span class="shrink-0 text-muted-foreground">{{ option.resolved }}</span>
+        </button>
+      </li>
+    </ul>
+
+    <ul
+      v-if="
+        variablePicker !== null && editingCornerRound !== null && variablePickerOptions.length > 0
+      "
+      id="corner-round-variable-list"
+      class="absolute z-20 w-44 overflow-auto rounded-md border bg-background p-1 text-xs shadow-sm"
+      :style="{ left: `${editingCornerRound.x}px`, top: `${editingCornerRound.y + 18}px` }"
+      data-testid="corner-round-variable-list"
+      :aria-label="`Variables for corner round ${editingCornerRound.id}`"
+    >
+      <li v-for="option in variablePickerOptions" :key="option.slug">
+        <button
+          type="button"
+          class="flex w-full items-baseline justify-between gap-2 rounded-sm px-1.5 py-1 text-left hover:bg-muted"
+          :data-testid="`corner-round-variable-${option.slug}`"
+          @mousedown.prevent="selectVariable(option.slug, 'corner-round')"
         >
           <span class="truncate">
             {{ option.name }}

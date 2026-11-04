@@ -18,11 +18,13 @@ import {
   defaultCornerRadius,
   emptyCornerRoundPicks,
   formatCornerRadius,
+  formatCornerRadiusParam,
   maxCornerRadiusForLines,
   parseCornerRadius,
   parseCornerRadiusField,
   radiusFromTangentDistance,
   roundableCorners,
+  sameCornerRadiusParam,
   tangentDragRadius,
   type CornerRoundRejectionReason,
 } from '@/lib/corner-round';
@@ -131,6 +133,16 @@ describe('corner-round radius helpers', () => {
     expect(parseCornerRadius('0.0005')).toBeNull();
     expect(parseCornerRadius(' 12.5 ')).toBe(12.5);
     expect(formatCornerRadius(10.0004)).toBe('10');
+  });
+
+  it('formats and compares a stored radius parameter', () => {
+    expect(formatCornerRadiusParam(10)).toBe('10');
+    expect(formatCornerRadiusParam({ expr: '$r', lastKnown: 12 })).toBe('$r');
+    expect(sameCornerRadiusParam(10, 10)).toBe(true);
+    expect(sameCornerRadiusParam(10, 11)).toBe(false);
+    expect(sameCornerRadiusParam({ expr: '$r', lastKnown: 1 }, { expr: '$r' })).toBe(true);
+    expect(sameCornerRadiusParam({ expr: '$r', lastKnown: 1 }, { expr: '$s' })).toBe(false);
+    expect(sameCornerRadiusParam({ expr: '$r', lastKnown: 1 }, 5)).toBe(false);
   });
 
   it('reads a radius as a literal or a formula over the variables', () => {

@@ -8,6 +8,7 @@ import {
   parseParamEdit,
   variableOptions,
   variableQuery,
+  variableQueryIsComplete,
 } from '@/lib/formula';
 
 const documentOf = (variables: PatternDocument['variables']): PatternDocument => ({
@@ -92,5 +93,13 @@ describe('variableQuery / insertVariableToken', () => {
     expect(insertVariableToken('$bu', 'bust')).toBe('$bust');
     expect(insertVariableToken('$bust/4 + $ea', 'ease')).toBe('$bust/4 + $ease');
     expect(insertVariableToken('plain', 'bust')).toBe('plain');
+  });
+
+  it('recognises a token that already names a whole variable', () => {
+    const document = documentOf([bust]);
+
+    expect(variableQueryIsComplete(document, 'bust')).toBe(true);
+    expect(variableQueryIsComplete(document, 'bu')).toBe(false);
+    expect(variableQueryIsComplete(createEmptyDocument(), 'bust')).toBe(false);
   });
 });
