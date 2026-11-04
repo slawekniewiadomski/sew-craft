@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AllowanceKind, EntityId, Piece } from '@sewcraft/geometry';
+import type { AllowanceKind, BandTarget, EntityId, Piece } from '@sewcraft/geometry';
 import { computed, ref, watch } from 'vue';
 
 import PieceParametersForm from '@/components/PieceParametersForm.vue';
@@ -10,10 +10,16 @@ import SidebarField from '@/components/sidebar/SidebarField.vue';
 import SidebarHeading from '@/components/sidebar/SidebarHeading.vue';
 import SidebarInput from '@/components/sidebar/SidebarInput.vue';
 import SidebarSelect from '@/components/sidebar/SidebarSelect.vue';
+import { type BulkAllowanceEdit } from '@/lib/allowance-edit';
 import type { AllowanceChoice } from '@/lib/allowance-defaults';
 import { parseAllowanceWidth } from '@/lib/allowance-width';
 import { formatDimensionValue } from '@/lib/dimensions';
-import { pieceSizeText, type PieceAllowanceRow, type PieceSummary } from '@/lib/pieces';
+import {
+  pieceSizeText,
+  type PieceAllowanceRow,
+  type PieceCornerRow,
+  type PieceSummary,
+} from '@/lib/pieces';
 
 /**
  * The one piece card in the editor: the Pieces drawer and the Properties
@@ -32,11 +38,14 @@ const props = withDefaults(
     defaultAllowance?: AllowanceChoice;
     /** The preset the piece's own default inherits when it has no override. */
     inheritedDefault?: AllowanceChoice;
+    /** The allowance regions selected on the canvas. */
+    selectedTargets?: BandTarget[];
   }>(),
   {
     prefix: 'entity',
     defaultAllowance: () => ({ kind: 'seam' as const, width: 10 }),
     inheritedDefault: () => ({ kind: 'seam' as const, width: 10 }),
+    selectedTargets: () => [],
   },
 );
 
@@ -64,6 +73,12 @@ const emit = defineEmits<{
     value: { kind: AllowanceKind; width: number } | null,
   ];
   'set-all-allowances': [piece: EntityId, value: { kind: AllowanceKind; width: number } | null];
+  'set-piece-corner-allowance': [
+    piece: EntityId,
+    round: EntityId,
+    value: { cutWidth: number } | null,
+  ];
+  'apply-allowances': [edit: BulkAllowanceEdit];
   'remove-piece': [id: EntityId];
   'set-cut-loop': [id: EntityId];
   'clear-cut-loop': [id: EntityId];
@@ -151,6 +166,53 @@ function allWidthChanged(event: Event): void {
     return;
   }
   allWidth.value = width;
+}
+
+/** Whether one selected edge is this row's edge. */
+function edgeSelected(row: PieceAllowanceRow): boolean {
+  return props.selectedTargets.some((target) => target.kind === 'edge' && target.edge === row.edge);
+}
+
+/** Whether one selected corner is this row's round. */
+function cornerSelected(row: PieceCornerRow): boolean {
+  return props.selectedTargets.some(
+    (target) => target.kind === 'round' && target.round === row.round,
+  );
+}
+
+/** An invalid or unchanged corner width snaps back without a command. */
+function cornerWidth(row: PieceCornerRow, event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const width = parseAllowanceWidth(input.value);
+  if (width === null || width === row.cutWidth) {
+    input.value = row.cutWidth === null ? '' : String(row.cutWidth);
+    return;
+  }
+  emit('set-piece-corner-allowance', props.summary.id, row.round, { cutWidth: width });
+}
+
+/** Double writes twice the corner's own or inherited cut width. */
+function doubleCorner(row: PieceCornerRow): void {
+  // The button renders only where one of the two is set.
+  const base = (row.cutWidth ?? row.inherited)!;
+  emit('set-piece-corner-allowance', props.summary.id, row.round, { cutWidth: base * 2 });
+}
+
+/** The selection editor offers a kind only when every target is an edge. */
+const allEdgesSelected = computed(() =>
+  props.selectedTargets.every((target) => target.kind === 'edge'),
+);
+
+const bulkKind = ref<AllowanceKind>('seam');
+const bulkWidth = ref<number>(10);
+const canBulkApply = computed(() => Number.isFinite(bulkWidth.value) && bulkWidth.value > 0);
+
+function applyBulk(): void {
+  emit('apply-allowances', {
+    mode: 'set',
+    cutWidth: bulkWidth.value,
+    ...(allEdgesSelected.value ? { kind: bulkKind.value } : {}),
+  });
 }
 
 /** Apply writes one value to every edge in a single grouped dispatch. */
@@ -268,6 +330,67 @@ function applyAll(): void {
       </div>
     </div>
 
+    <div
+      v-if="props.selectedTargets.length > 1"
+      class="rounded-md bg-muted/50 p-2"
+      :data-testid="testId('piece-selection-editor')"
+    >
+      <div class="mb-1.5 flex items-center justify-between gap-2">
+        <span class="text-2xs font-medium">
+          {{ props.selectedTargets.length }} regions selected
+        </span>
+        <Pill tone="neutral" :data-testid="testId('piece-selection-mode')">
+          {{ allEdgesSelected ? 'edges' : 'cut widths' }}
+        </Pill>
+      </div>
+      <div class="flex flex-wrap items-center gap-1.5">
+        <SidebarSelect
+          v-if="allEdgesSelected"
+          class="w-24"
+          :value="bulkKind"
+          aria-label="Allowance kind for the selected edges"
+          :data-testid="testId('piece-selection-kind')"
+          @change="bulkKind = ($event.target as HTMLSelectElement).value as AllowanceKind"
+        >
+          <option value="seam">Seam</option>
+          <option value="single">Single fold</option>
+          <option value="double">Double fold</option>
+        </SidebarSelect>
+        <SidebarInput
+          type="number"
+          min="0.1"
+          step="0.1"
+          class="w-16 tabular-nums"
+          :value="bulkWidth"
+          :aria-label="`Width for the ${props.selectedTargets.length} selected regions`"
+          :data-testid="testId('piece-selection-width')"
+          @change="
+            bulkWidth = parseAllowanceWidth(($event.target as HTMLInputElement).value) ?? bulkWidth
+          "
+        />
+        <span class="text-2xs text-muted-foreground">{{ allEdgesSelected ? 'mm' : 'mm cut' }}</span>
+        <SidebarButton
+          :disabled="!canBulkApply"
+          :data-testid="testId('piece-selection-apply')"
+          @click="applyBulk"
+        >
+          Apply
+        </SidebarButton>
+        <SidebarButton
+          :data-testid="testId('piece-selection-double')"
+          @click="emit('apply-allowances', { mode: 'double' })"
+        >
+          Double
+        </SidebarButton>
+        <SidebarButton
+          :data-testid="testId('piece-selection-inherit')"
+          @click="emit('apply-allowances', { mode: 'inherit' })"
+        >
+          Inherit
+        </SidebarButton>
+      </div>
+    </div>
+
     <details class="group border-t pt-3">
       <summary
         class="flex cursor-pointer list-none items-center justify-between gap-2 text-2xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden"
@@ -282,7 +405,8 @@ function applyAll(): void {
         <li
           v-for="row in props.summary.allowances"
           :key="row.edge"
-          class="flex flex-wrap items-center gap-1.5"
+          class="flex flex-wrap items-center gap-1.5 rounded-md px-1 py-0.5"
+          :class="edgeSelected(row) ? 'bg-muted/60' : ''"
           :data-testid="testId(`piece-allowance-${row.edge}`)"
         >
           <span class="min-w-0 flex-1 truncate font-mono text-2xs text-muted-foreground">
@@ -315,6 +439,80 @@ function applyAll(): void {
             @change="allowanceWidth(row, $event)"
           />
           <span class="text-2xs text-muted-foreground">mm</span>
+        </li>
+      </ul>
+    </details>
+
+    <details v-if="props.summary.corners.length > 0" class="group border-t pt-3">
+      <summary
+        class="flex cursor-pointer list-none items-center justify-between gap-2 text-2xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden"
+      >
+        <span>
+          Rounded corners
+          <span class="ml-1 tabular-nums">{{ props.summary.corners.length }}</span>
+        </span>
+        <span aria-hidden="true" class="transition-transform group-open:rotate-180">⌄</span>
+      </summary>
+      <ul class="mt-2 space-y-2" :aria-label="`Corner allowances for piece ${props.summary.id}`">
+        <li
+          v-for="row in props.summary.corners"
+          :key="row.round"
+          class="flex flex-wrap items-center gap-1.5 rounded-md px-1 py-0.5"
+          :class="cornerSelected(row) ? 'bg-muted/60' : ''"
+          :data-testid="testId(`piece-corner-${row.round}`)"
+        >
+          <span class="min-w-0 flex-1 truncate font-mono text-2xs text-muted-foreground">
+            R {{ formatDimensionValue(row.radius) }}
+          </span>
+          <Pill
+            v-if="row.state === 'split'"
+            tone="neutral"
+            :data-testid="testId(`piece-corner-split-${row.round}`)"
+          >
+            Split
+          </Pill>
+          <Pill
+            v-else-if="row.state === 'none'"
+            tone="neutral"
+            :data-testid="testId(`piece-corner-none-${row.round}`)"
+          >
+            No allowance
+          </Pill>
+          <span
+            v-if="row.state === 'split'"
+            class="text-2xs tabular-nums text-muted-foreground"
+            :data-testid="testId(`piece-corner-halves-${row.round}`)"
+          >
+            {{ row.halves.map((half) => formatDimensionValue(half)).join(' / ') }} mm
+          </span>
+          <template v-if="row.state !== 'broken'">
+            <SidebarInput
+              type="number"
+              min="0.1"
+              step="0.1"
+              class="w-16 tabular-nums"
+              :value="row.cutWidth ?? ''"
+              :placeholder="row.inherited === null ? '' : String(row.inherited)"
+              :aria-label="`Cut width for corner ${row.round}`"
+              :data-testid="testId(`piece-corner-width-${row.round}`)"
+              @change="cornerWidth(row, $event)"
+            />
+            <span class="text-2xs text-muted-foreground">mm</span>
+            <SidebarButton
+              v-if="row.cutWidth !== null"
+              :data-testid="testId(`piece-corner-inherit-${row.round}`)"
+              @click="emit('set-piece-corner-allowance', props.summary.id, row.round, null)"
+            >
+              Inherit
+            </SidebarButton>
+            <SidebarButton
+              v-if="row.cutWidth !== null || row.inherited !== null"
+              :data-testid="testId(`piece-corner-double-${row.round}`)"
+              @click="doubleCorner(row)"
+            >
+              Double
+            </SidebarButton>
+          </template>
         </li>
       </ul>
     </details>

@@ -194,3 +194,35 @@ describe('offsetVariablePolyline', () => {
     );
   });
 });
+
+describe('tangentStep', () => {
+  // A shallow turn of about 0.02 rad: a distance change there would otherwise
+  // fit a miter tens of millimetres outside the vertex.
+  const shallow = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 200, y: 2 },
+  ];
+
+  it('fits a miter at a near-tangent distance change by default', () => {
+    const result = offsetVariablePolylineDetailed(shallow, [10, 10.5]);
+
+    expect(result.vertices[1]).toEqual({ start: 1, end: 2 });
+  });
+
+  it('cuts a step there when the caller asks for one', () => {
+    const result = offsetVariablePolylineDetailed(shallow, [10, 10.5], { tangentStep: 0.05 });
+
+    expect(result.vertices[1]).toEqual({ start: 1, end: 3 });
+    const [a, b] = [result.points[1]!, result.points[2]!];
+    // The 0.5 mm difference, plus the small tilt the turn adds.
+    expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(0.5);
+    expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeLessThan(0.6);
+  });
+
+  it('keeps the miter when the distances match', () => {
+    const result = offsetVariablePolylineDetailed(shallow, [10, 10], { tangentStep: 0.05 });
+
+    expect(result.vertices[1]).toEqual({ start: 1, end: 2 });
+  });
+});

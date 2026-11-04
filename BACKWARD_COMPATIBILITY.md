@@ -35,6 +35,17 @@ projects must be recreated, and the protected surface returns once the format is
 standardised. Details: `.ai/specs/2026-10-25-piece-containers-and-annotations.md`
 (D10) and `docs/domain/command-spec.md` (Migration from spec 0.12.0).
 
+### 2026-11-03 — per-corner allowance (command spec 0.17.0)
+
+No schema bump and no migration: `sewcraft.pattern/0.4` pieces may now carry an
+optional `cornerAllowances` array, and `set_piece_corner_allowance` writes it. The
+field is additive, but an older build **keeps** it while ignoring it — the
+document loads and saves unchanged, and its cut line, area and export render the
+inherited width. The downgrade is therefore silent wrong geometry rather than data
+loss; keep the array (and disable the UI) on rollback, or rewrite the corner
+values deliberately. `tangentStep` defaults to `0`, so only piece cut loops change
+join behaviour. Details: `.ai/specs/2026-11-03-per-corner-allowance.md`.
+
 ### 2026-10-27 — midpoint constraint (command spec 0.16.0)
 
 No schema bump and no migration: `sewcraft.pattern/0.4` documents may now carry a

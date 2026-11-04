@@ -2,6 +2,8 @@
 import {
   circleGeometry,
   constraintEntityIds,
+  cornerAllowanceForRound,
+  cornerRounds,
   constraintOffset,
   constraintOrientation,
   cutEdges,
@@ -28,6 +30,7 @@ import {
 import type {
   AddConstraintParams,
   AllowanceKind,
+  BandTarget,
   Assembly,
   Command,
   ConstraintType,
@@ -58,6 +61,11 @@ import EntityPropertiesPanel from '@/components/EntityPropertiesPanel.vue';
 import ExportDialog from '@/components/ExportDialog.vue';
 import PatternCanvas from '@/components/PatternCanvas.vue';
 import PiecePanel from '@/components/PiecePanel.vue';
+import {
+  allowanceEditCommands,
+  pruneAllowanceTargets,
+  type BulkAllowanceEdit,
+} from '@/lib/allowance-edit';
 import RibbonIcon from '@/components/RibbonIcon.vue';
 import SaveConflictDialog from '@/components/SaveConflictDialog.vue';
 import Pill from '@/components/sidebar/Pill.vue';
@@ -190,6 +198,8 @@ const error = ref<string | null>(null);
 const activeTool = ref<EditorTool>('select');
 /** Ordered, ephemeral selection: never written to the document or journal. */
 const selectedEntityIds = ref<EntityId[]>([]);
+/** Allowance regions picked on the band; view state, never stored. */
+const selectedAllowanceTargets = ref<BandTarget[]>([]);
 /**
  * Ordered, ephemeral dimension selection. Dimensions are constraints, not
  * entities, so they keep a separate selection. A click or drawer row keeps the
@@ -407,6 +417,10 @@ const orphanHint = computed(() =>
 const selectionStatus = computed(() => {
   const dimensions = selectedDimensionIds.value.length;
   const entities = selectedEntityIds.value.length;
+  const regions = selectedAllowanceTargets.value.length;
+  if (regions > 0) {
+    return regions === 1 ? '1 region selected' : `${regions} regions selected`;
+  }
   if (dimensions > 0 && entities > 0) {
     return `${entities} ${entities === 1 ? 'entity' : 'entities'} and ${dimensions} ${
       dimensions === 1 ? 'dimension' : 'dimensions'
@@ -1467,6 +1481,49 @@ function onSetPieceAllowance(
   );
 }
 
+/** Set or remove one rounded corner's own cut width. */
+function onSetPieceCornerAllowance(
+  piece: EntityId,
+  round: EntityId,
+  value: { cutWidth: number } | null,
+): void {
+  if (value === null) {
+    run(() =>
+      dispatch({
+        id: nextCommandId('corner-allowance'),
+        type: 'set_piece_corner_allowance',
+        params: { piece, round, remove: true },
+      }),
+    );
+    return;
+  }
+
+  run(() =>
+    dispatch({
+      id: nextCommandId('corner-allowance'),
+      type: 'set_piece_corner_allowance',
+      params: { piece, round, cutWidth: value.cutWidth },
+    }),
+  );
+}
+
+/** One command per selected region, dispatched as one undo step. */
+function onApplyAllowances(edit: BulkAllowanceEdit): void {
+  const piece = activePiece.value;
+  /* v8 ignore next -- the card emits only for the active piece */
+  if (piece === null) return;
+
+  const commands = allowanceEditCommands(
+    pattern.value,
+    piece,
+    selectedAllowanceTargets.value,
+    edit,
+    nextCommandId,
+  );
+  if (commands.length === 0) return;
+  run(() => dispatchGroup(commands));
+}
+
 /** Set, clear or inherit a piece's allowance default. */
 function onSetPieceDefault(
   piece: EntityId,
@@ -1676,6 +1733,12 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
+  if (event.key === 'Escape' && selectedAllowanceTargets.value.length > 0) {
+    event.preventDefault();
+    selectedAllowanceTargets.value = [];
+    return;
+  }
+
   if (event.key === 'Escape' && activeTool.value !== 'select') {
     event.preventDefault();
     exitCornerRound();
@@ -1696,6 +1759,30 @@ watch(pattern, () => {
   // makes the save attempt meaningful again.
   editor.clearSaveError();
   autosave.schedule();
+});
+
+// A picked entity, dimension, tool or tab owns the selection: regions step aside.
+watch(selectedEntityIds, (ids) => {
+  if (ids.length > 0) selectedAllowanceTargets.value = [];
+});
+watch(selectedDimensionIds, (ids) => {
+  if (ids.length > 0) selectedAllowanceTargets.value = [];
+});
+watch(activePieceId, () => {
+  selectedAllowanceTargets.value = [];
+});
+watch(activeTool, (tool) => {
+  if (tool !== 'select') selectedAllowanceTargets.value = [];
+});
+
+// Drop picked regions whose edge or round the document no longer has.
+watch(pattern, (next) => {
+  if (selectedAllowanceTargets.value.length === 0) return;
+  selectedAllowanceTargets.value = pruneAllowanceTargets(
+    next,
+    activePieceId.value,
+    selectedAllowanceTargets.value,
+  );
 });
 
 watch(pattern, (next) => {
@@ -2137,6 +2224,7 @@ onBeforeUnmount(() => {
             v-else
             v-model:selected-entity-ids="selectedEntityIds"
             v-model:selected-dimension-ids="selectedDimensionIds"
+            v-model:selected-allowance-targets="selectedAllowanceTargets"
             :document="visibleDocument"
             :tool="activeTool"
             :fit-token="fitToken"
@@ -2211,6 +2299,8 @@ onBeforeUnmount(() => {
               @set-piece-default="onSetPieceDefault"
               @set-piece-allowance="onSetPieceAllowance"
               @set-all-allowances="onSetAllAllowances"
+              @set-piece-corner-allowance="onSetPieceCornerAllowance"
+              @apply-allowances="onApplyAllowances"
               @remove-piece="onRemovePiece"
               @set-role="onSetRole"
               @update-text="onUpdateText"
@@ -2240,6 +2330,7 @@ onBeforeUnmount(() => {
               v-if="activePiece && activePieceSummary"
               :summary="activePieceSummary"
               :piece="activePiece"
+              :selected-targets="selectedAllowanceTargets"
               :default-allowance="defaultAllowance"
               :inherited-default="defaultAllowance"
               :label="activePiece.name ?? 'Piece'"
@@ -2248,6 +2339,8 @@ onBeforeUnmount(() => {
               @set-piece-default="onSetPieceDefault"
               @set-piece-allowance="onSetPieceAllowance"
               @set-all-allowances="onSetAllAllowances"
+              @set-piece-corner-allowance="onSetPieceCornerAllowance"
+              @apply-allowances="onApplyAllowances"
               @remove-piece="onRemovePiece"
               @set-cut-loop="setCutLoop"
               @clear-cut-loop="clearCutLoop"

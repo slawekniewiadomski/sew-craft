@@ -3,7 +3,7 @@
 it('exposes the command spec', function () {
     $this->getJson('/api/commands')
         ->assertOk()
-        ->assertJsonPath('version', '0.16.0')
+        ->assertJsonPath('version', '0.17.0')
         ->assertJsonStructure([
             'version',
             'commands' => [
@@ -93,7 +93,15 @@ it('exposes the piece commands', function () {
         ->assertJsonPath('commands.set_piece_allowance.params.width', 'number?')
         ->assertJsonPath('commands.set_piece_allowance.params.kind', 'seam|single|double?')
         ->assertJsonPath('commands.set_piece_allowance.params.remove', 'bool?')
-        ->assertJsonPath('commands.set_piece_allowance.inverse', 'set_piece_allowance');
+        ->assertJsonPath('commands.set_piece_allowance.inverse', 'set_piece_allowance')
+        ->assertJsonPath('commands.set_piece_corner_allowance.params.piece', 'entity_id')
+        ->assertJsonPath('commands.set_piece_corner_allowance.params.round', 'entity_id')
+        ->assertJsonPath('commands.set_piece_corner_allowance.params.cutWidth', 'number?')
+        ->assertJsonPath('commands.set_piece_corner_allowance.params.remove', 'bool?')
+        ->assertJsonPath(
+            'commands.set_piece_corner_allowance.inverse',
+            'set_piece_corner_allowance',
+        );
 });
 
 it('exposes the assembly, instance and tab commands', function () {

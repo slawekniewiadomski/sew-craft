@@ -1500,14 +1500,15 @@ describe('piece guards on the legacy tools', () => {
     ).toThrowError(/set the allowance on the piece/);
   });
 
-  it('refuses a corner round when the piece allowances differ at the corner', () => {
-    expect(() =>
-      applyCommand(withPiece(), {
-        id: 'round',
-        type: 'add_corner_round',
-        params: { first: 'bottom', second: 'right', radius: 5 },
-      }),
-    ).toThrowError(/Both edges need the same allowance/);
+  it('rounds a corner whose piece allowances differ', () => {
+    const document = applyCommand(withPiece(), {
+      id: 'round',
+      type: 'add_corner_round',
+      params: { first: 'bottom', second: 'right', radius: 5 },
+    }).document;
+
+    expect(document.cornerRounds).toHaveLength(1);
+    expect(pieceLoop(document, pieceById(document, 'piece-1')!)).not.toBeNull();
   });
   it('recreates a dimension that had no explicit placement', () => {
     const document = applyCommand(withPiece(), {
@@ -1697,44 +1698,42 @@ describe('corner rounds on piece corners', () => {
     }
   });
 
-  it('rejects two edges whose piece allowances differ', () => {
-    // `bottom` has no allowance, `right` has 10 mm single.
-    expect(() =>
-      applyCommand(withPiece(), roundCorner('round-1', 20, 'bottom', 'right')),
-    ).toThrowError(/Both edges need the same allowance to round this corner/);
+  it('rounds two edges whose piece allowances differ', () => {
+    // `bottom` has no allowance, `right` has 10 mm single: the bridge splits.
+    const document = applyCommand(
+      withPiece(),
+      roundCorner('round-1', 20, 'bottom', 'right'),
+    ).document;
+    const piece = pieceById(document, 'piece-1')!;
+    const bridge = pieceLoop(document, piece)!.distances.slice(1, 17).map(Math.abs);
+
+    expect(new Set(bridge)).toEqual(new Set([0, 10]));
   });
 
-  it('rejects an allowance edit that would unbalance a rounded corner', () => {
+  it('splits a rounded corner when one side is edited', () => {
     const document = roundedPiece();
     const target = pieceById(document, 'piece-1')!;
 
-    expect(() =>
-      applyCommand(document, {
-        id: 'widen',
-        type: 'set_piece_allowance',
-        params: { piece: 'piece-1', edge: 'right', width: 12, kind: 'single' },
-      }),
-    ).toThrowError(/Remove the corner round before changing one side/);
-
-    expect(() =>
-      applyCommand(document, {
-        id: 'remove-right',
-        type: 'set_piece_allowance',
-        params: { piece: 'piece-1', edge: 'right', remove: true },
-      }),
-    ).toThrowError(/Remove the corner round before changing one side/);
-
-    // An edge without a round on it is still editable.
     const widened = applyCommand(document, {
-      id: 'widen-left',
+      id: 'widen',
       type: 'set_piece_allowance',
-      params: { piece: 'piece-1', edge: 'left', width: 12, kind: 'single' },
+      params: { piece: 'piece-1', edge: 'right', width: 12, kind: 'single' },
     }).document;
-    expect(pieceById(widened, 'piece-1')!.allowances).toContainEqual({
-      edge: 'left',
-      width: 12,
-      kind: 'single',
-    });
+    const widenedPiece = pieceById(widened, 'piece-1')!;
+    expect(widenedPiece.allowances).toContainEqual({ edge: 'right', width: 12, kind: 'single' });
+    const widenedBridge = pieceLoop(widened, widenedPiece)!.distances.slice(2, 18).map(Math.abs);
+    expect(new Set(widenedBridge)).toEqual(new Set([12, 10]));
+
+    const removed = applyCommand(document, {
+      id: 'remove-right',
+      type: 'set_piece_allowance',
+      params: { piece: 'piece-1', edge: 'right', remove: true },
+    }).document;
+    const removedPiece = pieceById(removed, 'piece-1')!;
+    expect(removedPiece.allowances.some((allowance) => allowance.edge === 'right')).toBe(false);
+    const removedBridge = pieceLoop(removed, removedPiece)!.distances.slice(2, 18).map(Math.abs);
+    expect(new Set(removedBridge)).toEqual(new Set([0, 10]));
+
     expect(target.allowances).toHaveLength(3);
   });
 
@@ -1901,5 +1900,204 @@ describe('corner rounds on piece corners', () => {
         params: { first: 'cd', second: 'de', radius: 1 },
       }),
     ).toThrowError(/folds the cut line/);
+  });
+});
+
+describe('set_piece_corner_allowance', () => {
+  const roundCorner = (): Command => ({
+    id: 'round-1',
+    type: 'add_corner_round',
+    params: { first: 'right', second: 'top', radius: 20 },
+  });
+
+  function roundedDocument(): PatternDocument {
+    return applyCommand(withPiece(), roundCorner()).document;
+  }
+
+  it('stores a corner width, replaces it and removes it', () => {
+    const document = roundedDocument();
+
+    const set = applyCommand(document, {
+      id: 'corner-1',
+      type: 'set_piece_corner_allowance',
+      params: { piece: 'piece-1', round: 'round-1', cutWidth: 20 },
+    });
+    expect(pieceById(set.document, 'piece-1')!.cornerAllowances).toEqual([
+      { round: 'round-1', cutWidth: 20 },
+    ]);
+    expect(set.inverse).toEqual({
+      id: 'corner-1:restore',
+      type: 'set_piece_corner_allowance',
+      params: { piece: 'piece-1', round: 'round-1', remove: true },
+    });
+
+    // A second entry proves the replace path keeps the other corners.
+    const twoCorners: PatternDocument = {
+      ...set.document,
+      pieces: set.document.pieces.map((piece) => ({
+        ...piece,
+        cornerAllowances: [...(piece.cornerAllowances ?? []), { round: 'round-2', cutWidth: 7 }],
+      })),
+    };
+    const replaced = applyCommand(twoCorners, {
+      id: 'corner-2',
+      type: 'set_piece_corner_allowance',
+      params: { piece: 'piece-1', round: 'round-1', cutWidth: 15 },
+    });
+    expect(pieceById(replaced.document, 'piece-1')!.cornerAllowances).toEqual([
+      { round: 'round-1', cutWidth: 15 },
+      { round: 'round-2', cutWidth: 7 },
+    ]);
+    expect(replaced.inverse).toEqual({
+      id: 'corner-2:restore',
+      type: 'set_piece_corner_allowance',
+      params: { piece: 'piece-1', round: 'round-1', cutWidth: 20 },
+    });
+
+    const removed = applyCommand(replaced.document, {
+      id: 'corner-3',
+      type: 'set_piece_corner_allowance',
+      params: { piece: 'piece-1', round: 'round-1', remove: true },
+    });
+    expect(pieceById(removed.document, 'piece-1')!.cornerAllowances).toEqual([
+      { round: 'round-2', cutWidth: 7 },
+    ]);
+    expect(removed.inverse).toEqual({
+      id: 'corner-3:restore',
+      type: 'set_piece_corner_allowance',
+      params: { piece: 'piece-1', round: 'round-1', cutWidth: 15 },
+    });
+  });
+
+  it('no-ops on the same width and on removing an absent entry', () => {
+    const document = roundedDocument();
+    const set = applyCommand(document, {
+      id: 'corner-1',
+      type: 'set_piece_corner_allowance',
+      params: { piece: 'piece-1', round: 'round-1', cutWidth: 20 },
+    }).document;
+
+    expect(
+      applyCommand(set, {
+        id: 'corner-2',
+        type: 'set_piece_corner_allowance',
+        params: { piece: 'piece-1', round: 'round-1', cutWidth: 20 },
+      }).inverse,
+    ).toBeNull();
+    expect(
+      applyCommand(document, {
+        id: 'corner-3',
+        type: 'set_piece_corner_allowance',
+        params: { piece: 'piece-1', round: 'round-1', remove: true },
+      }).inverse,
+    ).toBeNull();
+  });
+
+  it('validates its inputs', () => {
+    const document = roundedDocument();
+    const reject = (params: Record<string, unknown>, message: RegExp): void => {
+      expect(() =>
+        applyCommand(document, {
+          id: 'corner',
+          type: 'set_piece_corner_allowance',
+          params: params as never,
+        }),
+      ).toThrowError(message);
+    };
+
+    reject({ piece: 'nope', round: 'round-1', cutWidth: 20 }, /unknown piece/);
+    reject({ piece: 'piece-1', round: 'nope', cutWidth: 20 }, /unknown corner round/);
+    reject({ piece: 'piece-1', round: 'round-1', cutWidth: 0 }, /greater than 0/);
+    reject({ piece: 'piece-1', round: 'round-1', cutWidth: Number.NaN }, /greater than 0/);
+    reject({ piece: 'piece-1', round: 'round-1' }, /greater than 0/);
+    reject({ piece: 'piece-1', round: 'round-1', cutWidth: 20, remove: true }, /takes no cutWidth/);
+
+    const foreign = {
+      ...document,
+      pieces: document.pieces.map((piece) => ({ ...piece, edges: ['left'] })),
+    };
+    expect(() =>
+      applyCommand(foreign, {
+        id: 'corner',
+        type: 'set_piece_corner_allowance',
+        params: { piece: 'piece-1', round: 'round-1', cutWidth: 20 },
+      }),
+    ).toThrowError(/not a corner of piece/);
+  });
+
+  it('drops the entry when its round is removed', () => {
+    const set = applyCommand(roundedDocument(), {
+      id: 'corner-1',
+      type: 'set_piece_corner_allowance',
+      params: { piece: 'piece-1', round: 'round-1', cutWidth: 20 },
+    }).document;
+
+    const removed = applyCommand(set, {
+      id: 'remove-round',
+      type: 'remove_corner_round',
+      params: { id: 'round-1' },
+    }).document;
+
+    expect(pieceById(removed, 'piece-1')!.cornerAllowances).toEqual([]);
+  });
+
+  it('drops the entry when the loop no longer contains the round', () => {
+    const set = applyCommand(roundedDocument(), {
+      id: 'corner-1',
+      type: 'set_piece_corner_allowance',
+      params: { piece: 'piece-1', round: 'round-1', cutWidth: 20 },
+    }).document;
+
+    // A loop that is not closed is rejected, so the entry is untouched.
+    expect(() =>
+      applyCommand(set, {
+        id: 'loop',
+        type: 'set_piece_loop',
+        params: { piece: 'piece-1', edges: ['bottom', 'right', 'top'] },
+      }),
+    ).toThrowError(/does not connect/);
+    expect(pieceById(set, 'piece-1')!.cornerAllowances).toHaveLength(1);
+
+    // Re-pointing the piece at another closed loop leaves the round behind.
+    const other: Entity[] = [
+      point('p1', 400, 0),
+      point('p2', 500, 0),
+      point('p3', 400, 100),
+      line('e1', 'p1', 'p2'),
+      line('e2', 'p2', 'p3'),
+      line('e3', 'p3', 'p1'),
+    ];
+    const elsewhere: PatternDocument = { ...set, entities: [...set.entities, ...other] };
+    const rebuilt = applyCommand(elsewhere, {
+      id: 'reloop',
+      type: 'set_piece_loop',
+      params: { piece: 'piece-1', edges: ['e1', 'e2', 'e3'], allowance: 'none' },
+    }).document;
+    expect(pieceById(rebuilt, 'piece-1')!.edges).toEqual(['e1', 'e2', 'e3']);
+    expect(pieceById(rebuilt, 'piece-1')!.cornerAllowances).toEqual([]);
+  });
+
+  it('clears the entry with the loop', () => {
+    const set = applyCommand(roundedDocument(), {
+      id: 'corner-1',
+      type: 'set_piece_corner_allowance',
+      params: { piece: 'piece-1', round: 'round-1', cutWidth: 20 },
+    }).document;
+
+    const cleared = applyCommand(set, {
+      id: 'clear',
+      type: 'set_piece_loop',
+      params: { piece: 'piece-1', edges: [] },
+    }).document;
+
+    expect(pieceById(cleared, 'piece-1')!.edges).toEqual([]);
+    expect(pieceById(cleared, 'piece-1')!.cornerAllowances).toEqual([]);
+    expect(
+      applyCommand(cleared, {
+        id: 'clear-again',
+        type: 'set_piece_loop',
+        params: { piece: 'piece-1', edges: [] },
+      }).inverse,
+    ).toBeNull();
   });
 });

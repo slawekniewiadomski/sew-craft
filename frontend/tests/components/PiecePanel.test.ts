@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 
 import { formatDimensionValue } from '@/lib/dimensions';
-import type { PieceSummary } from '@/lib/pieces';
+import type { PieceCornerRow, PieceSummary } from '@/lib/pieces';
 
 import PiecePanel from '@/components/PiecePanel.vue';
 
@@ -26,6 +26,7 @@ const summary: PieceSummary = {
     { edge: 'cd', kind: 'none', width: 0, cutDistance: 0 },
   ],
   uniform: null,
+  corners: [],
   metrics,
   hasLoop: true,
   broken: false,
@@ -320,5 +321,139 @@ describe('PiecePanel loop state and actions', () => {
     await wrapper.find('[data-testid="entity-default-mode"]').setValue('none');
 
     expect(wrapper.emitted('set-piece-default')).toEqual([['p1', { mode: 'none' }]]);
+  });
+});
+
+describe('PiecePanel corner allowances', () => {
+  const corners: PieceCornerRow[] = [
+    { round: 'r1', radius: 12, cutWidth: 20, inherited: null, halves: [], state: 'own' },
+    { round: 'r2', radius: 8, cutWidth: null, inherited: 10, halves: [], state: 'inherited' },
+    { round: 'r3', radius: 5, cutWidth: null, inherited: null, halves: [10, 20], state: 'split' },
+    { round: 'r4', radius: 4, cutWidth: null, inherited: null, halves: [], state: 'none' },
+    { round: 'r5', radius: 3, cutWidth: null, inherited: null, halves: [], state: 'broken' },
+  ];
+
+  it('renders one row per corner with its state', () => {
+    const wrapper = mountPanel({ corners });
+    const row = (round: string) => wrapper.find(`[data-testid="entity-piece-corner-${round}"]`);
+
+    expect(row('r1').text()).toContain('R 12');
+    expect(
+      (wrapper.find('[data-testid="entity-piece-corner-width-r1"]').element as HTMLInputElement)
+        .value,
+    ).toBe('20');
+    expect(
+      wrapper.find('[data-testid="entity-piece-corner-width-r2"]').attributes('placeholder'),
+    ).toBe('10');
+    expect(wrapper.find('[data-testid="entity-piece-corner-split-r3"]').text()).toBe('Split');
+    expect(wrapper.find('[data-testid="entity-piece-corner-halves-r3"]').text()).toBe('10 / 20 mm');
+    expect(wrapper.find('[data-testid="entity-piece-corner-none-r4"]').text()).toBe('No allowance');
+    expect(wrapper.find('[data-testid="entity-piece-corner-width-r5"]').exists()).toBe(false);
+  });
+
+  it('emits a cut width, snapping back on invalid or unchanged input', async () => {
+    const wrapper = mountPanel({ corners });
+    const width = wrapper.find('[data-testid="entity-piece-corner-width-r1"]');
+    const emitted = () => wrapper.emitted('set-piece-corner-allowance') ?? [];
+
+    await width.setValue('25');
+    await width.trigger('change');
+    expect(emitted().at(-1)).toEqual(['p1', 'r1', { cutWidth: 25 }]);
+
+    const count = emitted().length;
+    for (const invalid of ['0', 'abc', '20']) {
+      await width.setValue(invalid);
+      await width.trigger('change');
+      expect(emitted()).toHaveLength(count);
+      expect((width.element as HTMLInputElement).value).toBe('20');
+    }
+
+    // An inherited row has no own value to snap back to.
+    const inherited = wrapper.find('[data-testid="entity-piece-corner-width-r2"]');
+    await inherited.setValue('abc');
+    await inherited.trigger('change');
+    expect((inherited.element as HTMLInputElement).value).toBe('');
+  });
+
+  it('removes and doubles a corner', async () => {
+    const wrapper = mountPanel({ corners });
+
+    await wrapper.find('[data-testid="entity-piece-corner-inherit-r1"]').trigger('click');
+    expect(wrapper.emitted('set-piece-corner-allowance')?.at(-1)).toEqual(['p1', 'r1', null]);
+
+    await wrapper.find('[data-testid="entity-piece-corner-double-r1"]').trigger('click');
+    expect(wrapper.emitted('set-piece-corner-allowance')?.at(-1)).toEqual([
+      'p1',
+      'r1',
+      { cutWidth: 40 },
+    ]);
+
+    await wrapper.find('[data-testid="entity-piece-corner-double-r2"]').trigger('click');
+    expect(wrapper.emitted('set-piece-corner-allowance')?.at(-1)).toEqual([
+      'p1',
+      'r2',
+      { cutWidth: 20 },
+    ]);
+  });
+
+  it('highlights the selected row and hides the editor for one target', () => {
+    const wrapper = mountPanel({ corners }, { selectedTargets: [{ kind: 'round', round: 'r1' }] });
+
+    expect(wrapper.find('[data-testid="entity-piece-corner-r1"]').classes()).toContain(
+      'bg-muted/60',
+    );
+    expect(wrapper.find('[data-testid="entity-piece-selection-editor"]').exists()).toBe(false);
+  });
+
+  it('edits several selected regions in one go', async () => {
+    const wrapper = mountPanel(
+      { corners },
+      {
+        selectedTargets: [
+          { kind: 'round', round: 'r1' },
+          { kind: 'edge', edge: 'ab' },
+        ],
+      },
+    );
+    const editor = () => wrapper.find('[data-testid="entity-piece-selection-editor"]');
+
+    expect(editor().text()).toContain('2 regions selected');
+    // A corner in the set drops the kind control: one number is a cut width.
+    expect(wrapper.find('[data-testid="entity-piece-selection-kind"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="entity-piece-selection-width"]').setValue('15');
+    await wrapper.find('[data-testid="entity-piece-selection-width"]').trigger('change');
+    await wrapper.find('[data-testid="entity-piece-selection-apply"]').trigger('click');
+    expect(wrapper.emitted('apply-allowances')?.at(-1)).toEqual([{ mode: 'set', cutWidth: 15 }]);
+
+    await wrapper.find('[data-testid="entity-piece-selection-double"]').trigger('click');
+    expect(wrapper.emitted('apply-allowances')?.at(-1)).toEqual([{ mode: 'double' }]);
+
+    await wrapper.find('[data-testid="entity-piece-selection-inherit"]').trigger('click');
+    expect(wrapper.emitted('apply-allowances')?.at(-1)).toEqual([{ mode: 'inherit' }]);
+  });
+
+  it('offers a kind when every selected region is an edge', async () => {
+    const wrapper = mountPanel(
+      {},
+      {
+        selectedTargets: [
+          { kind: 'edge', edge: 'ab' },
+          { kind: 'edge', edge: 'bc' },
+        ],
+      },
+    );
+    const kind = wrapper.find('[data-testid="entity-piece-selection-kind"]');
+
+    expect(kind.exists()).toBe(true);
+    expect(wrapper.find('[data-testid="entity-piece-allowance-ab"]').classes()).toContain(
+      'bg-muted/60',
+    );
+
+    await kind.setValue('double');
+    await wrapper.find('[data-testid="entity-piece-selection-apply"]').trigger('click');
+    expect(wrapper.emitted('apply-allowances')?.at(-1)).toEqual([
+      { mode: 'set', cutWidth: 10, kind: 'double' },
+    ]);
   });
 });

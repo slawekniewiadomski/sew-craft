@@ -6,6 +6,7 @@ import { nextTick } from 'vue';
 import AssemblyCanvas from '@/components/AssemblyCanvas.vue';
 import AssemblyPanel from '@/components/AssemblyPanel.vue';
 import EditorTabs from '@/components/EditorTabs.vue';
+import PiecePanel from '@/components/PiecePanel.vue';
 import PatternCanvas from '@/components/PatternCanvas.vue';
 import EditorRibbon from '@/components/EditorRibbon.vue';
 import EntityPropertiesPanel from '@/components/EntityPropertiesPanel.vue';
@@ -22,6 +23,7 @@ import {
   openPanel,
   pieceDoc,
   pointDown,
+  roundedLineDoc,
   seededDocument,
   toggleDisplay,
   withPiece,
@@ -1111,5 +1113,105 @@ describe('EditorView edge cases', () => {
 
     expect(store.document.tabs).toEqual([{ kind: 'piece', id: 'p1' }]);
     expect(wrapper.findComponent(PatternCanvas).exists()).toBe(true);
+  });
+});
+
+describe('EditorView allowance regions', () => {
+  const targets = [
+    { kind: 'edge' as const, edge: 'ab' },
+    { kind: 'round' as const, round: 'r1' },
+  ];
+
+  it('sets one corner width and edits several regions as one undo step', async () => {
+    const { wrapper, store } = await mountLoaded(roundedLineDoc);
+    await openPanel(wrapper, 'pieces');
+    const piece = store.document.pieces[0]!;
+    const pieceId = piece.id;
+
+    wrapper
+      .findComponent(PiecePanel)
+      .vm.$emit('set-piece-corner-allowance', pieceId, 'r1', { cutWidth: 20 });
+    await flushPromises();
+    expect(store.document.pieces[0]!.cornerAllowances).toEqual([{ round: 'r1', cutWidth: 20 }]);
+
+    // Inherit removes the corner's own width, and undo brings it back.
+    wrapper.findComponent(PiecePanel).vm.$emit('set-piece-corner-allowance', pieceId, 'r1', null);
+    await flushPromises();
+    expect(store.document.pieces[0]!.cornerAllowances).toEqual([]);
+    store.undo();
+    await nextTick();
+    expect(store.document.pieces[0]!.cornerAllowances).toEqual([{ round: 'r1', cutWidth: 20 }]);
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedAllowanceTargets', targets);
+    await nextTick();
+    expect(wrapper.findComponent(PiecePanel).props('selectedTargets')).toEqual(targets);
+
+    wrapper.findComponent(PiecePanel).vm.$emit('apply-allowances', { mode: 'set', cutWidth: 15 });
+    await flushPromises();
+
+    const edited = store.document.pieces[0]!;
+    expect(edited.cornerAllowances).toEqual([{ round: 'r1', cutWidth: 15 }]);
+    expect(edited.allowances.find((allowance) => allowance.edge === 'ab')?.width).toBe(15);
+
+    store.undo();
+    await nextTick();
+    const undone = store.document.pieces[0]!;
+    expect(undone.cornerAllowances).toEqual([{ round: 'r1', cutWidth: 20 }]);
+    expect(undone.allowances.find((allowance) => allowance.edge === 'ab')?.width).not.toBe(15);
+  });
+
+  it('ignores a bulk edit that has no command to run', async () => {
+    const { wrapper, store } = await mountLoaded(roundedLineDoc);
+    await openPanel(wrapper, 'pieces');
+    const before = store.journal.length;
+
+    wrapper
+      .findComponent(PatternCanvas)
+      .vm.$emit('update:selectedAllowanceTargets', [{ kind: 'edge', edge: 'missing' }]);
+    await nextTick();
+    wrapper.findComponent(PiecePanel).vm.$emit('apply-allowances', { mode: 'double' });
+    await flushPromises();
+
+    expect(store.journal.length).toBe(before);
+  });
+
+  it('clears the region selection with Escape and when a target disappears', async () => {
+    const { wrapper, store } = await mountLoaded(roundedLineDoc);
+    await openPanel(wrapper, 'pieces');
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedAllowanceTargets', targets);
+    await nextTick();
+    keydown('Escape');
+    await nextTick();
+    expect(wrapper.findComponent(PiecePanel).props('selectedTargets')).toEqual([]);
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedAllowanceTargets', targets);
+    await nextTick();
+    store.dispatch({
+      id: 'remove-round',
+      type: 'remove_corner_round',
+      params: { id: 'r1' },
+    });
+    await nextTick();
+    expect(wrapper.findComponent(PiecePanel).props('selectedTargets')).toEqual([
+      { kind: 'edge', edge: 'ab' },
+    ]);
+  });
+
+  it('drops the region selection when another kind of selection takes over', async () => {
+    const { wrapper } = await mountLoaded(roundedLineDoc);
+    await openPanel(wrapper, 'pieces');
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedAllowanceTargets', targets);
+    await nextTick();
+    wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedEntityIds', ['ab']);
+    await nextTick();
+    expect(wrapper.findComponent(PiecePanel).props('selectedTargets')).toEqual([]);
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedAllowanceTargets', targets);
+    await nextTick();
+    wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedDimensionIds', ['cut']);
+    await nextTick();
+    expect(wrapper.findComponent(PiecePanel).props('selectedTargets')).toEqual([]);
   });
 });

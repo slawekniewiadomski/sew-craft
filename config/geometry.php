@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.16.0',
+    'spec_version' => '0.17.0',
 
     /*
     |--------------------------------------------------------------------------
@@ -308,6 +308,16 @@ return [
                 'remove' => 'bool?',
             ],
             'inverse' => 'set_piece_allowance',
+        ],
+        'set_piece_corner_allowance' => [
+            'description' => 'Set, change or remove the allowance of one rounded corner of a piece. The width is the cut distance in mm; a corner has no fold kind.',
+            'params' => [
+                'piece' => 'entity_id',
+                'round' => 'entity_id',
+                'cutWidth' => 'number?',
+                'remove' => 'bool?',
+            ],
+            'inverse' => 'set_piece_corner_allowance',
         ],
         'set_default_allowance' => [
             'description' => 'Set, change or clear the allowance copied onto newly created pieces. Width is the finished width in mm; remove clears it.',
