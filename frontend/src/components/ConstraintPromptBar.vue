@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import type { ConstraintType } from '@sewcraft/geometry';
+import type { ConstraintType, ParamInput, PatternDocument } from '@sewcraft/geometry';
 import { computed, nextTick, ref, watch } from 'vue';
 
 import { constraintValueSpec } from '@/lib/constraint-tools';
+import { formulaIssue, parseParamEdit } from '@/lib/formula';
 
 import { Button } from './ui/button';
 
@@ -12,26 +13,29 @@ const props = defineProps<{
   rejection: string | null;
   valueReady: boolean;
   initialValue: string;
+  /** The document whose variables a formula may name. */
+  document?: PatternDocument;
 }>();
 
 const emit = defineEmits<{
-  apply: [value: number];
+  apply: [value: ParamInput];
   cancel: [];
 }>();
 
 const inputId = 'constraint-value-input';
 const raw = ref<string | number>('');
-const invalid = ref(false);
+/** Why the typed value cannot be applied, or `null` when it can. */
+const error = ref<string | null>(null);
 const input = ref<HTMLInputElement | null>(null);
 const spec = computed(() => constraintValueSpec(props.type));
-const canApply = computed(() => String(raw.value).trim() !== '' && !invalid.value);
+const canApply = computed(() => String(raw.value).trim() !== '' && error.value === null);
 
 watch(
   () => props.valueReady,
   async (ready) => {
     if (!ready) return;
     raw.value = props.initialValue;
-    invalid.value = false;
+    error.value = null;
     await nextTick();
     input.value?.focus();
   },
@@ -41,11 +45,27 @@ watch(
 function apply(): void {
   const current = spec.value!;
   const text = String(raw.value).trim();
-  const value = Number(text);
-  invalid.value = text === '' || !current.isValid(value);
-  if (invalid.value) return;
 
-  emit('apply', current.toCommandValue(value));
+  if (current.acceptsFormula) {
+    const edit = parseParamEdit(text);
+    if (edit.kind === 'formula') {
+      const issue = formulaIssue(props.document ?? {}, edit.expr);
+      error.value = issue;
+      if (issue === null) emit('apply', { expr: edit.expr });
+      return;
+    }
+    if (edit.kind !== 'number') {
+      error.value = current.invalidMessage;
+      return;
+    }
+    error.value = current.isValid(edit.value) ? null : current.invalidMessage;
+    if (error.value === null) emit('apply', edit.value);
+    return;
+  }
+
+  const value = Number(text);
+  error.value = text === '' || !current.isValid(value) ? current.invalidMessage : null;
+  if (error.value === null) emit('apply', current.toCommandValue(value));
 }
 </script>
 
@@ -72,15 +92,19 @@ function apply(): void {
         :id="inputId"
         ref="input"
         v-model="raw"
-        type="number"
+        :type="spec.acceptsFormula ? 'text' : 'number'"
         step="any"
         class="w-28 rounded-md border px-2 py-1 text-sm"
         data-testid="constraint-value"
-        :aria-invalid="invalid ? 'true' : undefined"
-        @input="invalid = false"
+        :aria-invalid="error !== null ? 'true' : undefined"
+        @input="error = null"
       />
-      <p v-if="invalid" class="text-sm text-destructive" data-testid="constraint-value-error">
-        {{ spec.invalidMessage }}
+      <p
+        v-if="error !== null"
+        class="text-sm text-destructive"
+        data-testid="constraint-value-error"
+      >
+        {{ error }}
       </p>
       <Button type="submit" size="sm" :disabled="!canApply" data-testid="constraint-apply">
         Apply

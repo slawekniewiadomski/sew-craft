@@ -2,6 +2,8 @@ import { enableAutoUnmount, mount, type VueWrapper } from '@vue/test-utils';
 import { afterEach, describe, expect, it } from 'vitest';
 import { nextTick } from 'vue';
 
+import type { PatternDocument } from '@sewcraft/geometry';
+
 import ConstraintPromptBar from '@/components/ConstraintPromptBar.vue';
 
 enableAutoUnmount(afterEach);
@@ -13,6 +15,7 @@ function mountBar(
     rejection: string | null;
     valueReady: boolean;
     initialValue: string;
+    document: PatternDocument;
   }> = {},
 ): VueWrapper {
   return mount(ConstraintPromptBar, {
@@ -73,6 +76,53 @@ describe('ConstraintPromptBar', () => {
     await wrapper.find('form').trigger('submit');
 
     expect(wrapper.emitted('apply')).toEqual([[130.25]]);
+  });
+
+  it('applies a formula over the document variables', async () => {
+    const wrapper = mountBar({
+      type: 'distance',
+      valueReady: true,
+      initialValue: '125.5',
+      document: {
+        schema: 'sewcraft.pattern/0.5',
+        units: 'mm',
+        entities: [],
+        constraints: [],
+        pieces: [],
+        assemblies: [],
+        tabs: [],
+        variables: [{ slug: 'bust', name: 'Bust', unit: 'mm', value: 880 }],
+      },
+    });
+
+    await input(wrapper).setValue('$bust / 4');
+    await wrapper.find('form').trigger('submit');
+    expect(wrapper.emitted('apply')).toEqual([[{ expr: '$bust / 4' }]]);
+
+    await input(wrapper).setValue('$gone / 4');
+    await wrapper.find('form').trigger('submit');
+    expect(wrapper.emitted('apply')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="constraint-value-error"]').text()).toContain(
+      'unknown variable $gone',
+    );
+
+    await input(wrapper).setValue('0');
+    await wrapper.find('form').trigger('submit');
+    expect(wrapper.find('[data-testid="constraint-value-error"]').text()).toContain(
+      'greater than 0',
+    );
+  });
+
+  it('reports a formula it cannot resolve without a document', async () => {
+    const wrapper = mountBar({ type: 'distance', valueReady: true, initialValue: '' });
+
+    await input(wrapper).setValue('$bust');
+    await wrapper.find('form').trigger('submit');
+
+    expect(wrapper.emitted('apply')).toBeUndefined();
+    expect(wrapper.find('[data-testid="constraint-value-error"]').text()).toContain(
+      'unknown variable $bust',
+    );
   });
 
   it('converts angle degrees to radians before applying', async () => {

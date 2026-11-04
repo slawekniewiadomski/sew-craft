@@ -379,6 +379,8 @@ export interface ConstraintValueSpec {
   unit: 'mm' | '°';
   label: string;
   invalidMessage: string;
+  /** Whether the field also takes a formula over the document's variables. */
+  acceptsFormula: boolean;
   isValid: (value: number) => boolean;
   toCommandValue: (value: number) => number;
 }
@@ -389,7 +391,8 @@ export function constraintValueSpec(type: ConstraintType): ConstraintValueSpec |
     return {
       unit: 'mm',
       label: 'Distance (mm)',
-      invalidMessage: 'Enter a distance greater than 0 mm.',
+      invalidMessage: 'Enter a distance greater than 0 mm, or a formula.',
+      acceptsFormula: true,
       isValid: (value) => Number.isFinite(value) && value > 0,
       toCommandValue: (value) => value,
     };
@@ -400,6 +403,7 @@ export function constraintValueSpec(type: ConstraintType): ConstraintValueSpec |
       unit: '°',
       label: 'Angle (°)',
       invalidMessage: 'Enter a valid angle in degrees.',
+      acceptsFormula: false,
       isValid: (value) => Number.isFinite(value),
       toCommandValue: (value) => (value * Math.PI) / 180,
     };
