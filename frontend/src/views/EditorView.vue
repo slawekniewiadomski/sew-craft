@@ -84,7 +84,8 @@ import UpgradeDocumentDialog from '@/components/UpgradeDocumentDialog.vue';
 import { useCommandBus } from '@/composables/use-command-bus';
 import { useSidebarLayout } from '@/composables/use-sidebar-layout';
 import { defaultAllowanceSummary, type AllowanceChoice } from '@/lib/allowance-defaults';
-import { formulaIssue } from '@/lib/formula';
+import { parseAllowanceWidth } from '@/lib/allowance-width';
+import { formulaIssue, insertVariableToken, variableOptions, variableQuery } from '@/lib/formula';
 import { buildCircleCommands, type CircleEndpoint } from '@/lib/circle-tool';
 import { nextCommandId } from '@/lib/command-ids';
 import type { VariableValueInput } from '@/lib/variables';
@@ -523,6 +524,60 @@ const dimensionPicker = ref<{ id: EntityId; text: string; activeIndex: number } 
 /** A drawer value being typed that does not resolve yet. */
 const dimensionDrafts = ref<Record<EntityId, { text: string; issue: string }>>({});
 
+/** The `$` picker open in the drawer, if any. */
+const variablePicker = ref<{ id: EntityId; activeIndex: number } | null>(null);
+
+/** The partial token being typed, which filters the drawer's `$` picker. */
+const variableQueryText = ref('');
+
+/** The variables the drawer's `$` picker offers. */
+const variablePickerOptions = computed(() => {
+  const query = variableQueryText.value.toLowerCase();
+  return variableOptions(pattern.value).filter(
+    (option) => option.slug.includes(query) || option.name.toLowerCase().includes(query),
+  );
+});
+
+/** Insert a variable token into the drawer draft. */
+function selectDimensionVariable(id: EntityId, slug: string): void {
+  // The picker opens from a drawer input, which always leaves a draft.
+  const draft = dimensionDrafts.value[id]!;
+  dimensionDrafts.value[id] = { text: insertVariableToken(draft.text, slug), issue: '' };
+  variablePicker.value = null;
+}
+
+/** Insert the token the drawer's `$` picker highlights. */
+function pickDimensionVariable(id: EntityId): void {
+  // Enter is handled only while the list has a row to pick.
+  const option = variablePickerOptions.value[variablePicker.value!.activeIndex]!;
+  selectDimensionVariable(id, option.slug);
+}
+
+/** Arrow keys move the drawer's `$` picker, Enter inserts, Escape closes it. */
+function onVariablePickerKeydown(id: EntityId, event: KeyboardEvent): boolean {
+  const picker = variablePicker.value;
+  if (picker === null || picker.id !== id) return false;
+  const count = variablePickerOptions.value.length;
+
+  if (event.key === 'ArrowDown' && count > 0) {
+    variablePicker.value = { id, activeIndex: (picker.activeIndex + 1) % count };
+    return true;
+  }
+  if (event.key === 'ArrowUp' && count > 0) {
+    variablePicker.value = { id, activeIndex: (picker.activeIndex - 1 + count) % count };
+    return true;
+  }
+  if (event.key === 'Escape') {
+    variablePicker.value = null;
+    return true;
+  }
+  if (event.key === 'Enter' && count > 0) {
+    pickDimensionVariable(id);
+    return true;
+  }
+  return false;
+}
+
 /** Filtered rows for the open drawer picker. */
 const dimensionPickerOptions = computed<DimensionReferenceOption[]>(() => {
   const picker = dimensionPicker.value!;
@@ -578,11 +633,15 @@ function moveDimensionPicker(step: number): void {
 
 function onDimensionInput(id: EntityId, event: Event): void {
   const value = (event.target as HTMLInputElement).value;
+  dimensionDrafts.value[id] = { text: value, issue: '' };
   if (isReferenceEditText(value)) {
     openDimensionPicker(id, referenceSearchText(value));
   } else if (dimensionPicker.value?.id === id) {
     closeDimensionPicker();
   }
+  const query = variableQuery(value);
+  variableQueryText.value = query ?? '';
+  variablePicker.value = query === null ? null : { id, activeIndex: 0 };
 }
 
 function selectDimensionReference(id: EntityId, reference: EntityId): void {
@@ -591,6 +650,10 @@ function selectDimensionReference(id: EntityId, reference: EntityId): void {
 }
 
 function onDimensionKeydown(id: EntityId, event: KeyboardEvent): void {
+  if (onVariablePickerKeydown(id, event)) {
+    event.preventDefault();
+    return;
+  }
   const picker = dimensionPicker.value;
   if (picker === null || picker.id !== id) return;
 
@@ -2650,6 +2713,27 @@ onBeforeUnmount(() => {
                     :active-index="activeDimensionPickerIndex"
                     @select="selectDimensionReference(dimension.id, $event)"
                   />
+
+                  <ul
+                    v-if="variablePicker?.id === dimension.id && variablePickerOptions.length > 0"
+                    class="absolute top-full left-0 z-20 mt-1 max-h-40 w-56 overflow-auto rounded-sm border bg-background p-1 shadow-sm"
+                    :data-testid="`dimension-variables-${dimension.id}`"
+                  >
+                    <li v-for="option in variablePickerOptions" :key="option.slug">
+                      <button
+                        type="button"
+                        class="flex w-full items-baseline justify-between gap-2 rounded-sm px-1.5 py-1 text-left text-2xs hover:bg-muted"
+                        :data-testid="`dimension-variable-${dimension.id}-${option.slug}`"
+                        @mousedown.prevent="selectDimensionVariable(dimension.id, option.slug)"
+                      >
+                        <span class="truncate">
+                          {{ option.name }}
+                          <span class="font-mono text-muted-foreground">${{ option.slug }}</span>
+                        </span>
+                        <span class="shrink-0 text-muted-foreground">{{ option.resolved }}</span>
+                      </button>
+                    </li>
+                  </ul>
                 </div>
 
                 <div v-if="!dimension.readOnly" class="flex flex-wrap items-center gap-1.5">

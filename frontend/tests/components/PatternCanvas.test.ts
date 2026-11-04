@@ -2168,6 +2168,40 @@ describe('PatternCanvas', () => {
     expect(wrapper.emitted('update-dimension')).toBeUndefined();
   });
 
+  it('offers the document variables when a $ token is typed', async () => {
+    const document: PatternDocument = {
+      ...dimensionDoc,
+      variables: [
+        { slug: 'bust', name: 'Bust (cm)', unit: 'cm', value: 88 },
+        { slug: 'waist', name: 'Waist', unit: 'cm', value: 72 },
+      ],
+    };
+    const wrapper = mountCanvas({ document });
+    await wrapper.find('[data-testid="dimension-label-w"]').trigger('dblclick');
+    await flushPromises();
+
+    const editor = wrapper.find('[data-testid="dimension-editor"]');
+    await editor.setValue('$b');
+    expect(wrapper.find('[data-testid="dimension-variable-list"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="dimension-variable-bust"]').text()).toContain('$bust');
+
+    await editor.trigger('keydown', { key: 'ArrowDown' });
+    await editor.trigger('keydown', { key: 'Enter' });
+    expect((editor.element as HTMLInputElement).value).toBe('$bust');
+
+    await editor.setValue('$w');
+    await wrapper.find('[data-testid="dimension-variable-waist"]').trigger('mousedown');
+    expect((editor.element as HTMLInputElement).value).toBe('$waist');
+
+    await editor.setValue('$b');
+    await editor.trigger('keydown', { key: 'ArrowUp' });
+    await editor.trigger('keydown', { key: 'x' });
+    expect(wrapper.find('[data-testid="dimension-variable-list"]').exists()).toBe(true);
+    await editor.trigger('keydown', { key: 'Escape' });
+    expect(wrapper.find('[data-testid="dimension-variable-list"]').exists()).toBe(false);
+    expect((editor.element as HTMLInputElement).value).toBe('$b');
+  });
+
   it('commits a formula and keeps an unresolved one editable', async () => {
     const document: PatternDocument = {
       ...dimensionDoc,
