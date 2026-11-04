@@ -705,3 +705,24 @@ describe('entityProperties midpoint relations', () => {
     expect(entityProperties(document, 'l2')?.constraints).toEqual([]);
   });
 });
+
+describe('entityProperties for a mark', () => {
+  it('describes a mark without any geometry anchor rows', () => {
+    const document: PatternDocument = {
+      ...doc(),
+      entities: [
+        ...doc().entities,
+        { id: 'notch-1', kind: 'mark', type: 'notch', edge: 'ab', point: 'a' },
+      ],
+      constraints: [{ id: 'h', type: 'horizontal', a: 'a', b: 'b' }],
+    };
+
+    expect(entityProperties(document, 'notch-1')).toMatchObject({
+      geometry: { kind: 'mark', type: 'notch' },
+      length: null,
+      arc: null,
+      radius: null,
+      constraints: [],
+    });
+  });
+});

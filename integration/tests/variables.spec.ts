@@ -8,7 +8,7 @@ const unique = (): string =>
 /** A document with one variable and one dimension driven by its formula. */
 function seededDocument(): Record<string, unknown> {
   return {
-    schema: 'sewcraft.pattern/0.5',
+    schema: 'sewcraft.pattern/0.6',
     units: 'mm',
     entities: [
       { id: 'a', kind: 'point', x: 0, y: 0, fixed: true, piece: 'p' },
@@ -67,7 +67,7 @@ test('stores and returns variables and formula parameters', async ({ request }) 
     };
   };
 
-  expect(body.data.document.schema).toBe('sewcraft.pattern/0.5');
+  expect(body.data.document.schema).toBe('sewcraft.pattern/0.6');
   expect(body.data.document.variables).toEqual([
     { slug: 'bust', name: 'Bust', unit: 'mm', value: 880 },
   ]);

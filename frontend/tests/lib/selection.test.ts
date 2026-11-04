@@ -154,3 +154,17 @@ describe('orphanedEdges', () => {
     expect(orphanedEdges(arcs, ['arc'])).toEqual([]);
   });
 });
+
+describe('orphanedEdges with marks', () => {
+  const document = doc([
+    pt('a'),
+    pt('b'),
+    { id: 'notch-1', kind: 'mark', type: 'notch', edge: 'ab', point: 'a' } as never,
+    { id: 'centre-1', kind: 'mark', type: 'centre_line', start: 'a', end: 'b' } as never,
+  ]);
+
+  it('reports a mark whose point is selected', () => {
+    expect(orphanedEdges(document, ['a'])).toEqual(['notch-1', 'centre-1']);
+    expect(orphanedEdges(document, ['notch-1'])).toEqual([]);
+  });
+});

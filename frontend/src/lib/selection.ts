@@ -54,13 +54,17 @@ export function orphanedEdges(document: PatternDocument, ids: EntityId[]): Entit
   for (const entity of document.entities) {
     if (entity.kind === 'point' || entity.kind === 'text' || selected.has(entity.id)) continue;
     const points =
-      entity.kind === 'line'
-        ? [entity.start, entity.end]
-        : entity.kind === 'circle'
-          ? [entity.center, entity.rim]
-          : entity.kind === 'arc'
-            ? [entity.start, entity.end, entity.through]
-            : [entity.p0, entity.p1, entity.p2, entity.p3];
+      entity.kind === 'mark'
+        ? entity.type === 'notch'
+          ? [entity.point]
+          : [entity.start, entity.end]
+        : entity.kind === 'line'
+          ? [entity.start, entity.end]
+          : entity.kind === 'circle'
+            ? [entity.center, entity.rim]
+            : entity.kind === 'arc'
+              ? [entity.start, entity.end, entity.through]
+              : [entity.p0, entity.p1, entity.p2, entity.p3];
     if (points.some((point) => selected.has(point))) orphans.push(entity.id);
   }
 

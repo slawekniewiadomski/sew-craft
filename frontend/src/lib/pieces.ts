@@ -6,8 +6,11 @@ import {
   cornerAllowanceState,
   cornerRounds,
   getEntity,
+  markIsBroken,
+  notchDepthShare,
   pieceEntities,
   pieceLoop,
+  pieceMarks,
   pieceMetrics,
   validatePiece,
   type AllowanceKind,
@@ -15,6 +18,7 @@ import {
   type DerivedDistanceConstraint,
   type Entity,
   type EntityId,
+  type MarkEntity,
   type PatternDocument,
   type Piece,
   type PieceMetrics,
@@ -46,6 +50,47 @@ export interface PieceCornerRow {
   /** Each half's cut distance when the crescent splits, in the round's end order. */
   halves: number[];
   state: 'own' | 'inherited' | 'split' | 'none' | 'broken';
+}
+
+/** One row of the piece's marks list: a notch or a centre line. */
+export interface PieceMarkRow {
+  id: EntityId;
+  type: MarkEntity['type'];
+  /** The notch's share of the allowance; `0` for a centre line. */
+  depth: number;
+  /** The cut distance a notch reaches into, in millimetres; `0` otherwise. */
+  cutDistance: number;
+  /** A short human label: the share as a percentage, or the line's ends. */
+  detail: string;
+  /** Whether the mark has nothing to draw right now. */
+  broken: boolean;
+}
+
+/** The marks rows for a piece, resolved against the document on every read. */
+export function pieceMarkRows(document: PatternDocument, piece: Piece): PieceMarkRow[] {
+  return pieceMarks(document, piece.id).map((mark): PieceMarkRow => {
+    if (mark.type === 'centre_line') {
+      return {
+        id: mark.id,
+        type: 'centre_line',
+        depth: 0,
+        cutDistance: 0,
+        detail: 'Centre line',
+        broken: markIsBroken(document, piece, mark),
+      };
+    }
+
+    const allowance = allowanceForEdge(piece, mark.edge);
+    const share = notchDepthShare(mark.depth);
+    return {
+      id: mark.id,
+      type: 'notch',
+      depth: share,
+      cutDistance: allowance === undefined ? 0 : allowanceDistance(allowance, document) * share,
+      detail: `${Math.round(share * 100)}%`,
+      broken: markIsBroken(document, piece, mark),
+    };
+  });
 }
 
 /** Everything the inspector reports for a piece that owns the selected edge. */
@@ -200,6 +245,7 @@ function endpointIds(entity: Entity): [EntityId, EntityId] | null {
     case 'point':
     case 'circle':
     case 'text':
+    case 'mark':
       return null;
   }
 }

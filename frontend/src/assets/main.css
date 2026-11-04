@@ -21,6 +21,8 @@
   --dimension-derived: oklch(0.555 0.163 48.998);
   /* Violet-700: annotation marks are visible but never read as cut geometry. */
   --annotation: oklch(0.55 0.2 300);
+  /* Red-700 #b91c1c: a sewing mark reads as a snip, not as cut or stitch. */
+  --mark: oklch(0.505 0.19 27.5);
   --font-annotation: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
@@ -50,6 +52,7 @@
   --color-dimension-reference: var(--dimension-reference);
   --color-dimension-derived: var(--dimension-derived);
   --color-annotation: var(--annotation);
+  --color-mark: var(--mark);
   --font-annotation: var(--font-annotation);
   --color-border: var(--border);
   --color-input: var(--input);

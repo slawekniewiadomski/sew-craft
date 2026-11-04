@@ -357,7 +357,7 @@ describe('EditorView persistence', () => {
       'Unsupported project format',
     );
     expect(wrapper.find('[data-testid="saved-schema"]').text()).toBe('sewcraft.pattern/0.2');
-    expect(wrapper.find('[data-testid="editor-schema"]').text()).toBe('sewcraft.pattern/0.5');
+    expect(wrapper.find('[data-testid="editor-schema"]').text()).toBe('sewcraft.pattern/0.6');
     expect(wrapper.find('[data-testid="read-only-pill"]').exists()).toBe(true);
     expect(store.readOnly).toBe(true);
 
@@ -445,7 +445,7 @@ describe('EditorView persistence', () => {
   it('never migrates a newer schema and offers read-only or cancel', async () => {
     setLoadedDocument({
       ...createEmptyDocument(),
-      schema: 'sewcraft.pattern/0.6',
+      schema: 'sewcraft.pattern/0.7',
     } as unknown as PatternDocument);
 
     const pinia = createPinia();
@@ -470,7 +470,7 @@ describe('EditorView persistence', () => {
     await flushPromises();
 
     expect(store.readOnly).toBe(true);
-    expect(store.document.schema).toBe('sewcraft.pattern/0.6');
+    expect(store.document.schema).toBe('sewcraft.pattern/0.7');
     expect(vi.mocked(projectsApi.savePattern)).not.toHaveBeenCalled();
   });
 
@@ -1200,5 +1200,69 @@ describe('EditorView active-piece defaults and teardown', () => {
     wrapper.findComponent(PatternCanvas).vm.$emit('constraint-pick', { id: 'b', kind: 'point' });
     await flushPromises();
     expect(store.document.constraints.at(-1)).toMatchObject({ piece: 'p1' });
+  });
+});
+
+describe('EditorView piece marks', () => {
+  const owned = (document: PatternDocument): PatternDocument => ({
+    ...document,
+    entities: document.entities.map((entity) => ({ ...entity, piece: 'p1' })),
+  });
+
+  const markOf = (store: ReturnType<typeof useEditorStore>, type: 'notch' | 'centre_line') =>
+    store.document.entities.find((entity) => entity.kind === 'mark' && entity.type === type)!;
+
+  it('places a notch and a centre line from the canvas', async () => {
+    const { wrapper, store } = await mountLoaded(owned(pieceDoc));
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('add-notch', 'a', 'ab');
+    await flushPromises();
+    expect(markOf(store, 'notch')).toMatchObject({
+      kind: 'mark',
+      type: 'notch',
+      piece: 'p1',
+      edge: 'ab',
+      point: 'a',
+    });
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('add-centre-line', 'a', 'c');
+    await flushPromises();
+    expect(markOf(store, 'centre_line')).toMatchObject({ start: 'a', end: 'c' });
+  });
+
+  it('edits the notch depth and deletes a mark from the piece card', async () => {
+    const { wrapper, store } = await mountLoaded(owned(pieceDoc));
+    wrapper.findComponent(PatternCanvas).vm.$emit('add-notch', 'a', 'ab');
+    await flushPromises();
+    const notch = markOf(store, 'notch');
+    await openPanel(wrapper, 'pieces');
+    await wrapper.find(`[data-testid="piece-drawer-piece-mark-depth-${notch.id}"]`).setValue('80');
+    await flushPromises();
+    expect(markOf(store, 'notch')).toMatchObject({ depth: 0.8 });
+
+    await wrapper
+      .find(`[data-testid="piece-drawer-piece-mark-delete-${notch.id}"]`)
+      .trigger('click');
+    await flushPromises();
+    expect(store.document.entities.some((entity) => entity.id === notch.id)).toBe(false);
+  });
+
+  it('selects and deletes a mark on the canvas', async () => {
+    const { wrapper, store } = await mountLoaded(owned(pieceDoc));
+    wrapper.findComponent(PatternCanvas).vm.$emit('add-centre-line', 'a', 'c');
+    await flushPromises();
+    const mark = markOf(store, 'centre_line');
+
+    await wrapper.find('[data-testid="tool-select"]').trigger('click');
+    wrapper
+      .find(`[data-kind="mark"][data-entity-id="${mark.id}"]`)
+      .element.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, clientX: 60, clientY: 60, button: 0 }),
+      );
+    await nextTick();
+
+    keydown('Delete');
+    await flushPromises();
+    expect(store.document.entities.some((entity) => entity.id === mark.id)).toBe(false);
   });
 });
