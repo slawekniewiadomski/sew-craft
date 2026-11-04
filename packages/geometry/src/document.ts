@@ -137,13 +137,17 @@ export function entityPoints(document: PatternDocument, entity: Entity): PointEn
   const ids: EntityId[] =
     entity.kind === 'text'
       ? [entity.anchor]
-      : entity.kind === 'line'
-        ? [entity.start, entity.end]
-        : entity.kind === 'arc'
-          ? [entity.start, entity.through, entity.end]
-          : entity.kind === 'circle'
-            ? [entity.center, entity.rim]
-            : [entity.p0, entity.p1, entity.p2, entity.p3];
+      : entity.kind === 'mark'
+        ? entity.type === 'notch'
+          ? [entity.point]
+          : [entity.start, entity.end]
+        : entity.kind === 'line'
+          ? [entity.start, entity.end]
+          : entity.kind === 'arc'
+            ? [entity.start, entity.through, entity.end]
+            : entity.kind === 'circle'
+              ? [entity.center, entity.rim]
+              : [entity.p0, entity.p1, entity.p2, entity.p3];
 
   return ids.map((id) => {
     const referenced = getEntity(document, id);
@@ -227,6 +231,8 @@ function entityReferenceIds(entity: Entity): EntityId[] {
       return [entity.center, entity.rim];
     case 'text':
       return entity.leader === undefined ? [entity.anchor] : [entity.anchor, entity.leader];
+    case 'mark':
+      return entity.type === 'notch' ? [entity.point] : [entity.start, entity.end];
   }
 }
 

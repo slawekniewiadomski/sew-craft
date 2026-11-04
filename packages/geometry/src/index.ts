@@ -4,6 +4,7 @@ export * from './types.js';
 export * from './document.js';
 export * from './roles.js';
 export * from './text.js';
+export * from './mark.js';
 export * from './errors.js';
 export * from './number.js';
 export * from './expression.js';

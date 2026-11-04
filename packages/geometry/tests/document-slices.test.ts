@@ -146,6 +146,24 @@ describe('documentForPiece', () => {
     expect(sliced.units).toBe('mm');
   });
 
+  it('keeps a mark and closes over the points it references', () => {
+    const document: PatternDocument = {
+      ...documentOf([piece()]),
+      entities: [
+        ...documentOf([piece()]).entities,
+        point('m', 50, 0),
+        { id: 'n1', kind: 'mark', type: 'notch', piece: 'p1', edge: 'bottom', point: 'm' },
+        { id: 'c1', kind: 'mark', type: 'centre_line', piece: 'p1', start: 'a', end: 'b' },
+      ],
+    };
+
+    const sliced = documentForPiece(document, 'p1');
+
+    expect(sliced.entities.map((entity) => entity.id)).toEqual(
+      expect.arrayContaining(['n1', 'c1', 'm']),
+    );
+  });
+
   it('drops a foreign constraint and a foreign round', () => {
     const document: PatternDocument = {
       ...documentOf([piece(), piece('p2', '2')]),
