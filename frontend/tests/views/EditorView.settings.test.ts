@@ -49,6 +49,21 @@ describe('EditorView project settings', () => {
     expect(wrapper.find('[data-testid="project-settings-dialog"]').exists()).toBe(false);
   });
 
+  it('leaves the spacebar to the description field', async () => {
+    const { wrapper } = await mountLoaded(lineDoc);
+    await wrapper.find('[data-testid="project-settings"]').trigger('click');
+
+    const field = wrapper.find('[data-testid="project-settings-description"]');
+    const event = new KeyboardEvent('keydown', {
+      code: 'Space',
+      bubbles: true,
+      cancelable: true,
+    });
+    field.element.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   it('saves the name and description through the API', async () => {
     const { wrapper } = await mountLoaded(lineDoc);
     await wrapper.find('[data-testid="project-settings"]').trigger('click');

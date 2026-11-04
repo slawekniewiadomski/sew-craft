@@ -130,6 +130,7 @@ import {
 import { buildArcCommands, type ArcEndpoint } from '@/lib/arc-tool';
 import { createAutosave, fitsKeepaliveBudget, type SaveOrigin } from '@/lib/autosave';
 import { downloadSvgFile } from '@/lib/download';
+import { isEditableTarget } from '@/lib/dom';
 import {
   readDisplaySettings,
   writeDisplaySettings,
@@ -1817,12 +1818,6 @@ function removeCornerRound(id: EntityId): void {
   );
 }
 
-function isEditing(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLElement && target.matches('input, textarea, [contenteditable="true"]')
-  );
-}
-
 function onKeyDown(event: KeyboardEvent): void {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
     event.preventDefault();
@@ -1861,7 +1856,7 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
-  if (isEditing(event.target)) return;
+  if (isEditableTarget(event.target)) return;
 
   if (event.key === 'Delete' || event.key === 'Backspace') {
     event.preventDefault();
