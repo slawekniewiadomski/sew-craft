@@ -189,6 +189,8 @@ export function formatDimensionLabel(value: number, state: DimensionState): stri
       return `[${formatted}]`;
     case 'derived':
       return `${formatted} cut`;
+    case 'formula':
+      return `ƒ ${formatted}`;
     case 'set':
       return formatted;
   }
@@ -199,6 +201,8 @@ export function dimensionStateLabel(state: DimensionState): string {
   switch (state) {
     case 'set':
       return 'Set';
+    case 'formula':
+      return 'Formula';
     case 'driven':
       return 'Driven';
     case 'referenced':
@@ -211,8 +215,9 @@ export function dimensionStateLabel(state: DimensionState): string {
 }
 
 /** The pill tone for a dimension state: broken is danger, linked/cut accent, rest neutral. */
-export function dimensionTone(state: DimensionState): 'neutral' | 'accent' | 'danger' {
+export function dimensionTone(state: DimensionState): 'neutral' | 'accent' | 'formula' | 'danger' {
   if (state === 'broken') return 'danger';
+  if (state === 'formula') return 'formula';
   if (state === 'referenced' || state === 'derived') return 'accent';
   return 'neutral';
 }
@@ -227,6 +232,8 @@ export function dimensionAccessibleName(
   switch (state) {
     case 'set':
       return `Dimension ${formatted} millimetres`;
+    case 'formula':
+      return `Formula dimension, ${formatted} millimetres`;
     case 'driven':
       return `Driven dimension, measured ${formatted} millimetres`;
     case 'referenced':

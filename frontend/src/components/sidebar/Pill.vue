@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 
 const props = withDefaults(
   defineProps<{
-    tone?: 'neutral' | 'accent' | 'danger';
+    tone?: 'neutral' | 'accent' | 'formula' | 'danger';
   }>(),
   { tone: 'neutral' },
 );
@@ -13,6 +13,7 @@ const props = withDefaults(
 const TONE_CLASSES = {
   neutral: 'border-border text-muted-foreground',
   accent: 'border-primary/40 bg-primary/10 text-foreground',
+  formula: 'border-dimension-formula/45 bg-dimension-formula/10 text-dimension-formula',
   danger: 'border-destructive/40 bg-destructive/10 text-destructive',
 } as const;
 

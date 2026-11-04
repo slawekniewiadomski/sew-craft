@@ -116,7 +116,7 @@ test('drives a dimension from the variables panel and flags it when broken', asy
 
   // The dimension drawer edits the formula as written.
   await page.locator('[data-testid="sidebar-tab-dimensions"]').click();
-  await expect(page.locator('[data-testid="dimension-state-d"]')).toHaveText('Set');
+  await expect(page.locator('[data-testid="dimension-state-d"]')).toHaveText('Formula');
   await expect(page.locator('[data-testid="dimension-value-d"]')).toHaveValue('$bust / 4');
   await page.screenshot({
     path: '../.ai/runs/assets/2026-11-03-variables-and-expressions/03-formula-dimension.png',
