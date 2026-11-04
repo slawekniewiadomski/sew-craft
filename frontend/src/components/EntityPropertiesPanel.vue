@@ -5,9 +5,10 @@ import type {
   DistanceConstraint,
   Entity,
   EntityId,
+  ParamInput,
   PatternDocument,
 } from '@sewcraft/geometry';
-import { computed, ref } from 'vue';
+import { computed, ref, type Ref } from 'vue';
 
 import RibbonIcon from '@/components/RibbonIcon.vue';
 import Pill from '@/components/sidebar/Pill.vue';
@@ -44,6 +45,13 @@ import {
 import { pieceById } from '@sewcraft/geometry';
 import { ribbonIcon, type RibbonIconName } from '@/lib/ribbon-icons';
 import DimensionReferencePicker from './DimensionReferencePicker.vue';
+import {
+  formulaIssue,
+  insertVariableToken,
+  parseParamEdit,
+  variableOptions,
+  variableQuery,
+} from '@/lib/formula';
 import { defaultAllowanceSummary } from '@/lib/allowance-defaults';
 
 import PiecePanel from './PiecePanel.vue';
@@ -59,7 +67,7 @@ const emit = defineEmits<{
   'update-text': [id: EntityId, patch: Record<string, unknown>];
   'update-dimension': [id: EntityId, patch: DimensionPatch];
   'remove-constraint': [id: EntityId];
-  'set-corner-round-radius': [id: EntityId, radius: number];
+  'set-corner-round-radius': [id: EntityId, radius: ParamInput];
   'remove-corner-round': [id: EntityId];
   'set-circle-radius': [id: EntityId, radius: number];
   'update-piece': [
@@ -77,7 +85,7 @@ const emit = defineEmits<{
     value:
       | { mode: 'inherit' }
       | { mode: 'none' }
-      | { mode: 'preset'; width: number; kind: AllowanceKind },
+      | { mode: 'preset'; width: ParamInput; kind: AllowanceKind },
   ];
   'set-piece-allowance': [
     piece: EntityId,
@@ -96,6 +104,83 @@ const storedPiece = computed(() =>
 
 /** The `#` picker open in the inspector, if any. */
 const picker = ref<{ id: EntityId; text: string; activeIndex: number } | null>(null);
+
+/** A typed value that has not been committed because it does not resolve yet. */
+interface FieldDraft {
+  text: string;
+  issue: string;
+}
+
+/** Dimension value drafts keyed by constraint id. */
+const dimensionDrafts = ref<Record<EntityId, FieldDraft>>({});
+
+/** Corner radius drafts keyed by round id. */
+const radiusDrafts = ref<Record<EntityId, FieldDraft>>({});
+
+/** The `$` picker open in the inspector, if any. */
+const variablePicker = ref<{ id: EntityId; activeIndex: number } | null>(null);
+
+/** The partial token being typed, which filters the `$` picker. */
+const variableQueryText = ref('');
+
+/** The variables the open `$` picker offers, filtered by what was typed. */
+const variablePickerOptions = computed(() => {
+  const query = variableQueryText.value.toLowerCase();
+  return variableOptions(props.document).filter(
+    (option) => option.slug.includes(query) || option.name.toLowerCase().includes(query),
+  );
+});
+
+/** Insert the chosen variable token into the field's draft and close the picker. */
+function pickVariable(id: EntityId, slug: string): void {
+  // The picker opens from an input event, so the field always has a draft.
+  const draft = dimensionDrafts.value[id]!;
+  dimensionDrafts.value[id] = { text: insertVariableToken(draft.text, slug), issue: '' };
+  variablePicker.value = null;
+}
+
+/** Arrow keys move the `$` picker, Enter inserts, Escape closes it. */
+function onVariablePickerKeydown(id: EntityId, event: KeyboardEvent): void {
+  const current = variablePicker.value;
+  if (current === null || current.id !== id) return;
+  const count = variablePickerOptions.value.length;
+  if (event.key === 'ArrowDown' && count > 0) {
+    event.preventDefault();
+    variablePicker.value = { ...current, activeIndex: (current.activeIndex + 1) % count };
+    return;
+  }
+  if (event.key === 'ArrowUp' && count > 0) {
+    event.preventDefault();
+    variablePicker.value = { ...current, activeIndex: (current.activeIndex - 1 + count) % count };
+    return;
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    variablePicker.value = null;
+    return;
+  }
+  if (event.key === 'Enter' && count > 0) {
+    event.preventDefault();
+    const option = variablePickerOptions.value[Math.min(current.activeIndex, count - 1)]!;
+    pickVariable(id, option.slug);
+  }
+}
+
+/** Run the `$` picker first, then the `#` reference picker. */
+function onDimensionKeydown(dimension: DimensionSummary, event: KeyboardEvent): void {
+  onVariablePickerKeydown(dimension.id, event);
+  if (!event.defaultPrevented) onPickerKeydown(dimension.id, event);
+}
+
+/** Keep the typed text in a draft and open the `$` picker for a partial token. */
+function onDimensionInput(dimension: DimensionSummary, event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const query = variableQuery(input.value);
+  dimensionDrafts.value[dimension.id] = { text: input.value, issue: '' };
+  variableQueryText.value = query ?? '';
+  variablePicker.value = query === null ? null : { id: dimension.id, activeIndex: 0 };
+  onPickerInput(dimension.id, event);
+}
 
 function distanceConstraint(id: EntityId): DistanceConstraint | null {
   const constraint = props.document.constraints.find((entry) => entry.id === id);
@@ -289,12 +374,46 @@ function dimensionFieldText(dimension: DimensionSummary): string {
     : formatDimensionField(constraint, dimension.value, dimension.state);
 }
 
-/** Empty text clears the value back to driven; invalid or unchanged text snaps back. */
+/** Forget a field's draft once its text has been applied. */
+function clearDraft(drafts: Ref<Record<EntityId, FieldDraft>>, id: EntityId): void {
+  const next = { ...drafts.value };
+  delete next[id];
+  drafts.value = next;
+}
+
+/**
+ * Empty text clears the value back to driven, a formula is committed when it
+ * resolves, and invalid or unchanged text snaps back.
+ */
 function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
   const input = event.target as HTMLInputElement;
   const edit = parseDimensionEdit(input.value);
   if (edit.kind === 'invalid') {
+    clearDraft(dimensionDrafts, dimension.id);
     input.value = dimensionFieldText(dimension);
+    return;
+  }
+
+  if (edit.kind === 'formula') {
+    const constraint = distanceConstraint(dimension.id);
+    const unchanged =
+      constraint !== null &&
+      typeof constraint.value === 'object' &&
+      constraint.value.expr === edit.expr;
+    if (unchanged) {
+      clearDraft(dimensionDrafts, dimension.id);
+      input.value = dimensionFieldText(dimension);
+      return;
+    }
+    const issue = formulaIssue(props.document, edit.expr);
+    if (issue !== null) {
+      dimensionDrafts.value[dimension.id] = { text: input.value, issue };
+      return;
+    }
+    clearDraft(dimensionDrafts, dimension.id);
+    closePicker();
+    variablePicker.value = null;
+    emit('update-dimension', dimension.id, { value: { expr: edit.expr } });
     return;
   }
 
@@ -306,29 +425,47 @@ function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
     constraint.value === edit.value;
   const unchangedDriven = edit.kind === 'driven' && dimension.state === 'driven';
   if (unchangedSet || unchangedDriven) {
+    clearDraft(dimensionDrafts, dimension.id);
     input.value = dimensionFieldText(dimension);
     return;
   }
 
   const patch = dimensionPatchForEdit(edit, optionsFor(dimension.id));
   if (patch === null) {
+    clearDraft(dimensionDrafts, dimension.id);
     input.value = dimensionFieldText(dimension);
     return;
   }
 
+  clearDraft(dimensionDrafts, dimension.id);
   closePicker();
+  variablePicker.value = null;
   emit('update-dimension', dimension.id, patch);
 }
 
-/** An invalid or unchanged radius snaps back without emitting a command. */
+/** An invalid or unchanged radius snaps back; a formula commits when it resolves. */
 function onCornerRadiusEdit(round: CornerRoundSummary, event: Event): void {
   const input = event.target as HTMLInputElement;
+  const edit = parseParamEdit(input.value);
+  if (edit.kind === 'formula') {
+    const issue = formulaIssue(props.document, edit.expr);
+    if (issue !== null) {
+      radiusDrafts.value[round.id] = { text: input.value, issue };
+      return;
+    }
+    clearDraft(radiusDrafts, round.id);
+    emit('set-corner-round-radius', round.id, { expr: edit.expr });
+    return;
+  }
+
   const radius = parseCornerRadius(input.value);
   if (radius === null || radius === round.radius) {
+    clearDraft(radiusDrafts, round.id);
     input.value = formatCornerRadius(round.radius);
     return;
   }
 
+  clearDraft(radiusDrafts, round.id);
   emit('set-corner-round-radius', round.id, radius);
 }
 
@@ -557,6 +694,7 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
       v-if="props.entity.piece && storedPiece"
       :summary="props.entity.piece"
       :piece="storedPiece"
+      :document="props.document"
       :default-allowance="defaultAllowanceSummary(props.document)"
       :inherited-default="defaultAllowanceSummary(props.document)"
       label="Piece"
@@ -598,17 +736,21 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
           <label class="flex flex-wrap items-center gap-1.5">
             <span class="text-2xs text-muted-foreground">Radius</span>
             <SidebarInput
-              type="number"
-              min="0.001"
-              step="0.001"
-              class="w-24 tabular-nums"
-              :value="formatCornerRadius(round.radius)"
+              class="w-24 font-mono text-2xs"
+              :value="radiusDrafts[round.id]?.text ?? formatCornerRadius(round.radius)"
               :aria-label="`Radius for corner round ${round.id} (mm)`"
               :data-testid="`entity-corner-radius-${round.id}`"
               @change="onCornerRadiusEdit(round, $event)"
             />
             <span class="text-2xs text-muted-foreground">mm</span>
           </label>
+          <p
+            v-if="radiusDrafts[round.id]?.issue"
+            class="text-2xs text-destructive"
+            :data-testid="`entity-corner-radius-issue-${round.id}`"
+          >
+            {{ radiusDrafts[round.id]!.issue }}
+          </p>
         </li>
       </ul>
     </SidebarSection>
@@ -622,7 +764,7 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
         <li
           v-for="dimension in props.entity.dimensions"
           :key="dimension.id"
-          class="space-y-2"
+          class="relative space-y-2"
           :data-testid="`entity-dimension-${dimension.id}`"
         >
           <div class="flex items-center justify-between gap-2">
@@ -644,9 +786,8 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
           <label class="relative flex flex-wrap items-center gap-1.5">
             <span class="text-2xs text-muted-foreground">Value</span>
             <SidebarInput
-              inputmode="decimal"
-              class="w-28 font-medium tabular-nums"
-              :value="dimensionFieldText(dimension)"
+              class="w-28 font-mono text-2xs"
+              :value="dimensionDrafts[dimension.id]?.text ?? dimensionFieldText(dimension)"
               :aria-label="`Value for dimension ${dimension.id} on ${props.entity.id} (${dimensionStateLabel(dimension.state).toLowerCase()})`"
               :data-testid="`entity-dimension-value-${dimension.id}`"
               role="combobox"
@@ -662,8 +803,8 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
                   ? `entity-dimension-reference-list-${dimension.id}-${activePickerOption.id}`
                   : undefined
               "
-              @input="onPickerInput(dimension.id, $event)"
-              @keydown="onPickerKeydown(dimension.id, $event)"
+              @input="onDimensionInput(dimension, $event)"
+              @keydown="onDimensionKeydown(dimension, $event)"
               @change="onDimensionValueEdit(dimension, $event)"
             />
             <span class="text-2xs text-muted-foreground">mm</span>
@@ -675,6 +816,35 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
               {{ dimensionStateLabel(dimension.state) }}
             </Pill>
           </label>
+
+          <p
+            v-if="dimensionDrafts[dimension.id]?.issue"
+            class="text-2xs text-destructive"
+            :data-testid="`entity-dimension-issue-${dimension.id}`"
+          >
+            {{ dimensionDrafts[dimension.id]!.issue }}
+          </p>
+
+          <ul
+            v-if="variablePicker?.id === dimension.id && variablePickerOptions.length > 0"
+            class="absolute z-20 mt-1 max-h-40 w-56 overflow-auto rounded-sm border bg-background p-1 shadow-sm"
+            :data-testid="`entity-dimension-variables-${dimension.id}`"
+          >
+            <li v-for="option in variablePickerOptions" :key="option.slug">
+              <button
+                type="button"
+                class="flex w-full items-baseline justify-between gap-2 rounded-sm px-1.5 py-1 text-left text-2xs hover:bg-muted"
+                :data-testid="`entity-dimension-variable-${dimension.id}-${option.slug}`"
+                @mousedown.prevent="pickVariable(dimension.id, option.slug)"
+              >
+                <span class="truncate">
+                  {{ option.name }}
+                  <span class="font-mono text-muted-foreground">${{ option.slug }}</span>
+                </span>
+                <span class="shrink-0 text-muted-foreground">{{ option.resolved }}</span>
+              </button>
+            </li>
+          </ul>
 
           <div class="relative flex flex-wrap items-center gap-1.5">
             <SidebarButton
@@ -713,7 +883,13 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
             class="text-2xs text-destructive"
             :data-testid="`entity-dimension-broken-${dimension.id}`"
           >
-            Source {{ dimension.sourceId }} is missing. Type a value or press # to re-link.
+            <template v-if="dimension.sourceId !== null">
+              Source {{ dimension.sourceId }} is missing. Type a value or press # to re-link.
+            </template>
+            <template v-else>
+              A variable it uses is missing, so it keeps its last value. Type a value or fix the
+              formula.
+            </template>
           </p>
         </li>
       </ul>

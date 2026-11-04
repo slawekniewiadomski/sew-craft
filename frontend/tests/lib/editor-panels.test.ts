@@ -20,6 +20,7 @@ describe('EDITOR_PANELS', () => {
       { id: 'outline', label: 'Outline', icon: 'line' },
       { id: 'dimensions', label: 'Dimensions', icon: 'dimension' },
       { id: 'constraints', label: 'Constraints', icon: 'constraints' },
+      { id: 'variables', label: 'Variables', icon: 'constraints' },
     ]);
   });
 });
@@ -33,6 +34,7 @@ describe('panelsFor', () => {
       'outline',
       'dimensions',
       'constraints',
+      'variables',
     ]);
     expect(panelsFor('assembly').map((panel) => panel.id)).toEqual(['assembly']);
   });

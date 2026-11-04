@@ -15,6 +15,21 @@ runtime source of truth is `config/geometry.php`, exposed at `GET /api/commands`
 }
 ```
 
+## Formula parameters
+
+Every command field typed `number | expression` accepts either a plain number or
+a formula `{ "expr": "..." }`. A formula is stored as `{ "expr", "lastKnown" }`:
+the text is what the maker edits, and `lastKnown` is the millimetres it resolved
+to when it was written. Readers resolve the text through the document's
+`variables` on every read and fall back to `lastKnown` when it no longer
+resolves, so a deleted variable never fails a solve.
+
+Formulas are unit-aware. A bare number is a ratio, `5cm` and `2 mm` are lengths,
+and `$slug` names a variable. `+` and `-` require equal dimensions (length plus a
+plain number is rejected), `*` and `/` combine them, and a field that takes a
+length rejects a ratio or an area. Variables are managed with `set_variable`,
+`update_variable` and `remove_variable`; their values may be lengths or ratios.
+
 ## Commands (v0.17)
 
 ### `add_point`
@@ -112,12 +127,17 @@ whose leader disappears keeps its place and loses the leader.
 
 ### `add_constraint`
 
-- params: `type` (§ solver), `entities: entity_id[]`, `piece: entity_id`, `value?: number`,
-  `reference?: entity_id`,
+- params: `type` (§ solver), `entities: entity_id[]`, `piece: entity_id`,
+  `value?: number | expression`, `reference?: entity_id`,
   `orientation?: 'aligned' | 'horizontal' | 'vertical'`, `offset?: number`
-- `value` is required for `angle` (radians). For `distance` it is optional: a
-  finite value `> 0` creates a **set** dimension; omitting it creates a
-  **driven** dimension that measures the sketch without adding an equation.
+- `value` is required for `angle` (radians) and must be a number. For `distance`
+  it is optional: a finite value `> 0` creates a **set** dimension; a formula
+  `{ expr }` creates a **set** dimension whose value is resolved from the
+  document's variables on every read; omitting it creates a **driven** dimension
+  that measures the sketch without adding an equation. A formula is validated
+  when written — it must parse, name only existing variables, avoid cycles,
+  resolve to a length and be finite and positive — and the number it resolves to
+  is stored as `lastKnown`.
 - `reference` applies only to `distance` and links it to an existing set or
   referenced dimension. It is mutually exclusive with `value`. The source must
   exist, be a `distance`, not be the same point pair, resolve to a finite
@@ -166,13 +186,13 @@ constraint's dimension presentation. At least one of `value`, `reference`,
 sketch; an orientation/offset-only edit changes presentation and is a no-op for
 the solver.
 
-- params: `id: entity_id`, `value?: number | null`,
+- params: `id: entity_id`, `value?: number | expression | null`,
   `reference?: entity_id | null`, `orientation?: aligned|horizontal|vertical`,
   `offset?: number`
 - `value` keeps the `add_constraint` rules when it is a number (`distance > 0`,
-  `angle` finite). A number breaks any existing reference; `null` clears a
-  `distance` to driven. Omitting it leaves the current state untouched; `null`
-  is rejected for `angle`.
+  `angle` finite) and accepts a formula for `distance`. A value breaks any
+  existing reference; `null` clears a `distance` to driven. Omitting it leaves
+  the current state untouched; `null` and formulas are rejected for `angle`.
 - `reference` links a `distance` to an existing source using the same validation
   as `add_constraint`; it removes any literal `value` and stores the source's
   resolved value as `lastKnownValue`. `reference: null` unlinks and keeps the
@@ -403,6 +423,46 @@ Set, clear or hand back a piece's allowance override.
   edges added to the loop afterwards.
 - Re-applying the current override is a no-op.
 - inverse: `set_piece_default_allowance` restoring the previous mode and preset.
+
+### `set_variable`
+
+Create a named measurement, or update the variable already stored under the same
+slug.
+
+- params: `slug?: string`, `name?: string`, `unit?: 'mm' | 'cm'`, `value:
+number | { expr }`, `comment?: string | null`
+- A new variable needs `name` (or an explicit `slug`); omitting `slug` mints one
+  from the name: ascii-folded, lowercased, non-alphanumerics collapsed to `_`,
+  prefixed with `v` when it would start with a digit, truncated to 40 characters
+  and de-duplicated with `_2`, `_3`. `name` is trimmed, 1–60 characters and unique
+  case-insensitively. `unit` defaults to `mm`.
+- A literal `value` is read in the variable's unit and must be finite and `>= 0`.
+  A formula may resolve to a length or a ratio, never an area; its result is
+  stored as `lastKnown`.
+- `comment` is trimmed, at most 120 characters, and empty clears it.
+- An existing slug updates through `update_variable`; nothing else changes.
+- inverse: `remove_variable` for a new variable, `update_variable` with the
+  previous fields otherwise.
+
+### `update_variable`
+
+- params: `slug: string`, and any of `name`, `unit`, `value`, `comment`
+- The slug is immutable, so a rename never re-parses a formula. A `unit` change
+  converts a literal to keep the measurement (`88 cm` becomes `880 mm`) and
+  leaves a formula's text alone; a `value` in the same command is read in the new
+  unit. `comment: null` clears it.
+- Re-applying the same fields is a no-op.
+- inverse: `update_variable` with the previous fields.
+
+### `remove_variable`
+
+- params: `slug: string`
+- Removing a variable records what every dependent formula was showing as its
+  `lastKnown`, so a dimension, radius or allowance keeps its number and the
+  document keeps solving. Dependents are never rewritten to literals, so
+  recreating the same slug re-links them.
+- Removing an unknown slug is a no-op.
+- inverse: `set_variable` with the removed variable.
 
 ### `create_assembly`
 

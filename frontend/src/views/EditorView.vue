@@ -26,6 +26,7 @@ import {
   seamForEdge,
   toSvgPiece,
   usesCutEdgeAnchor,
+  type ParamInput,
 } from '@sewcraft/geometry';
 import type {
   AddConstraintParams,
@@ -77,13 +78,16 @@ import SidebarSection from '@/components/sidebar/SidebarSection.vue';
 import SidebarSelect from '@/components/sidebar/SidebarSelect.vue';
 import SidebarStat from '@/components/sidebar/SidebarStat.vue';
 import SelectionSummary from '@/components/SelectionSummary.vue';
+import VariablesPanel from '@/components/VariablesPanel.vue';
 import UpgradeDocumentDialog from '@/components/UpgradeDocumentDialog.vue';
 import { useCommandBus } from '@/composables/use-command-bus';
 import { useSidebarLayout } from '@/composables/use-sidebar-layout';
 import { defaultAllowanceSummary } from '@/lib/allowance-defaults';
 import { parseAllowanceWidth } from '@/lib/allowance-width';
+import { formulaIssue } from '@/lib/formula';
 import { buildCircleCommands, type CircleEndpoint } from '@/lib/circle-tool';
 import { nextCommandId } from '@/lib/command-ids';
+import type { VariableValueInput } from '@/lib/variables';
 import {
   applyConstraintPick,
   constraintInitialValue,
@@ -379,6 +383,7 @@ const panelCounts = computed<Partial<Record<PanelId, number>>>(() => ({
   outline: edges.value.length,
   dimensions: dimensions.value.length,
   constraints: otherConstraints.value.length,
+  variables: (pattern.value.variables ?? []).length,
 }));
 
 const EDGE_KIND_LABELS: Record<'line' | 'curve' | 'arc' | 'circle', string> = {
@@ -513,6 +518,9 @@ const dimensions = computed<DimensionRow[]>(() =>
 /** The `#` picker open in the Dimensions drawer, if any. */
 const dimensionPicker = ref<{ id: EntityId; text: string; activeIndex: number } | null>(null);
 
+/** A drawer value being typed that does not resolve yet. */
+const dimensionDrafts = ref<Record<EntityId, { text: string; issue: string }>>({});
+
 /** Filtered rows for the open drawer picker. */
 const dimensionPickerOptions = computed<DimensionReferenceOption[]>(() => {
   const picker = dimensionPicker.value!;
@@ -642,6 +650,62 @@ const cornerRoundInitial = computed(() =>
     ? ''
     : formatCornerRadius(defaultCornerRadius(cornerRoundMax.value)),
 );
+
+/** Add a variable with a unique placeholder name; the panel renames it inline. */
+function onAddVariable(): void {
+  const count = (pattern.value.variables ?? []).length + 1;
+  run(() =>
+    dispatch({
+      id: nextCommandId('variable'),
+      type: 'set_variable',
+      params: { name: `Variable ${count}`, value: 0 },
+    }),
+  );
+}
+
+function onRenameVariable(slug: string, name: string): void {
+  run(() =>
+    dispatch({
+      id: nextCommandId('variable'),
+      type: 'update_variable',
+      params: { slug, name },
+    }),
+  );
+}
+
+function onSetVariableValue(slug: string, value: VariableValueInput): void {
+  run(() =>
+    dispatch({
+      id: nextCommandId('variable'),
+      type: 'update_variable',
+      params: { slug, value },
+    }),
+  );
+}
+
+function onSetVariableUnit(slug: string, unit: 'mm' | 'cm'): void {
+  run(() =>
+    dispatch({
+      id: nextCommandId('variable'),
+      type: 'update_variable',
+      params: { slug, unit },
+    }),
+  );
+}
+
+function onSetVariableComment(slug: string, comment: string | null): void {
+  run(() =>
+    dispatch({
+      id: nextCommandId('variable'),
+      type: 'update_variable',
+      params: { slug, comment },
+    }),
+  );
+}
+
+function onRemoveVariable(slug: string): void {
+  run(() => dispatch({ id: nextCommandId('variable'), type: 'remove_variable', params: { slug } }));
+}
 
 function run(action: () => void): boolean {
   try {
@@ -1387,6 +1451,13 @@ function onUpdateDimension(id: EntityId, patch: DimensionPatch): void {
   );
 }
 
+/** Drop a drawer draft once its text has been applied. */
+function clearDimensionDraft(id: EntityId): void {
+  const next = { ...dimensionDrafts.value };
+  delete next[id];
+  dimensionDrafts.value = next;
+}
+
 function onDimensionValueEdit(id: EntityId, event: Event): void {
   const input = event.target as HTMLInputElement;
   const dimension = dimensions.value.find((entry) => entry.id === id)!;
@@ -1397,7 +1468,27 @@ function onDimensionValueEdit(id: EntityId, event: Event): void {
 
   const edit = parseDimensionEdit(input.value);
   if (edit.kind === 'invalid') {
+    clearDimensionDraft(id);
     input.value = dimension.field;
+    return;
+  }
+
+  if (edit.kind === 'formula') {
+    // Derived dimensions are read-only and returned above, so this is a distance.
+    const stored = (dimension.constraint as DistanceConstraint).value;
+    if (stored !== undefined && typeof stored === 'object' && stored.expr === edit.expr) {
+      clearDimensionDraft(id);
+      input.value = dimension.field;
+      return;
+    }
+    const issue = formulaIssue(pattern.value, edit.expr);
+    if (issue !== null) {
+      dimensionDrafts.value[id] = { text: input.value, issue };
+      return;
+    }
+    clearDimensionDraft(id);
+    closeDimensionPicker();
+    onUpdateDimension(id, { value: { expr: edit.expr } });
     return;
   }
 
@@ -1408,16 +1499,19 @@ function onDimensionValueEdit(id: EntityId, event: Event): void {
     dimension.constraint.value === edit.value;
   const unchangedDriven = edit.kind === 'driven' && dimension.state === 'driven';
   if (unchangedSet || unchangedDriven) {
+    clearDimensionDraft(id);
     input.value = dimension.field;
     return;
   }
 
   const patch = dimensionPatchForEdit(edit, pickerOptionsFor(id));
   if (patch === null) {
+    clearDimensionDraft(id);
     input.value = dimension.field;
     return;
   }
 
+  clearDimensionDraft(id);
   closeDimensionPicker();
   onUpdateDimension(id, patch);
 }
@@ -1528,7 +1622,9 @@ function onApplyAllowances(edit: BulkAllowanceEdit): void {
 function onSetPieceDefault(
   piece: EntityId,
   value:
-    { mode: 'inherit' } | { mode: 'none' } | { mode: 'preset'; width: number; kind: AllowanceKind },
+    | { mode: 'inherit' }
+    | { mode: 'none' }
+    | { mode: 'preset'; width: ParamInput; kind: AllowanceKind },
 ): void {
   run(() =>
     dispatch({
@@ -1648,7 +1744,7 @@ function applyCornerRound(radius: number): void {
   if (applied) exitCornerRound();
 }
 
-function setCornerRoundRadius(id: EntityId, radius: number): void {
+function setCornerRoundRadius(id: EntityId, radius: ParamInput): void {
   run(() =>
     dispatch({
       id: nextCommandId('corner-round-radius'),
@@ -2330,6 +2426,7 @@ onBeforeUnmount(() => {
               v-if="activePiece && activePieceSummary"
               :summary="activePieceSummary"
               :piece="activePiece"
+              :document="pattern"
               :selected-targets="selectedAllowanceTargets"
               :default-allowance="defaultAllowance"
               :inherited-default="defaultAllowance"
@@ -2525,7 +2622,7 @@ onBeforeUnmount(() => {
                     inputmode="decimal"
                     class="w-28 font-medium tabular-nums"
                     :class="dimension.readOnly ? 'bg-muted' : ''"
-                    :value="dimension.field"
+                    :value="dimensionDrafts[dimension.id]?.text ?? dimension.field"
                     :readonly="dimension.readOnly"
                     :aria-label="`Value for ${dimension.id} (${dimension.stateLabel.toLowerCase()})`"
                     :data-testid="`dimension-value-${dimension.id}`"
@@ -2625,11 +2722,24 @@ onBeforeUnmount(() => {
                   Source: <span class="font-mono">{{ dimension.sourceId }}</span>
                 </p>
                 <p
+                  v-if="dimensionDrafts[dimension.id]?.issue"
+                  class="text-2xs leading-snug text-destructive"
+                  :data-testid="`dimension-issue-${dimension.id}`"
+                >
+                  {{ dimensionDrafts[dimension.id]!.issue }}
+                </p>
+                <p
                   v-else-if="dimension.state === 'broken'"
                   class="text-2xs leading-snug text-destructive"
                   :data-testid="`dimension-broken-${dimension.id}`"
                 >
-                  Source {{ dimension.sourceId }} is missing. Type a value or press # to re-link.
+                  <template v-if="dimension.sourceId !== null">
+                    Source {{ dimension.sourceId }} is missing. Type a value or press # to re-link.
+                  </template>
+                  <template v-else>
+                    A variable it uses is missing, so it keeps its last value. Type a value or fix
+                    the formula.
+                  </template>
                 </p>
 
                 <div v-if="dimension.sourceId !== null" class="flex flex-wrap items-center gap-1.5">
@@ -2647,6 +2757,19 @@ onBeforeUnmount(() => {
               icon="dimension"
               message="No dimensions yet."
               hint="Pick the dimension tool in the ribbon, then two points on the canvas."
+            />
+          </template>
+
+          <template #variables>
+            <VariablesPanel
+              :document="pattern"
+              :read-only="editor.readOnly"
+              @create="onAddVariable"
+              @rename="onRenameVariable"
+              @set-value="onSetVariableValue"
+              @set-unit="onSetVariableUnit"
+              @set-comment="onSetVariableComment"
+              @remove="onRemoveVariable"
             />
           </template>
 

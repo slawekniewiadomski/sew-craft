@@ -8,7 +8,12 @@ import { PATTERN_SCHEMA, type PatternDocument, type TabRef } from './types.js';
  * conversion, so an older project is reported instead of being rewritten into a
  * model that is still moving.
  */
-export const KNOWN_PATTERN_SCHEMAS: readonly string[] = [PATTERN_SCHEMA];
+export const KNOWN_PATTERN_SCHEMAS: readonly string[] = [
+  PATTERN_SCHEMA,
+  // 0.5 only added optional variables and widened parameter fields to formulas,
+  // so a 0.4 document is a strict subset and needs no conversion.
+  'sewcraft.pattern/0.4',
+];
 
 /** Whether a stored `schema` string is one this build understands. */
 export function isKnownPatternSchema(schema: string): boolean {

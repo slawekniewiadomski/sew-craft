@@ -96,11 +96,12 @@ describe('parseDimensionEdit', () => {
     expect(parseDimensionEdit(' 12.5 ')).toEqual({ kind: 'set', value: 12.5 });
   });
 
-  it('rejects zero, negative, infinite and non-numeric input', () => {
+  it('rejects zero and negative numbers and reads other text as a formula', () => {
     expect(parseDimensionEdit('0')).toEqual({ kind: 'invalid' });
     expect(parseDimensionEdit('-5')).toEqual({ kind: 'invalid' });
-    expect(parseDimensionEdit('Infinity')).toEqual({ kind: 'invalid' });
-    expect(parseDimensionEdit('abc')).toEqual({ kind: 'invalid' });
+    expect(parseDimensionEdit('abc')).toEqual({ kind: 'formula', expr: 'abc' });
+    expect(parseDimensionEdit('= $bust/4')).toEqual({ kind: 'formula', expr: '$bust/4' });
+    expect(parseDimensionEdit('=')).toEqual({ kind: 'invalid' });
   });
 
   it('maps a leading # to a reference search text', () => {
@@ -110,6 +111,16 @@ describe('parseDimensionEdit', () => {
     expect(isReferenceEditText('100')).toBe(false);
     expect(referenceSearchText('#width ')).toBe('width');
     expect(referenceSearchText('100')).toBe('');
+  });
+});
+
+describe('formatDimensionField', () => {
+  it('shows a formula as written and a literal as its number', () => {
+    const base = { id: 'd', type: 'distance' as const, a: 'a', b: 'b' };
+    expect(
+      formatDimensionField({ ...base, value: { expr: '$bust/4', lastKnown: 220 } }, 220, 'set'),
+    ).toBe('$bust/4');
+    expect(formatDimensionField({ ...base, value: 220 }, 220, 'set')).toBe('220');
   });
 });
 
@@ -185,6 +196,9 @@ describe('dimension state presentation', () => {
     ];
 
     expect(dimensionPatchForEdit({ kind: 'set', value: 10 }, options)).toEqual({ value: 10 });
+    expect(dimensionPatchForEdit({ kind: 'formula', expr: '$bust/4' }, options)).toEqual({
+      value: { expr: '$bust/4' },
+    });
     expect(dimensionPatchForEdit({ kind: 'driven' }, options)).toEqual({ value: null });
     expect(dimensionPatchForEdit({ kind: 'unlink' }, options)).toEqual({ reference: null });
     expect(dimensionPatchForEdit({ kind: 'reference', text: 'A' }, options)).toEqual({
@@ -196,7 +210,7 @@ describe('dimension state presentation', () => {
 
 describe('reference options', () => {
   const document: PatternDocument = {
-    schema: 'sewcraft.pattern/0.4',
+    schema: 'sewcraft.pattern/0.5',
     units: 'mm',
     entities: [
       { id: 'p1', kind: 'point', x: 0, y: 0, construction: false, fixed: false },

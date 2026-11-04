@@ -51,24 +51,32 @@ describe('uniformAllowance', () => {
       ],
     );
 
-    expect(uniformAllowance(panel)).toEqual({ kind: 'seam', width: 10 });
+    expect(uniformAllowance(documentOf(), panel)).toEqual({ kind: 'seam', width: 10 });
   });
 
   it('returns none when every edge has no allowance', () => {
-    expect(uniformAllowance(piece(['a', 'b'], []))).toEqual({ kind: 'none', width: 0 });
+    expect(uniformAllowance(documentOf(), piece(['a', 'b'], []))).toEqual({
+      kind: 'none',
+      width: 0,
+    });
   });
 
   it('returns null when an edge has no allowance and another has one', () => {
-    expect(uniformAllowance(piece(['a', 'b'], [{ edge: 'a', width: 10 }]))).toBeNull();
+    expect(
+      uniformAllowance(documentOf(), piece(['a', 'b'], [{ edge: 'a', width: 10 }])),
+    ).toBeNull();
   });
 
   it('returns null when the first edge has no allowance', () => {
-    expect(uniformAllowance(piece(['a', 'b'], [{ edge: 'b', width: 10 }]))).toBeNull();
+    expect(
+      uniformAllowance(documentOf(), piece(['a', 'b'], [{ edge: 'b', width: 10 }])),
+    ).toBeNull();
   });
 
   it('returns null when widths or kinds differ', () => {
     expect(
       uniformAllowance(
+        documentOf(),
         piece(
           ['a', 'b'],
           [
@@ -80,6 +88,7 @@ describe('uniformAllowance', () => {
     ).toBeNull();
     expect(
       uniformAllowance(
+        documentOf(),
         piece(
           ['a', 'b'],
           [
@@ -93,10 +102,10 @@ describe('uniformAllowance', () => {
 
   it('ignores entries for edges outside the loop', () => {
     const panel = piece(['a', 'b'], [{ edge: 'ghost', width: 10 }]);
-    expect(uniformAllowance(panel)).toEqual({ kind: 'none', width: 0 });
+    expect(uniformAllowance(documentOf(), panel)).toEqual({ kind: 'none', width: 0 });
   });
 
   it('returns none for a loop with no edges', () => {
-    expect(uniformAllowance(piece([], []))).toEqual({ kind: 'none', width: 0 });
+    expect(uniformAllowance(documentOf(), piece([], []))).toEqual({ kind: 'none', width: 0 });
   });
 });

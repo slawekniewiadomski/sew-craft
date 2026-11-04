@@ -1,5 +1,6 @@
 import { getEntity, entityPoints, type Bounds } from './document.js';
 import { roundBetween, roundBridge } from './corner-round.js';
+import { resolveParam, sameParam, type VariableScope } from './expression.js';
 import { isAnnotation, isCut } from './roles.js';
 import {
   edgePolyline,
@@ -83,8 +84,9 @@ export interface PieceMetrics {
 export type PieceValidation = { ok: true } | { ok: false; message: string; edge?: EntityId };
 
 /** The finished width a kind contributes to the cut distance. */
-export function allowanceDistance(allowance: Allowance): number {
-  return allowance.kind === 'double' ? allowance.width * 2 : allowance.width;
+export function allowanceDistance(allowance: Allowance, scope: VariableScope = {}): number {
+  const width = resolveParam(scope, allowance.width);
+  return allowance.kind === 'double' ? width * 2 : width;
 }
 
 /** The allowance for one loop edge, or `undefined` when it has none. */
@@ -389,7 +391,7 @@ const kindOf = (allowance: Allowance | undefined): AllowanceKind => allowance?.k
 /** Whether two loop-edge allowances carry the same width and effective kind. */
 function sameAllowance(a: Allowance | undefined, b: Allowance | undefined): boolean {
   if (a === undefined || b === undefined) return a === b;
-  return a.width === b.width && kindOf(a) === kindOf(b);
+  return sameParam(a.width, b.width) && kindOf(a) === kindOf(b);
 }
 
 /** One boundary segment's resolved allowances, in cut millimetres. */
@@ -401,11 +403,14 @@ interface SegmentAllowance {
 }
 
 /** The cut and fold distance of one edge's allowance. */
-function edgeAllowance(allowance: Allowance | undefined): SegmentAllowance {
+function edgeAllowance(
+  document: PatternDocument,
+  allowance: Allowance | undefined,
+): SegmentAllowance {
   if (allowance === undefined) return { distance: 0, fold: 0 };
   return {
-    distance: allowanceDistance(allowance),
-    fold: allowance.kind === 'double' ? allowance.width : 0,
+    distance: allowanceDistance(allowance, document),
+    fold: allowance.kind === 'double' ? resolveParam(document, allowance.width) : 0,
   };
 }
 
@@ -450,6 +455,7 @@ interface SegmentResolution {
  * differ; a split half belongs to the edge on its side.
  */
 function resolveLoopSegments(
+  document: PatternDocument,
   piece: Piece,
   edges: readonly PieceEdgeEntity[],
   segments: readonly LoopSegment[],
@@ -462,7 +468,7 @@ function resolveLoopSegments(
     if (segment.edgeIndex !== null) {
       const edge = edges[segment.edgeIndex]!.id;
       const resolution = {
-        allowance: edgeAllowance(allowanceForEdge(piece, edge)),
+        allowance: edgeAllowance(document, allowanceForEdge(piece, edge)),
         target: { kind: 'edge', edge } as const,
       };
       for (let i = 0; i < segmentCount; i += 1) resolved.push(resolution);
@@ -491,15 +497,15 @@ function resolveLoopSegments(
 
     if (sameAllowance(beforeAllowance, afterAllowance)) {
       const resolution = {
-        allowance: edgeAllowance(beforeAllowance),
+        allowance: edgeAllowance(document, beforeAllowance),
         target: { kind: 'round', round } as const,
       };
       for (let i = 0; i < segmentCount; i += 1) resolved.push(resolution);
       continue;
     }
 
-    const before = edgeAllowance(beforeAllowance);
-    const after = edgeAllowance(afterAllowance);
+    const before = edgeAllowance(document, beforeAllowance);
+    const after = edgeAllowance(document, afterAllowance);
     const lengths = segment.points
       .slice(1)
       .map((point, pointIndex) => magnitude(sub(point, segment.points[pointIndex]!)));
@@ -521,12 +527,13 @@ function resolveLoopSegments(
  * fold variant reports how far a double fold's turn line sits inside the cut.
  */
 function loopDistances(
+  document: PatternDocument,
   piece: Piece,
   edges: readonly PieceEdgeEntity[],
   segments: readonly LoopSegment[],
   fold: boolean,
 ): number[] {
-  return resolveLoopSegments(piece, edges, segments).map((resolution) =>
+  return resolveLoopSegments(document, piece, edges, segments).map((resolution) =>
     fold ? resolution.allowance.fold : resolution.allowance.distance,
   );
 }
@@ -556,11 +563,12 @@ function orientedPolylines(document: PatternDocument, piece: Piece): LoopSegment
 export function pieceLoop(document: PatternDocument, piece: Piece): PieceLoop | null {
   const segments = orientedPolylines(document, piece);
   if (segments === null) return null;
-  return loopFromSegments(piece, pieceEdges(document, piece), segments);
+  return loopFromSegments(document, piece, pieceEdges(document, piece), segments);
 }
 
 /** Resolve one loop from its already-oriented segments and per-edge allowances. */
 function loopFromSegments(
+  document: PatternDocument,
   piece: Piece,
   edges: readonly PieceEdgeEntity[],
   segments: LoopSegment[],
@@ -579,7 +587,7 @@ function loopFromSegments(
     }
   }
 
-  const unsigned = loopDistances(piece, edges, segments, false);
+  const unsigned = loopDistances(document, piece, edges, segments, false);
 
   const sign = signedArea(boundary) > 0 ? -1 : 1;
   const distances = unsigned.map((distance) => sign * distance);
@@ -734,12 +742,12 @@ export function pieceBandRegions(document: PatternDocument, piece: Piece): BandR
   if (segments === null) return [];
 
   const edges = pieceEdges(document, piece);
-  const loop = loopFromSegments(piece, edges, segments);
+  const loop = loopFromSegments(document, piece, edges, segments);
   const cut = pieceCutLoop(document, piece);
   if (cut === null || cut.selfIntersections.length > 0) return [];
   if (cut.vertices.length !== loop.points.length) return [];
 
-  return groupSegments(resolveLoopSegments(piece, edges, segments)).flatMap((group) => {
+  return groupSegments(resolveLoopSegments(document, piece, edges, segments)).flatMap((group) => {
     const polygon = regionPolygon(loop, cut, group.start, group.count);
     // A target with no band (no allowance, or an empty twin half) has no area.
     return Math.abs(signedArea(polygon)) <= LENGTH_TOLERANCE
@@ -757,9 +765,9 @@ export function pieceFoldLines(document: PatternDocument, piece: Piece): Vec2[][
   const segments = orientedPolylines(document, piece);
   if (segments === null) return [];
 
-  const loop = loopFromSegments(piece, pieceEdges(document, piece), segments);
+  const loop = loopFromSegments(document, piece, pieceEdges(document, piece), segments);
 
-  const unsigned = loopDistances(piece, pieceEdges(document, piece), segments, true);
+  const unsigned = loopDistances(document, piece, pieceEdges(document, piece), segments, true);
   if (unsigned.every((distance) => distance === 0)) return [];
 
   const sign = signedArea(loop.points) > 0 ? -1 : 1;

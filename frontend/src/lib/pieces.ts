@@ -1,5 +1,6 @@
 import {
   allowanceDistance,
+  resolveParam,
   allowanceForEdge,
   cornerAllowanceForRound,
   cornerAllowanceState,
@@ -68,7 +69,7 @@ export interface PieceSummary {
 }
 
 /** The allowance editor rows for a piece, one per loop edge. */
-export function pieceAllowanceRows(piece: Piece): PieceAllowanceRow[] {
+export function pieceAllowanceRows(document: PatternDocument, piece: Piece): PieceAllowanceRow[] {
   return piece.edges.map((edge) => {
     const allowance = allowanceForEdge(piece, edge);
     if (allowance === undefined) {
@@ -77,8 +78,8 @@ export function pieceAllowanceRows(piece: Piece): PieceAllowanceRow[] {
     return {
       edge,
       kind: allowance.kind ?? 'seam',
-      width: allowance.width,
-      cutDistance: allowanceDistance(allowance),
+      width: resolveParam(document, allowance.width),
+      cutDistance: allowanceDistance(allowance, document),
     };
   });
 }
@@ -95,14 +96,17 @@ export function pieceCornerRows(document: PatternDocument, piece: Piece): PieceC
       const before = allowanceForEdge(piece, lines[0]);
       const after = allowanceForEdge(piece, lines[1]);
       const state = broken ? 'broken' : cornerAllowanceState(piece, round.id, lines);
-      const beforeCut = before === undefined ? null : allowanceDistance(before);
-      const afterCut = after === undefined ? null : allowanceDistance(after);
+      const beforeCut = before === undefined ? null : allowanceDistance(before, document);
+      const afterCut = after === undefined ? null : allowanceDistance(after, document);
 
       return {
         round: round.id,
-        radius: round.radius,
+        radius: resolveParam(document, round.radius),
         cutWidth: own?.cutWidth ?? null,
-        inherited: state === 'inherited' && before !== undefined ? allowanceDistance(before) : null,
+        inherited:
+          state === 'inherited' && before !== undefined
+            ? allowanceDistance(before, document)
+            : null,
         halves: state === 'split' ? [beforeCut ?? 0, afterCut ?? 0] : [],
         state,
       };
@@ -118,9 +122,9 @@ export function pieceSummary(document: PatternDocument, piece: Piece): PieceSumm
     name: piece.name ?? null,
     quantity: piece.quantity ?? 1,
     edges: [...piece.edges],
-    allowances: pieceAllowanceRows(piece),
+    allowances: pieceAllowanceRows(document, piece),
     corners: pieceCornerRows(document, piece),
-    uniform: uniformAllowance(piece),
+    uniform: uniformAllowance(document, piece),
     metrics,
     hasLoop,
     broken: hasLoop && metrics === null,

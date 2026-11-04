@@ -8,6 +8,7 @@ import {
   type DimensionState,
   type DistanceConstraint,
   type EntityId,
+  type ParamInput,
   type PatternDocument,
 } from '@sewcraft/geometry';
 
@@ -30,8 +31,8 @@ export interface CutDimensionPlacement {
 
 /** A partial change to a dimension constraint, driven from the canvas or sidebar. */
 export interface DimensionPatch {
-  /** A number sets the value; `null` clears it back to driven. */
-  value?: number | null;
+  /** A number or a formula sets the value; `null` clears it back to driven. */
+  value?: ParamInput | null;
   /** A source dimension id links this one; `null` unlinks it. */
   reference?: EntityId | null;
   orientation?: DimensionOrientation;
@@ -86,6 +87,7 @@ export function isValidDimensionValue(value: number | null): value is number {
  */
 export type DimensionEdit =
   | { kind: 'set'; value: number }
+  | { kind: 'formula'; expr: string }
   | { kind: 'driven' }
   | { kind: 'reference'; text: string }
   | { kind: 'unlink' }
@@ -96,8 +98,13 @@ export function parseDimensionEdit(input: string): DimensionEdit {
   const trimmed = input.trim();
   if (trimmed === '') return { kind: 'driven' };
   if (trimmed.startsWith('#')) return { kind: 'reference', text: trimmed.slice(1).trim() };
-  const value = parseDimensionValue(trimmed);
-  return isValidDimensionValue(value) ? { kind: 'set', value } : { kind: 'invalid' };
+  // A numeric entry that cannot drive stays a typo; only text becomes a formula.
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+    const value = Number(trimmed);
+    return isValidDimensionValue(value) ? { kind: 'set', value } : { kind: 'invalid' };
+  }
+  const expr = trimmed.startsWith('=') ? trimmed.slice(1).trim() : trimmed;
+  return expr === '' ? { kind: 'invalid' } : { kind: 'formula', expr };
 }
 
 /** True when the picker should be open for this editable text. */
@@ -164,6 +171,10 @@ export function formatDimensionField(
 ): string {
   if (state === 'referenced' && constraint.reference !== undefined)
     return `#${constraint.reference}`;
+  // A formula is edited as written; its resolved number is shown elsewhere.
+  if (constraint.value !== undefined && typeof constraint.value === 'object') {
+    return constraint.value.expr;
+  }
   return value === null ? '' : formatDimensionValue(value);
 }
 
@@ -238,6 +249,8 @@ export function dimensionPatchForEdit(
   switch (edit.kind) {
     case 'set':
       return { value: edit.value };
+    case 'formula':
+      return { value: { expr: edit.expr } };
     case 'driven':
       return { value: null };
     case 'unlink':

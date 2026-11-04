@@ -1,6 +1,42 @@
 export type EntityId = string;
 
-export const PATTERN_SCHEMA = 'sewcraft.pattern/0.4';
+/**
+ * A linear unit a formula literal may carry. Every stored value is millimetres,
+ * so a unit only scales its literal at parse time.
+ */
+export type Unit = 'mm' | 'cm';
+
+/**
+ * A parameter: a literal millimetres value, or a formula over document variables
+ * with the last number it resolved to. The formula is kept so the maker can edit
+ * it; every reader resolves through `resolveParam`, never the raw field.
+ */
+export type Param = number | ExpressionParam;
+
+export interface ExpressionParam {
+  /** Formula source in the expression grammar. */
+  expr: string;
+  /** The last resolved millimetres, kept so a broken formula still has a value. */
+  lastKnown: number;
+}
+
+/**
+ * A named measurement the document's formulas may use. `slug` is the stable
+ * token (`$bust_cm` in a formula); `name` is what the maker sees and may rename.
+ */
+export interface Variable {
+  /** Stable identifier, bare: a formula writes it as `$` + slug. */
+  slug: string;
+  /** Free-form display name, unique case-insensitively. */
+  name: string;
+  /** The unit a literal `value` is written in; a formula ignores it. */
+  unit: Unit;
+  value: Param;
+  /** Optional free text; absent or empty means none. */
+  comment?: string;
+}
+
+export const PATTERN_SCHEMA = 'sewcraft.pattern/0.5';
 
 export type PatternSchema = typeof PATTERN_SCHEMA;
 
@@ -151,9 +187,10 @@ export type DistanceConstraint = {
    * **set** dimension that drives the sketch.
    *
    * Mutually exclusive with `reference`: a referenced dimension derives its value
-   * from its source and stores no literal.
+   * from its source and stores no literal. A formula resolves through the
+   * document's variables.
    */
-  value?: number;
+  value?: Param;
   /**
    * Id of the `distance` constraint this dimension copies its value from. The
    * effective value is resolved from the source chain on every read, so a source
@@ -230,7 +267,7 @@ export type AllowanceKind = (typeof ALLOWANCE_KINDS)[number];
 export interface Allowance {
   edge: EntityId;
   /** Finished (visible) width in millimetres; must be > 0. */
-  width: number;
+  width: Param;
   /** Omitted means `seam`. */
   kind?: AllowanceKind;
 }
@@ -249,7 +286,7 @@ export interface CornerAllowance {
 
 /** The allowance copied onto a new piece; `width` is the finished width. */
 export interface AllowancePreset {
-  width: number;
+  width: Param;
   /** Omitted means `seam`. */
   kind?: AllowanceKind;
 }
@@ -405,7 +442,7 @@ export interface CornerRound {
   corner: EntityId;
   ends: [CornerRoundEnd, CornerRoundEnd];
   /** Arc radius in millimetres. */
-  radius: number;
+  radius: Param;
   /** Derived cubic Bézier, cut geometry like the lines it joins. */
   arc: EntityId;
   /** Derived Bézier control points p1 and p2. */
@@ -444,4 +481,6 @@ export interface PatternDocument {
   cornerRounds?: CornerRound[];
   /** Optional and additive; a document without it resolves the built-in preset. */
   defaults?: PatternDefaults;
+  /** Named measurements formulas may use; absent means the document has none. */
+  variables?: Variable[];
 }

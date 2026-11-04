@@ -94,7 +94,7 @@
         "type": "coincident|horizontal|vertical|point_on_line|distance|angle|equal|midpoint",
         "entities": "entity_id[]",
         "piece": "entity_id",
-        "value": "number?",
+        "value": "number|expression?",
         "reference": "entity_id?",
         "orientation": "aligned|horizontal|vertical?",
         "offset": "number?"
@@ -105,7 +105,7 @@
       "description": "Change a dimensional constraint value or its dimension presentation.",
       "params": {
         "id": "entity_id",
-        "value": "number|null?",
+        "value": "number|expression|null?",
         "reference": "entity_id|null?",
         "orientation": "aligned|horizontal|vertical?",
         "offset": "number?"
@@ -124,7 +124,7 @@
       "params": {
         "first": "entity_id",
         "second": "entity_id",
-        "radius": "number"
+        "radius": "number|expression"
       },
       "inverse": "remove_corner_round"
     },
@@ -132,7 +132,7 @@
       "description": "Change the radius of a corner round and regenerate its tangent points and arc.",
       "params": {
         "id": "entity_id",
-        "radius": "number"
+        "radius": "number|expression"
       },
       "inverse": "set_corner_round_radius"
     },
@@ -210,10 +210,39 @@
       "params": {
         "piece": "entity_id",
         "mode": "inherit|none|preset",
-        "width": "number?",
+        "width": "number|expression?",
         "kind": "seam|single|double?"
       },
       "inverse": "set_piece_default_allowance"
+    },
+    "set_variable": {
+      "description": "Create a named measurement, or update the one stored under the same slug. A formula value must resolve to a length or a ratio; its result is recorded as lastKnown.",
+      "params": {
+        "slug": "string?",
+        "name": "string?",
+        "unit": "mm|cm?",
+        "value": "number|expression",
+        "comment": "string|null?"
+      },
+      "inverse": "remove_variable"
+    },
+    "update_variable": {
+      "description": "Rename a variable, change its unit, value or comment. The slug never moves, so formulas keep resolving; a unit change converts a literal and leaves a formula as written.",
+      "params": {
+        "slug": "string",
+        "name": "string?",
+        "unit": "mm|cm?",
+        "value": "number|expression?",
+        "comment": "string|null?"
+      },
+      "inverse": "update_variable"
+    },
+    "remove_variable": {
+      "description": "Remove a variable. Every dependent formula keeps the number it was showing and adds no value until the variable is recreated with the same slug.",
+      "params": {
+        "slug": "string"
+      },
+      "inverse": "set_variable"
     },
     "create_assembly": {
       "description": "Create an empty assembly and append its tab. The default name is Assembly N.",
@@ -280,7 +309,7 @@
       "params": {
         "piece": "entity_id",
         "edge": "entity_id",
-        "width": "number?",
+        "width": "number|expression?",
         "kind": "seam|single|double?",
         "remove": "bool?"
       },
@@ -299,7 +328,7 @@
     "set_default_allowance": {
       "description": "Set, change or clear the allowance copied onto newly created pieces.",
       "params": {
-        "width": "number?",
+        "width": "number|expression?",
         "kind": "seam|single|double?",
         "remove": "bool?"
       },

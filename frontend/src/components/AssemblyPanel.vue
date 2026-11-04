@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import type { AllowanceKind, Assembly, EntityId, PatternDocument } from '@sewcraft/geometry';
+import type {
+  AllowanceKind,
+  Assembly,
+  EntityId,
+  ParamInput,
+  PatternDocument,
+} from '@sewcraft/geometry';
 import { computed } from 'vue';
 
 import PieceParametersForm from '@/components/PieceParametersForm.vue';
@@ -39,7 +45,7 @@ const emit = defineEmits<{
     value:
       | { mode: 'inherit' }
       | { mode: 'none' }
-      | { mode: 'preset'; width: number; kind: AllowanceKind },
+      | { mode: 'preset'; width: ParamInput; kind: AllowanceKind },
   ];
   'open-piece': [piece: EntityId];
   'remove-instance': [instance: EntityId];
@@ -118,7 +124,9 @@ function piecePatch(patch: {
 
 function pieceDefault(
   value:
-    { mode: 'inherit' } | { mode: 'none' } | { mode: 'preset'; width: number; kind: AllowanceKind },
+    | { mode: 'inherit' }
+    | { mode: 'none' }
+    | { mode: 'preset'; width: ParamInput; kind: AllowanceKind },
 ): void {
   /* v8 ignore next -- the piece section renders only when the piece exists */
   if (piece.value === null) return;
@@ -196,6 +204,7 @@ function pieceDefault(
     <SidebarSection v-if="piece !== null" label="Piece" data-testid="assembly-piece">
       <PieceParametersForm
         :piece="piece"
+        :document="props.document"
         :inherited="inherited"
         :read-only="props.readOnly"
         prefix="assembly-piece"

@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import type { AllowanceKind, BandTarget, EntityId, Piece } from '@sewcraft/geometry';
+import type {
+  AllowanceKind,
+  BandTarget,
+  EntityId,
+  ParamInput,
+  PatternDocument,
+  Piece,
+} from '@sewcraft/geometry';
 import { computed, ref, watch } from 'vue';
 
 import PieceParametersForm from '@/components/PieceParametersForm.vue';
@@ -38,6 +45,8 @@ const props = withDefaults(
     defaultAllowance?: AllowanceChoice;
     /** The preset the piece's own default inherits when it has no override. */
     inheritedDefault?: AllowanceChoice;
+    /** The document the piece belongs to, so a formula width resolves. */
+    document?: PatternDocument;
     /** The allowance regions selected on the canvas. */
     selectedTargets?: BandTarget[];
   }>(),
@@ -65,7 +74,7 @@ const emit = defineEmits<{
     value:
       | { mode: 'inherit' }
       | { mode: 'none' }
-      | { mode: 'preset'; width: number; kind: AllowanceKind },
+      | { mode: 'preset'; width: ParamInput; kind: AllowanceKind },
   ];
   'set-piece-allowance': [
     piece: EntityId,
@@ -255,6 +264,7 @@ function applyAll(): void {
 
     <PieceParametersForm
       :piece="props.piece"
+      :document="props.document"
       :inherited="props.inheritedDefault"
       :prefix="props.prefix"
       @update-piece="(patch) => emit('update-piece', props.summary.id, patch)"

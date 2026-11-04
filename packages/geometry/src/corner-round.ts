@@ -1,5 +1,6 @@
 import { cornerRounds, getEntity } from './document.js';
 import { CommandValidationError } from './errors.js';
+import { resolveParam } from './expression.js';
 import { edgePolyline } from './offset.js';
 import { isConstruction } from './roles.js';
 import type {
@@ -226,7 +227,13 @@ function tangentDistanceOf(document: PatternDocument, round: CornerRound): numbe
   const anchorB = pointEntity(document, round.ends[1].anchor);
   if (anchorA === undefined || anchorB === undefined) return null;
 
-  const result = cornerRoundGeometry(document, round.corner, anchorA.id, anchorB.id, round.radius);
+  const result = cornerRoundGeometry(
+    document,
+    round.corner,
+    anchorA.id,
+    anchorB.id,
+    resolveParam(document, round.radius),
+  );
   return result.geometry === null ? null : result.geometry.tangentDistance;
 }
 
@@ -301,7 +308,7 @@ export function regenerateCornerRounds(document: PatternDocument): PatternDocume
       round.corner,
       anchorA.id,
       anchorB.id,
-      round.radius,
+      resolveParam(document, round.radius),
     );
     if (result.geometry === null) {
       throw new CommandValidationError(
@@ -415,7 +422,8 @@ function isPersistedRoundValid(
   seenCorners: Set<EntityId>,
 ): boolean {
   if (seenCorners.has(round.corner)) return false;
-  if (!Number.isFinite(round.radius) || round.radius < MIN_CORNER_ROUND) return false;
+  const radius = resolveParam(document, round.radius);
+  if (!Number.isFinite(radius) || radius < MIN_CORNER_ROUND) return false;
 
   const corner = pointEntity(document, round.corner);
   if (corner === undefined) return false;
@@ -432,7 +440,7 @@ function isPersistedRoundValid(
     round.corner,
     anchors[0]!.id,
     anchors[1]!.id,
-    round.radius,
+    radius,
   );
   if (geometry.geometry === null) return false;
 
@@ -503,7 +511,7 @@ export function normalizeCornerRounds(document: PatternDocument): PatternDocumen
       round.corner,
       round.ends[0].anchor,
       round.ends[1].anchor,
-      round.radius,
+      resolveParam(document, round.radius),
     ).geometry!;
     const id = `${round.id}:center`;
 

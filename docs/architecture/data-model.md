@@ -75,7 +75,7 @@ can be written when it changes.
 
 ```jsonc
 {
-  "schema": "sewcraft.pattern/0.4",
+  "schema": "sewcraft.pattern/0.5",
   "units": "mm",
   "entities": [
     // Every entity names its piece; role absent means cut.
@@ -166,7 +166,7 @@ built-in **10 mm seam** preset, and `normalizeDocument` fills the field on load
 allowance. A piece may override it with `defaults.allowance` (absent inherits,
 `null` means none). Changing or clearing either default never rewrites an existing
 piece's allowances. An invalid stored width or kind falls back to the built-in
-preset; the pattern schema string is `sewcraft.pattern/0.4`.
+preset; the pattern schema string is `sewcraft.pattern/0.5`.
 
 `cornerRounds` is optional, so documents written before the feature load
 unchanged. A round is a live feature: it stores the sharp corner, both line
@@ -176,7 +176,7 @@ anchors and the radius, while its derived entities (tangent points `r1:a`,
 are trimmed to the tangent points, and `p2` stays as a construction point.
 `center` is optional and additive — it points at a fixed construction point, is
 minted once on load for rounds written before feature points, and never joins a
-piece loop or the SVG export. The schema string is `sewcraft.pattern/0.4`.
+piece loop or the SVG export. The schema string is `sewcraft.pattern/0.5`.
 
 An `arc` entity is a true circular arc referencing three ordinary points: `start`
 and `end` bound it and `through` lies on it between them, fixing both the bulge
@@ -195,6 +195,18 @@ box is the centre widened by the radius in each direction, and `add_seam_allowan
 rejects a circle in v1. The entity kind is additive, so a document written before
 the feature loads unchanged and a document containing a circle is still valid
 JSON for older builds.
+
+`variables` is optional and holds the document's named measurements: `slug`
+(stable, bare — a formula writes `$` + slug), `name` (free-form, unique
+case-insensitively), `unit` (`mm` or `cm`), `value` and an optional `comment`.
+A variable's `value` may be a literal in its unit or a formula over other
+variables. Every parameter that takes a length is a `Param`: a plain number, or
+`{ expr, lastKnown }` where `expr` is a formula and `lastKnown` the number it last
+resolved to. `resolveParam` is the only reader: a formula resolves through the
+document's variables on every read, and a formula that no longer resolves falls
+back to `lastKnown` instead of failing a solve. Formulas use a unit-aware grammar
+(`2cm + 5mm`, `$bust / 4`) and are validated at write time, so a stored formula
+always resolves when it is written.
 
 A `piece` is a closed loop of existing cut edges cut from fabric. `edges` is the
 loop order, which is also what defines "outward"; a piece never stores a side.
@@ -217,10 +229,11 @@ ignored when resolving and dropped when the loop changes.
 assembly fill. An empty string is not stored. `defaults.allowance` is the piece's
 own override; absent inherits the document default, `null` means none.
 
-The schema is `sewcraft.pattern/0.4`. `normalizeDocument` in
-`packages/geometry/src/migration.ts` refuses every other schema (a stored 0.3
-document included) through `UnsupportedPatternSchemaError`: there is no
-load-time migration. It also fills `defaults`, defaults a missing `assemblies` to
+The schema is `sewcraft.pattern/0.5`. `normalizeDocument` in
+`packages/geometry/src/migration.ts` reads 0.5 and the 0.4 subset it supersedes,
+and refuses every other schema (a stored 0.3 document included) through
+`UnsupportedPatternSchemaError`: there is no load-time migration. 0.4 differs only
+by having no `variables` and no formula parameters, so it needs no conversion. It also fills `defaults`, defaults a missing `assemblies` to
 `[]`, and normalises `tabs` — duplicate refs and refs to missing objects are
 dropped, and every piece and assembly missing from the order is appended in
 pieces-then-assemblies order. The normalisation is one-way and idempotent, and an
@@ -258,7 +271,7 @@ stores the line id so it follows the line's visible endpoints through a
 corner-round trim; the two-point form keeps its named points. A target may not be
 corner-round derived, already a midpoint target, or a source of another midpoint,
 and neither may a source be an existing target (no chains). The document stays
-`sewcraft.pattern/0.4`; only the constraint list gains an additive entry.
+`sewcraft.pattern/0.5`; only the constraint list gains an additive entry.
 
 A `derived_distance` constraint is a **cut dimension**. It addresses two anchors
 of one piece by `{ edge, at: 'start' | 'end' | 'edge', loop?: 'stitch' | 'cut' }`

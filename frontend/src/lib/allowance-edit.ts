@@ -1,5 +1,6 @@
 import {
   allowanceDistance,
+  resolveParam,
   allowanceForEdge,
   cornerAllowanceForRound,
   cornerAllowanceState,
@@ -62,7 +63,7 @@ export function allowanceEditCommands(
           params: {
             piece: piece.id,
             edge: target.edge,
-            width: current.width * 2,
+            width: resolveParam(document, current.width) * 2,
             kind: current.kind ?? 'seam',
           },
         });
@@ -87,7 +88,7 @@ export function allowanceEditCommands(
         params: { piece: piece.id, round: target.round, cutWidth: edit.cutWidth! },
       });
     } else if (edit.mode === 'double' && (own !== undefined || inherited)) {
-      const base = own !== undefined ? own.cutWidth : allowanceDistance(before!);
+      const base = own !== undefined ? own.cutWidth : allowanceDistance(before!, document);
       commands.push({
         id: nextId('corner-allowance'),
         type: 'set_piece_corner_allowance',

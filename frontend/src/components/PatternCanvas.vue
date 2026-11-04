@@ -58,6 +58,7 @@ import {
   projectPointOnLine,
   type Rect,
   resolveCutSpan,
+  resolveParam,
   type TextLayout,
   type TextEntity,
   textLayout,
@@ -90,6 +91,7 @@ import {
   type CornerRoundLabel,
   type CornerRoundPicks,
 } from '@/lib/corner-round';
+import { formulaIssue } from '@/lib/formula';
 import {
   dimensionAccessibleName,
   dimensionLabelWidth,
@@ -903,7 +905,9 @@ function featurePointClass(point: PointEntity): string {
 /** The radius a round shows: the dragged value while the handle is moving. */
 function radiusOf(round: CornerRound): number {
   const drag = tangentDrag.value;
-  return drag !== null && drag.id === round.id ? drag.radius : round.radius;
+  return drag !== null && drag.id === round.id
+    ? drag.radius
+    : resolveParam(props.document, round.radius);
 }
 
 function roundGeometryOf(round: CornerRound): ReturnType<typeof cornerRoundGeometry>['geometry'] {
@@ -2280,11 +2284,17 @@ function selectReference(id: EntityId): void {
   emit('update-dimension', editing.id, { reference: id });
 }
 
-/** Enter: apply a set, driven, unlink or reference edit; keep a typo editable. */
+/** A formula is applicable only when it resolves; a typo stays editable. */
+function formulaEditIsUsable(expr: string): boolean {
+  return formulaIssue(props.document, expr) === null;
+}
+
+/** Enter: apply a set, formula, driven, unlink or reference edit; keep a typo editable. */
 function applyDimensionEdit(): void {
   const editing = editingDimension.value!;
   const edit = parseDimensionEdit(editing.value);
   if (edit.kind === 'invalid') return;
+  if (edit.kind === 'formula' && !formulaEditIsUsable(edit.expr)) return;
 
   const patch = dimensionPatchForEdit(edit, optionsFor(editing.id));
   if (patch === null) return;
@@ -2303,6 +2313,7 @@ function finishDimensionEdit(): void {
   const edit = parseDimensionEdit(editing.value);
   editingDimension.value = null;
   if (edit.kind === 'invalid') return;
+  if (edit.kind === 'formula' && !formulaEditIsUsable(edit.expr)) return;
 
   const patch = dimensionPatchForEdit(edit, optionsFor(editing.id));
   if (patch !== null) emit('update-dimension', editing.id, patch);
@@ -2328,8 +2339,8 @@ function beginTangentDrag(round: CornerRound, endIndex: 0 | 1, event: PointerEve
   tangentDrag.value = {
     id: round.id,
     endIndex,
-    radius: round.radius,
-    startRadius: round.radius,
+    radius: radiusOf(round),
+    startRadius: radiusOf(round),
   };
   addPointerListeners();
 }
@@ -2351,8 +2362,8 @@ function commitTangentDrag(): void {
 async function openCornerRoundEditor(round: CornerRound, x: number, y: number): Promise<void> {
   editingCornerRound.value = {
     id: round.id,
-    value: formatCornerRadius(round.radius),
-    startRadius: round.radius,
+    value: formatCornerRadius(radiusOf(round)),
+    startRadius: radiusOf(round),
     x,
     y,
   };

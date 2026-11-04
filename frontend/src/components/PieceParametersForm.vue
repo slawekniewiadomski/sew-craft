@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import type { AllowanceKind, Piece } from '@sewcraft/geometry';
-import { computed } from 'vue';
+import {
+  resolveParam,
+  type AllowanceKind,
+  type ParamInput,
+  type PatternDocument,
+  type Piece,
+} from '@sewcraft/geometry';
+import { computed, ref } from 'vue';
 
 import SidebarButton from '@/components/sidebar/SidebarButton.vue';
 import SidebarField from '@/components/sidebar/SidebarField.vue';
@@ -8,6 +14,7 @@ import SidebarInput from '@/components/sidebar/SidebarInput.vue';
 import SidebarSelect from '@/components/sidebar/SidebarSelect.vue';
 import type { AllowanceChoice } from '@/lib/allowance-defaults';
 import { parseAllowanceWidth } from '@/lib/allowance-width';
+import { formulaIssue, parseParamEdit } from '@/lib/formula';
 
 const props = withDefaults(
   defineProps<{
@@ -17,8 +24,10 @@ const props = withDefaults(
     /** Prefix for the controls' data-testids. */
     prefix?: string;
     readOnly?: boolean;
+    /** The document the piece belongs to; its variables resolve a formula width. */
+    document?: PatternDocument;
   }>(),
-  { prefix: 'piece-parameters', readOnly: false },
+  { prefix: 'piece-parameters', readOnly: false, document: undefined },
 );
 
 const emit = defineEmits<{
@@ -35,7 +44,7 @@ const emit = defineEmits<{
     value:
       | { mode: 'inherit' }
       | { mode: 'none' }
-      | { mode: 'preset'; width: number; kind: AllowanceKind },
+      | { mode: 'preset'; width: ParamInput; kind: AllowanceKind },
   ];
 }>();
 
@@ -53,8 +62,11 @@ const defaultMode = computed<'inherit' | 'none' | 'preset'>(() => {
 const defaultWidth = computed(() =>
   props.piece.defaults?.allowance === null || props.piece.defaults === undefined
     ? props.inherited.width
-    : props.piece.defaults.allowance.width,
+    : resolveParam(props.document ?? {}, props.piece.defaults.allowance.width),
 );
+
+/** The width being typed, kept while a formula does not resolve yet. */
+const widthDraft = ref<{ text: string; issue: string } | null>(null);
 
 const defaultKind = computed<AllowanceKind>(() => {
   const preset = props.piece.defaults?.allowance;
@@ -133,13 +145,32 @@ function modeChanged(event: Event): void {
 
 function widthChanged(event: Event): void {
   const input = event.target as HTMLInputElement;
+  const edit = parseParamEdit(input.value);
+  if (edit.kind === 'formula') {
+    const scope = props.document ?? {};
+    const issue = formulaIssue(scope, edit.expr);
+    if (issue !== null) {
+      widthDraft.value = { text: input.value, issue };
+      return;
+    }
+    widthDraft.value = null;
+    emit('set-default', {
+      mode: 'preset',
+      width: { expr: edit.expr },
+      kind: defaultKind.value,
+    });
+    return;
+  }
+
   const width = parseAllowanceWidth(input.value);
   if (width === null) {
+    widthDraft.value = null;
     input.value = String(defaultWidth.value);
     return;
   }
   /* v8 ignore next -- the width input renders only in preset mode */
   if (defaultMode.value !== 'preset' || width === defaultWidth.value) return;
+  widthDraft.value = null;
   emit('set-default', { mode: 'preset', width, kind: defaultKind.value });
 }
 
@@ -201,11 +232,8 @@ function kindChanged(event: Event): void {
               </option>
             </SidebarSelect>
             <SidebarInput
-              type="number"
-              min="0.1"
-              step="0.1"
-              class="w-16 tabular-nums"
-              :value="defaultWidth"
+              class="w-16 font-mono text-2xs"
+              :value="widthDraft?.text ?? String(defaultWidth)"
               :aria-label="`Default allowance width for piece ${props.piece.id}`"
               :data-testid="testId('default-width')"
               @change="widthChanged"
@@ -214,6 +242,13 @@ function kindChanged(event: Event): void {
           </template>
         </div>
       </SidebarField>
+      <p
+        v-if="widthDraft !== null"
+        class="text-2xs text-destructive"
+        :data-testid="testId('default-width-issue')"
+      >
+        {{ widthDraft.issue }}
+      </p>
       <SidebarField label="Fabric">
         <SidebarInput
           maxlength="120"

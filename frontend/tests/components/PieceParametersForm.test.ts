@@ -1,4 +1,4 @@
-import type { Piece } from '@sewcraft/geometry';
+import { createEmptyDocument, type PatternDocument, type Piece } from '@sewcraft/geometry';
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 
@@ -223,6 +223,39 @@ describe('PieceParametersForm', () => {
       'value',
       'seam',
     );
+  });
+
+  it('commits a formula width and reports an unresolved one', async () => {
+    const document = {
+      ...createEmptyDocument(),
+      variables: [{ slug: 'seam', name: 'Seam', unit: 'mm', value: 12 }],
+    } as PatternDocument;
+    const wrapper = mountForm({
+      piece: piece({ defaults: { allowance: { width: 12 } } }),
+      document,
+    });
+    const width = wrapper.find('[data-testid="piece-parameters-default-width"]');
+
+    await width.setValue('$seam / 2');
+    expect(wrapper.emitted('set-default')?.at(-1)).toEqual([
+      { mode: 'preset', width: { expr: '$seam / 2' }, kind: 'seam' },
+    ]);
+
+    await width.setValue('$missing');
+    expect(wrapper.emitted('set-default')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="piece-parameters-default-width-issue"]').text()).toContain(
+      'unknown variable $missing',
+    );
+
+    const withoutDocument = mountForm({
+      piece: piece({ defaults: { allowance: { width: 12 } } }),
+    });
+    const bareWidth = withoutDocument.find('[data-testid="piece-parameters-default-width"]');
+    await bareWidth.setValue('$seam');
+    expect(withoutDocument.emitted('set-default')).toBeUndefined();
+    expect(
+      withoutDocument.find('[data-testid="piece-parameters-default-width-issue"]').exists(),
+    ).toBe(true);
   });
 
   it('ignores a width edit outside preset mode', async () => {

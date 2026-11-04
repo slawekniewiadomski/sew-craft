@@ -1,4 +1,5 @@
 import { resolveSetValue } from './dimension.js';
+import type { VariableScope } from './expression.js';
 import { constraintEntityIds, constraintPointIds } from './document.js';
 import {
   midpointDependencies,
@@ -53,6 +54,7 @@ export function solve(
   options: SolveOptions = {},
   entities: readonly Entity[] = [],
   supportAnchors: ReadonlyMap<EntityId, EntityId> = new Map(),
+  scope: VariableScope = {},
 ): SolveResult {
   const maxIterations = options.maxIterations ?? DEFAULT_MAX_ITERATIONS;
   const tolerance = options.tolerance ?? DEFAULT_TOLERANCE;
@@ -131,7 +133,7 @@ export function solve(
 
   // Referenced dimensions follow a source chain, so resolve every driving value
   // once per solve instead of once per residual (and per solver iteration).
-  const drivingValues = resolvedDrivingValues(constraints);
+  const drivingValues = resolvedDrivingValues(constraints, scope);
   const midpointDeps = midpointDependencies(context);
 
   const readState = (x: Float64Array): Map<EntityId, Vec2> => {
@@ -270,11 +272,14 @@ function midpointIssueMessage(issue: MidpointIssue, target: EntityId): string {
  * contribute their literal; referenced ones their resolved source value; driven
  * and broken ones are absent, so they add no residual.
  */
-function resolvedDrivingValues(constraints: Constraint[]): Map<EntityId, number> {
+function resolvedDrivingValues(
+  constraints: Constraint[],
+  scope: VariableScope,
+): Map<EntityId, number> {
   const values = new Map<EntityId, number>();
   for (const constraint of constraints) {
     if (constraint.type !== 'distance') continue;
-    const value = resolveSetValue(constraints, constraint);
+    const value = resolveSetValue(constraints, constraint, scope);
     if (value !== null) values.set(constraint.id, value);
   }
   return values;

@@ -112,7 +112,7 @@ describe('projectsApi', () => {
     );
     const { projectsApi } = await import('@/api/projects');
     const document: PatternDocument = {
-      schema: 'sewcraft.pattern/0.4',
+      schema: 'sewcraft.pattern/0.5',
       units: 'mm',
       entities: [],
       constraints: [],
@@ -156,7 +156,7 @@ describe('projectsApi', () => {
 
     const failure = projectsApi.savePattern(1, {
       document: {
-        schema: 'sewcraft.pattern/0.4',
+        schema: 'sewcraft.pattern/0.5',
         units: 'mm',
         entities: [],
         constraints: [],

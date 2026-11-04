@@ -341,6 +341,97 @@ describe('EntityPropertiesPanel', () => {
     expect(guide.find('[data-testid="entity-corner-rounds"]').exists()).toBe(false);
   });
 
+  it('commits a formula dimension and keeps an unresolved one editable', async () => {
+    const document = doc({
+      variables: [{ slug: 'bust', name: 'Bust', unit: 'mm', value: 880 }],
+    });
+    const { wrapper } = panel(document, 'l1');
+    const input = wrapper.find('[data-testid="entity-dimension-value-width"]');
+
+    await input.setValue('$bust / 4');
+    expect(wrapper.emitted('update-dimension')).toEqual([
+      ['width', { value: { expr: '$bust / 4' } }],
+    ]);
+
+    await input.setValue('$gone / 4');
+    expect(wrapper.emitted('update-dimension')).toHaveLength(1);
+    expect((input.element as HTMLInputElement).value).toBe('$gone / 4');
+    expect(wrapper.find('[data-testid="entity-dimension-issue-width"]').text()).toContain(
+      'unknown variable $gone',
+    );
+  });
+
+  it('leaves an already stored formula untouched', async () => {
+    const document = doc({
+      variables: [{ slug: 'bust', name: 'Bust', unit: 'mm', value: 880 }],
+      constraints: [
+        {
+          id: 'width',
+          type: 'distance',
+          a: 'a',
+          b: 'b',
+          value: { expr: '$bust / 4', lastKnown: 220 },
+          orientation: 'horizontal',
+        },
+        { id: 'horizontal', type: 'horizontal', a: 'a', b: 'b' },
+      ],
+    });
+    const { wrapper } = panel(document, 'l1');
+    const input = wrapper.find('[data-testid="entity-dimension-value-width"]');
+
+    await input.setValue('$bust / 4');
+    expect(wrapper.emitted('update-dimension')).toBeUndefined();
+  });
+
+  it('picks a variable token with the $ picker', async () => {
+    const document = doc({
+      variables: [
+        { slug: 'bust', name: 'Bust (cm)', unit: 'cm', value: 88 },
+        { slug: 'waist', name: 'Waist', unit: 'cm', value: 72 },
+      ],
+    });
+    const { wrapper } = panel(document, 'l1');
+    const input = wrapper.find('[data-testid="entity-dimension-value-width"]');
+
+    await input.setValue('$b');
+    await input.trigger('keydown', { key: 'ArrowDown' });
+    await input.trigger('keydown', { key: 'Enter' });
+    expect((input.element as HTMLInputElement).value).toBe('$bust');
+
+    await input.setValue('$w');
+    expect(wrapper.find('[data-testid="entity-dimension-variables-width"]').exists()).toBe(true);
+    await wrapper
+      .find('[data-testid="entity-dimension-variable-width-waist"]')
+      .trigger('mousedown');
+    expect((input.element as HTMLInputElement).value).toBe('$waist');
+
+    await input.setValue('$b');
+    await input.trigger('keydown', { key: 'ArrowUp' });
+    await input.trigger('keydown', { key: 'ArrowDown' });
+    await input.trigger('keydown', { key: 'ArrowDown' });
+    await input.trigger('keydown', { key: 'Escape' });
+    expect(wrapper.find('[data-testid="entity-dimension-variables-width"]').exists()).toBe(false);
+  });
+
+  it('commits a formula radius and reports an unresolved one', async () => {
+    const document = roundedDoc();
+    const withVariables: PatternDocument = {
+      ...document,
+      variables: [{ slug: 'radius', name: 'Radius', unit: 'mm', value: 12 }],
+    };
+    const { wrapper } = panel(withVariables, 'l1');
+    const input = wrapper.find('[data-testid="entity-corner-radius-r1"]');
+
+    await input.setValue('$radius');
+    expect(wrapper.emitted('set-corner-round-radius')).toEqual([['r1', { expr: '$radius' }]]);
+
+    await input.setValue('$missing');
+    expect(wrapper.emitted('set-corner-round-radius')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="entity-corner-radius-issue-r1"]').text()).toContain(
+      'unknown variable $missing',
+    );
+  });
+
   it('edits and removes a corner round', async () => {
     const { wrapper } = panel(roundedDoc(), 'l1');
     const input = wrapper.find('[data-testid="entity-corner-radius-r1"]');
