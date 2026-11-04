@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Per-corner allowance — band regions</title>
+<style>
+  :root {
+    --seam: oklch(0.627 0.194 149.214);
+    --seam-ink: oklch(0.42 0.13 149.214);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 16px;
+    font-family: var(--font-sans, system-ui, sans-serif);
+    background: #fff;
+    color: #111;
+  }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  @media (max-width: 640px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  figure { margin: 0; display: grid; gap: 8px; }
+  .canvas { background: #fafafa; border-radius: 8px; padding: 4px; }
+  .canvas svg { display: block; width: 100%; height: auto; }
+  figcaption { font-size: 12.5px; line-height: 1.4; color: #555; }
+  figcaption b { color: #111; font-weight: 600; }
+  .grid-line { stroke: #e4e4e4; stroke-width: 1; }
+  .stitch { fill: none; stroke: #8a8a8a; stroke-width: 1; }
+  .cut { fill: none; stroke: #111; stroke-width: 1.6; }
+  .band { fill: color-mix(in srgb, var(--seam) 13%, transparent); }
+  .region { fill: color-mix(in srgb, var(--seam) 13%, transparent); stroke: color-mix(in srgb, var(--seam) 70%, transparent); stroke-width: 1; }
+  .selected { fill: color-mix(in srgb, var(--seam) 34%, transparent); stroke: var(--seam-ink); stroke-width: 1.4; }
+  .lbl { font-size: 8.5px; fill: #777; }
+  .lbl-strong { font-size: 8.5px; fill: var(--seam-ink); font-weight: 600; }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 16px; font-size: 12px; color: #555; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+</style>
+</head>
+<body>
+<svg style="position:absolute;width:0;height:0" aria-hidden="true">
+  <defs>
+    <pattern id="grid20" patternUnits="userSpaceOnUse" width="20" height="20">
+      <path class="grid-line" d="M20 0 H0 V20" fill="none"></path>
+    </pattern>
+  </defs>
+</svg>
+
+<div class="grid">
+
+  <figure>
+    <div class="canvas">
+      <svg viewBox="0 0 320 240" role="img" aria-label="Today: one continuous allowance band">
+        <rect width="320" height="240" fill="url(#grid20)"></rect>
+        <path class="band" fill-rule="evenodd"
+              d="M40 40 H210 A50 50 0 0 1 260 90 V190 H40 Z M28 28 H210 A62 62 0 0 1 272 90 V202 H28 Z"></path>
+        <path class="cut" d="M28 28 H210 A62 62 0 0 1 272 90 V202 H28 Z"></path>
+        <path class="stitch" d="M40 40 H210 A50 50 0 0 1 260 90 V190 H40 Z"></path>
+        <text class="lbl" x="120" y="24" text-anchor="middle">10 mm</text>
+      </svg>
+    </div>
+    <figcaption><b>Today.</b> One even-odd path for the whole band, and the layer ignores the pointer: nothing in the green area is selectable, and the card can only edit one edge or every edge.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="canvas">
+      <svg viewBox="0 0 320 240" role="img" aria-label="The whole band as five regions, two selected">
+        <rect width="320" height="240" fill="url(#grid20)"></rect>
+        <path class="region" d="M260 90 L260 190 L272 202 L272 90 Z"></path>
+        <path class="region" d="M40 190 H260 L272 202 H28 Z"></path>
+        <path class="region" d="M40 40 L40 190 L28 202 L28 28 Z"></path>
+        <path class="selected" d="M40 40 H210 V28 H28 Z"></path>
+        <path class="selected" d="M210 40 A50 50 0 0 1 260 90 L272 90 A62 62 0 0 0 210 28 Z"></path>
+        <path class="cut" d="M28 28 H210 A62 62 0 0 1 272 90 V202 H28 Z"></path>
+        <path class="stitch" d="M40 40 H210 A50 50 0 0 1 260 90 V190 H40 Z"></path>
+        <text class="lbl-strong" x="242" y="64" text-anchor="middle">corner</text>
+        <text class="lbl" x="116" y="24" text-anchor="middle">top edge</text>
+      </svg>
+    </div>
+    <figcaption><b>Whole band.</b> Five regions: four edges and the round. Each edge takes half of its two sharp wedges, split on the bisector, so the band has no ownerless area. Click one, ⌘/Ctrl-click another, edit both at once.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="canvas">
+      <svg viewBox="0 0 320 240" role="img" aria-label="Corner with its own 20 mm width beside 10 mm edges">
+        <rect width="320" height="240" fill="url(#grid20)"></rect>
+        <path class="band" fill-rule="evenodd"
+              d="M40 40 H210 A50 50 0 0 1 260 90 V190 H40 Z M28 28 H210 V16 A74 74 0 0 1 284 90 H272 V202 H28 Z"></path>
+        <path class="region" d="M210 40 A50 50 0 0 1 260 90 L272 90 A62 62 0 0 0 210 28 Z"></path>
+        <path class="cut" d="M28 28 H210 V16 A74 74 0 0 1 284 90 H272 V202 H28 Z"></path>
+        <path class="stitch" d="M40 40 H210 A50 50 0 0 1 260 90 V190 H40 Z"></path>
+        <text class="lbl" x="120" y="24" text-anchor="middle">10 mm</text>
+        <text class="lbl-strong" x="248" y="62" text-anchor="middle">20 mm</text>
+      </svg>
+    </div>
+    <figcaption><b>Corner width.</b> The crescent stores its own width, so it cuts at 20 mm while both edges stay 10 mm. The cut line steps squarely across at each tangent point — the join makes the step.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="canvas">
+      <svg viewBox="0 0 320 240" role="img" aria-label="The split crescent, its halves owned by the neighbouring edges">
+        <rect width="320" height="240" fill="url(#grid20)"></rect>
+        <path class="region" d="M40 40 H210 A50 50 0 0 1 245.36 54.64 L253.8 46.2 A62 62 0 0 0 210 28 L28 28 Z"></path>
+        <path class="region" d="M40 190 H260 L272 202 H28 Z"></path>
+        <path class="region" d="M40 40 L40 190 L28 202 L28 28 Z"></path>
+        <path class="selected" d="M245.36 54.64 A50 50 0 0 1 260 90 L260 190 L272 202 L272 90 L284 90 A74 74 0 0 0 262.33 37.67 Z"></path>
+        <path class="cut" d="M28 28 H210 A62 62 0 0 1 253.8 46.2 L262.33 37.67 A74 74 0 0 1 284 90 L272 90 V202 H28 Z"></path>
+        <path class="stitch" d="M40 40 H210 A50 50 0 0 1 260 90 V190 H40 Z"></path>
+        <text class="lbl" x="120" y="24" text-anchor="middle">10 mm</text>
+        <text class="lbl-strong" x="306" y="46" text-anchor="end">split</text>
+        <text class="lbl" x="252" y="130" text-anchor="middle">20 mm</text>
+      </svg>
+    </div>
+    <figcaption><b>No corner width, edges disagree.</b> The crescent splits at its midpoint: each half is that edge's allowance continuing around the round, so clicking a half selects its edge — here the right edge, 20 mm, with the half it owns.</figcaption>
+  </figure>
+
+</div>
+
+<div class="legend">
+  <span><svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4" class="stitch"></line></svg> stitch line</span>
+  <span><svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4" class="cut"></line></svg> cut line</span>
+  <span><svg width="26" height="14"><rect x="1" y="1" width="24" height="12" rx="2" class="band"></rect></svg> band</span>
+  <span><svg width="26" height="14"><rect x="1" y="1" width="24" height="12" rx="2" class="region"></rect></svg> region</span>
+  <span><svg width="26" height="14"><rect x="1" y="1" width="24" height="12" rx="2" class="selected"></rect></svg> selected</span>
+</div>
+</body>
+</html>
