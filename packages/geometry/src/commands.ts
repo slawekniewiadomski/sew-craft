@@ -29,6 +29,7 @@ import {
 } from './corner-round.js';
 import { MIN_RADIUS } from './circle.js';
 import { effectiveDefaultAllowance, effectivePieceAllowance } from './defaults.js';
+import { pointOnEdge } from './mark.js';
 import {
   constraintOffset,
   constraintOrientation,
@@ -91,11 +92,13 @@ import {
   type EntityRole,
   type LineEntity,
   type MidpointConstraint,
+  type NotchMark,
   type Param,
   type PatternDocument,
   type Piece,
   type PieceDefaults,
   type PointEntity,
+  type CentreLineMark,
   type Seam,
   type SeamSide,
   type TabRef,
@@ -405,6 +408,34 @@ export interface UpdateTextParams {
   leader?: EntityId | null;
 }
 
+export interface AddNotchParams {
+  piece: EntityId;
+  /** The loop edge whose allowance the V cuts into. */
+  edge: EntityId;
+  /** The snapped point the V is centred on. */
+  point: EntityId;
+  /** Share of the edge's cut distance; omitted means the default. */
+  depth?: number;
+}
+
+export interface UpdateNotchParams {
+  id: EntityId;
+  /** `null` returns the notch to the default share. */
+  depth?: number | null;
+}
+
+export interface AddCentreLineParams {
+  piece: EntityId;
+  start: EntityId;
+  end: EntityId;
+}
+
+export interface UpdateCentreLineParams {
+  id: EntityId;
+  start?: EntityId;
+  end?: EntityId;
+}
+
 export interface UpdatePieceParams {
   id: EntityId;
   /** A string renames; `null` clears the name. */
@@ -527,6 +558,15 @@ export type Command =
   | { id: EntityId; type: 'set_role'; params: SetRoleParams; issuedAt?: string }
   | { id: EntityId; type: 'add_text'; params: AddTextParams; issuedAt?: string }
   | { id: EntityId; type: 'update_text'; params: UpdateTextParams; issuedAt?: string }
+  | { id: EntityId; type: 'add_notch'; params: AddNotchParams; issuedAt?: string }
+  | { id: EntityId; type: 'update_notch'; params: UpdateNotchParams; issuedAt?: string }
+  | { id: EntityId; type: 'add_centre_line'; params: AddCentreLineParams; issuedAt?: string }
+  | {
+      id: EntityId;
+      type: 'update_centre_line';
+      params: UpdateCentreLineParams;
+      issuedAt?: string;
+    }
   | {
       id: EntityId;
       type: 'set_piece_allowance';
@@ -691,6 +731,14 @@ export function applyCommand(document: PatternDocument, command: Command): Comma
       return applyAddText(document, command);
     case 'update_text':
       return applyUpdateText(document, command);
+    case 'add_notch':
+      return applyAddNotch(document, command);
+    case 'update_notch':
+      return applyUpdateNotch(document, command);
+    case 'add_centre_line':
+      return applyAddCentreLine(document, command);
+    case 'update_centre_line':
+      return applyUpdateCentreLine(document, command);
     case 'set_piece_allowance':
       return applySetPieceAllowance(document, command);
     case 'set_piece_corner_allowance':
@@ -1191,11 +1239,19 @@ function applyDeleteEntity(
 
   const entities = working.entities.flatMap((entity): Entity[] => {
     if (entity.id === id) return [];
-    if (entity.kind !== 'text') return [entity];
-    // A label whose anchor disappears goes with it; a deleted leader only
-    // detaches, so the label stays where it was placed.
-    if (entity.anchor === id) return [];
-    if (entity.leader === id) return [withoutKeys(entity, ['leader'])];
+    if (entity.kind === 'text') {
+      // A label whose anchor disappears goes with it; a deleted leader only
+      // detaches, so the label stays where it was placed.
+      if (entity.anchor === id) return [];
+      if (entity.leader === id) return [withoutKeys(entity, ['leader'])];
+      return [entity];
+    }
+    if (entity.kind === 'mark') {
+      // A mark is only meaningful while its points and its edge exist.
+      const references =
+        entity.type === 'notch' ? [entity.point, entity.edge] : [entity.start, entity.end];
+      return references.includes(id) ? [] : [entity];
+    }
     return [entity];
   });
   // An edge leaves its piece loop, but the container survives as a broken piece;
@@ -3624,6 +3680,194 @@ function applyUpdateText(
         fontSize: entity.fontSize ?? DEFAULT_TEXT_SIZE,
         leader: entity.leader ?? null,
       },
+    },
+  };
+}
+
+/** A drafting point of this piece a mark may attach to. */
+function requireMarkPoint(
+  document: PatternDocument,
+  id: EntityId,
+  piece: EntityId,
+  type: CommandType,
+): PointEntity {
+  const point = requireDraftingPoint(document, id, type);
+  if (point.piece !== undefined && point.piece !== piece) {
+    throw new CommandValidationError(type, `point ${id} belongs to another piece`);
+  }
+  return point;
+}
+
+/** Reject an edge that is not a cut line, curve or arc of this piece's loop. */
+function requireMarkEdge(
+  document: PatternDocument,
+  piece: Piece,
+  edge: EntityId,
+  type: CommandType,
+): void {
+  if (!piece.edges.includes(edge)) {
+    throw new CommandValidationError(type, `edge ${edge} is not in piece ${piece.id}`);
+  }
+  const entity = getEntity(document, edge);
+  if (
+    entity === undefined ||
+    (entity.kind !== 'line' && entity.kind !== 'curve' && entity.kind !== 'arc')
+  ) {
+    throw new CommandValidationError(type, `edge ${edge} is not a line, curve or arc`);
+  }
+}
+
+/** A finite depth share; out-of-range values are clamped on read, not rejected. */
+function requireNotchDepth(type: CommandType, depth: number): number {
+  if (typeof depth !== 'number' || !Number.isFinite(depth)) {
+    throw new CommandValidationError(type, 'depth must be a finite number');
+  }
+  return depth;
+}
+
+function applyAddNotch(
+  document: PatternDocument,
+  command: CommandOf<'add_notch'>,
+): CommandApplication {
+  const { piece: pieceId, edge, point, depth } = command.params;
+  const piece = requirePiece(document, pieceId, 'add_notch');
+  requireMarkEdge(document, piece, edge, 'add_notch');
+  const anchor = requireMarkPoint(document, point, pieceId, 'add_notch');
+  if (allowanceForEdge(piece, edge) === undefined) {
+    throw new CommandValidationError('add_notch', 'This edge has no seam allowance');
+  }
+  if (!pointOnEdge(document, edge, anchor.id)) {
+    throw new CommandValidationError('add_notch', `point ${point} does not lie on edge ${edge}`);
+  }
+  if (getEntity(document, command.id) !== undefined) {
+    return noOp(document);
+  }
+
+  const notch: NotchMark = {
+    id: command.id,
+    kind: 'mark',
+    type: 'notch',
+    piece: pieceId,
+    edge,
+    point: anchor.id,
+  };
+  if (depth !== undefined) notch.depth = requireNotchDepth('add_notch', depth);
+
+  return {
+    document: { ...document, entities: [...document.entities, notch] },
+    inverse: deleteEntityCommand(command.id),
+  };
+}
+
+function applyUpdateNotch(
+  document: PatternDocument,
+  command: CommandOf<'update_notch'>,
+): CommandApplication {
+  const { id, depth } = command.params;
+  const entity = getEntity(document, id);
+  if (entity === undefined) {
+    throw new CommandValidationError('update_notch', `unknown entity: ${id}`);
+  }
+  if (entity.kind !== 'mark' || entity.type !== 'notch') {
+    throw new CommandValidationError('update_notch', `entity ${id} is not a notch`);
+  }
+  if (depth === undefined) {
+    throw new CommandValidationError('update_notch', 'provide a depth or null');
+  }
+
+  const next: NotchMark = { ...entity };
+  if (depth === null) {
+    delete next.depth;
+  } else {
+    next.depth = requireNotchDepth('update_notch', depth);
+  }
+  if (next.depth === entity.depth) {
+    return noOp(document);
+  }
+
+  const entities = document.entities.map((candidate) => (candidate.id === id ? next : candidate));
+  return {
+    document: { ...document, entities },
+    inverse: {
+      id: command.id,
+      type: 'update_notch',
+      params: { id, depth: entity.depth ?? null },
+    },
+  };
+}
+
+function applyAddCentreLine(
+  document: PatternDocument,
+  command: CommandOf<'add_centre_line'>,
+): CommandApplication {
+  const { piece: pieceId, start, end } = command.params;
+  requirePiece(document, pieceId, 'add_centre_line');
+  const first = requireMarkPoint(document, start, pieceId, 'add_centre_line');
+  const second = requireMarkPoint(document, end, pieceId, 'add_centre_line');
+  if (first.id === second.id) {
+    throw new CommandValidationError('add_centre_line', 'the endpoints must differ');
+  }
+  if (getEntity(document, command.id) !== undefined) {
+    return noOp(document);
+  }
+
+  const line: CentreLineMark = {
+    id: command.id,
+    kind: 'mark',
+    type: 'centre_line',
+    piece: pieceId,
+    start: first.id,
+    end: second.id,
+  };
+  return {
+    document: { ...document, entities: [...document.entities, line] },
+    inverse: deleteEntityCommand(command.id),
+  };
+}
+
+function applyUpdateCentreLine(
+  document: PatternDocument,
+  command: CommandOf<'update_centre_line'>,
+): CommandApplication {
+  const { id, start, end } = command.params;
+  const entity = getEntity(document, id);
+  if (entity === undefined) {
+    throw new CommandValidationError('update_centre_line', `unknown entity: ${id}`);
+  }
+  if (entity.kind !== 'mark' || entity.type !== 'centre_line') {
+    throw new CommandValidationError('update_centre_line', `entity ${id} is not a centre line`);
+  }
+  if (start === undefined && end === undefined) {
+    throw new CommandValidationError('update_centre_line', 'provide start or end');
+  }
+
+  const piece = entity.piece;
+  if (piece === undefined) {
+    throw new CommandValidationError('update_centre_line', 'the mark is not owned by a piece');
+  }
+  const nextStart =
+    start === undefined
+      ? entity.start
+      : requireMarkPoint(document, start, piece, 'update_centre_line').id;
+  const nextEnd =
+    end === undefined
+      ? entity.end
+      : requireMarkPoint(document, end, piece, 'update_centre_line').id;
+  if (nextStart === nextEnd) {
+    throw new CommandValidationError('update_centre_line', 'the endpoints must differ');
+  }
+  if (nextStart === entity.start && nextEnd === entity.end) {
+    return noOp(document);
+  }
+
+  const next: CentreLineMark = { ...entity, start: nextStart, end: nextEnd };
+  const entities = document.entities.map((candidate) => (candidate.id === id ? next : candidate));
+  return {
+    document: { ...document, entities },
+    inverse: {
+      id: command.id,
+      type: 'update_centre_line',
+      params: { id, start: entity.start, end: entity.end },
     },
   };
 }
