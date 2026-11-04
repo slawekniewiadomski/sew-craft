@@ -123,6 +123,19 @@ test('drives a dimension from the variables panel and flags it when broken', asy
     fullPage: false,
   });
 
+  // Typing `$` offers the document's variables, like `#` offers dimensions.
+  await page.locator('[data-testid="dimension-value-d"]').fill('$b');
+  await expect(page.locator('[data-testid="dimension-variables-d"]')).toBeVisible();
+  await expect(page.locator('[data-testid="dimension-variable-d-bust"]')).toContainText('Bust');
+  await page.screenshot({
+    path: '../.ai/runs/assets/2026-11-03-variables-and-expressions/05-variable-picker.png',
+    fullPage: false,
+  });
+  await page.locator('[data-testid="dimension-variable-d-bust"]').click();
+  await expect(page.locator('[data-testid="dimension-value-d"]')).toHaveValue('$bust');
+  await page.locator('[data-testid="dimension-value-d"]').fill('$bust / 4');
+  await page.locator('[data-testid="dimension-value-d"]').blur();
+
   // Deleting the source leaves the dimension on its last number, flagged broken.
   await page.locator('[data-testid="sidebar-tab-variables"]').click();
   await page.locator('[data-testid="variable-remove-bust"]').click();
