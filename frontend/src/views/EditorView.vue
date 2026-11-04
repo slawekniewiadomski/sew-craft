@@ -76,6 +76,7 @@ import { useCommandBus } from '@/composables/use-command-bus';
 import { useSidebarLayout } from '@/composables/use-sidebar-layout';
 import { defaultAllowanceSummary } from '@/lib/allowance-defaults';
 import { parseAllowanceWidth } from '@/lib/allowance-width';
+import { formulaIssue } from '@/lib/formula';
 import { buildCircleCommands, type CircleEndpoint } from '@/lib/circle-tool';
 import { nextCommandId } from '@/lib/command-ids';
 import type { VariableValueInput } from '@/lib/variables';
@@ -502,6 +503,9 @@ const dimensions = computed<DimensionRow[]>(() =>
 
 /** The `#` picker open in the Dimensions drawer, if any. */
 const dimensionPicker = ref<{ id: EntityId; text: string; activeIndex: number } | null>(null);
+
+/** A drawer value being typed that does not resolve yet. */
+const dimensionDrafts = ref<Record<EntityId, { text: string; issue: string }>>({});
 
 /** Filtered rows for the open drawer picker. */
 const dimensionPickerOptions = computed<DimensionReferenceOption[]>(() => {
@@ -1433,6 +1437,13 @@ function onUpdateDimension(id: EntityId, patch: DimensionPatch): void {
   );
 }
 
+/** Drop a drawer draft once its text has been applied. */
+function clearDimensionDraft(id: EntityId): void {
+  const next = { ...dimensionDrafts.value };
+  delete next[id];
+  dimensionDrafts.value = next;
+}
+
 function onDimensionValueEdit(id: EntityId, event: Event): void {
   const input = event.target as HTMLInputElement;
   const dimension = dimensions.value.find((entry) => entry.id === id)!;
@@ -1443,7 +1454,27 @@ function onDimensionValueEdit(id: EntityId, event: Event): void {
 
   const edit = parseDimensionEdit(input.value);
   if (edit.kind === 'invalid') {
+    clearDimensionDraft(id);
     input.value = dimension.field;
+    return;
+  }
+
+  if (edit.kind === 'formula') {
+    // Derived dimensions are read-only and returned above, so this is a distance.
+    const stored = (dimension.constraint as DistanceConstraint).value;
+    if (stored !== undefined && typeof stored === 'object' && stored.expr === edit.expr) {
+      clearDimensionDraft(id);
+      input.value = dimension.field;
+      return;
+    }
+    const issue = formulaIssue(pattern.value, edit.expr);
+    if (issue !== null) {
+      dimensionDrafts.value[id] = { text: input.value, issue };
+      return;
+    }
+    clearDimensionDraft(id);
+    closeDimensionPicker();
+    onUpdateDimension(id, { value: { expr: edit.expr } });
     return;
   }
 
@@ -1454,16 +1485,19 @@ function onDimensionValueEdit(id: EntityId, event: Event): void {
     dimension.constraint.value === edit.value;
   const unchangedDriven = edit.kind === 'driven' && dimension.state === 'driven';
   if (unchangedSet || unchangedDriven) {
+    clearDimensionDraft(id);
     input.value = dimension.field;
     return;
   }
 
   const patch = dimensionPatchForEdit(edit, pickerOptionsFor(id));
   if (patch === null) {
+    clearDimensionDraft(id);
     input.value = dimension.field;
     return;
   }
 
+  clearDimensionDraft(id);
   closeDimensionPicker();
   onUpdateDimension(id, patch);
 }
@@ -2495,7 +2529,7 @@ onBeforeUnmount(() => {
                     inputmode="decimal"
                     class="w-28 font-medium tabular-nums"
                     :class="dimension.readOnly ? 'bg-muted' : ''"
-                    :value="dimension.field"
+                    :value="dimensionDrafts[dimension.id]?.text ?? dimension.field"
                     :readonly="dimension.readOnly"
                     :aria-label="`Value for ${dimension.id} (${dimension.stateLabel.toLowerCase()})`"
                     :data-testid="`dimension-value-${dimension.id}`"
@@ -2593,6 +2627,13 @@ onBeforeUnmount(() => {
                   :data-testid="`dimension-source-${dimension.id}`"
                 >
                   Source: <span class="font-mono">{{ dimension.sourceId }}</span>
+                </p>
+                <p
+                  v-if="dimensionDrafts[dimension.id]?.issue"
+                  class="text-2xs leading-snug text-destructive"
+                  :data-testid="`dimension-issue-${dimension.id}`"
+                >
+                  {{ dimensionDrafts[dimension.id]!.issue }}
                 </p>
                 <p
                   v-else-if="dimension.state === 'broken'"

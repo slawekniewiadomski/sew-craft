@@ -171,6 +171,10 @@ export function formatDimensionField(
 ): string {
   if (state === 'referenced' && constraint.reference !== undefined)
     return `#${constraint.reference}`;
+  // A formula is edited as written; its resolved number is shown elsewhere.
+  if (constraint.value !== undefined && typeof constraint.value === 'object') {
+    return constraint.value.expr;
+  }
   return value === null ? '' : formatDimensionValue(value);
 }
 

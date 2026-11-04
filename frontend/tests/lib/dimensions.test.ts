@@ -114,6 +114,16 @@ describe('parseDimensionEdit', () => {
   });
 });
 
+describe('formatDimensionField', () => {
+  it('shows a formula as written and a literal as its number', () => {
+    const base = { id: 'd', type: 'distance' as const, a: 'a', b: 'b' };
+    expect(
+      formatDimensionField({ ...base, value: { expr: '$bust/4', lastKnown: 220 } }, 220, 'set'),
+    ).toBe('$bust/4');
+    expect(formatDimensionField({ ...base, value: 220 }, 220, 'set')).toBe('220');
+  });
+});
+
 describe('formatDimensionLabel', () => {
   it('distinguishes each state by shape', () => {
     expect(formatDimensionLabel(100.1234, 'set')).toBe('100.123');

@@ -1648,6 +1648,36 @@ describe('EditorView variables panel', () => {
     expect(store.document.variables?.[0]?.name).toBe('Variable 1');
   });
 
+  it('edits a dimension formula from the drawer and reports an unresolved one', async () => {
+    const document: PatternDocument = {
+      ...seededDocument,
+      variables: [{ slug: 'bust', name: 'Bust', unit: 'mm', value: 880 }],
+    };
+    const { wrapper, store } = await mountLoaded(document);
+    await openPanel(wrapper, 'dimensions');
+
+    const input = wrapper.find('[data-testid="dimension-value-width"]');
+    await input.setValue('$bust / 4');
+    await flushPromises();
+    expect(store.document.constraints.find((entry) => entry.id === 'width')).toMatchObject({
+      value: { expr: '$bust / 4', lastKnown: 220 },
+    });
+
+    const commands = store.journal.length;
+    await input.setValue('$bust / 4');
+    await flushPromises();
+    expect(store.journal.length).toBe(commands);
+
+    await input.setValue('$gone / 4');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="dimension-issue-width"]').text()).toContain(
+      'unknown variable $gone',
+    );
+    expect(store.document.constraints.find((entry) => entry.id === 'width')).toMatchObject({
+      value: { expr: '$bust / 4' },
+    });
+  });
+
   it('keeps the document unchanged when a formula does not resolve', async () => {
     const { wrapper, store } = await mountLoaded(documentWithVariable());
     await openPanel(wrapper, 'variables');
