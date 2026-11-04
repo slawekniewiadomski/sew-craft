@@ -22,7 +22,7 @@ const props = withDefaults(
   { savedAt: null, origin: null, readOnly: false, loadState: 'ready' },
 );
 
-const emit = defineEmits<{ save: [] }>();
+const emit = defineEmits<{ save: []; settings: [] }>();
 
 /** Status and Save belong to a loaded document; identity never waits for it. */
 const ready = computed(() => props.loadState === 'ready');
@@ -93,13 +93,36 @@ const dotTone = computed(() => {
       <span
         class="min-w-0 truncate text-[13px] font-medium text-foreground"
         :title="displayName"
-        data-testid="pattern-name"
+        data-testid="project-name"
       >
         {{ displayName }}
       </span>
       <span v-if="ready" class="shrink-0 text-2xs text-muted-foreground" aria-hidden="true">
-        · Pattern
+        · Project
       </span>
+      <Button
+        v-if="ready"
+        variant="ghost"
+        size="icon-sm"
+        title="Project settings"
+        aria-label="Project settings"
+        data-testid="project-settings"
+        @click="emit('settings')"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.6"
+          stroke-linecap="round"
+          class="size-4"
+          aria-hidden="true"
+        >
+          <path d="M4 7h10M18 7h2M4 17h2M10 17h10" />
+          <circle cx="16" cy="7" r="2" />
+          <circle cx="8" cy="17" r="2" />
+        </svg>
+      </Button>
       <span
         v-if="showReadOnlyPill"
         class="shrink-0 rounded-sm border px-1.5 py-0.5 text-2xs font-medium"

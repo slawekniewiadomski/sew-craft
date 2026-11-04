@@ -3,10 +3,16 @@ import { onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 
 import { Button } from '@/components/ui/button';
+import ProjectSettingsDialog from '@/components/ProjectSettingsDialog.vue';
+import type { ProjectSettingsDraft } from '@/components/ProjectSettingsDialog.vue';
 import { useProjectsStore } from '@/stores/projects';
+import type { Project } from '@/api/projects';
 
 const store = useProjectsStore();
 const name = ref('');
+const editing = ref<Project | null>(null);
+const saving = ref(false);
+const settingsError = ref<string | null>(null);
 
 onMounted(() => {
   void store.fetchProjects();
@@ -18,6 +24,32 @@ async function submit(): Promise<void> {
 
   await store.createProject({ name: trimmed });
   name.value = '';
+}
+
+function openSettings(project: Project): void {
+  settingsError.value = null;
+  editing.value = project;
+}
+
+async function onSaveSettings(draft: ProjectSettingsDraft): Promise<void> {
+  /* v8 ignore next -- the dialog renders only while a row is edited */
+  if (editing.value === null) return;
+
+  saving.value = true;
+  settingsError.value = null;
+
+  try {
+    await store.updateProject(editing.value.id, {
+      name: draft.name,
+      description: draft.description,
+    });
+    editing.value = null;
+  } catch (cause) {
+    settingsError.value =
+      cause instanceof Error ? cause.message : 'Failed to save project settings';
+  } finally {
+    saving.value = false;
+  }
 }
 </script>
 
@@ -56,6 +88,14 @@ async function submit(): Promise<void> {
           <RouterLink :to="`/projects/${project.id}/edit`">
             <Button variant="outline" size="sm">Open</Button>
           </RouterLink>
+          <Button
+            variant="ghost"
+            size="sm"
+            :aria-label="`Settings for ${project.name}`"
+            @click="openSettings(project)"
+          >
+            Settings
+          </Button>
           <Button variant="ghost" size="sm" @click="store.removeProject(project.id)">
             Delete
           </Button>
@@ -68,5 +108,14 @@ async function submit(): Promise<void> {
         No projects yet. Create your first one above.
       </li>
     </ul>
+
+    <ProjectSettingsDialog
+      v-if="editing"
+      :project="editing"
+      :saving="saving"
+      :error="settingsError"
+      @save="onSaveSettings"
+      @cancel="editing = null"
+    />
   </section>
 </template>

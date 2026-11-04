@@ -119,16 +119,36 @@ beforeEach(() => {
   loadedDocument = seededDocument;
   savedAt = '2026-10-23T14:32:00.000Z';
   vi.mocked(downloadSvgFile).mockClear();
+  vi.mocked(projectsApi.get).mockClear();
+  vi.mocked(projectsApi.update).mockClear();
   vi.mocked(projectsApi.getPattern).mockClear();
   vi.mocked(projectsApi.savePattern).mockClear();
   window.localStorage.clear();
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(RECT);
 
+  vi.mocked(projectsApi.get).mockImplementation(async () => ({
+    data: {
+      id: 1,
+      name: 'Bodice',
+      description: 'A fitted bodice block',
+      created_at: '2026-10-01T00:00:00.000Z',
+      updated_at: '2026-10-01T00:00:00.000Z',
+    },
+  }));
+  vi.mocked(projectsApi.update).mockImplementation(async (id, payload) => ({
+    data: {
+      id,
+      name: payload.name,
+      description: payload.description,
+      created_at: '2026-10-01T00:00:00.000Z',
+      updated_at: '2026-11-04T00:00:00.000Z',
+    },
+  }));
+
   vi.mocked(projectsApi.getPattern).mockImplementation(async () => ({
     data: {
       id: 1,
       project_id: 1,
-      name: 'Bodice',
       document: loadedDocument,
       version: 1,
       saved_at: savedAt,

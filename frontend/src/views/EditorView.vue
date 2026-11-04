@@ -47,7 +47,7 @@ import type {
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { onBeforeRouteLeave, RouterLink, useRouter } from 'vue-router';
 
-import { ApiError, projectsApi, type Pattern } from '@/api/projects';
+import { ApiError, projectsApi, type Pattern, type Project } from '@/api/projects';
 import AssemblyCanvas from '@/components/AssemblyCanvas.vue';
 import AssemblyPanel from '@/components/AssemblyPanel.vue';
 import CanvasDisplayMenu from '@/components/CanvasDisplayMenu.vue';
@@ -62,6 +62,7 @@ import EntityPropertiesPanel from '@/components/EntityPropertiesPanel.vue';
 import ExportDialog from '@/components/ExportDialog.vue';
 import PatternCanvas from '@/components/PatternCanvas.vue';
 import PiecePanel from '@/components/PiecePanel.vue';
+import ProjectSettingsDialog from '@/components/ProjectSettingsDialog.vue';
 import {
   allowanceEditCommands,
   pruneAllowanceTargets,
@@ -82,8 +83,7 @@ import VariablesPanel from '@/components/VariablesPanel.vue';
 import UpgradeDocumentDialog from '@/components/UpgradeDocumentDialog.vue';
 import { useCommandBus } from '@/composables/use-command-bus';
 import { useSidebarLayout } from '@/composables/use-sidebar-layout';
-import { defaultAllowanceSummary } from '@/lib/allowance-defaults';
-import { parseAllowanceWidth } from '@/lib/allowance-width';
+import { defaultAllowanceSummary, type AllowanceChoice } from '@/lib/allowance-defaults';
 import { formulaIssue } from '@/lib/formula';
 import { buildCircleCommands, type CircleEndpoint } from '@/lib/circle-tool';
 import { nextCommandId } from '@/lib/command-ids';
@@ -163,6 +163,7 @@ import {
 } from '@/lib/pieces';
 import { ribbonIcon, type RibbonIconName } from '@/lib/ribbon-icons';
 import { applySelection, orphanedEdges, selectionModeFrom, toggleSelection } from '@/lib/selection';
+import type { ProjectSettingsDraft } from '@/components/ProjectSettingsDialog.vue';
 import {
   assemblyTab,
   nextPieceColor,
@@ -1025,10 +1026,18 @@ function clearCutLoop(pieceId: EntityId): void {
   );
 }
 
-/** Change the default kind; None clears the default. */
-function onDefaultAllowanceKind(event: Event): void {
-  const kind = (event.target as HTMLSelectElement).value as AllowanceKind | 'none';
+/** Open the settings modal for the loaded project. */
+function openSettings(): void {
+  settingsError.value = null;
+  settingsOpen.value = true;
+}
+
+/** Apply one default allowance choice as a single undoable command. */
+function applyDefaultAllowance(choice: AllowanceChoice): void {
+  const current = defaultAllowance.value;
+  const kind = choice.kind;
   if (kind === 'none') {
+    if (current.kind === 'none') return;
     run(() =>
       dispatch({
         id: nextCommandId('default-allowance'),
@@ -1039,8 +1048,8 @@ function onDefaultAllowanceKind(event: Event): void {
     return;
   }
 
-  /* v8 ignore next -- a non-none default always has a positive width */
-  const width = defaultAllowance.value.width > 0 ? defaultAllowance.value.width : 10;
+  const width = choice.width;
+  if (kind === current.kind && width === current.width) return;
   run(() =>
     dispatch({
       id: nextCommandId('default-allowance'),
@@ -1050,25 +1059,35 @@ function onDefaultAllowanceKind(event: Event): void {
   );
 }
 
-/** An invalid or unchanged default width snaps back without a command. */
-function onDefaultAllowanceWidth(event: Event): void {
-  const input = event.target as HTMLInputElement;
-  const width = parseAllowanceWidth(input.value);
-  const current = defaultAllowance.value;
-  const currentKind = current.kind;
-  if (width === null || currentKind === 'none') {
-    input.value = String(current.width);
-    return;
-  }
-  if (width === current.width) return;
+/**
+ * Persist the modal in one step: metadata over HTTP, the allowance as a
+ * document command. The modal closes before the command so autosave re-arms.
+ */
+async function onSaveSettings(draft: ProjectSettingsDraft): Promise<void> {
+  const current = project.value;
+  /* v8 ignore next -- the dialog renders only while a project is loaded */
+  if (current === null) return;
 
-  run(() =>
-    dispatch({
-      id: nextCommandId('default-allowance'),
-      type: 'set_default_allowance',
-      params: { width, kind: currentKind },
-    }),
-  );
+  settingsSaving.value = true;
+  settingsError.value = null;
+
+  try {
+    if (draft.name !== current.name || draft.description !== current.description) {
+      const response = await projectsApi.update(current.id, {
+        name: draft.name,
+        description: draft.description,
+      });
+      project.value = response.data;
+    }
+
+    settingsOpen.value = false;
+    if (draft.allowance !== null) applyDefaultAllowance(draft.allowance);
+  } catch (cause) {
+    settingsError.value =
+      cause instanceof Error ? cause.message : 'Failed to save project settings';
+  } finally {
+    settingsSaving.value = false;
+  }
 }
 
 /** Apply one allowance to every edge of a piece as a single journal entry. */
@@ -1950,12 +1969,17 @@ interface PendingUpgrade {
 
 const loadState = ref<LoadState>('loading');
 const loadError = ref<string | null>(null);
-const patternName = ref('');
+const project = ref<Project | null>(null);
+const settingsOpen = ref(false);
+const settingsSaving = ref(false);
+const settingsError = ref<string | null>(null);
 const pendingUpgrade = ref<PendingUpgrade | null>(null);
 /** Set when a save lost the version race; `savedAt` is the winner's checkpoint. */
 const conflict = ref<{ savedAt: string | null } | null>(null);
-/** Either modal owns the keyboard and blocks the editor shortcuts. */
-const dialogOpen = computed(() => pendingUpgrade.value !== null || conflict.value !== null);
+/** Any open modal owns the keyboard and blocks the editor shortcuts. */
+const dialogOpen = computed(
+  () => pendingUpgrade.value !== null || conflict.value !== null || settingsOpen.value,
+);
 
 /** The one status the save bar shows: paused > saving > error > dirty/failed > saved. */
 const saveBarState = computed<SaveBarState>(() => {
@@ -1986,12 +2010,12 @@ function isRenderableDocument(stored: PatternDocument): boolean {
   );
 }
 
-function unreadableMessage(name: string): string {
-  return `The stored pattern for "${name}" is unreadable.`;
+function unreadableMessage(projectName: string): string {
+  return `The stored pattern for "${projectName}" is unreadable.`;
 }
 
-/** Load the stored pattern; a new project opens empty, a missing one errors. */
-async function loadPattern(): Promise<void> {
+/** Load the project row and its stored pattern; a new project opens empty. */
+async function loadProject(): Promise<void> {
   autosave.cancel();
   loadState.value = 'loading';
   loadError.value = null;
@@ -2000,8 +2024,12 @@ async function loadPattern(): Promise<void> {
   editor.markNew();
 
   try {
-    const response = await projectsApi.getPattern(Number(props.id));
-    applySnapshot(response.data);
+    const [projectResponse, patternResponse] = await Promise.all([
+      projectsApi.get(Number(props.id)),
+      projectsApi.getPattern(Number(props.id)),
+    ]);
+    project.value = projectResponse.data;
+    applySnapshot(patternResponse.data, projectResponse.data.name);
     loadState.value = 'ready';
   } catch (cause) {
     loadError.value = cause instanceof Error ? cause.message : 'Failed to load the project';
@@ -2013,8 +2041,7 @@ async function loadPattern(): Promise<void> {
  * Adopt a stored pattern. This build reads schema 0.3 only; anything else is
  * rendered read-only and never migrated, copied or rewritten.
  */
-function applySnapshot(snapshot: Pattern): void {
-  patternName.value = snapshot.name;
+function applySnapshot(snapshot: Pattern, projectName: string): void {
   const stored = snapshot.document;
 
   if (stored === null) {
@@ -2023,7 +2050,7 @@ function applySnapshot(snapshot: Pattern): void {
   }
 
   if (stored.schema === PATTERN_SCHEMA) {
-    if (!isRenderableDocument(stored)) throw new Error(unreadableMessage(snapshot.name));
+    if (!isRenderableDocument(stored)) throw new Error(unreadableMessage(projectName));
     editor.markLoaded(
       stored,
       snapshot.version,
@@ -2033,7 +2060,7 @@ function applySnapshot(snapshot: Pattern): void {
     return;
   }
 
-  if (!isRenderableDocument(stored)) throw new Error(unreadableMessage(snapshot.name));
+  if (!isRenderableDocument(stored)) throw new Error(unreadableMessage(projectName));
   editor.markReadOnlyLoaded(stored, snapshot.version, snapshot.saved_at);
   pendingUpgrade.value = {
     stored,
@@ -2120,7 +2147,7 @@ function save(): void {
 function reloadFromConflict(): void {
   conflict.value = null;
   autosave.cancel();
-  void loadPattern();
+  void loadProject();
 }
 
 /** Explicit overwrite: no expected version, so the save appends a checkpoint. */
@@ -2195,7 +2222,7 @@ onMounted(() => {
   window.addEventListener('beforeunload', onBeforeUnload);
   document.addEventListener('visibilitychange', onVisibilityChange);
   window.addEventListener('pagehide', flushBeforeUnload);
-  void loadPattern();
+  void loadProject();
 });
 
 onBeforeUnmount(() => {
@@ -2211,13 +2238,14 @@ onBeforeUnmount(() => {
 <template>
   <section class="flex h-full min-h-0 flex-col">
     <EditorTopBar
-      :name="patternName"
+      :name="project?.name ?? ''"
       :state="saveBarState"
       :saved-at="editor.lastSavedAt"
       :origin="editor.lastSaveOrigin"
       :read-only="editor.readOnly"
       :load-state="loadState"
       @save="save"
+      @settings="openSettings"
     />
 
     <p
@@ -2449,40 +2477,6 @@ onBeforeUnmount(() => {
               hint="Use the + menu to create a piece."
               data-testid="pieces-empty"
             />
-          </template>
-
-          <template #pattern>
-            <SidebarSection label="Document default" data-testid="default-allowance">
-              <div class="flex flex-wrap items-center gap-1.5">
-                <SidebarSelect
-                  :value="defaultAllowance.kind"
-                  :disabled="editor.readOnly"
-                  aria-label="Default allowance kind"
-                  data-testid="default-allowance-kind"
-                  @change="onDefaultAllowanceKind"
-                >
-                  <option value="none" data-testid="default-allowance-none">None</option>
-                  <option value="seam">Seam</option>
-                  <option value="single">Single fold</option>
-                  <option value="double">Double fold</option>
-                </SidebarSelect>
-                <SidebarInput
-                  type="number"
-                  min="0.1"
-                  step="0.1"
-                  class="w-16 tabular-nums"
-                  :value="defaultAllowance.kind === 'none' ? '' : defaultAllowance.width"
-                  :disabled="defaultAllowance.kind === 'none' || editor.readOnly"
-                  aria-label="Default allowance width"
-                  data-testid="default-allowance-width"
-                  @change="onDefaultAllowanceWidth"
-                />
-                <span class="text-2xs text-muted-foreground">mm</span>
-              </div>
-              <p class="mt-2 text-2xs leading-snug text-muted-foreground">
-                Applied to new pieces that inherit it.
-              </p>
-            </SidebarSection>
           </template>
 
           <template #assembly>
@@ -2835,6 +2829,17 @@ onBeforeUnmount(() => {
         :saved-at="conflict.savedAt"
         @reload="reloadFromConflict"
         @overwrite="overwrite"
+      />
+
+      <ProjectSettingsDialog
+        v-if="settingsOpen && project"
+        :project="project"
+        :allowance="defaultAllowance"
+        :read-only="editor.readOnly"
+        :saving="settingsSaving"
+        :error="settingsError"
+        @save="onSaveSettings"
+        @cancel="settingsOpen = false"
       />
 
       <UpgradeDocumentDialog

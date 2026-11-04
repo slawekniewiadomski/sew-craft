@@ -10,6 +10,15 @@ or the geometry package depend on.
 
 ## Development-stage exemptions
 
+### 2026-11-04 — project settings: one name
+
+`GET /api/projects/{id}/pattern` no longer returns `name`, and the
+`patterns.name` column is dropped. The project's `name` is the only name; the
+copy on the pattern could drift after a rename and had no UI of its own. The
+migration's `down()` recreates the column from the current project names, so
+renames made after the migration cannot be recovered. The command spec is
+unchanged. Details: `.ai/specs/2026-11-04-project-settings.md`.
+
 ### 2026-10-25 — pattern schema 0.4 (piece tabs and assemblies)
 
 Schema `sewcraft.pattern/0.3` is **not read** by this build. Stored projects and

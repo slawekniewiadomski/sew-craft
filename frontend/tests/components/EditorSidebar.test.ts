@@ -69,7 +69,7 @@ describe('EditorSidebar rail', () => {
   it('opens Properties on a piece and shows one section slot', () => {
     const wrapper = mountSidebar();
 
-    for (const id of ['properties', 'pieces', 'pattern', 'outline', 'dimensions', 'constraints']) {
+    for (const id of ['properties', 'pieces', 'outline', 'dimensions', 'constraints']) {
       expect(wrapper.find(`[data-testid="sidebar-tab-${id}"]`).exists()).toBe(true);
     }
     expect(wrapper.find('[data-testid="sidebar-tab-properties"]').attributes('aria-pressed')).toBe(

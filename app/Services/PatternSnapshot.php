@@ -16,7 +16,6 @@ final readonly class PatternSnapshot
     public function __construct(
         public ?int $id,
         public int $projectId,
-        public string $name,
         public ?array $document,
         public int $version,
         public ?CarbonInterface $savedAt,

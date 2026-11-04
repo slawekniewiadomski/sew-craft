@@ -25,7 +25,6 @@ export interface Resource<T> {
 export interface Pattern {
   id: number | null;
   project_id: number;
-  name: string;
   document: PatternDocument | null;
   version: number;
   saved_at: string | null;
@@ -97,10 +96,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+export interface UpdateProjectPayload {
+  name: string;
+  /** `null` clears an existing description. */
+  description: string | null;
+}
+
 export const projectsApi = {
   list: (): Promise<Paginated<Project>> => request('/projects'),
+  get: (id: number): Promise<Resource<Project>> => request(`/projects/${id}`),
   create: (payload: { name: string; description?: string }): Promise<Resource<Project>> =>
     request('/projects', { method: 'POST', body: JSON.stringify(payload) }),
+  update: (id: number, payload: UpdateProjectPayload): Promise<Resource<Project>> =>
+    request(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   remove: (id: number): Promise<void> => request(`/projects/${id}`, { method: 'DELETE' }),
   getPattern: (id: number): Promise<Resource<Pattern>> => request(`/projects/${id}/pattern`),
   savePattern: (

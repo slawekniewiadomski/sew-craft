@@ -435,36 +435,6 @@ describe('EditorView piece, pattern and assembly drawers', () => {
     expect(store.document.pieces[0]?.quantity).toBe(4);
   });
 
-  it('shows and edits the document default allowance from the Pattern drawer', async () => {
-    const { wrapper, store } = await mountLoaded(lineDoc);
-    await openPanel(wrapper, 'pattern');
-    await nextTick();
-    const kind = () => wrapper.find('[data-testid="default-allowance-kind"]');
-    const width = () => wrapper.find('[data-testid="default-allowance-width"]');
-
-    expect(kind().element).toHaveProperty('value', 'seam');
-    expect(width().element).toHaveProperty('value', '10');
-
-    await kind().setValue('double');
-    await flushPromises();
-    expect(store.document.defaults).toEqual({ allowance: { width: 10, kind: 'double' } });
-
-    await width().setValue('15');
-    await width().trigger('change');
-    await flushPromises();
-    expect(store.document.defaults).toEqual({ allowance: { width: 15, kind: 'double' } });
-
-    await width().setValue('0');
-    await width().trigger('change');
-    await flushPromises();
-    expect((width().element as HTMLInputElement).value).toBe('15');
-
-    await kind().setValue('none');
-    await flushPromises();
-    expect(store.document.defaults).toEqual({ allowance: null });
-    expect((width().element as HTMLInputElement).disabled).toBe(true);
-  });
-
   it('sets and clears a piece allowance override', async () => {
     const { wrapper, store } = await mountLoaded(pieceDoc);
     await openPanel(wrapper, 'pieces');
