@@ -911,26 +911,44 @@ describe('rounded piece corners', () => {
     expect(loop!.points).toHaveLength(4 + 16);
   });
 
-  it('cannot resolve a hand-edited loop whose bridge allowances disagree', () => {
+  it('splits a bridge whose two edges carry different allowances', () => {
     const { document, piece } = roundedReference();
 
-    for (const allowances of [
-      [
-        { edge: 'top', width: 5 },
-        { edge: 'right', width: 10 },
-      ],
-      [{ edge: 'right', width: 10 }],
-      [
-        { edge: 'right', width: 10, kind: 'single' },
-        { edge: 'top', width: 10, kind: 'double' },
-      ],
-    ]) {
+    // The walk runs bottom → right → [bridge] → top → left, so the first half
+    // of the 16-segment bridge belongs to `right` and the second to `top`.
+    const cases = [
+      {
+        allowances: [
+          { edge: 'top', width: 5 },
+          { edge: 'right', width: 10 },
+        ],
+        halves: [10, 5],
+      },
+      { allowances: [{ edge: 'right', width: 10 }], halves: [10, 0] },
+      {
+        allowances: [
+          { edge: 'right', width: 10, kind: 'single' as const },
+          { edge: 'top', width: 10, kind: 'double' as const },
+        ],
+        halves: [10, 20],
+      },
+    ];
+
+    for (const { allowances, halves } of cases) {
       const mismatched: Piece = { ...piece, allowances };
       const edited: PatternDocument = { ...document, pieces: [mismatched] };
 
-      expect(pieceLoop(edited, mismatched)).toBeNull();
-      expect(pieceCutLoop(edited, mismatched)).toBeNull();
-      expect(pieceFoldLines(edited, mismatched)).toEqual([]);
+      const loop = pieceLoop(edited, mismatched)!;
+      const bridge = loop.distances.slice(2, 18).map(Math.abs);
+
+      expect(loop).not.toBeNull();
+      expect(bridge.slice(0, 8).every((distance) => distance === halves[0])).toBe(true);
+      expect(bridge.slice(8).every((distance) => distance === halves[1])).toBe(true);
+
+      const cut = pieceCutLoop(edited, mismatched)!;
+      expect(cut.selfIntersections).toEqual([]);
+      // The midpoint cuts square: a two-point join where the halves meet.
+      expect(cut.vertices[10]!.end - cut.vertices[10]!.start).toBe(2);
     }
   });
 });

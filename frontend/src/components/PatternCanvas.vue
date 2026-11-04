@@ -64,11 +64,16 @@ import {
   textLayout,
   textLeaderGeometry,
   DEFAULT_TEXT_SIZE,
+  bandTargetKey,
+  pieceBandRegions,
   seamAllowancePaths,
   svgArcCommand,
   usesCutEdgeAnchor,
+  type BandRegion,
+  type BandTarget,
   type Vec2,
 } from '@sewcraft/geometry';
+import { cutLoopContains, regionAt } from '@/lib/allowance-regions';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import { arcFromEndpoints } from '@/lib/arc-tool';
@@ -213,6 +218,8 @@ interface MarqueeState {
   current: Vec2;
   mode: SelectionMode;
   latched: boolean;
+  /** The allowance region the press started on, so a click can pick it. */
+  region: BandTarget | null;
 }
 
 /** Screen pixels the pointer must travel before a click becomes a marquee. */
@@ -330,6 +337,8 @@ const props = withDefaults(
     selectedEntityIds?: EntityId[];
     /** Ordered dimension selection, kept apart from the entity selection. */
     selectedDimensionIds?: EntityId[];
+    /** Allowance regions selected on the band. */
+    selectedAllowanceTargets?: BandTarget[];
     fitToken?: number;
     showAllowances?: boolean;
     /** The piece whose card is open; its band reads as selected. */
@@ -351,6 +360,7 @@ const props = withDefaults(
   {
     selectedEntityIds: () => [],
     selectedDimensionIds: () => [],
+    selectedAllowanceTargets: () => [],
     fitToken: 0,
     showAllowances: true,
     selectedPieceId: null,
@@ -370,6 +380,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   'update:selectedEntityIds': [ids: EntityId[]];
   'update:selectedDimensionIds': [ids: EntityId[]];
+  'update:selectedAllowanceTargets': [targets: BandTarget[]];
   'marquee-change': [active: boolean];
   'move-point': [id: EntityId, x: number, y: number];
   'add-point': [x: number, y: number];
@@ -467,6 +478,13 @@ const editingDimension = ref<{ id: EntityId; value: string } | null>(null);
 const dimensionInput = ref<HTMLInputElement | null>(null);
 /** The round whose tangent handles and label are shown because it is hovered. */
 const hoveredRoundId = ref<EntityId | null>(null);
+
+/** The allowance region under the pointer, and whether the pointer is inside its piece. */
+const hoveredRegion = ref<BandTarget | null>(null);
+const bandHovered = ref(false);
+
+/** A touch that pressed on a region: a tap picks it, a drag still pans. */
+const touchRegion = ref<{ target: BandTarget; start: Vec2 } | null>(null);
 /**
  * The straight line the Point tool would constrain a click to, with the raw
  * pointer and the projection that click would use.
@@ -1102,6 +1120,56 @@ const seams = computed<SeamView[]>(() => {
 /** A closed SVG path for a derived loop; every caller passes a resolved loop. */
 function closedLoopPath(points: readonly Vec2[]): string {
   return `${polylinePath([...points])} Z`;
+}
+
+/** A region ready to draw, with its selection and hover state resolved. */
+interface RegionView {
+  key: string;
+  d: string;
+  target: BandTarget;
+  selected: boolean;
+  hovered: boolean;
+}
+
+/** The one piece the canvas shows: the active one, or the document's only piece. */
+const bandPiece = computed<Piece | null>(
+  () =>
+    props.document.pieces.find((piece) => piece.id === props.activePieceId) ??
+    props.document.pieces[0] ??
+    null,
+);
+
+/** The allowance band parted into selectable regions. */
+const bandRegions = computed<BandRegion[]>(() =>
+  bandPiece.value === null ? [] : pieceBandRegions(props.document, bandPiece.value),
+);
+
+/** The piece's cut loop, for the hover that reveals the region boundaries. */
+const bandCutLoop = computed(() =>
+  bandPiece.value === null ? null : pieceCutLoop(props.document, bandPiece.value),
+);
+
+const regionViews = computed<RegionView[]>(() => {
+  if (!props.showAllowances) return [];
+  return bandRegions.value.map((region) => {
+    const key = bandTargetKey(region.target);
+    return {
+      key,
+      target: region.target,
+      d: closedLoopPath(region.polygon),
+      selected: props.selectedAllowanceTargets.some((target) => bandTargetKey(target) === key),
+      hovered: hoveredRegion.value !== null && bandTargetKey(hoveredRegion.value) === key,
+    };
+  });
+});
+
+/** A region draws its boundary while the piece is hovered, and fills once picked. */
+function regionClass(region: RegionView): string {
+  if (region.selected) return 'fill-primary/30 stroke-primary';
+  if (region.hovered) return 'fill-primary/20 stroke-primary';
+  return bandHovered.value
+    ? 'fill-transparent stroke-primary/40'
+    : 'fill-transparent stroke-transparent';
 }
 
 /**
@@ -2453,15 +2521,23 @@ function onPointerDown(event: PointerEvent): void {
     case 'select': {
       const mode = selectionModeFrom(event);
       if (hit === null) {
-        // Touch keeps its single tap/pan; a mouse or pen drag is a marquee.
+        const region = props.showAllowances
+          ? (regionAt(bandRegions.value, screenToWorld(viewport.value, screen))?.target ?? null)
+          : null;
+
+        // Touch keeps its single tap/pan; a mouse or pen drag is a marquee. A
+        // press on a region remembers it and still pans, so a drag pans and a
+        // tap picks it on release.
         if (event.pointerType === 'touch') {
           if (mode === 'replace') {
             emit('update:selectedEntityIds', []);
             emit('update:selectedDimensionIds', []);
+            emit('update:selectedAllowanceTargets', []);
           }
+          touchRegion.value = region === null ? null : { target: region, start: screen };
           beginPan(screen);
         } else {
-          startMarquee(screen, mode);
+          startMarquee(screen, mode, region);
         }
         break;
       }
@@ -2573,6 +2649,9 @@ function onPointerMove(event: PointerEvent): void {
   } else if (panState.value) {
     const dx = screen.x - panState.value.start.x;
     const dy = screen.y - panState.value.start.y;
+    if (touchRegion.value !== null && Math.hypot(dx, dy) >= MARQUEE_THRESHOLD) {
+      touchRegion.value = null;
+    }
     viewport.value = panBy(panState.value.origin, dx, dy);
   } else if (dragState.value) {
     const world = snapToGrid(screenToWorld(viewport.value, screen));
@@ -2583,6 +2662,15 @@ function onPointerMove(event: PointerEvent): void {
 /** Live dimension preview while placing; the canvas-level pointer move. */
 function onCanvasPointerMove(event: PointerEvent): void {
   const screen = screenPoint(event);
+
+  if (props.tool === 'select' && props.showAllowances && !props.readOnly) {
+    const world = screenToWorld(viewport.value, screen);
+    hoveredRegion.value = regionAt(bandRegions.value, world)?.target ?? null;
+    bandHovered.value = cutLoopContains(bandCutLoop.value, world);
+  } else if (hoveredRegion.value !== null || bandHovered.value) {
+    hoveredRegion.value = null;
+    bandHovered.value = false;
+  }
 
   if (dimensionToolArmed.value && !props.readOnly) {
     hoveredPick.value = hitEntity(event);
@@ -2652,6 +2740,8 @@ function onCanvasPointerMove(event: PointerEvent): void {
 function onCanvasPointerLeave(): void {
   hoveredPick.value = null;
   hoveredLoopHandle.value = null;
+  hoveredRegion.value = null;
+  bandHovered.value = false;
   pointerWorld.value = null;
   pointOnLineHover.value = null;
   midpointHover.value = null;
@@ -2666,6 +2756,7 @@ function cancelPointerInteraction(): void {
   dragState.value = null;
   moveDrag.value = null;
   panState.value = null;
+  touchRegion.value = null;
   tangentDrag.value = null;
   removePointerListeners();
 }
@@ -2675,6 +2766,15 @@ function onPointerCancel(): void {
 }
 
 function onPointerUp(): void {
+  if (touchRegion.value !== null) {
+    const pick = touchRegion.value;
+    touchRegion.value = null;
+    panState.value = null;
+    removePointerListeners();
+    selectAllowanceRegion(pick.target, 'replace');
+    return;
+  }
+
   if (moveDrag.value) {
     const { dx, dy } = moveDrag.value;
     moveDrag.value = null;
@@ -3065,8 +3165,27 @@ function selectEntity(id: EntityId, mode: SelectionMode): void {
   }
 }
 
-function startMarquee(screen: Vec2, mode: SelectionMode): void {
-  marqueeState.value = { start: screen, current: screen, mode, latched: false };
+/** Combine one allowance region with the current region selection under `mode`. */
+function selectAllowanceRegion(target: BandTarget, mode: SelectionMode): void {
+  const current = props.selectedAllowanceTargets;
+  const key = bandTargetKey(target);
+  const next =
+    mode === 'replace'
+      ? [target]
+      : mode === 'add'
+        ? current.some((candidate) => bandTargetKey(candidate) === key)
+          ? current.filter((candidate) => bandTargetKey(candidate) !== key)
+          : [...current, target]
+        : current.filter((candidate) => bandTargetKey(candidate) !== key);
+
+  // Clicks stay exclusive: a region pick clears both entity selections.
+  emit('update:selectedEntityIds', []);
+  emit('update:selectedDimensionIds', []);
+  emit('update:selectedAllowanceTargets', next);
+}
+
+function startMarquee(screen: Vec2, mode: SelectionMode, region: BandTarget | null = null): void {
+  marqueeState.value = { start: screen, current: screen, mode, latched: false, region };
   emit('marquee-change', true);
   addPointerListeners();
 }
@@ -3094,16 +3213,25 @@ function finishMarquee(): void {
   emit('marquee-change', false);
 
   if (!state.latched) {
-    // A bare-canvas click clears both selections; modified clicks keep theirs.
+    // A click on the band picks its region; anywhere else it clears the
+    // selections, as a bare-canvas click always has.
+    if (state.region !== null) {
+      selectAllowanceRegion(state.region, state.mode);
+      return;
+    }
     if (state.mode === 'replace') {
       emit('update:selectedEntityIds', []);
       emit('update:selectedDimensionIds', []);
+      emit('update:selectedAllowanceTargets', []);
     }
     return;
   }
 
   // The marquee is the one gesture that may leave both selections non-empty:
   // replace with no hits clears its kind, additive/subtractive with no hits keeps it.
+  // A marquee never picks regions: a replace marquee clears them with the rest.
+  if (state.mode === 'replace') emit('update:selectedAllowanceTargets', []);
+
   emit('update:selectedEntityIds', applySelection(props.selectedEntityIds, hits, state.mode));
   emit(
     'update:selectedDimensionIds',
@@ -3327,6 +3455,18 @@ watch(
             stroke="none"
             :class="piece.selected ? 'fill-primary/25' : 'fill-primary/10'"
             :data-piece-band="piece.id"
+          />
+        </g>
+
+        <g class="pointer-events-none" data-testid="piece-region-layer">
+          <path
+            v-for="region in regionViews"
+            :key="region.key"
+            :d="region.d"
+            :class="regionClass(region)"
+            :stroke-width="region.selected || region.hovered ? 1.5 : 0.75"
+            vector-effect="non-scaling-stroke"
+            :data-region="region.key"
           />
         </g>
 

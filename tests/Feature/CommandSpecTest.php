@@ -107,7 +107,15 @@ it('exposes the piece commands', function () {
         ->assertJsonPath('commands.set_piece_allowance.params.width', 'number|expression?')
         ->assertJsonPath('commands.set_piece_allowance.params.kind', 'seam|single|double?')
         ->assertJsonPath('commands.set_piece_allowance.params.remove', 'bool?')
-        ->assertJsonPath('commands.set_piece_allowance.inverse', 'set_piece_allowance');
+        ->assertJsonPath('commands.set_piece_allowance.inverse', 'set_piece_allowance')
+        ->assertJsonPath('commands.set_piece_corner_allowance.params.piece', 'entity_id')
+        ->assertJsonPath('commands.set_piece_corner_allowance.params.round', 'entity_id')
+        ->assertJsonPath('commands.set_piece_corner_allowance.params.cutWidth', 'number?')
+        ->assertJsonPath('commands.set_piece_corner_allowance.params.remove', 'bool?')
+        ->assertJsonPath(
+            'commands.set_piece_corner_allowance.inverse',
+            'set_piece_corner_allowance',
+        );
 });
 
 it('exposes the assembly, instance and tab commands', function () {

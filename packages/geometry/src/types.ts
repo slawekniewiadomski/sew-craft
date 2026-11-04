@@ -272,6 +272,18 @@ export interface Allowance {
   kind?: AllowanceKind;
 }
 
+/**
+ * One rounded corner's own allowance. Unlike `Allowance` there is no kind: a
+ * corner is always seam-like, so the stored number is the distance the cut line
+ * moves.
+ */
+export interface CornerAllowance {
+  /** The corner round the width belongs to. */
+  round: EntityId;
+  /** Cut distance in millimetres; must be > 0. */
+  cutWidth: number;
+}
+
 /** The allowance copied onto a new piece; `width` is the finished width. */
 export interface AllowancePreset {
   width: Param;
@@ -296,6 +308,11 @@ export interface Piece {
   edges: EntityId[];
   /** Allowances for loop edges; an edge with no entry has none. */
   allowances: Allowance[];
+  /**
+   * Cut widths for corner rounds; a round with no entry inherits the width its
+   * two adjacent edges agree on. Absent means no corner has its own width.
+   */
+  cornerAllowances?: CornerAllowance[];
   /** How many to cut; omitted means 1. */
   quantity?: number;
   /** Free text, trimmed, max 500 characters; absent or empty means none. */

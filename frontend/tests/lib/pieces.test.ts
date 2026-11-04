@@ -2,6 +2,7 @@ import {
   createEmptyDocument,
   type ArcEntity,
   type CircleEntity,
+  type CornerRound,
   type CurveEntity,
   type DerivedDistanceConstraint,
   type LineEntity,
@@ -20,6 +21,7 @@ import {
   findDerivedDimension,
   canEditEntity,
   pieceAllowanceRows,
+  pieceCornerRows,
   pieceCreationFromSelection,
   pieceForEntity,
   pieceLabel,
@@ -644,5 +646,103 @@ describe('pieceForEntity free geometry', () => {
       ),
     };
     expect(pieceForEntity(orphanOwner, 'a')).toBeNull();
+  });
+});
+
+describe('pieceCornerRows', () => {
+  const round: CornerRound = {
+    id: 'r1',
+    corner: 'c',
+    ends: [
+      { line: 'cd', anchor: 'c', tangent: 't1' },
+      { line: 'da', anchor: 'd', tangent: 't2' },
+    ],
+    radius: 12,
+    arc: 'arc',
+    controls: ['c1', 'c2'],
+    cornerConstruction: false,
+  };
+
+  function piece(allowances: Piece['allowances'], cornerAllowances?: Piece['cornerAllowances']) {
+    return {
+      id: 'p1',
+      edges: ['ab', 'bc', 'cd', 'da'],
+      allowances,
+      ...(cornerAllowances === undefined ? {} : { cornerAllowances }),
+    };
+  }
+
+  function documentOf(pieceValue: Piece): PatternDocument {
+    const entities = [
+      point('a', 0, 0),
+      point('b', 100, 0),
+      point('c', 100, 100),
+      point('d', 0, 100),
+      line('ab', 'a', 'b'),
+      line('bc', 'b', 'c'),
+      line('cd', 'c', 'd'),
+      line('da', 'd', 'a'),
+    ];
+    return { ...createEmptyDocument(), entities, pieces: [pieceValue], cornerRounds: [round] };
+  }
+
+  it('resolves own, inherited, split and none', () => {
+    const own = documentOf(piece([], [{ round: 'r1', cutWidth: 20 }]));
+    expect(pieceCornerRows(own, own.pieces[0]!)).toEqual([
+      { round: 'r1', radius: 12, cutWidth: 20, inherited: null, halves: [], state: 'own' },
+    ]);
+
+    const inherited = documentOf(
+      piece([
+        { edge: 'cd', width: 10 },
+        { edge: 'da', width: 10 },
+      ]),
+    );
+    expect(pieceCornerRows(inherited, inherited.pieces[0]!)[0]).toMatchObject({
+      cutWidth: null,
+      inherited: 10,
+      halves: [],
+      state: 'inherited',
+    });
+
+    const split = documentOf(
+      piece([
+        { edge: 'cd', width: 10 },
+        { edge: 'da', width: 15 },
+      ]),
+    );
+    expect(pieceCornerRows(split, split.pieces[0]!)[0]).toMatchObject({
+      inherited: null,
+      halves: [10, 15],
+      state: 'split',
+    });
+
+    const none = documentOf(piece([]));
+    expect(pieceCornerRows(none, none.pieces[0]!)[0]).toMatchObject({ state: 'none' });
+
+    const oneSide = documentOf(piece([{ edge: 'cd', width: 10 }]));
+    expect(pieceCornerRows(oneSide, oneSide.pieces[0]!)[0]).toMatchObject({
+      halves: [10, 0],
+      state: 'split',
+    });
+
+    const otherSide = documentOf(piece([{ edge: 'da', width: 10 }]));
+    expect(pieceCornerRows(otherSide, otherSide.pieces[0]!)[0]).toMatchObject({
+      halves: [0, 10],
+      state: 'split',
+    });
+  });
+
+  it('skips a round the piece does not own and marks a broken loop', () => {
+    const elsewhere = documentOf({
+      id: 'p1',
+      edges: ['ab', 'bc'],
+      allowances: [],
+    });
+    expect(pieceCornerRows(elsewhere, elsewhere.pieces[0]!)).toEqual([]);
+
+    const broken: PatternDocument = documentOf(piece([]));
+    broken.entities = broken.entities.filter((entity) => entity.id !== 'da');
+    expect(pieceCornerRows(broken, broken.pieces[0]!)[0]!.state).toBe('broken');
   });
 });

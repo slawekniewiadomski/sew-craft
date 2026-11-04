@@ -1,5 +1,5 @@
 import { getEntity, entityPoints, type Bounds } from './document.js';
-import { roundBridge } from './corner-round.js';
+import { roundBetween, roundBridge } from './corner-round.js';
 import { resolveParam, sameParam, type VariableScope } from './expression.js';
 import { isAnnotation, isCut } from './roles.js';
 import {
@@ -14,6 +14,7 @@ import type {
   Allowance,
   AllowanceKind,
   ArcEntity,
+  CornerAllowance,
   CutAnchor,
   CurveEntity,
   EntityId,
@@ -27,6 +28,13 @@ import { magnitude, sub, type Vec2 } from './vector.js';
 /** Millimetres within which two edge endpoints count as the same loop vertex. */
 const VERTEX_TOLERANCE = 1e-6;
 
+/**
+ * Radians within which a change of allowance distance cuts square across a loop
+ * vertex. Larger than a flattened arc's chord turn (≈5.6°) and far below any
+ * drafted corner.
+ */
+const TANGENT_STEP = Math.PI / 18;
+
 type PieceEdgeEntity = LineEntity | CurveEntity | ArcEntity;
 
 /** One segment of a resolved piece loop: a stored edge or a derived round bridge. */
@@ -35,6 +43,8 @@ interface LoopSegment {
   points: Vec2[];
   /** Index into `piece.edges`, or `null` for a derived bridge. */
   edgeIndex: number | null;
+  /** The corner round a bridge stands for, or `null` for a stored edge. */
+  round: EntityId | null;
   /** Whether the stored edge runs against the walk; bridges are already oriented. */
   reversed: boolean;
 }
@@ -73,7 +83,7 @@ export interface PieceMetrics {
 
 export type PieceValidation = { ok: true } | { ok: false; message: string; edge?: EntityId };
 
-/** The finished width a kind contributes to the cut distance, resolved from the document. */
+/** The finished width a kind contributes to the cut distance. */
 export function allowanceDistance(allowance: Allowance, scope: VariableScope = {}): number {
   const width = resolveParam(scope, allowance.width);
   return allowance.kind === 'double' ? width * 2 : width;
@@ -269,7 +279,9 @@ function walkLoop(
   reverseFirst: boolean,
 ): LoopAssembly {
   const firstPolyline = reverseFirst ? reverse(polylines[0]!) : [...polylines[0]!];
-  const segments: LoopSegment[] = [{ points: firstPolyline, edgeIndex: 0, reversed: reverseFirst }];
+  const segments: LoopSegment[] = [
+    { points: firstPolyline, edgeIndex: 0, round: null, reversed: reverseFirst },
+  ];
   let current = last(firstPolyline);
 
   for (let i = 1; i < edgeIds.length; i += 1) {
@@ -287,9 +299,10 @@ function walkLoop(
       // `roundBridge` returns the arc already running from the previous edge's
       // tangent to the next one, which is exactly where the walk stands.
       const bridge = roundBridge(document, edgeIds[i - 1]!, edgeIds[i]!);
-      if (bridge === null) return { ok: false, edgeIndex: i };
+      const round = roundBetween(document, edgeIds[i - 1]!, edgeIds[i]!);
+      if (bridge === null || round === null) return { ok: false, edgeIndex: i };
 
-      segments.push({ points: bridge, edgeIndex: null, reversed: false });
+      segments.push({ points: bridge, edgeIndex: null, round: round.id, reversed: false });
       current = last(bridge);
       if (connects(current, first(polyline))) {
         points = [...polyline];
@@ -301,16 +314,17 @@ function walkLoop(
       }
     }
 
-    segments.push({ points, edgeIndex: i, reversed });
+    segments.push({ points, edgeIndex: i, round: null, reversed });
     current = last(points);
   }
 
   const origin = first(firstPolyline);
   if (!connects(current, origin)) {
     const bridge = roundBridge(document, edgeIds[edgeIds.length - 1]!, edgeIds[0]!);
-    if (bridge === null) return { ok: false, edgeIndex: 0 };
+    const round = roundBetween(document, edgeIds[edgeIds.length - 1]!, edgeIds[0]!);
+    if (bridge === null || round === null) return { ok: false, edgeIndex: 0 };
 
-    segments.push({ points: bridge, edgeIndex: null, reversed: false });
+    segments.push({ points: bridge, edgeIndex: null, round: round.id, reversed: false });
     if (!connects(last(bridge), origin)) return { ok: false, edgeIndex: 0 };
   }
 
@@ -339,26 +353,178 @@ function assembleLoop(
   return fallback.ok ? fallback : preferred;
 }
 
+/** The corner round's own allowance, or `undefined` when it has none. */
+export function cornerAllowanceForRound(
+  piece: Piece,
+  round: EntityId,
+): CornerAllowance | undefined {
+  return piece.cornerAllowances?.find((allowance) => allowance.round === round);
+}
+
+/** A corner width that can be used, or `null` for a missing or invalid value. */
+function usableCornerWidth(allowance: CornerAllowance | undefined): number | null {
+  if (allowance === undefined || !Number.isFinite(allowance.cutWidth)) return null;
+  return allowance.cutWidth > 0 ? allowance.cutWidth : null;
+}
+
+/** How one corner round's allowance resolves. */
+export type CornerAllowanceState = 'own' | 'inherited' | 'split' | 'none';
+
 /**
- * The allowance a bridge carries: both adjacent edges must agree (both absent,
- * or the same width and effective kind). `null` when they disagree.
+ * The state of a round's band: its own width, the width its two adjacent edges
+ * agree on, a split between differing edges, or no band at all.
  */
-function sharedAllowance(
-  before: Allowance | undefined,
-  after: Allowance | undefined,
-): { allowance: Allowance | undefined } | null {
-  if (before === undefined || after === undefined) {
-    return before === after ? { allowance: undefined } : null;
+export function cornerAllowanceState(
+  piece: Piece,
+  round: EntityId,
+  lines: readonly [EntityId, EntityId],
+): CornerAllowanceState {
+  if (usableCornerWidth(cornerAllowanceForRound(piece, round)) !== null) return 'own';
+  const before = allowanceForEdge(piece, lines[0]);
+  const after = allowanceForEdge(piece, lines[1]);
+  if (sameAllowance(before, after)) return before === undefined ? 'none' : 'inherited';
+  return 'split';
+}
+
+const kindOf = (allowance: Allowance | undefined): AllowanceKind => allowance?.kind ?? 'seam';
+
+/** Whether two loop-edge allowances carry the same width and effective kind. */
+function sameAllowance(a: Allowance | undefined, b: Allowance | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return sameParam(a.width, b.width) && kindOf(a) === kindOf(b);
+}
+
+/** One boundary segment's resolved allowances, in cut millimetres. */
+interface SegmentAllowance {
+  /** Distance the cut line moves. */
+  distance: number;
+  /** Distance the fold line sits inside the cut line; `0` unless a double fold. */
+  fold: number;
+}
+
+/** The cut and fold distance of one edge's allowance. */
+function edgeAllowance(
+  document: PatternDocument,
+  allowance: Allowance | undefined,
+): SegmentAllowance {
+  if (allowance === undefined) return { distance: 0, fold: 0 };
+  return {
+    distance: allowanceDistance(allowance, document),
+    fold: allowance.kind === 'double' ? resolveParam(document, allowance.width) : 0,
+  };
+}
+
+/** Millimetres within which two lengths or distances count as equal. */
+const LENGTH_TOLERANCE = 1e-9;
+
+/**
+ * The index of the first bridge segment that belongs to the outgoing edge: the
+ * vertex nearest half the bridge's arc length. A bridge flattens into an even
+ * number of chords, so the halves are equal and a reversed walk picks the
+ * mirrored vertex.
+ */
+function splitIndex(lengths: readonly number[]): number {
+  const total = lengths.reduce((sum, length) => sum + length, 0);
+  const half = total / 2;
+  let cumulative = 0;
+  let best = 0;
+  let bestGap = half;
+  for (let index = 1; index <= lengths.length; index += 1) {
+    cumulative += lengths[index - 1]!;
+    const gap = Math.abs(cumulative - half);
+    if (gap < bestGap) {
+      best = index;
+      bestGap = gap;
+    }
   }
-  if (!sameParam(before.width, after.width) || (before.kind ?? 'seam') !== (after.kind ?? 'seam')) {
-    return null;
-  }
-  return { allowance: before };
+  return best;
+}
+
+/** What a band region edits: one loop edge or one rounded corner. */
+export type BandTarget = { kind: 'edge'; edge: EntityId } | { kind: 'round'; round: EntityId };
+
+/** One boundary segment's resolved allowance and the target that owns it. */
+interface SegmentResolution {
+  allowance: SegmentAllowance;
+  target: BandTarget;
 }
 
 /**
- * The unsigned allowance distance of every boundary segment, in walk order, or
- * `null` when a bridge joins two edges whose allowances disagree.
+ * Resolve every boundary segment, in walk order. A bridge takes its round's own
+ * width, the width both adjacent edges agree on, or one half per edge when they
+ * differ; a split half belongs to the edge on its side.
+ */
+function resolveLoopSegments(
+  document: PatternDocument,
+  piece: Piece,
+  edges: readonly PieceEdgeEntity[],
+  segments: readonly LoopSegment[],
+): SegmentResolution[] {
+  const resolved: SegmentResolution[] = [];
+
+  for (const [index, segment] of segments.entries()) {
+    const segmentCount = segment.points.length - 1;
+
+    if (segment.edgeIndex !== null) {
+      const edge = edges[segment.edgeIndex]!.id;
+      const resolution = {
+        allowance: edgeAllowance(document, allowanceForEdge(piece, edge)),
+        target: { kind: 'edge', edge } as const,
+      };
+      for (let i = 0; i < segmentCount; i += 1) resolved.push(resolution);
+      continue;
+    }
+
+    // Segments alternate edge/bridge, so the neighbours' edge indices are at
+    // hand; a closing bridge wraps to the first edge.
+    const beforeIndex = segments[index - 1]!.edgeIndex!;
+    const afterIndex = segments[(index + 1) % segments.length]!.edgeIndex!;
+    const beforeEdge = edges[beforeIndex]!.id;
+    const afterEdge = edges[afterIndex]!.id;
+    const beforeAllowance = allowanceForEdge(piece, beforeEdge);
+    const afterAllowance = allowanceForEdge(piece, afterEdge);
+    const round = segment.round!;
+
+    const own = usableCornerWidth(cornerAllowanceForRound(piece, round));
+    if (own !== null) {
+      const resolution = {
+        allowance: { distance: own, fold: 0 },
+        target: { kind: 'round', round } as const,
+      };
+      for (let i = 0; i < segmentCount; i += 1) resolved.push(resolution);
+      continue;
+    }
+
+    if (sameAllowance(beforeAllowance, afterAllowance)) {
+      const resolution = {
+        allowance: edgeAllowance(document, beforeAllowance),
+        target: { kind: 'round', round } as const,
+      };
+      for (let i = 0; i < segmentCount; i += 1) resolved.push(resolution);
+      continue;
+    }
+
+    const before = edgeAllowance(document, beforeAllowance);
+    const after = edgeAllowance(document, afterAllowance);
+    const lengths = segment.points
+      .slice(1)
+      .map((point, pointIndex) => magnitude(sub(point, segment.points[pointIndex]!)));
+    const split = splitIndex(lengths);
+    for (let i = 0; i < segmentCount; i += 1) {
+      resolved.push(
+        i < split
+          ? { allowance: before, target: { kind: 'edge', edge: beforeEdge } }
+          : { allowance: after, target: { kind: 'edge', edge: afterEdge } },
+      );
+    }
+  }
+
+  return resolved;
+}
+
+/**
+ * The unsigned allowance distance of every boundary segment, in walk order; the
+ * fold variant reports how far a double fold's turn line sits inside the cut.
  */
 function loopDistances(
   document: PatternDocument,
@@ -366,38 +532,10 @@ function loopDistances(
   edges: readonly PieceEdgeEntity[],
   segments: readonly LoopSegment[],
   fold: boolean,
-): number[] | null {
-  const distances: number[] = [];
-
-  for (const [index, segment] of segments.entries()) {
-    let allowance: Allowance | undefined;
-    if (segment.edgeIndex === null) {
-      const before = segments[index - 1]!.edgeIndex!;
-      // Segments alternate edge/bridge, so the next segment is always an edge;
-      // a closing bridge wraps to the first one.
-      const after = segments[(index + 1) % segments.length]!.edgeIndex!;
-      const shared = sharedAllowance(
-        allowanceForEdge(piece, edges[before]!.id),
-        allowanceForEdge(piece, edges[after]!.id),
-      );
-      if (shared === null) return null;
-      allowance = shared.allowance;
-    } else {
-      allowance = allowanceForEdge(piece, edges[segment.edgeIndex]!.id);
-    }
-
-    const width =
-      allowance === undefined
-        ? 0
-        : fold
-          ? allowance.kind === 'double'
-            ? resolveParam(document, allowance.width)
-            : 0
-          : allowanceDistance(allowance, document);
-    for (let i = 0; i < segment.points.length - 1; i += 1) distances.push(width);
-  }
-
-  return distances;
+): number[] {
+  return resolveLoopSegments(document, piece, edges, segments).map((resolution) =>
+    fold ? resolution.allowance.fold : resolution.allowance.distance,
+  );
 }
 
 /**
@@ -434,7 +572,7 @@ function loopFromSegments(
   piece: Piece,
   edges: readonly PieceEdgeEntity[],
   segments: LoopSegment[],
-): PieceLoop | null {
+): PieceLoop {
   const boundary: Vec2[] = [];
   const starts = new Array<number>(edges.length).fill(0);
   const spans = new Array<number>(edges.length).fill(0);
@@ -450,7 +588,6 @@ function loopFromSegments(
   }
 
   const unsigned = loopDistances(document, piece, edges, segments, false);
-  if (unsigned === null) return null;
 
   const sign = signedArea(boundary) > 0 ? -1 : 1;
   const distances = unsigned.map((distance) => sign * distance);
@@ -471,12 +608,152 @@ export function pieceCutLoop(document: PatternDocument, piece: Piece): PieceCutL
   const loop = pieceLoop(document, piece);
   if (loop === null) return null;
 
-  const detailed = offsetVariablePolylineDetailed(loop.points, loop.distances, { closed: true });
+  const detailed = offsetVariablePolylineDetailed(loop.points, loop.distances, {
+    closed: true,
+    tangentStep: TANGENT_STEP,
+  });
   return {
     points: detailed.points,
     vertices: detailed.vertices,
     selfIntersections: findSelfIntersections(detailed.points, { closed: true }),
   };
+}
+
+/** One selectable area of a piece's allowance band. */
+export interface BandRegion {
+  /** What the region edits. */
+  target: BandTarget;
+  /** One closed polygon in the loop's walk order. */
+  polygon: Vec2[];
+}
+
+/** A stable key for a band target, for grouping and for selection sets. */
+export function bandTargetKey(target: BandTarget): string {
+  return target.kind === 'edge' ? `edge:${target.edge}` : `round:${target.round}`;
+}
+
+const midpointOf = (a: Vec2, b: Vec2): Vec2 => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+/** The cut loop's join points at one loop vertex, in output order. */
+function joinAt(cut: PieceCutLoop, vertex: number): Vec2[] {
+  const range = cut.vertices[vertex]!;
+  return cut.points.slice(range.start, range.end);
+}
+
+/**
+ * The point where a region boundary crosses the band at one vertex: the vertex's
+ * only join point, or the midpoint of its first two (a bevel or a step).
+ */
+function splitPointAt(join: readonly Vec2[]): Vec2 {
+  return join.length === 1 ? join[0]! : midpointOf(join[0]!, join[1]!);
+}
+
+/** Drop consecutive duplicates and a closing point equal to the first. */
+function dedupePolygon(points: readonly Vec2[]): Vec2[] {
+  const result: Vec2[] = [];
+  for (const point of points) {
+    const previous = result[result.length - 1];
+    if (previous === undefined || magnitude(sub(point, previous)) > VERTEX_TOLERANCE) {
+      result.push(point);
+    }
+  }
+  return result;
+}
+
+/** Runs of consecutive boundary segments that one target owns. */
+function groupSegments(
+  resolutions: readonly SegmentResolution[],
+): { start: number; count: number; target: BandTarget }[] {
+  const total = resolutions.length;
+  const groups: { start: number; count: number; target: BandTarget }[] = [];
+
+  // Start where the predecessor owns a different target, so a run that wraps
+  // past the loop's start stays one group.
+  let start = 0;
+  while (
+    start < total &&
+    bandTargetKey(resolutions[(start + total - 1) % total]!.target) ===
+      bandTargetKey(resolutions[start]!.target)
+  ) {
+    start += 1;
+  }
+  for (let step = 0; step < total; step += 1) {
+    const at = (start + step) % total;
+    const previous = groups[groups.length - 1];
+    const sameAsPrevious =
+      previous !== undefined &&
+      bandTargetKey(resolutions[(at + total - 1) % total]!.target) ===
+        bandTargetKey(resolutions[at]!.target);
+    if (sameAsPrevious) {
+      previous.count += 1;
+    } else {
+      groups.push({ start: at, count: 1, target: resolutions[at]!.target });
+    }
+  }
+
+  return groups;
+}
+
+/**
+ * The polygon of one region: its stitch run forward, the join halves at both
+ * ends and the cut boundary back. `segmentCount` is the number of boundary
+ * segments the region owns.
+ */
+function regionPolygon(
+  loop: PieceLoop,
+  cut: PieceCutLoop,
+  startSegment: number,
+  segmentCount: number,
+): Vec2[] {
+  const total = loop.points.length;
+  const vertex = (offset: number): number => (startSegment + offset) % total;
+  const points: Vec2[] = [];
+
+  for (let offset = 0; offset <= segmentCount; offset += 1) {
+    points.push(loop.points[vertex(offset)]!);
+  }
+
+  const endJoin = joinAt(cut, vertex(segmentCount));
+  const startJoin = joinAt(cut, vertex(0));
+  points.push(splitPointAt(endJoin));
+  if (endJoin.length > 1) points.push(endJoin[0]!);
+
+  for (let offset = segmentCount - 1; offset >= 1; offset -= 1) {
+    const join = joinAt(cut, vertex(offset));
+    for (let index = join.length - 1; index >= 0; index -= 1) points.push(join[index]!);
+  }
+
+  for (let index = startJoin.length - 1; index >= 1; index -= 1) {
+    points.push(startJoin[index]!);
+  }
+  points.push(splitPointAt(startJoin));
+
+  return dedupePolygon(points);
+}
+
+/**
+ * The band parted into selectable regions: one per loop edge and per corner
+ * round, with a split crescent contributing its halves to the adjacent edges.
+ * Empty when the loop does not resolve, the cut loop is compacted, or it
+ * self-intersects.
+ */
+export function pieceBandRegions(document: PatternDocument, piece: Piece): BandRegion[] {
+  const segments = orientedPolylines(document, piece);
+  if (segments === null) return [];
+
+  const edges = pieceEdges(document, piece);
+  const loop = loopFromSegments(document, piece, edges, segments);
+  const cut = pieceCutLoop(document, piece);
+  if (cut === null || cut.selfIntersections.length > 0) return [];
+  if (cut.vertices.length !== loop.points.length) return [];
+
+  return groupSegments(resolveLoopSegments(document, piece, edges, segments)).flatMap((group) => {
+    const polygon = regionPolygon(loop, cut, group.start, group.count);
+    // A target with no band (no allowance, or an empty twin half) has no area.
+    return Math.abs(signedArea(polygon)) <= LENGTH_TOLERANCE
+      ? []
+      : [{ target: group.target, polygon }];
+  });
 }
 
 /**
@@ -489,11 +766,8 @@ export function pieceFoldLines(document: PatternDocument, piece: Piece): Vec2[][
   if (segments === null) return [];
 
   const loop = loopFromSegments(document, piece, pieceEdges(document, piece), segments);
-  if (loop === null) return [];
 
-  // `loopFromSegments` above already rejected a bridge whose two edges carry
-  // different allowances, so the fold distances resolve for the same segments.
-  const unsigned = loopDistances(document, piece, pieceEdges(document, piece), segments, true)!;
+  const unsigned = loopDistances(document, piece, pieceEdges(document, piece), segments, true);
   if (unsigned.every((distance) => distance === 0)) return [];
 
   const sign = signedArea(loop.points) > 0 ? -1 : 1;

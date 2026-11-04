@@ -1,4 +1,5 @@
 export * from './vector.js';
+export * from './polygon.js';
 export * from './types.js';
 export * from './document.js';
 export * from './roles.js';

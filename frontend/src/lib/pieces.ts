@@ -2,8 +2,12 @@ import {
   allowanceDistance,
   resolveParam,
   allowanceForEdge,
+  cornerAllowanceForRound,
+  cornerAllowanceState,
+  cornerRounds,
   getEntity,
   pieceEntities,
+  pieceLoop,
   pieceMetrics,
   validatePiece,
   type AllowanceKind,
@@ -30,6 +34,20 @@ export interface PieceAllowanceRow {
   cutDistance: number;
 }
 
+/** One rounded corner's allowance row. */
+export interface PieceCornerRow {
+  round: EntityId;
+  /** Radius in millimetres, for the row label. */
+  radius: number;
+  /** The corner's own cut width, or `null` when it inherits its edges. */
+  cutWidth: number | null;
+  /** The cut distance both edges agree on, or `null` when they differ or are absent. */
+  inherited: number | null;
+  /** Each half's cut distance when the crescent splits, in the round's end order. */
+  halves: number[];
+  state: 'own' | 'inherited' | 'split' | 'none' | 'broken';
+}
+
 /** Everything the inspector reports for a piece that owns the selected edge. */
 export interface PieceSummary {
   id: EntityId;
@@ -37,6 +55,8 @@ export interface PieceSummary {
   quantity: number;
   edges: EntityId[];
   allowances: PieceAllowanceRow[];
+  /** One row per corner round inside the piece, in document order. */
+  corners: PieceCornerRow[];
   /** The allowance every edge shares, or `null` when the edges differ. */
   uniform: AllowanceChoice | null;
   metrics: PieceMetrics | null;
@@ -64,6 +84,35 @@ export function pieceAllowanceRows(document: PatternDocument, piece: Piece): Pie
   });
 }
 
+/** The allowance rows for a piece's rounded corners. */
+export function pieceCornerRows(document: PatternDocument, piece: Piece): PieceCornerRow[] {
+  const broken = piece.edges.length > 0 && pieceLoop(document, piece) === null;
+
+  return cornerRounds(document)
+    .filter((round) => round.ends.every((end) => piece.edges.includes(end.line)))
+    .map((round) => {
+      const lines = [round.ends[0].line, round.ends[1].line] as const;
+      const own = cornerAllowanceForRound(piece, round.id);
+      const before = allowanceForEdge(piece, lines[0]);
+      const after = allowanceForEdge(piece, lines[1]);
+      const state = broken ? 'broken' : cornerAllowanceState(piece, round.id, lines);
+      const beforeCut = before === undefined ? null : allowanceDistance(before, document);
+      const afterCut = after === undefined ? null : allowanceDistance(after, document);
+
+      return {
+        round: round.id,
+        radius: resolveParam(document, round.radius),
+        cutWidth: own?.cutWidth ?? null,
+        inherited:
+          state === 'inherited' && before !== undefined
+            ? allowanceDistance(before, document)
+            : null,
+        halves: state === 'split' ? [beforeCut ?? 0, afterCut ?? 0] : [],
+        state,
+      };
+    });
+}
+
 /** The inspector's piece card for a piece, with derived measurements. */
 export function pieceSummary(document: PatternDocument, piece: Piece): PieceSummary {
   const metrics = pieceMetrics(document, piece);
@@ -74,6 +123,7 @@ export function pieceSummary(document: PatternDocument, piece: Piece): PieceSumm
     quantity: piece.quantity ?? 1,
     edges: [...piece.edges],
     allowances: pieceAllowanceRows(document, piece),
+    corners: pieceCornerRows(document, piece),
     uniform: uniformAllowance(document, piece),
     metrics,
     hasLoop,

@@ -12,7 +12,9 @@ import {
   getEntity,
   type LineEntity,
   type PatternDocument,
+  pieceBandRegions,
   pieceCutVertex,
+  type BandTarget,
   type PointEntity,
   seamAllowancePaths,
   type Vec2,
@@ -147,6 +149,7 @@ function mountCanvas(
       | 'cut_dimension';
     selectedEntityIds: EntityId[];
     selectedDimensionIds: EntityId[];
+    selectedAllowanceTargets: BandTarget[];
     selectedPieceId: EntityId | null;
     fitToken: number;
     showAllowances: boolean;
@@ -168,6 +171,7 @@ function mountCanvas(
       tool: 'select',
       selectedEntityIds: [],
       selectedDimensionIds: [],
+      selectedAllowanceTargets: [],
       fitToken: 0,
       ...overrides,
     },
@@ -4729,5 +4733,237 @@ describe('midpoint magnet', () => {
 
     down(lineElement(wrapper).element, at.x, at.y);
     expect(wrapper.emitted('add-point-midpoint')).toBeUndefined();
+  });
+});
+
+describe('allowance band regions', () => {
+  /** A cut square piece with a 10 mm allowance on every edge. */
+  function bandPiece(rounded = false): PatternDocument {
+    const square = doc([
+      pt('a', 0, 0),
+      pt('b', 100, 0),
+      pt('c', 100, 100),
+      pt('d', 0, 100),
+      ln('ab', 'a', 'b'),
+      ln('bc', 'b', 'c'),
+      ln('cd', 'c', 'd'),
+      ln('da', 'd', 'a'),
+    ]);
+    const withPiece = executeCommand(square, {
+      id: 'piece-1',
+      type: 'create_piece',
+      params: {},
+    }).document;
+    const looped = executeCommand(withPiece, {
+      id: 'loop',
+      type: 'set_piece_loop',
+      params: {
+        piece: 'piece-1',
+        edges: ['ab', 'bc', 'cd', 'da'],
+        allowance: { width: 10, kind: 'seam' },
+      },
+    }).document;
+    if (!rounded) return looped;
+    return executeCommand(looped, {
+      id: 'round-1',
+      type: 'add_corner_round',
+      params: { first: 'ab', second: 'bc', radius: 10 },
+    }).document;
+  }
+
+  function regionCentre(document: PatternDocument): { point: Vec2; target: BandTarget } {
+    const piece = document.pieces[0]!;
+    const region = pieceBandRegions(document, piece)[0]!;
+    const point = {
+      x: region.polygon.reduce((sum, p) => sum + p.x, 0) / region.polygon.length,
+      y: region.polygon.reduce((sum, p) => sum + p.y, 0) / region.polygon.length,
+    };
+    return { point, target: region.target };
+  }
+
+  function screenOf(document: PatternDocument, point: Vec2): Vec2 {
+    return worldToScreen(fittedViewport(document), point);
+  }
+
+  function downTouch(el: Element, x: number, y: number): void {
+    const event = new MouseEvent('pointerdown', {
+      bubbles: true,
+      clientX: x,
+      clientY: y,
+      button: 0,
+    });
+    Object.defineProperty(event, 'pointerType', { value: 'touch' });
+    el.dispatchEvent(event);
+  }
+
+  it('draws one path per region, hidden until the piece is hovered', () => {
+    const document = bandPiece(true);
+    const wrapper = mountCanvas({ document });
+    const regions = pieceBandRegions(document, document.pieces[0]!);
+
+    expect(regions.length).toBeGreaterThan(1);
+    expect(wrapper.findAll('[data-region]')).toHaveLength(regions.length);
+    for (const path of wrapper.findAll('[data-region]')) {
+      expect(path.classes()).toContain('stroke-transparent');
+    }
+  });
+
+  it('reveals the boundaries while the pointer is inside the piece', async () => {
+    const document = bandPiece(true);
+    const wrapper = mountCanvas({ document });
+    const centre = screenOf(document, { x: 50, y: 50 });
+
+    pointerMove(wrapper, centre.x, centre.y);
+    await nextTick();
+
+    expect(wrapper.find('[data-region]').classes()).toContain('stroke-primary/40');
+  });
+
+  it('selects a region on a click and clears the entity selection', () => {
+    const document = bandPiece(true);
+    const wrapper = mountCanvas({ document, selectedEntityIds: ['ab'] });
+    const { point, target } = regionCentre(document);
+    const screen = screenOf(document, point);
+
+    down(wrapper.find('svg').element, screen.x, screen.y);
+    up();
+
+    expect(wrapper.emitted('update:selectedEntityIds')?.at(-1)).toEqual([[]]);
+    expect(wrapper.emitted('update:selectedAllowanceTargets')?.at(-1)).toEqual([[target]]);
+  });
+
+  it('keeps a drag inside the band a marquee', () => {
+    const document = bandPiece(true);
+    const wrapper = mountCanvas({ document });
+    const { point } = regionCentre(document);
+    const screen = screenOf(document, point);
+
+    down(wrapper.find('svg').element, screen.x, screen.y);
+    move(screen.x + 60, screen.y + 60);
+    up();
+
+    // The marquee clears the region selection; it never picks one.
+    expect(wrapper.emitted('update:selectedAllowanceTargets')?.at(-1)).toEqual([[]]);
+    expect(wrapper.emitted('marquee-change')?.at(-1)).toEqual([false]);
+  });
+
+  it('picks a region on a touch tap instead of panning', () => {
+    const document = bandPiece(true);
+    const wrapper = mountCanvas({ document });
+    const { point, target } = regionCentre(document);
+    const screen = screenOf(document, point);
+
+    downTouch(wrapper.find('svg').element, screen.x, screen.y);
+    // The tap still starts a pan; releasing without moving picks the region.
+    up();
+
+    expect(wrapper.emitted('update:selectedAllowanceTargets')?.at(-1)).toEqual([[target]]);
+  });
+
+  it('adds and subtracts regions with the selection modifiers', async () => {
+    const document = bandPiece(true);
+    const regions = pieceBandRegions(document, document.pieces[0]!);
+    const first = regions[0]!;
+    const second = regions[1]!;
+    const centre = (region: (typeof regions)[number]) => ({
+      x: region.polygon.reduce((sum, p) => sum + p.x, 0) / region.polygon.length,
+      y: region.polygon.reduce((sum, p) => sum + p.y, 0) / region.polygon.length,
+    });
+    const emitted = (wrapper: VueWrapper) =>
+      wrapper.emitted('update:selectedAllowanceTargets')?.at(-1)?.[0] as BandTarget[];
+
+    const wrapper = mountCanvas({ document, selectedAllowanceTargets: [first.target] });
+    const svg = wrapper.find('svg').element;
+    const secondScreen = screenOf(document, centre(second));
+    const firstScreen = screenOf(document, centre(first));
+
+    down(svg, secondScreen.x, secondScreen.y, 0, { ctrlKey: true });
+    up();
+    expect(emitted(wrapper)).toEqual([first.target, second.target]);
+
+    // Ctrl-clicking a selected region toggles it out of the set.
+    await wrapper.setProps({ selectedAllowanceTargets: [first.target, second.target] });
+    down(svg, secondScreen.x, secondScreen.y, 0, { ctrlKey: true });
+    up();
+    expect(emitted(wrapper)).toEqual([first.target]);
+
+    await wrapper.setProps({ selectedAllowanceTargets: [first.target] });
+    down(svg, firstScreen.x, firstScreen.y, 0, { ctrlKey: true, shiftKey: true });
+    up();
+    expect(emitted(wrapper)).toEqual([]);
+  });
+
+  it('ignores regions while the allowance layer is hidden', () => {
+    const document = bandPiece(true);
+    const wrapper = mountCanvas({ document, showAllowances: false });
+    const { point } = regionCentre(document);
+    const screen = screenOf(document, point);
+
+    down(wrapper.find('svg').element, screen.x, screen.y);
+    up();
+
+    // The click clears the selection instead of picking the invisible region.
+    expect(wrapper.emitted('update:selectedAllowanceTargets')?.at(-1)).toEqual([[]]);
+  });
+
+  it('pans instead of picking when a touch drag starts in a region', () => {
+    const document = bandPiece(true);
+    const wrapper = mountCanvas({ document });
+    const { point, target } = regionCentre(document);
+    const screen = screenOf(document, point);
+
+    downTouch(wrapper.find('svg').element, screen.x, screen.y);
+    move(screen.x + 60, screen.y + 60);
+    up();
+
+    expect(wrapper.emitted('update:selectedAllowanceTargets')?.at(-1)).not.toEqual([[target]]);
+  });
+
+  it('highlights the region under the pointer and clears it with the tool', async () => {
+    const document = bandPiece(true);
+    const wrapper = mountCanvas({ document });
+    const { point } = regionCentre(document);
+    const centre = screenOf(document, point);
+
+    pointerMove(wrapper, centre.x, centre.y);
+    await nextTick();
+    expect(
+      wrapper.findAll('[data-region]').some((path) => path.classes().includes('fill-primary/20')),
+    ).toBe(true);
+
+    await wrapper.setProps({ tool: 'add_line' });
+    pointerMove(wrapper, centre.x, centre.y);
+    await nextTick();
+    expect(
+      wrapper.findAll('[data-region]').some((path) => path.classes().includes('fill-primary/20')),
+    ).toBe(false);
+    expect(wrapper.find('[data-region]').classes()).toContain('stroke-transparent');
+  });
+
+  it('marks a selected region and clears hover when the pointer leaves', async () => {
+    const document = bandPiece(true);
+    const selected = pieceBandRegions(document, document.pieces[0]!)[0]!;
+    const wrapper = mountCanvas({
+      document,
+      selectedAllowanceTargets: [selected.target],
+    });
+
+    const selectedPath = wrapper
+      .findAll('[data-region]')
+      .find((path) => path.classes().includes('fill-primary/30'));
+    expect(selectedPath).toBeDefined();
+
+    const boundaryShown = () =>
+      wrapper.findAll('[data-region]').some((path) => path.classes().includes('stroke-primary/40'));
+
+    pointerMove(wrapper, 10, 10);
+    const centre = screenOf(document, { x: 50, y: 50 });
+    pointerMove(wrapper, centre.x, centre.y);
+    await nextTick();
+    expect(boundaryShown()).toBe(true);
+
+    wrapper.find('svg').element.dispatchEvent(new MouseEvent('pointerleave', { bubbles: true }));
+    await nextTick();
+    expect(boundaryShown()).toBe(false);
   });
 });
