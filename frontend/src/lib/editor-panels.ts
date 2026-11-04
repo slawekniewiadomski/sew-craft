@@ -2,14 +2,7 @@ import type { RibbonIconName } from './ribbon-icons';
 
 /** The editor's sidebar sections. The id is also the slot name in EditorView. */
 export type PanelId =
-  | 'properties'
-  | 'pieces'
-  | 'pattern'
-  | 'assembly'
-  | 'outline'
-  | 'dimensions'
-  | 'constraints'
-  | 'variables';
+  'properties' | 'pieces' | 'assembly' | 'outline' | 'dimensions' | 'constraints' | 'variables';
 
 /** The tab kinds that carry a sidebar, matching the bottom editor tabs. */
 export type PanelMode = 'piece' | 'assembly';
@@ -25,7 +18,6 @@ export interface PanelDefinition {
 export const EDITOR_PANELS: PanelDefinition[] = [
   { id: 'properties', label: 'Properties', icon: 'select' },
   { id: 'pieces', label: 'Piece', icon: 'piece' },
-  { id: 'pattern', label: 'Pattern', icon: 'eye' },
   { id: 'assembly', label: 'Assembly', icon: 'piece' },
   { id: 'outline', label: 'Outline', icon: 'line' },
   { id: 'dimensions', label: 'Dimensions', icon: 'dimension' },
@@ -34,7 +26,7 @@ export const EDITOR_PANELS: PanelDefinition[] = [
 ];
 
 const PANEL_IDS: Record<PanelMode, PanelId[]> = {
-  piece: ['properties', 'pieces', 'pattern', 'outline', 'dimensions', 'constraints', 'variables'],
+  piece: ['properties', 'pieces', 'outline', 'dimensions', 'constraints', 'variables'],
   assembly: ['assembly'],
 };
 

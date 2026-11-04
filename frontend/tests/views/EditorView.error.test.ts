@@ -36,11 +36,19 @@ vi.mock('@/api/projects', () => {
   return {
     ApiError,
     projectsApi: {
+      get: vi.fn(async () => ({
+        data: {
+          id: 2,
+          name: 'Bodice',
+          description: null,
+          created_at: '2026-10-01T00:00:00.000Z',
+          updated_at: '2026-10-01T00:00:00.000Z',
+        },
+      })),
       getPattern: vi.fn(async () => ({
         data: {
           id: 1,
           project_id: 2,
-          name: 'Bodice',
           document: storedDocument,
           version: 1,
           saved_at: '2026-10-23T14:32:00.000Z',

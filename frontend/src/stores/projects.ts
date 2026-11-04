@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
-import { projectsApi, type Project } from '@/api/projects';
+import { projectsApi, type Project, type UpdateProjectPayload } from '@/api/projects';
 
 export const useProjectsStore = defineStore('projects', () => {
   const projects = ref<Project[]>([]);
@@ -27,10 +27,17 @@ export const useProjectsStore = defineStore('projects', () => {
     return response.data;
   }
 
+  /** Save metadata and replace the cached row, so the list reflects the edit. */
+  async function updateProject(id: number, payload: UpdateProjectPayload): Promise<Project> {
+    const response = await projectsApi.update(id, payload);
+    projects.value = projects.value.map((project) => (project.id === id ? response.data : project));
+    return response.data;
+  }
+
   async function removeProject(id: number): Promise<void> {
     await projectsApi.remove(id);
     projects.value = projects.value.filter((project) => project.id !== id);
   }
 
-  return { projects, loading, error, fetchProjects, createProject, removeProject };
+  return { projects, loading, error, fetchProjects, createProject, updateProject, removeProject };
 });

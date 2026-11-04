@@ -23,7 +23,9 @@ export function projectsApiMock() {
     ApiError,
     projectsApi: {
       list: vi.fn(),
+      get: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
       remove: vi.fn(),
       getPattern: vi.fn(),
       savePattern: vi.fn(),

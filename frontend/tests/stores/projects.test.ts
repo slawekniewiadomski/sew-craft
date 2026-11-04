@@ -8,13 +8,16 @@ import { useProjectsStore } from '@/stores/projects';
 vi.mock('@/api/projects', () => ({
   projectsApi: {
     list: vi.fn(),
+    get: vi.fn(),
     create: vi.fn(),
+    update: vi.fn(),
     remove: vi.fn(),
   },
 }));
 
 const listMock = vi.mocked(projectsApi.list);
 const createMock = vi.mocked(projectsApi.create);
+const updateMock = vi.mocked(projectsApi.update);
 const removeMock = vi.mocked(projectsApi.remove);
 
 describe('projects store', () => {
@@ -22,6 +25,7 @@ describe('projects store', () => {
     setActivePinia(createPinia());
     listMock.mockReset();
     createMock.mockReset();
+    updateMock.mockReset();
     removeMock.mockReset();
   });
 
@@ -74,6 +78,43 @@ describe('projects store', () => {
 
     expect(created.id).toBe(2);
     expect(store.projects.map((project) => project.id)).toEqual([2, 1]);
+  });
+
+  it('replaces a cached row after an update', async () => {
+    listMock.mockResolvedValue({
+      data: [{ id: 1, name: 'A', description: null, created_at: '', updated_at: '' }],
+    });
+    updateMock.mockResolvedValue({
+      data: { id: 1, name: 'Renamed', description: 'new', created_at: '', updated_at: '' },
+    });
+    const store = useProjectsStore();
+    await store.fetchProjects();
+
+    const updated = await store.updateProject(1, { name: 'Renamed', description: 'new' });
+
+    expect(updated.name).toBe('Renamed');
+    expect(updateMock).toHaveBeenCalledWith(1, { name: 'Renamed', description: 'new' });
+    expect(store.projects).toEqual([
+      { id: 1, name: 'Renamed', description: 'new', created_at: '', updated_at: '' },
+    ]);
+  });
+
+  it('keeps unrelated rows when an update returns', async () => {
+    listMock.mockResolvedValue({
+      data: [
+        { id: 1, name: 'A', description: null, created_at: '', updated_at: '' },
+        { id: 2, name: 'B', description: null, created_at: '', updated_at: '' },
+      ],
+    });
+    updateMock.mockResolvedValue({
+      data: { id: 1, name: 'A2', description: null, created_at: '', updated_at: '' },
+    });
+    const store = useProjectsStore();
+    await store.fetchProjects();
+
+    await store.updateProject(1, { name: 'A2', description: null });
+
+    expect(store.projects.map((project) => project.name)).toEqual(['A2', 'B']);
   });
 
   it('removes a project', async () => {

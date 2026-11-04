@@ -69,7 +69,6 @@ still applies every in-session mutation as a command; Save writes the result.
   "data": {
     "id": 7, // pattern id; null until the first save
     "project_id": 1,
-    "name": "Summer dress",
     "document": { "schema": "sewcraft.pattern/0.2", "units": "mm", "...": "..." },
     "version": 12, // latest checkpoint; 0 when none
     "saved_at": "2026-10-23T15:41:12Z", // null when never saved
@@ -78,7 +77,9 @@ still applies every in-session mutation as a command; Save writes the result.
 ```
 
 `document` is `null` (not a 404) when the project has no saved pattern, so a new
-project is distinguishable from a missing one. A missing project is `404`.
+project is distinguishable from a missing one. A missing project is `404`. The
+pattern has no name of its own; use the project's `name`, which is what the
+editor shows.
 
 ### `PUT /api/projects/{id}/pattern`
 

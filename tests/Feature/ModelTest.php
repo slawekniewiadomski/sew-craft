@@ -6,6 +6,7 @@ use App\Models\Project;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 
 it('relates a project to its patterns and back', function () {
     $project = Project::factory()->create();
@@ -14,6 +15,10 @@ it('relates a project to its patterns and back', function () {
     expect($project->patterns)->toHaveCount(1)
         ->and($project->patterns->first()->is($pattern))->toBeTrue()
         ->and($pattern->project->is($project))->toBeTrue();
+});
+
+it('keeps no pattern name; the project is the only name', function () {
+    expect(Schema::hasColumn('patterns', 'name'))->toBeFalse();
 });
 
 it('casts pattern geometry to an array', function () {

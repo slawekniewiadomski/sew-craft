@@ -15,7 +15,6 @@ describe('EDITOR_PANELS', () => {
     expect(EDITOR_PANELS).toEqual([
       { id: 'properties', label: 'Properties', icon: 'select' },
       { id: 'pieces', label: 'Piece', icon: 'piece' },
-      { id: 'pattern', label: 'Pattern', icon: 'eye' },
       { id: 'assembly', label: 'Assembly', icon: 'piece' },
       { id: 'outline', label: 'Outline', icon: 'line' },
       { id: 'dimensions', label: 'Dimensions', icon: 'dimension' },
@@ -30,7 +29,6 @@ describe('panelsFor', () => {
     expect(panelsFor('piece').map((panel) => panel.id)).toEqual([
       'properties',
       'pieces',
-      'pattern',
       'outline',
       'dimensions',
       'constraints',

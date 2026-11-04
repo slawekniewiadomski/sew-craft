@@ -1,24 +1,26 @@
 import { onBeforeUnmount, onMounted, type Ref } from 'vue';
 
-/** A component ref whose root element is the focusable button. */
-export interface DialogFocusTarget {
-  $el: HTMLButtonElement;
+/** A dialog focus target: a native element or a component whose root is one. */
+export type DialogFocusTarget = HTMLElement | { $el: HTMLElement };
+
+function elementOf(target: DialogFocusTarget): HTMLElement {
+  return '$el' in target ? target.$el : target;
 }
 
 /**
- * Dialog focus discipline: focus one button on open, keep Tab inside the
+ * Dialog focus discipline: focus one target on open, keep Tab inside the
  * dialog, and restore whatever was focused before the dialog opened.
  */
-export function useDialogFocus(
-  initial: Ref<DialogFocusTarget | null>,
-  first: Ref<DialogFocusTarget | null>,
-  last: Ref<DialogFocusTarget | null>,
-) {
+export function useDialogFocus<
+  Initial extends DialogFocusTarget,
+  First extends DialogFocusTarget,
+  Last extends DialogFocusTarget,
+>(initial: Ref<Initial | null>, first: Ref<First | null>, last: Ref<Last | null>) {
   let previouslyFocused: HTMLElement | null = null;
 
   onMounted(() => {
     previouslyFocused = document.activeElement as HTMLElement | null;
-    initial.value?.$el.focus();
+    if (initial.value !== null) elementOf(initial.value).focus();
   });
 
   onBeforeUnmount(() => previouslyFocused?.focus());
@@ -26,15 +28,23 @@ export function useDialogFocus(
   function trapTab(event: KeyboardEvent): void {
     if (event.key !== 'Tab') return;
 
-    if (event.shiftKey && document.activeElement === first.value?.$el) {
+    if (
+      event.shiftKey &&
+      first.value !== null &&
+      document.activeElement === elementOf(first.value)
+    ) {
       event.preventDefault();
-      last.value?.$el.focus();
+      if (last.value !== null) elementOf(last.value).focus();
       return;
     }
 
-    if (!event.shiftKey && document.activeElement === last.value?.$el) {
+    if (
+      !event.shiftKey &&
+      last.value !== null &&
+      document.activeElement === elementOf(last.value)
+    ) {
       event.preventDefault();
-      first.value?.$el.focus();
+      if (first.value !== null) elementOf(first.value).focus();
     }
   }
 

@@ -37,7 +37,7 @@ describe('EditorTopBar', () => {
   it('names the pattern and marks a new project as unsaved', async () => {
     const wrapper = await mountBar({ state: 'new' });
 
-    expect(wrapper.find('[data-testid="pattern-name"]').text()).toBe('Bodice');
+    expect(wrapper.find('[data-testid="project-name"]').text()).toBe('Bodice');
     expect(wrapper.find('[data-testid="save-status"]').text()).toBe('New pattern — not saved yet');
     // An empty first save is legitimate, so a new project can be saved at once.
     expect(wrapper.find('[data-testid="save-project"]').attributes('disabled')).toBeUndefined();
@@ -142,6 +142,24 @@ describe('EditorTopBar', () => {
 
     expect(wrapper.emitted('save')).toHaveLength(1);
   });
+
+  it('emits settings from the button beside the project name', async () => {
+    const wrapper = await mountBar({ state: 'dirty' });
+
+    const settings = wrapper.find('[data-testid="project-settings"]');
+    expect(settings.attributes('aria-label')).toBe('Project settings');
+    await settings.trigger('click');
+
+    expect(wrapper.emitted('settings')).toHaveLength(1);
+  });
+
+  it('hides the settings button until the project loads', async () => {
+    const loading = await mountBar({ state: 'new', loadState: 'loading' });
+    expect(loading.find('[data-testid="project-settings"]').exists()).toBe(false);
+
+    const failed = await mountBar({ state: 'new', loadState: 'error' });
+    expect(failed.find('[data-testid="project-settings"]').exists()).toBe(false);
+  });
 });
 
 describe('EditorTopBar layout', () => {
@@ -150,8 +168,8 @@ describe('EditorTopBar layout', () => {
 
     expect(wrapper.find('header').attributes('data-testid')).toBe('editor-top-bar');
     expect(wrapper.find('[data-testid="top-bar-divider"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="pattern-name"]').text()).toBe('Bodice');
-    expect(wrapper.find('[data-testid="pattern-name"]').attributes('title')).toBe('Bodice');
+    expect(wrapper.find('[data-testid="project-name"]').text()).toBe('Bodice');
+    expect(wrapper.find('[data-testid="project-name"]').attributes('title')).toBe('Bodice');
     expect(wrapper.text()).toContain('SewCraft');
     expect(wrapper.text()).toContain('Projects');
   });
@@ -159,7 +177,7 @@ describe('EditorTopBar layout', () => {
   it('shows the placeholder identity while the project loads', async () => {
     const wrapper = await mountBar({ state: 'new', loadState: 'loading', readOnly: true });
 
-    expect(wrapper.find('[data-testid="pattern-name"]').text()).toBe('Loading…');
+    expect(wrapper.find('[data-testid="project-name"]').text()).toBe('Loading…');
     expect(wrapper.find('[data-testid="save-status"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="save-project"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="read-only-pill"]').exists()).toBe(false);
@@ -170,7 +188,7 @@ describe('EditorTopBar layout', () => {
   it('shows the error placeholder and keeps the way back to Projects', async () => {
     const wrapper = await mountBar({ loadState: 'error' });
 
-    expect(wrapper.find('[data-testid="pattern-name"]').text()).toBe('Project unavailable');
+    expect(wrapper.find('[data-testid="project-name"]').text()).toBe('Project unavailable');
     expect(wrapper.find('[data-testid="save-status"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="save-project"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="read-only-pill"]').exists()).toBe(false);

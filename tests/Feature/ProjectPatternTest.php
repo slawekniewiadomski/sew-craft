@@ -26,7 +26,7 @@ it('shows an unsaved pattern without a document', function () {
         ->assertOk()
         ->assertJsonPath('data.id', null)
         ->assertJsonPath('data.project_id', $project->id)
-        ->assertJsonPath('data.name', 'Summer dress')
+        ->assertJsonMissingPath('data.name')
         ->assertJsonPath('data.document', null)
         ->assertJsonPath('data.version', 0)
         ->assertJsonPath('data.saved_at', null);
@@ -39,7 +39,6 @@ it('returns a 404 for a missing project', function () {
 it('shows the working copy and latest checkpoint', function () {
     $project = Project::factory()->create();
     $pattern = Pattern::factory()->for($project)->create([
-        'name' => 'Front',
         'geometry' => patternDocument(),
     ]);
     PatternVersion::create([
@@ -51,7 +50,6 @@ it('shows the working copy and latest checkpoint', function () {
     $this->getJson("/api/projects/{$project->id}/pattern")
         ->assertOk()
         ->assertJsonPath('data.id', $pattern->id)
-        ->assertJsonPath('data.name', 'Front')
         ->assertJsonPath('data.document.schema', 'sewcraft.pattern/0.2')
         ->assertJsonPath('data.version', 3)
         ->assertJsonPath('data.saved_at', fn ($value) => is_string($value));
@@ -81,7 +79,6 @@ it('creates the pattern and its first checkpoint on the first save', function ()
 
     $pattern = Pattern::query()->sole();
     expect($pattern->project_id)->toBe($project->id)
-        ->and($pattern->name)->toBe('Summer dress')
         ->and($pattern->geometry)->toBe(patternDocument());
     expect($pattern->versions()->pluck('version')->all())->toBe([1]);
 });

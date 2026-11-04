@@ -107,7 +107,6 @@ describe('EditorView persistence', () => {
       data: {
         id: 1,
         project_id: 1,
-        name: 'Bodice',
         document: simpleDoc,
         version: 1,
         saved_at: '2026-10-23T14:32:00.000Z',
@@ -193,7 +192,7 @@ describe('EditorView persistence', () => {
     expect(header.exists()).toBe(true);
     expect(header.text()).toContain('SewCraft');
     expect(header.text()).toContain('Projects');
-    expect(wrapper.find('[data-testid="pattern-name"]').text()).toBe('Project unavailable');
+    expect(wrapper.find('[data-testid="project-name"]').text()).toBe('Project unavailable');
     expect(wrapper.find('[data-testid="save-project"]').exists()).toBe(false);
   });
 
@@ -305,7 +304,6 @@ describe('EditorView persistence', () => {
       data: {
         id: 1,
         project_id: 1,
-        name: 'Bodice',
         document: simpleDoc,
         version: 4,
         saved_at: '2026-10-23T16:05:00.000Z',
@@ -782,7 +780,6 @@ describe('EditorView autosave', () => {
       data: {
         id: 1,
         project_id: 1,
-        name: 'Bodice',
         document: seededDocument,
         version: 4,
         saved_at: '2026-10-23T16:05:00.000Z',
@@ -1007,7 +1004,7 @@ describe('EditorView top bar', () => {
     expect(headers[0]!.attributes('data-testid')).toBe('editor-top-bar');
     expect(headers[0]!.text()).toContain('SewCraft');
     expect(headers[0]!.text()).toContain('Projects');
-    expect(wrapper.find('[data-testid="pattern-name"]').text()).toBe('Bodice');
+    expect(wrapper.find('[data-testid="project-name"]').text()).toBe('Bodice');
     expect(wrapper.find('[data-testid="save-project"]').exists()).toBe(true);
     expect(wrapper.findAll('[role="toolbar"]')).toHaveLength(1);
   });
@@ -1026,7 +1023,7 @@ describe('EditorView top bar', () => {
     expect(header.exists()).toBe(true);
     expect(header.text()).toContain('SewCraft');
     expect(header.text()).toContain('Projects');
-    expect(wrapper.find('[data-testid="pattern-name"]').text()).toBe('Loading…');
+    expect(wrapper.find('[data-testid="project-name"]').text()).toBe('Loading…');
     expect(wrapper.find('[data-testid="save-status"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="save-project"]').exists()).toBe(false);
 
@@ -1034,14 +1031,13 @@ describe('EditorView top bar', () => {
       data: {
         id: 1,
         project_id: 1,
-        name: 'Bodice',
         document: simpleDoc,
         version: 1,
         saved_at: '2026-10-23T14:32:00.000Z',
       },
     });
     await flushPromises();
-    expect(wrapper.find('[data-testid="pattern-name"]').text()).toBe('Bodice');
+    expect(wrapper.find('[data-testid="project-name"]').text()).toBe('Bodice');
     expect(wrapper.find('[data-testid="save-project"]').exists()).toBe(true);
   });
 });

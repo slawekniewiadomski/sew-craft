@@ -51,6 +51,36 @@ describe('projectsApi', () => {
     );
   });
 
+  it('reads one project', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ data: { id: 4, name: 'Skirt' } }));
+    const { projectsApi } = await import('@/api/projects');
+
+    const result = await projectsApi.get(4);
+
+    expect(result.data.name).toBe('Skirt');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/4',
+      expect.objectContaining({
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      }),
+    );
+  });
+
+  it('updates project metadata, sending a cleared description as null', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ data: { id: 4, name: 'Skirt' } }));
+    const { projectsApi } = await import('@/api/projects');
+
+    await projectsApi.update(4, { name: 'Skirt', description: null });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/projects/4',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ name: 'Skirt', description: null }),
+      }),
+    );
+  });
+
   it('removes a project and tolerates an empty 204 body', async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 204, json: async () => undefined });
     const { projectsApi } = await import('@/api/projects');
@@ -88,7 +118,6 @@ describe('projectsApi', () => {
         data: {
           id: 7,
           project_id: 1,
-          name: 'Summer dress',
           document: null,
           version: 0,
           saved_at: null,

@@ -19,7 +19,6 @@ class PatternResource extends JsonResource
         return [
             'id' => $this->id,
             'project_id' => $this->projectId,
-            'name' => $this->name,
             'document' => $this->document,
             'version' => $this->version,
             'saved_at' => $this->savedAt?->toIso8601ZuluString(),

@@ -22,7 +22,6 @@ A project is the top-level container a user opens and exports.
 | --------------------------- | ----------------------- | ------------------------------------- |
 | `id`                        | bigint PK               |                                       |
 | `project_id`                | FK → projects (cascade) |                                       |
-| `name`                      | string                  |                                       |
 | `geometry`                  | json, null              | current `PatternDocument` (see below) |
 | `created_at` / `updated_at` | timestamp               |                                       |
 
@@ -30,7 +29,8 @@ The `geometry` column holds the working copy. It is a snapshot, not the source o
 truth history — that is `pattern_versions`. Saves write it as a whole document
 snapshot (`PUT /projects/{id}/pattern`) rather than replaying commands on the
 server; see `api.md`. One pattern per project in v1: the lowest id wins, and the
-first save creates it lazily with the project's name.
+first save creates it lazily. A pattern has no name of its own: the project's
+`name` labels it in the UI, the API and error messages.
 
 ### `pattern_versions`
 

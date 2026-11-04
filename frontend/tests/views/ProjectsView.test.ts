@@ -8,11 +8,12 @@ import { projectsApi, type Project } from '@/api/projects';
 import ProjectsView from '@/views/ProjectsView.vue';
 
 vi.mock('@/api/projects', () => ({
-  projectsApi: { list: vi.fn(), create: vi.fn(), remove: vi.fn() },
+  projectsApi: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() },
 }));
 
 const listMock = vi.mocked(projectsApi.list);
 const createMock = vi.mocked(projectsApi.create);
+const updateMock = vi.mocked(projectsApi.update);
 const removeMock = vi.mocked(projectsApi.remove);
 
 const project = (id: number, description: string | null = null): Project => ({
@@ -55,6 +56,7 @@ describe('ProjectsView', () => {
   beforeEach(() => {
     listMock.mockReset();
     createMock.mockReset();
+    updateMock.mockReset();
     removeMock.mockReset();
   });
 
@@ -99,6 +101,80 @@ describe('ProjectsView', () => {
     expect(wrapper.text()).toContain('A-line block');
     expect(wrapper.text()).toContain('Project 2');
     expect(wrapper.findAll('li')).toHaveLength(2);
+  });
+
+  it('edits a project name and description from the settings modal', async () => {
+    listMock.mockResolvedValue({ data: [project(1, 'Old note')] });
+    updateMock.mockResolvedValue({
+      data: { ...project(1, 'New note'), name: 'Renamed' },
+    });
+
+    const { wrapper } = await mountView();
+    await flushPromises();
+
+    const settings = wrapper.findAll('button').filter((button) => button.text() === 'Settings');
+    await settings[0]!.trigger('click');
+
+    expect(wrapper.find('[data-testid="project-settings-dialog"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="project-settings-allowance-kind"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="project-settings-name"]').setValue('Renamed');
+    await wrapper.find('[data-testid="project-settings-description"]').setValue('New note');
+    await wrapper.find('[data-testid="project-settings-dialog"] form').trigger('submit');
+    await flushPromises();
+
+    expect(updateMock).toHaveBeenCalledWith(1, { name: 'Renamed', description: 'New note' });
+    expect(wrapper.find('[data-testid="project-settings-dialog"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('Renamed');
+  });
+
+  it('keeps the settings modal open with an inline error when saving fails', async () => {
+    listMock.mockResolvedValue({ data: [project(1)] });
+    updateMock.mockRejectedValueOnce(new Error('network down'));
+
+    const { wrapper } = await mountView();
+    await flushPromises();
+
+    const settings = wrapper.findAll('button').filter((button) => button.text() === 'Settings');
+    await settings[0]!.trigger('click');
+    await wrapper.find('[data-testid="project-settings-name"]').setValue('Renamed');
+    await wrapper.find('[data-testid="project-settings-dialog"] form').trigger('submit');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="project-settings-dialog"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="project-settings-error"]').text()).toBe('network down');
+  });
+
+  it('falls back to a generic message for a non-Error rejection', async () => {
+    listMock.mockResolvedValue({ data: [project(1)] });
+    updateMock.mockRejectedValueOnce('offline');
+
+    const { wrapper } = await mountView();
+    await flushPromises();
+
+    const settings = wrapper.findAll('button').filter((button) => button.text() === 'Settings');
+    await settings[0]!.trigger('click');
+    await wrapper.find('[data-testid="project-settings-name"]').setValue('Renamed');
+    await wrapper.find('[data-testid="project-settings-dialog"] form').trigger('submit');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="project-settings-error"]').text()).toBe(
+      'Failed to save project settings',
+    );
+  });
+
+  it('closes the settings modal without saving on cancel', async () => {
+    listMock.mockResolvedValue({ data: [project(1)] });
+
+    const { wrapper } = await mountView();
+    await flushPromises();
+
+    const settings = wrapper.findAll('button').filter((button) => button.text() === 'Settings');
+    await settings[0]!.trigger('click');
+    await wrapper.find('[data-testid="project-settings-cancel"]').trigger('click');
+
+    expect(wrapper.find('[data-testid="project-settings-dialog"]').exists()).toBe(false);
+    expect(updateMock).not.toHaveBeenCalled();
   });
 
   it('removes a project', async () => {

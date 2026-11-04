@@ -26,7 +26,6 @@ final class PatternPersistence
             return new PatternSnapshot(
                 id: null,
                 projectId: $project->id,
-                name: $project->name,
                 document: null,
                 version: 0,
                 savedAt: null,
@@ -38,7 +37,6 @@ final class PatternPersistence
         return new PatternSnapshot(
             id: $pattern->id,
             projectId: $project->id,
-            name: $pattern->name,
             document: $pattern->geometry,
             version: (int) ($latest?->version ?? 0),
             savedAt: $latest?->created_at,
@@ -70,7 +68,6 @@ final class PatternPersistence
 
             if ($pattern === null) {
                 $pattern = $project->patterns()->create([
-                    'name' => $project->name,
                     'geometry' => null,
                 ]);
                 $created = true;
