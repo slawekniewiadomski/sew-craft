@@ -117,8 +117,13 @@ const dimensionDrafts = ref<Record<EntityId, FieldDraft>>({});
 /** Corner radius drafts keyed by round id. */
 const radiusDrafts = ref<Record<EntityId, FieldDraft>>({});
 
+/** The value fields the `$` picker can serve. */
+type VariableField = 'dimension' | 'round';
+
 /** The `$` picker open in the inspector, if any. */
-const variablePicker = ref<{ id: EntityId; activeIndex: number } | null>(null);
+const variablePicker = ref<{ field: VariableField; id: EntityId; activeIndex: number } | null>(
+  null,
+);
 
 /** The partial token being typed, which filters the `$` picker. */
 const variableQueryText = ref('');
@@ -131,18 +136,34 @@ const variablePickerOptions = computed(() => {
   );
 });
 
+/** Whether the `$` picker is open for one field. */
+function pickerOpen(field: VariableField, id: EntityId): boolean {
+  const current = variablePicker.value;
+  return current !== null && current.field === field && current.id === id;
+}
+
+/** One field's uncommitted draft, or `undefined` when it shows its stored value. */
+function draftOf(field: VariableField, id: EntityId): FieldDraft | undefined {
+  return field === 'dimension' ? dimensionDrafts.value[id] : radiusDrafts.value[id];
+}
+
+function writeDraft(field: VariableField, id: EntityId, draft: FieldDraft): void {
+  if (field === 'dimension') dimensionDrafts.value[id] = draft;
+  else radiusDrafts.value[id] = draft;
+}
+
 /** Insert the chosen variable token into the field's draft and close the picker. */
-function pickVariable(id: EntityId, slug: string): void {
+function pickVariable(field: VariableField, id: EntityId, slug: string): void {
   // The picker opens from an input event, so the field always has a draft.
-  const draft = dimensionDrafts.value[id]!;
-  dimensionDrafts.value[id] = { text: insertVariableToken(draft.text, slug), issue: '' };
+  const draft = draftOf(field, id)!;
+  writeDraft(field, id, { text: insertVariableToken(draft.text, slug), issue: '' });
   variablePicker.value = null;
 }
 
 /** Arrow keys move the `$` picker, Enter inserts, Escape closes it. */
-function onVariablePickerKeydown(id: EntityId, event: KeyboardEvent): void {
+function onVariablePickerKeydown(field: VariableField, id: EntityId, event: KeyboardEvent): void {
   const current = variablePicker.value;
-  if (current === null || current.id !== id) return;
+  if (current === null || current.field !== field || current.id !== id) return;
   const count = variablePickerOptions.value.length;
   if (event.key === 'ArrowDown' && count > 0) {
     event.preventDefault();
@@ -162,13 +183,13 @@ function onVariablePickerKeydown(id: EntityId, event: KeyboardEvent): void {
   if (event.key === 'Enter' && count > 0) {
     event.preventDefault();
     const option = variablePickerOptions.value[Math.min(current.activeIndex, count - 1)]!;
-    pickVariable(id, option.slug);
+    pickVariable(field, id, option.slug);
   }
 }
 
 /** Run the `$` picker first, then the `#` reference picker. */
 function onDimensionKeydown(dimension: DimensionSummary, event: KeyboardEvent): void {
-  onVariablePickerKeydown(dimension.id, event);
+  onVariablePickerKeydown('dimension', dimension.id, event);
   if (!event.defaultPrevented) onPickerKeydown(dimension.id, event);
 }
 
@@ -178,8 +199,22 @@ function onDimensionInput(dimension: DimensionSummary, event: Event): void {
   const query = variableQuery(input.value);
   dimensionDrafts.value[dimension.id] = { text: input.value, issue: '' };
   variableQueryText.value = query ?? '';
-  variablePicker.value = query === null ? null : { id: dimension.id, activeIndex: 0 };
+  variablePicker.value =
+    query === null ? null : { field: 'dimension', id: dimension.id, activeIndex: 0 };
   onPickerInput(dimension.id, event);
+}
+
+/** The same `$` picker for a corner round's radius field. */
+function onCornerRadiusInput(round: CornerRoundSummary, event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const query = variableQuery(input.value);
+  radiusDrafts.value[round.id] = { text: input.value, issue: '' };
+  variableQueryText.value = query ?? '';
+  variablePicker.value = query === null ? null : { field: 'round', id: round.id, activeIndex: 0 };
+}
+
+function onCornerRadiusKeydown(round: CornerRoundSummary, event: KeyboardEvent): void {
+  onVariablePickerKeydown('round', round.id, event);
 }
 
 function distanceConstraint(id: EntityId): DistanceConstraint | null {
@@ -446,6 +481,11 @@ function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
   emit('update-dimension', dimension.id, patch);
 }
 
+/** The radius field's text: the stored formula, else the resolved number. */
+function cornerRadiusText(round: CornerRoundSummary): string {
+  return round.expr ?? formatCornerRadius(round.radius);
+}
+
 /** An invalid or unchanged radius snaps back; a formula commits when it resolves. */
 function onCornerRadiusEdit(round: CornerRoundSummary, event: Event): void {
   const input = event.target as HTMLInputElement;
@@ -457,6 +497,7 @@ function onCornerRadiusEdit(round: CornerRoundSummary, event: Event): void {
       return;
     }
     clearDraft(radiusDrafts, round.id);
+    variablePicker.value = null;
     emit('set-corner-round-radius', round.id, { expr: edit.expr });
     return;
   }
@@ -464,11 +505,12 @@ function onCornerRadiusEdit(round: CornerRoundSummary, event: Event): void {
   const radius = parseCornerRadius(input.value);
   if (radius === null || radius === round.radius) {
     clearDraft(radiusDrafts, round.id);
-    input.value = formatCornerRadius(round.radius);
+    input.value = cornerRadiusText(round);
     return;
   }
 
   clearDraft(radiusDrafts, round.id);
+  variablePicker.value = null;
   emit('set-corner-round-radius', round.id, radius);
 }
 
@@ -736,16 +778,54 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
             />
           </div>
 
-          <label class="flex flex-wrap items-center gap-1.5">
+          <label class="relative flex flex-wrap items-center gap-1.5">
             <span class="text-2xs text-muted-foreground">Radius</span>
             <SidebarInput
               class="w-24 font-mono text-2xs"
-              :value="radiusDrafts[round.id]?.text ?? formatCornerRadius(round.radius)"
+              :value="radiusDrafts[round.id]?.text ?? cornerRadiusText(round)"
               :aria-label="`Radius for corner round ${round.id} (mm)`"
               :data-testid="`entity-corner-radius-${round.id}`"
+              role="combobox"
+              aria-autocomplete="list"
+              :aria-expanded="pickerOpen('round', round.id)"
+              :aria-controls="
+                pickerOpen('round', round.id)
+                  ? `entity-corner-radius-variables-${round.id}`
+                  : undefined
+              "
+              @input="onCornerRadiusInput(round, $event)"
+              @keydown="onCornerRadiusKeydown(round, $event)"
               @change="onCornerRadiusEdit(round, $event)"
             />
             <span class="text-2xs text-muted-foreground">mm</span>
+            <Pill
+              v-if="round.expr !== null"
+              tone="formula"
+              :data-testid="`entity-corner-radius-formula-${round.id}`"
+            >
+              Formula
+            </Pill>
+            <ul
+              v-if="pickerOpen('round', round.id) && variablePickerOptions.length > 0"
+              :id="`entity-corner-radius-variables-${round.id}`"
+              class="absolute z-20 mt-1 max-h-40 w-56 overflow-auto rounded-sm border bg-background p-1 shadow-sm"
+              :data-testid="`entity-corner-radius-variables-${round.id}`"
+            >
+              <li v-for="option in variablePickerOptions" :key="option.slug">
+                <button
+                  type="button"
+                  class="flex w-full items-baseline justify-between gap-2 rounded-sm px-1.5 py-1 text-left text-2xs hover:bg-muted"
+                  :data-testid="`entity-corner-radius-variable-${round.id}-${option.slug}`"
+                  @mousedown.prevent="pickVariable('round', round.id, option.slug)"
+                >
+                  <span class="truncate">
+                    {{ option.name }}
+                    <span class="font-mono text-muted-foreground">${{ option.slug }}</span>
+                  </span>
+                  <span class="shrink-0 text-muted-foreground">{{ option.resolved }}</span>
+                </button>
+              </li>
+            </ul>
           </label>
           <p
             v-if="radiusDrafts[round.id]?.issue"
@@ -829,7 +909,7 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
           </p>
 
           <ul
-            v-if="variablePicker?.id === dimension.id && variablePickerOptions.length > 0"
+            v-if="pickerOpen('dimension', dimension.id) && variablePickerOptions.length > 0"
             class="absolute z-20 mt-1 max-h-40 w-56 overflow-auto rounded-sm border bg-background p-1 shadow-sm"
             :data-testid="`entity-dimension-variables-${dimension.id}`"
           >
@@ -838,7 +918,7 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
                 type="button"
                 class="flex w-full items-baseline justify-between gap-2 rounded-sm px-1.5 py-1 text-left text-2xs hover:bg-muted"
                 :data-testid="`entity-dimension-variable-${dimension.id}-${option.slug}`"
-                @mousedown.prevent="pickVariable(dimension.id, option.slug)"
+                @mousedown.prevent="pickVariable('dimension', dimension.id, option.slug)"
               >
                 <span class="truncate">
                   {{ option.name }}

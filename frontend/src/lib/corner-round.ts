@@ -11,13 +11,16 @@ import {
   type CornerRound,
   type EntityId,
   type LineEntity,
+  type ParamInput,
   type PatternDocument,
   type PointEntity,
   type Vec2,
+  type VariableScope,
   resolveParam,
 } from '@sewcraft/geometry';
 
 import { curvePath } from './canvas-render';
+import { formulaIssue, parseParamEdit } from './formula';
 
 /** The two-line slot state of the Round corner tool. */
 export interface CornerRoundPicks {
@@ -129,6 +132,35 @@ export function defaultCornerRadius(maxRadius: number): number {
 export function parseCornerRadius(text: string): number | null {
   const value = Number(text.trim());
   return text.trim() === '' || !Number.isFinite(value) || value < 0.001 ? null : value;
+}
+
+/** A radius field read as a parameter: a literal or a resolving formula. */
+export type CornerRadiusField =
+  { kind: 'param'; param: ParamInput; radius: number } | { kind: 'invalid'; message: string };
+
+/**
+ * Read the radius field. A plain number is a literal and any other text is a
+ * formula over the document's variables; both must resolve to a positive length.
+ * The parameter is what a command stores, the radius what the preview draws.
+ */
+export function parseCornerRadiusField(scope: VariableScope, text: string): CornerRadiusField {
+  const edit = parseParamEdit(text);
+  if (edit.kind === 'number') {
+    return edit.value >= MIN_CORNER_ROUND
+      ? { kind: 'param', param: edit.value, radius: edit.value }
+      : { kind: 'invalid', message: 'Enter a radius of at least 0.001 mm.' };
+  }
+  if (edit.kind !== 'formula') {
+    return { kind: 'invalid', message: 'Enter a radius of at least 0.001 mm.' };
+  }
+
+  const issue = formulaIssue(scope, edit.expr);
+  if (issue !== null) return { kind: 'invalid', message: issue };
+
+  const radius = resolveParam(scope, { expr: edit.expr, lastKnown: MIN_CORNER_ROUND });
+  return radius >= MIN_CORNER_ROUND
+    ? { kind: 'param', param: { expr: edit.expr }, radius }
+    : { kind: 'invalid', message: 'Enter a radius of at least 0.001 mm.' };
 }
 
 /** Millimetre text rounded to the field precision. */

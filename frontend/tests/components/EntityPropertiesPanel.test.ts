@@ -432,6 +432,57 @@ describe('EntityPropertiesPanel', () => {
     );
   });
 
+  it('shows a variable-driven radius as its expression with a formula pill', () => {
+    const variables = [{ slug: 'radius', name: 'Radius', unit: 'mm' as const, value: 12 }];
+    const source = doc({
+      variables,
+      entities: [
+        ...doc().entities,
+        { id: 'bc', kind: 'line', start: 'b', end: 'c', construction: false },
+      ],
+    });
+    const document = executeCommand(source, {
+      id: 'r1',
+      type: 'add_corner_round',
+      params: { first: 'l1', second: 'bc', radius: { expr: '$radius' } },
+    }).document;
+    const { wrapper } = panel(document, 'l1');
+    const input = wrapper.find('[data-testid="entity-corner-radius-r1"]');
+
+    expect((input.element as HTMLInputElement).value).toBe('$radius');
+    expect(wrapper.find('[data-testid="entity-corner-radius-formula-r1"]').text()).toBe('Formula');
+  });
+
+  it('offers variables in the corner radius $ picker', async () => {
+    const document = {
+      ...roundedDoc(),
+      variables: [
+        { slug: 'bust', name: 'Bust (cm)', unit: 'cm' as const, value: 88 },
+        { slug: 'waist', name: 'Waist', unit: 'cm' as const, value: 72 },
+      ],
+    };
+    const { wrapper } = panel(document, 'l1');
+    const input = wrapper.find('[data-testid="entity-corner-radius-r1"]');
+
+    await input.setValue('$b');
+    await input.trigger('keydown', { key: 'ArrowDown' });
+    await input.trigger('keydown', { key: 'Enter' });
+    expect((input.element as HTMLInputElement).value).toBe('$bust');
+
+    await input.setValue('$w');
+    expect(wrapper.find('[data-testid="entity-corner-radius-variables-r1"]').exists()).toBe(true);
+    await wrapper
+      .find('[data-testid="entity-corner-radius-variable-r1-waist"]')
+      .trigger('mousedown');
+    expect((input.element as HTMLInputElement).value).toBe('$waist');
+
+    await input.setValue('$b');
+    await input.trigger('keydown', { key: 'ArrowUp' });
+    await input.trigger('keydown', { key: 'ArrowDown' });
+    await input.trigger('keydown', { key: 'Escape' });
+    expect(wrapper.find('[data-testid="entity-corner-radius-variables-r1"]').exists()).toBe(false);
+  });
+
   it('edits and removes a corner round', async () => {
     const { wrapper } = panel(roundedDoc(), 'l1');
     const input = wrapper.find('[data-testid="entity-corner-radius-r1"]');

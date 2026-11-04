@@ -275,7 +275,7 @@ a cubic Bézier arc and its control points are derived, and the sharp corner sta
 as a construction point so dimensions and constraints on it keep driving the
 sketch.
 
-- params: `first: entity_id`, `second: entity_id`, `radius: number` (mm)
+- params: `first: entity_id`, `second: entity_id`, `radius: number | expression` (mm)
 - Both params name distinct `line` entities that share exactly one point.
 - Neither line may already be rounded at that shared corner, carry a seam
   allowance, or be joined at the corner by a third line of the same
@@ -284,9 +284,10 @@ sketch.
   inherit it.
 - A piece's two lines may carry different allowances: the bridge then splits in
   half at its midpoint, one half per edge.
-- `radius` must be finite, at least `0.001`, and fit both lines while leaving at
-  least `0.001` mm of each line outside the tangent point. The corner angle must
-  be strictly between `0°` and `180°` with a `1°` guard at each end.
+- `radius` resolves to a finite value of at least `0.001` that fits both lines
+  while leaving at least `0.001` mm of each line outside the tangent point. The
+  corner angle must be strictly between `0°` and `180°` with a `1°` guard at each
+  end.
 - Derived ids are deterministic: `<id>:a` and `<id>:b` (tangent points),
   `<id>:c1`/`<id>:c2` (controls), `<id>:arc` and `<id>:center` (the radius
   centre, a fixed construction point). The derived points and arc carry the
@@ -300,11 +301,13 @@ sketch.
 Change the radius of an existing round without removing it. Both tangent points,
 the arc and the line endpoints regenerate in the same command.
 
-- params: `id: entity_id` (the feature id), `radius: number` (mm)
+- params: `id: entity_id` (the feature id), `radius: number | expression` (mm)
 - Same fit and angle rules as `add_corner_round`, including any round at the
   opposite end of either line. An out-of-range radius is a validation error and
   leaves the document unchanged.
-- Re-applying the current radius is a no-op with `inverse: null`.
+- Re-applying the current radius is a no-op with `inverse: null`; a formula is
+  re-read through the document's variables on every solve, so changing a variable
+  regenerates the round.
 - inverse: `set_corner_round_radius` with the previous radius.
 
 ### `remove_corner_round`

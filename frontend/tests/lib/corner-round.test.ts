@@ -20,6 +20,7 @@ import {
   formatCornerRadius,
   maxCornerRadiusForLines,
   parseCornerRadius,
+  parseCornerRadiusField,
   radiusFromTangentDistance,
   roundableCorners,
   tangentDragRadius,
@@ -130,6 +131,30 @@ describe('corner-round radius helpers', () => {
     expect(parseCornerRadius('0.0005')).toBeNull();
     expect(parseCornerRadius(' 12.5 ')).toBe(12.5);
     expect(formatCornerRadius(10.0004)).toBe('10');
+  });
+
+  it('reads a radius as a literal or a formula over the variables', () => {
+    const scope = { variables: [{ slug: 'bust', name: 'Bust', unit: 'mm' as const, value: 90 }] };
+
+    expect(parseCornerRadiusField(scope, '12.5')).toEqual({
+      kind: 'param',
+      param: 12.5,
+      radius: 12.5,
+    });
+    expect(parseCornerRadiusField(scope, '0.0005')).toMatchObject({ kind: 'invalid' });
+    expect(parseCornerRadiusField(scope, '')).toMatchObject({ kind: 'invalid' });
+    expect(parseCornerRadiusField(scope, '=')).toMatchObject({ kind: 'invalid' });
+    expect(parseCornerRadiusField(scope, '$bust / 10')).toEqual({
+      kind: 'param',
+      param: { expr: '$bust / 10' },
+      radius: 9,
+    });
+    const unresolved = parseCornerRadiusField(scope, '$waist');
+    expect(unresolved).toMatchObject({ kind: 'invalid' });
+    expect(unresolved.kind === 'invalid' ? unresolved.message : '').toContain(
+      'unknown variable $waist',
+    );
+    expect(parseCornerRadiusField(scope, '0.0005 mm')).toMatchObject({ kind: 'invalid' });
   });
 
   it('reads the interior angle of an existing round', () => {

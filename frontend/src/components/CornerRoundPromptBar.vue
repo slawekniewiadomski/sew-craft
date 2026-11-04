@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
 
-import { formatCornerRadius, parseCornerRadius } from '@/lib/corner-round';
+import type { ParamInput, VariableScope } from '@sewcraft/geometry';
+
+import {
+  formatCornerRadius,
+  parseCornerRadiusField,
+  type CornerRadiusField,
+} from '@/lib/corner-round';
 
 import { Button } from './ui/button';
 
@@ -11,10 +17,12 @@ const props = defineProps<{
   ready: boolean;
   initialValue: string;
   maxRadius: number;
+  /** The document whose variables a radius formula may name. */
+  document: VariableScope;
 }>();
 
 const emit = defineEmits<{
-  apply: [value: number];
+  apply: [value: ParamInput];
   cancel: [];
   preview: [radius: number | null];
 }>();
@@ -23,18 +31,25 @@ const inputId = 'corner-round-value-input';
 const raw = ref<string | number>('');
 const input = ref<HTMLInputElement | null>(null);
 
-const radius = computed(() => parseCornerRadius(String(raw.value)));
+const field = computed<CornerRadiusField>(() =>
+  parseCornerRadiusField(props.document, String(raw.value)),
+);
 const problem = computed(() => {
-  if (radius.value === null) return 'Enter a radius of at least 0.001 mm.';
-  if (radius.value > props.maxRadius) {
-    return `Radius ${formatCornerRadius(radius.value)} mm is too large for these lines; the maximum is ${formatCornerRadius(props.maxRadius)} mm.`;
+  if (field.value.kind === 'invalid') return field.value.message;
+  if (field.value.radius > props.maxRadius) {
+    return `Radius ${formatCornerRadius(field.value.radius)} mm is too large for these lines; the maximum is ${formatCornerRadius(props.maxRadius)} mm.`;
   }
   return null;
 });
-const canApply = computed(() => props.ready && radius.value !== null && problem.value === null);
+const readyParam = computed<{ param: ParamInput; radius: number } | null>(() => {
+  const current = field.value;
+  if (!props.ready || current.kind === 'invalid' || current.radius > props.maxRadius) return null;
+  return { param: current.param, radius: current.radius };
+});
+const canApply = computed(() => readyParam.value !== null);
 
 function preview(): void {
-  emit('preview', canApply.value ? radius.value : null);
+  emit('preview', readyParam.value?.radius ?? null);
 }
 
 watch(
@@ -55,8 +70,8 @@ watch(
 );
 
 function apply(): void {
-  if (!canApply.value) return;
-  emit('apply', radius.value!);
+  if (readyParam.value === null) return;
+  emit('apply', readyParam.value.param);
 }
 </script>
 
@@ -79,8 +94,7 @@ function apply(): void {
         :id="inputId"
         ref="input"
         v-model="raw"
-        type="number"
-        step="any"
+        type="text"
         class="w-28 rounded-md border px-2 py-1 text-sm"
         data-testid="corner-round-value"
         :aria-invalid="problem ? 'true' : undefined"

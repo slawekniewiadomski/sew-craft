@@ -1862,7 +1862,7 @@ function onRoundCornerPick(id: EntityId): void {
 }
 
 /** Apply keeps the tool armed for the next corner, like the other tools. */
-function applyCornerRound(radius: number): void {
+function applyCornerRound(radius: ParamInput): void {
   const { first, second } = cornerRoundPicks.value;
   if (first === null || second === null) return;
 
@@ -2411,6 +2411,7 @@ onBeforeUnmount(() => {
         :ready="cornerRoundReady"
         :initial-value="cornerRoundInitial"
         :max-radius="cornerRoundMax ?? 0"
+        :document="pattern"
         @apply="applyCornerRound"
         @cancel="exitCornerRound"
         @preview="cornerRoundPreviewRadius = $event"

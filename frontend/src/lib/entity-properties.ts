@@ -107,6 +107,8 @@ export type ConstraintSummary = {
 export type CornerRoundSummary = {
   id: EntityId;
   radius: number;
+  /** The stored expression when the radius comes from a variable, else `null`. */
+  expr: string | null;
   corner: EntityId;
   lines: [EntityId, EntityId];
   anchors: [EntityId, EntityId];
@@ -385,6 +387,7 @@ export function entityProperties(
           .map((round) => ({
             id: round.id,
             radius: resolveParam(document, round.radius),
+            expr: typeof round.radius === 'number' ? null : round.radius.expr,
             corner: round.corner,
             lines: [round.ends[0].line, round.ends[1].line],
             anchors: [round.ends[0].anchor, round.ends[1].anchor],

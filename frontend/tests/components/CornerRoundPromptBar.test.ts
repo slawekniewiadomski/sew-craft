@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { nextTick } from 'vue';
 
 import CornerRoundPromptBar from '@/components/CornerRoundPromptBar.vue';
+import type { VariableScope } from '@sewcraft/geometry';
 
 enableAutoUnmount(afterEach);
 
@@ -13,6 +14,7 @@ function mountBar(
     ready: boolean;
     initialValue: string;
     maxRadius: number;
+    document: VariableScope;
   }> = {},
 ): VueWrapper {
   return mount(CornerRoundPromptBar, {
@@ -22,6 +24,7 @@ function mountBar(
       ready: false,
       initialValue: '5',
       maxRadius: 18.4,
+      document: { variables: [] as const },
       ...overrides,
     },
     attachTo: document.body,
@@ -102,6 +105,35 @@ describe('CornerRoundPromptBar', () => {
       'Radius 30 mm is too large for these lines; the maximum is 18.4 mm.',
     );
     expect(valueInput(wrapper).attributes('aria-invalid')).toBe('true');
+    expect(wrapper.emitted('preview')?.at(-1)).toEqual([null]);
+  });
+
+  it('accepts a formula and applies the expression, previewing its value', async () => {
+    const wrapper = mountBar({
+      ready: true,
+      maxRadius: 30,
+      document: { variables: [{ slug: 'bust', name: 'Bust', unit: 'mm', value: 90 }] },
+    });
+
+    await valueInput(wrapper).setValue('$bust / 10');
+
+    expect(wrapper.emitted('preview')?.at(-1)).toEqual([9]);
+    await wrapper.find('form').trigger('submit');
+    expect(wrapper.emitted('apply')).toEqual([[{ expr: '$bust / 10' }]]);
+  });
+
+  it('reports a formula that does not resolve', async () => {
+    const wrapper = mountBar({
+      ready: true,
+      document: { variables: [{ slug: 'bust', name: 'Bust', unit: 'mm', value: 90 }] },
+    });
+
+    await valueInput(wrapper).setValue('$waist');
+
+    expect(wrapper.find('[data-testid="corner-round-value-error"]').text()).toContain(
+      'unknown variable $waist',
+    );
+    expect(wrapper.find('[data-testid="corner-round-apply"]').attributes('disabled')).toBeDefined();
     expect(wrapper.emitted('preview')?.at(-1)).toEqual([null]);
   });
 

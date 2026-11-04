@@ -1104,6 +1104,38 @@ describe('EditorView', () => {
     );
   });
 
+  it('rounds a corner with a variable radius and follows the variable', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+    store.dispatch({ id: 'var', type: 'set_variable', params: { name: 'Radius', value: 8 } });
+    await nextTick();
+    const slug = store.document.variables![0]!.slug;
+
+    await wrapper.find('[data-testid="tool-round_corner"]').trigger('click');
+    await nextTick();
+    entityDown(wrapper, 'line', 'ab');
+    entityDown(wrapper, 'line', 'bc');
+    await flushPromises();
+
+    const input = wrapper.find('[data-testid="corner-round-value"]');
+    await input.setValue(`$${slug}`);
+    expect(wrapper.findComponent(PatternCanvas).props('cornerRoundPreviewRadius')).toBe(8);
+
+    await wrapper.find('[data-testid="corner-round-prompt-bar"] form').trigger('submit');
+    await flushPromises();
+
+    const round = store.document.cornerRounds![0]!;
+    expect(round.radius).toMatchObject({ expr: `$${slug}` });
+
+    const abEnd = round.ends.find((end) => end.line === 'ab')!;
+    const tangentX = (): number =>
+      (store.document.entities.find((entity) => entity.id === abEnd.tangent) as { x: number }).x;
+    expect(tangentX()).toBeCloseTo(92, 6);
+
+    store.dispatch({ id: 'update', type: 'update_variable', params: { slug, value: 12 } });
+    await nextTick();
+    expect(tangentX()).toBeCloseTo(88, 6);
+  });
+
   it('rounds a corner picked as a point and replaces a pending line pick', async () => {
     const { wrapper, store } = await mountLoaded(lineDoc);
 
