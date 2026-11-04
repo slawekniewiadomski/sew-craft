@@ -36,7 +36,7 @@ export interface Variable {
   comment?: string;
 }
 
-export const PATTERN_SCHEMA = 'sewcraft.pattern/0.5';
+export const PATTERN_SCHEMA = 'sewcraft.pattern/0.6';
 
 export type PatternSchema = typeof PATTERN_SCHEMA;
 
@@ -149,7 +149,41 @@ export interface TextEntity {
   leader?: EntityId;
 }
 
-export type Entity = PointEntity | LineEntity | CurveEntity | CircleEntity | ArcEntity | TextEntity;
+/**
+ * A V notch drawn into one loop edge's seam allowance. The point carries the
+ * position; the edge fixes which allowance the V cuts into and the direction it
+ * points. A mark is presentation only: it never changes the cut loop.
+ */
+export interface NotchMark {
+  id: EntityId;
+  kind: 'mark';
+  type: 'notch';
+  /** The piece that contains this mark. */
+  piece?: EntityId;
+  /** The loop edge whose allowance the V cuts into. */
+  edge: EntityId;
+  /** The snapped point the V is centred on; a vertex of `edge` or on it. */
+  point: EntityId;
+  /** Share of the edge's cut distance; omitted means the default. */
+  depth?: number;
+}
+
+/** A straight centre line between two snapped points, drawn and exported as a mark. */
+export interface CentreLineMark {
+  id: EntityId;
+  kind: 'mark';
+  type: 'centre_line';
+  /** The piece that contains this mark. */
+  piece?: EntityId;
+  start: EntityId;
+  end: EntityId;
+}
+
+/** A sewing mark. Marks are presentation only and own no solver variables. */
+export type MarkEntity = NotchMark | CentreLineMark;
+
+export type Entity =
+  PointEntity | LineEntity | CurveEntity | CircleEntity | ArcEntity | TextEntity | MarkEntity;
 
 export const CONSTRAINT_TYPES = [
   'coincident',

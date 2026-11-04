@@ -3,7 +3,7 @@
 it('exposes the command spec', function () {
     $this->getJson('/api/commands')
         ->assertOk()
-        ->assertJsonPath('version', '0.17.0')
+        ->assertJsonPath('version', '0.18.0')
         ->assertJsonStructure([
             'version',
             'commands' => [
@@ -164,4 +164,19 @@ it('exposes the derived cut dimension command', function () {
         ->assertJsonPath('commands.add_derived_dimension.params.orientation', 'aligned|horizontal|vertical?')
         ->assertJsonPath('commands.add_derived_dimension.params.offset', 'number?')
         ->assertJsonPath('commands.add_derived_dimension.inverse', 'remove_constraint');
+});
+
+it('exposes the piece mark commands', function () {
+    $this->getJson('/api/commands')
+        ->assertOk()
+        ->assertJsonPath('commands.add_notch.params.edge', 'entity_id')
+        ->assertJsonPath('commands.add_notch.params.point', 'entity_id')
+        ->assertJsonPath('commands.add_notch.params.depth', 'number?')
+        ->assertJsonPath('commands.add_notch.inverse', 'delete_entity')
+        ->assertJsonPath('commands.update_notch.params.depth', 'number|null')
+        ->assertJsonPath('commands.update_notch.inverse', 'update_notch')
+        ->assertJsonPath('commands.add_centre_line.params.start', 'entity_id')
+        ->assertJsonPath('commands.add_centre_line.inverse', 'delete_entity')
+        ->assertJsonPath('commands.update_centre_line.params.end', 'entity_id?')
+        ->assertJsonPath('commands.update_centre_line.inverse', 'update_centre_line');
 });

@@ -30,7 +30,7 @@ plain number is rejected), `*` and `/` combine them, and a field that takes a
 length rejects a ratio or an area. Variables are managed with `set_variable`,
 `update_variable` and `remove_variable`; their values may be lengths or ratios.
 
-## Commands (v0.17)
+## Commands (v0.18)
 
 ### `add_point`
 
@@ -385,6 +385,58 @@ Edit a label's content, anchor, presentation or leader.
 - At least one field is required. `leader: null` removes the leader; same-piece
   validation and content rules match `add_text`.
 - inverse: `update_text` with the previous values.
+
+### `add_notch`
+
+Mark an edge with a V notch drawn into that edge's seam allowance. Marks are
+presentation only: the cut loop, the offset, the piece area and every existing
+export stay exactly as they are.
+
+- params: `piece: entity_id`, `edge: entity_id`, `point: entity_id`,
+  `depth?: number`
+- The point carries the position: it must be a drafting point of the piece that
+  lies on `edge` within `0.01` mm (a vertex, a midpoint or a point on the line).
+  The edge is stored because a corner point belongs to two edges and only the
+  maker knows which allowance the V should cut into.
+- `edge` must be a cut line, curve or arc of the piece's loop and must carry a
+  seam allowance; an edge with none is rejected with "This edge has no seam
+  allowance".
+- `depth` is the share of the edge's cut distance the V reaches into, clamped on
+  read to `0.05`–`0.9`; omitted means `0.5`. A double allowance's cut distance is
+  twice its width, so the V stays halfway into the allowance.
+- The V opens on the edge's own cut line and points back at the stitch line. Its
+  feet sit `3` mm either side of the point.
+- Re-applying a command whose mark id already exists is a no-op.
+- inverse: `delete_entity`.
+
+### `update_notch`
+
+Change a notch's depth share.
+
+- params: `id: entity_id`, `depth: number | null`
+- `depth: null` returns the notch to the default share. Values outside
+  `0.05`–`0.9` are clamped on read rather than rejected.
+- Re-applying the current depth is a no-op with `inverse: null`.
+- inverse: `update_notch` with the previous share.
+
+### `add_centre_line`
+
+Draw a centre line between two snapped points of a piece.
+
+- params: `piece: entity_id`, `start: entity_id`, `end: entity_id`
+- Both points must be drafting points of the piece and must differ. The line is
+  a mark: a maker who wants "CF" adds it with the Text tool.
+- Re-applying a command whose mark id already exists is a no-op.
+- inverse: `delete_entity`.
+
+### `update_centre_line`
+
+Move either end of a centre line to another snapped point of the same piece.
+
+- params: `id: entity_id`, `start?: entity_id`, `end?: entity_id`
+- At least one endpoint is required, and the two must differ after the change.
+- Re-applying the current endpoints is a no-op with `inverse: null`.
+- inverse: `update_centre_line` with the previous endpoints.
 
 ### `update_piece`
 
@@ -758,6 +810,15 @@ Request a solver rebuild. Typically emitted after a batch of geometry commands.
 3. Implement `applyCommand` handling in `@sewcraft/geometry` with tests.
 4. Wire any UI affordance. Emit it from the command bus — never mutate state
    directly.
+
+## Migration from spec 0.17.0
+
+`spec_version` is **0.18.0**. Additive: `add_notch`, `update_notch`,
+`add_centre_line` and `update_centre_line` create `kind: 'mark'` entities inside
+the new `sewcraft.pattern/0.6` schema. A mark is presentation only — an older
+build that meets one fails to read the document rather than drawing wrong
+geometry, so keep the marks on rollback or remove them deliberately. Nothing
+else in a 0.5 document changes; it loads without conversion.
 
 ## Migration from spec 0.16.0
 

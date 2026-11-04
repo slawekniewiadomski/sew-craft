@@ -26,6 +26,8 @@ export type RibbonIconName =
   | 'constraints'
   | 'eye'
   | 'round-corner'
+  | 'notch'
+  | 'centre-line'
   | 'undo'
   | 'redo'
   | 'delete'
@@ -73,6 +75,8 @@ const ACTION_ICONS: Record<ActionIconName, RibbonIcon> = {
   'cut-dimension': {
     paths: ['M5 4 V20', 'M19 4 V20', 'M5 12 H12', 'M15 12 H19', 'M9.6 18.8 L18.4 5.2'],
   },
+  notch: { paths: ['M6 19 H9.2 L12 11.6 L14.8 19 H18'] },
+  'centre-line': { paths: ['M12 3.2 V20.8'], dots: [{ cx: 12, cy: 12, r: 2.2 }] },
   'chevron-down': { paths: ['M6 9.2 L12 15.2 L18 9.2'] },
   piece: {
     paths: [

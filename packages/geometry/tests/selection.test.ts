@@ -169,6 +169,37 @@ describe('entitiesInRect', () => {
   });
 });
 
+describe('entitiesInRect with marks', () => {
+  const document = documentOf([
+    point('a', 0, 0),
+    point('b', 100, 0),
+    point('c', 50, 40),
+    {
+      id: 'notch-1',
+      kind: 'mark',
+      type: 'notch',
+      edge: 'edge',
+      point: 'c',
+    },
+    {
+      id: 'centre-1',
+      kind: 'mark',
+      type: 'centre_line',
+      start: 'a',
+      end: 'b',
+    },
+  ]);
+
+  it('selects a notch by its point', () => {
+    expect(entitiesInRect(document, rect(40, 30, 60, 50), 'crossing')).toContain('notch-1');
+    expect(entitiesInRect(document, rect(0, 0, 10, 10), 'crossing')).not.toContain('notch-1');
+  });
+
+  it('selects a centre line by its endpoints', () => {
+    expect(entitiesInRect(document, rect(40, -10, 60, 10), 'crossing')).toContain('centre-1');
+  });
+});
+
 describe('entitiesInRect with arcs', () => {
   const document = documentOf([
     point('s', -10, 0),

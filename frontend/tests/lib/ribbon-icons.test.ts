@@ -8,6 +8,7 @@ describe('RIBBON_ICONS', () => {
     expect(Object.keys(RIBBON_ICONS).sort()).toEqual([
       'angle',
       'arc',
+      'centre-line',
       'chevron-down',
       'circle',
       'coincident',
@@ -25,6 +26,7 @@ describe('RIBBON_ICONS', () => {
       'line',
       'midpoint',
       'mirror',
+      'notch',
       'piece',
       'piece-add',
       'point',

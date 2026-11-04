@@ -82,6 +82,8 @@ const TOOL_ICONS: Record<EditorTool, RibbonIconName> = {
   add_center_rectangle: 'rectangle-center',
   add_3point_rectangle: 'rectangle-aligned',
   round_corner: 'round-corner',
+  notch: 'notch',
+  centre_line: 'centre-line',
   dimension: 'dimension',
   cut_dimension: 'cut-dimension',
 };
@@ -146,7 +148,7 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
   {
     id: 'features',
     label: 'Features',
-    items: [toolItem('round_corner')],
+    items: [toolItem('round_corner'), toolItem('notch'), toolItem('centre_line')],
   },
   {
     id: 'annotation',

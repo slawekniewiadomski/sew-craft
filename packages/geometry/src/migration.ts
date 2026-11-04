@@ -10,6 +10,9 @@ import { PATTERN_SCHEMA, type PatternDocument, type TabRef } from './types.js';
  */
 export const KNOWN_PATTERN_SCHEMAS: readonly string[] = [
   PATTERN_SCHEMA,
+  // 0.6 only added marks (notches and centre lines), so a 0.5 document is a
+  // strict subset and needs no conversion.
+  'sewcraft.pattern/0.5',
   // 0.5 only added optional variables and widened parameter fields to formulas,
   // so a 0.4 document is a strict subset and needs no conversion.
   'sewcraft.pattern/0.4',

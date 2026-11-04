@@ -75,7 +75,7 @@ can be written when it changes.
 
 ```jsonc
 {
-  "schema": "sewcraft.pattern/0.5",
+  "schema": "sewcraft.pattern/0.6",
   "units": "mm",
   "entities": [
     // Every entity names its piece; role absent means cut.
@@ -166,7 +166,7 @@ built-in **10 mm seam** preset, and `normalizeDocument` fills the field on load
 allowance. A piece may override it with `defaults.allowance` (absent inherits,
 `null` means none). Changing or clearing either default never rewrites an existing
 piece's allowances. An invalid stored width or kind falls back to the built-in
-preset; the pattern schema string is `sewcraft.pattern/0.5`.
+preset; the pattern schema string is `sewcraft.pattern/0.6`.
 
 `cornerRounds` is optional, so documents written before the feature load
 unchanged. A round is a live feature: it stores the sharp corner, both line
@@ -176,7 +176,7 @@ anchors and the radius, while its derived entities (tangent points `r1:a`,
 are trimmed to the tangent points, and `p2` stays as a construction point.
 `center` is optional and additive — it points at a fixed construction point, is
 minted once on load for rounds written before feature points, and never joins a
-piece loop or the SVG export. The schema string is `sewcraft.pattern/0.5`.
+piece loop or the SVG export. The schema string is `sewcraft.pattern/0.6`.
 
 An `arc` entity is a true circular arc referencing three ordinary points: `start`
 and `end` bound it and `through` lies on it between them, fixing both the bulge
@@ -195,6 +195,17 @@ box is the centre widened by the radius in each direction, and `add_seam_allowan
 rejects a circle in v1. The entity kind is additive, so a document written before
 the feature loads unchanged and a document containing a circle is still valid
 JSON for older builds.
+
+A `mark` entity is a sewing mark with a `type` discriminator: `notch` (drawn into
+one edge's seam allowance, anchored to a snapped `point` plus the loop `edge`
+whose allowance it cuts into) or `centre_line` (a straight segment between
+`start` and `end`). Both are presentation only — no solver variable, no
+constraint, never part of a piece loop or the cut path — and both are resolved
+from the document on every read, so an allowance change moves the notch and a
+missing allowance makes it broken rather than wrong. `notch.depth` is an optional
+share of the edge's cut distance. The entity kind is additive: a 0.5 document
+loads unchanged, and a document containing marks is not readable by an older
+build, which refuses the schema instead of drawing wrong geometry.
 
 `variables` is optional and holds the document's named measurements: `slug`
 (stable, bare — a formula writes `$` + slug), `name` (free-form, unique
@@ -229,7 +240,7 @@ ignored when resolving and dropped when the loop changes.
 assembly fill. An empty string is not stored. `defaults.allowance` is the piece's
 own override; absent inherits the document default, `null` means none.
 
-The schema is `sewcraft.pattern/0.5`. `normalizeDocument` in
+The schema is `sewcraft.pattern/0.6`. `normalizeDocument` in
 `packages/geometry/src/migration.ts` reads 0.5 and the 0.4 subset it supersedes,
 and refuses every other schema (a stored 0.3 document included) through
 `UnsupportedPatternSchemaError`: there is no load-time migration. 0.4 differs only
@@ -271,7 +282,7 @@ stores the line id so it follows the line's visible endpoints through a
 corner-round trim; the two-point form keeps its named points. A target may not be
 corner-round derived, already a midpoint target, or a source of another midpoint,
 and neither may a source be an existing target (no chains). The document stays
-`sewcraft.pattern/0.5`; only the constraint list gains an additive entry.
+`sewcraft.pattern/0.6`; only the constraint list gains an additive entry.
 
 A `derived_distance` constraint is a **cut dimension**. It addresses two anchors
 of one piece by `{ edge, at: 'start' | 'end' | 'edge', loop?: 'stitch' | 'cut' }`

@@ -204,6 +204,73 @@ describe('piece cut layer', () => {
   });
 });
 
+describe('piece marks layer', () => {
+  const marks = (): Entity[] => [
+    point('m', 200, 100),
+    {
+      id: 'notch-1',
+      kind: 'mark',
+      type: 'notch',
+      piece: 'piece-1',
+      edge: 'right',
+      point: 'm',
+    },
+    {
+      id: 'centre-1',
+      kind: 'mark',
+      type: 'centre_line',
+      piece: 'piece-1',
+      start: 'a',
+      end: 'c',
+    },
+  ];
+
+  it('exports a notch and a centre line on their own layer', () => {
+    const document = documentOf([piece()], marks());
+    const inner = layer(svg(document, piece()), 'marks');
+
+    expect(inner).not.toBeNull();
+    expect(inner!.join('\n')).toContain('data-kind="notch"');
+    expect(inner!.join('\n')).toContain('data-kind="centre_line"');
+    expect(inner!.join('\n')).toContain('stroke-dasharray="6 2 2 2"');
+  });
+
+  it('leaves the layer out when marks are switched off or none resolve', () => {
+    const document = documentOf([piece()], marks());
+    expect(layer(svg(document, piece(), { marks: false }), 'marks')).toBeNull();
+
+    const broken = documentOf(
+      [piece()],
+      [
+        {
+          id: 'notch-1',
+          kind: 'mark',
+          type: 'notch',
+          piece: 'piece-1',
+          edge: 'bottom',
+          point: 'a',
+        },
+        {
+          id: 'centre-1',
+          kind: 'mark',
+          type: 'centre_line',
+          piece: 'piece-1',
+          start: 'a',
+          end: 'gone',
+        },
+      ],
+    );
+    expect(layer(svg(broken, piece()), 'marks')).toBeNull();
+  });
+
+  it('keeps the cut layer identical with and without marks', () => {
+    const withoutMarks = layer(svg(documentOf(), piece()), 'cut');
+    const withMarks = layer(svg(documentOf([piece()], marks()), piece()), 'cut');
+
+    expect(withMarks).toEqual(withoutMarks);
+  });
+});
+
 describe('piece metadata', () => {
   it('records finished and cut sizes plus quantity', () => {
     const output = svg(documentOf(), piece());
@@ -233,7 +300,7 @@ describe('piece metadata', () => {
 
   it('uses the encoded schema version in the comment', () => {
     expect(svg(documentOf(), piece())).toContain(
-      '<!-- sewcraft:svg schema="sewcraft.pattern/0.5" generated="2026-10-22T00:00:00.000Z" -->',
+      '<!-- sewcraft:svg schema="sewcraft.pattern/0.6" generated="2026-10-22T00:00:00.000Z" -->',
     );
   });
 });

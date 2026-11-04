@@ -17,6 +17,8 @@ describe('EDITOR_TOOLS', () => {
       'add_center_rectangle',
       'add_3point_rectangle',
       'round_corner',
+      'notch',
+      'centre_line',
       'dimension',
       'cut_dimension',
     ]);

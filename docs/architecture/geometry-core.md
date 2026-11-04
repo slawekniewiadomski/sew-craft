@@ -227,7 +227,27 @@ piece instead of breaking the canvas or export:
 ## Later entities (specced, not built)
 
 - `dart` — first-class construction element.
-- `grainline`, `notch`, `label` — annotations attached to pieces.
+- `grainline`, `label` — annotations attached to pieces.
+
+## Marks
+
+A `mark` entity is a sewing mark with a `type` discriminator: `notch` or
+`centre_line`. It is presentation only — no solver variable, no constraint, never
+a loop edge — and it resolves from the document on every read, so it follows the
+allowance instead of drifting. `@sewcraft/geometry/src/mark.ts` owns the
+constants, `notchGeometry`, `centreLineGeometry` and the broken-mark predicate:
+
+- A notch is anchored to a snapped point plus the loop edge whose allowance it
+  cuts into. The V opens on that edge's cut line, `3` mm either side of the
+  point, and reaches `depth × cutDistance` inward (`0.5` by default, clamped to
+  `0.05`–`0.9`). The outward side comes from the loop's winding, never from the
+  edge's own direction, so a reversed edge draws the same V.
+- A mark is **broken** when its allowance is removed, its point leaves the edge
+  or its edge leaves the loop: it records nothing wrong and renders nothing,
+  returning as soon as the condition is repaired. The piece panel lists it as a
+  broken row; export skips it.
+- Deleting a mark's point or edge deletes the mark through `delete_entity`, the
+  same cascade a label has with its anchor.
 
 ## Document
 

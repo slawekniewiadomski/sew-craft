@@ -280,6 +280,7 @@ const KIND_LABELS: Record<Entity['kind'], string> = {
   arc: 'Arc',
   circle: 'Circle',
   text: 'Text',
+  mark: 'Mark',
 };
 
 const KIND_NOUNS: Record<Entity['kind'], string> = {
@@ -289,6 +290,7 @@ const KIND_NOUNS: Record<Entity['kind'], string> = {
   arc: 'arc',
   circle: 'circle',
   text: 'text',
+  mark: 'mark',
 };
 
 const KIND_ICONS: Record<Entity['kind'], RibbonIconName> = {
@@ -298,6 +300,7 @@ const KIND_ICONS: Record<Entity['kind'], RibbonIconName> = {
   arc: 'arc',
   circle: 'circle',
   text: 'text',
+  mark: 'notch',
 };
 
 const kindNoun = computed(() => KIND_NOUNS[props.entity.kind]);

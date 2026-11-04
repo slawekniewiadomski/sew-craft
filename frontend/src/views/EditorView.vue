@@ -159,6 +159,7 @@ import {
   pieceCreationFromSelection,
   pieceForEntity,
   pieceLabel,
+  pieceMarkRows,
   pieceSizeLine,
   pieceSummaries,
   pieceTitleLine,
@@ -231,6 +232,12 @@ const activePieceSummary = computed(() => {
   /* v8 ignore next -- the active piece is always summarised */
   return summary ?? null;
 });
+/** The marks the piece card lists, resolved from the document on every read. */
+const activePieceMarks = computed(() =>
+  /* v8 ignore next -- the piece card renders only with an active piece */
+  activePiece.value === null ? [] : pieceMarkRows(pattern.value, activePiece.value),
+);
+
 /** The assembly the active tab shows, or `null` on a piece tab. */
 const activeAssembly = computed<Assembly | null>(() => {
   const tab = activeTab.value;
@@ -342,7 +349,7 @@ const assemblyDocument = computed(() => {
 /** Every line, curve, arc and circle, so any edge can be converted between guide and cut. */
 const edges = computed(() =>
   pattern.value.entities
-    .filter((entity) => entity.kind !== 'point' && entity.kind !== 'text')
+    .filter((entity) => entity.kind !== 'point' && entity.kind !== 'text' && entity.kind !== 'mark')
     .map((entity) => {
       const seam = seamForEdge(pattern.value, entity.id);
       const piece = pattern.value.pieces.find((candidate) => candidate.edges.includes(entity.id));
@@ -1423,6 +1430,48 @@ function onAddText(anchor: DraftingEndpoint, leader?: DraftingEndpoint): void {
   run(() => dispatchGroup(buildTextCommands(anchor, pieceId, nextCommandId, leader)));
 }
 
+/** A notch's depth change from the piece card's mark row. */
+function onSetNotchDepth(id: EntityId, depth: number | null): void {
+  run(() =>
+    dispatch({ id: nextCommandId('notch-depth'), type: 'update_notch', params: { id, depth } }),
+  );
+}
+
+/** Delete a mark from the piece card, through the ordinary entity cascade. */
+function onDeleteMark(id: EntityId): void {
+  run(() => dispatch({ id: nextCommandId('delete-mark'), type: 'delete_entity', params: { id } }));
+}
+
+/** A notch on the edge the maker pointed at, placed in one command. */
+function onAddNotch(point: EntityId, edge: EntityId): void {
+  const pieceId = activePieceId.value;
+  /* v8 ignore start -- the canvas only exists inside a piece tab */
+  if (pieceId === null) return;
+  /* v8 ignore stop */
+  run(() =>
+    dispatch({
+      id: nextCommandId('notch'),
+      type: 'add_notch',
+      params: { piece: pieceId, edge, point },
+    }),
+  );
+}
+
+/** A centre line between the two snapped points of the gesture. */
+function onAddCentreLine(start: EntityId, end: EntityId): void {
+  const pieceId = activePieceId.value;
+  /* v8 ignore start -- the canvas only exists inside a piece tab */
+  if (pieceId === null) return;
+  /* v8 ignore stop */
+  run(() =>
+    dispatch({
+      id: nextCommandId('centre-line'),
+      type: 'add_centre_line',
+      params: { piece: pieceId, start, end },
+    }),
+  );
+}
+
 function onAddCurve(points: [EntityId, EntityId, EntityId, EntityId]): void {
   run(() =>
     dispatchGroup([
@@ -2423,6 +2472,8 @@ onBeforeUnmount(() => {
             :active-piece-id="activePieceId"
             @move-point="onMovePoint"
             @add-text="onAddText"
+            @add-notch="onAddNotch"
+            @add-centre-line="onAddCentreLine"
             @add-point="onAddPoint"
             @add-point-on-line="onAddPointOnLine"
             @add-point-midpoint="onAddPointMidpoint"
@@ -2519,6 +2570,7 @@ onBeforeUnmount(() => {
               :inherited-default="defaultAllowance"
               :label="activePiece.name ?? 'Piece'"
               prefix="piece-drawer"
+              :marks="activePieceMarks"
               @update-piece="onUpdatePiece"
               @set-piece-default="onSetPieceDefault"
               @set-piece-allowance="onSetPieceAllowance"
@@ -2528,6 +2580,8 @@ onBeforeUnmount(() => {
               @remove-piece="onRemovePiece"
               @set-cut-loop="setCutLoop"
               @clear-cut-loop="clearCutLoop"
+              @delete-mark="onDeleteMark"
+              @set-notch-depth="onSetNotchDepth"
             />
             <SidebarEmpty
               v-else

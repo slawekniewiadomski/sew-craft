@@ -31,6 +31,10 @@ a sheet of pieces belongs to the future drawing workflow.
   `single` allowance emits no fold line.
 - `construction` (off by default): the piece's own guide geometry — lines, curves,
   circles and arcs that belong to it.
+- `marks` (on by default, `marks: false` omits it): the piece's notches and centre
+  lines. A notch is an open V path with `data-kind="notch"`, opening on its edge's
+  cut line; a centre line is a dash-dot `line` with `data-kind="centre_line"`. A
+  broken mark (no allowance, missing point) emits nothing.
 - Annotation geometry and text are not exported; they stay canvas-only until a
   print preset adds them.
 - `width`/`height` in `mm`, and a `viewBox` from the piece's **cut** bounds plus
@@ -59,6 +63,7 @@ toSvgPiece(document, piece, {
   construction: false, // include the piece's construction layer (default off)
   stitch: true, // include the stitch loop (default on)
   fold: true, // include double-fold fold lines (default on)
+  marks: true, // include notches and centre lines (default on)
   padding: 10, // whitespace in mm around the piece
 });
 ```

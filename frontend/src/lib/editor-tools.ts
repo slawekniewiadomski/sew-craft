@@ -11,6 +11,8 @@ export type EditorTool =
   | 'add_center_rectangle'
   | 'add_3point_rectangle'
   | 'round_corner'
+  | 'notch'
+  | 'centre_line'
   | 'dimension'
   | 'cut_dimension';
 
@@ -32,6 +34,8 @@ export const EDITOR_TOOLS: EditorToolDefinition[] = [
   { id: 'add_center_rectangle', label: 'Centre rectangle' },
   { id: 'add_3point_rectangle', label: '3-point rectangle' },
   { id: 'round_corner', label: 'Round corner' },
+  { id: 'notch', label: 'Notch' },
+  { id: 'centre_line', label: 'Centre line' },
   { id: 'dimension', label: 'Dimension' },
   { id: 'cut_dimension', label: 'Cut dimension' },
 ];

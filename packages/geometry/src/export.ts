@@ -1,17 +1,20 @@
 import { arcGeometry, svgArcCommand } from './arc.js';
 import { circleGeometry } from './circle.js';
 import { getEntity } from './document.js';
+import { centreLineGeometry, notchGeometry, pieceMarks } from './mark.js';
 import { formatSvgNumber as formatNumber } from './number.js';
 import { pieceCutBounds, pieceCutLoop, pieceFoldLines, pieceLoop, pieceMetrics } from './piece.js';
 import { isCut } from './roles.js';
 import {
   PATTERN_SCHEMA,
   type ArcEntity,
+  type CentreLineMark,
   type CircleEntity,
   type CurveEntity,
   type Entity,
   type EntityId,
   type LineEntity,
+  type NotchMark,
   type PatternDocument,
   type Piece,
   type PointEntity,
@@ -25,6 +28,8 @@ export interface SvgExportOptions {
   stitch?: boolean;
   /** Include every double-fold fold line. On by default. */
   fold?: boolean;
+  /** Include notches and centre lines. On by default. */
+  marks?: boolean;
   /** Whitespace around the piece, in millimetres. Defaults to 10 mm. */
   padding?: number;
   /** Override the metadata timestamp (useful for deterministic output). */
@@ -44,6 +49,7 @@ const CUT_COLOR = '#000000';
 const STITCH_COLOR = '#374151';
 const FOLD_COLOR = '#2563eb';
 const CONSTRUCTION_COLOR = '#9ca3af';
+const MARK_COLOR = '#b91c1c';
 
 const indent = (line: string): string => `  ${line}`;
 
@@ -111,7 +117,14 @@ function belongsToPiece(piece: Piece, entity: Entity): boolean {
 function renderConstruction(document: PatternDocument, piece: Piece): string[] {
   const construction: string[] = [];
   for (const entity of document.entities) {
-    if (entity.kind === 'point' || entity.kind === 'text' || isCut(entity)) continue;
+    if (
+      entity.kind === 'point' ||
+      entity.kind === 'text' ||
+      entity.kind === 'mark' ||
+      isCut(entity)
+    ) {
+      continue;
+    }
     if (!belongsToPiece(piece, entity)) continue;
 
     const element =
@@ -127,8 +140,45 @@ function renderConstruction(document: PatternDocument, piece: Piece): string[] {
   return construction;
 }
 
-/** A closed `path` element for a piece loop. */
-function loopElement(points: readonly Vec2[], attributes: string): string | null {
+/** One notch's open V, or `null` while the mark is broken. */
+function notchElement(document: PatternDocument, piece: Piece, mark: NotchMark): string | null {
+  const geometry = notchGeometry(document, piece, mark);
+  if (geometry === null) return null;
+
+  const [first, second] = geometry.feet;
+  const d = [
+    `M ${formatNumber(first.x)} ${formatNumber(first.y)}`,
+    `L ${formatNumber(geometry.tip.x)} ${formatNumber(geometry.tip.y)}`,
+    `L ${formatNumber(second.x)} ${formatNumber(second.y)}`,
+  ].join(' ');
+  return `<path d="${d}"${entityAttr(mark.id)} data-kind="notch" />`;
+}
+
+/** One centre line, dash-dot so it reads apart from a fold line. */
+function centreLineElement(document: PatternDocument, mark: CentreLineMark): string | null {
+  const geometry = centreLineGeometry(document, mark);
+  if (geometry === null) return null;
+
+  return `<line x1="${formatNumber(geometry.start.x)}" y1="${formatNumber(geometry.start.y)}" x2="${formatNumber(geometry.end.x)}" y2="${formatNumber(geometry.end.y)}" stroke-dasharray="6 2 2 2"${entityAttr(mark.id)} data-kind="centre_line" />`;
+}
+
+/** The piece's notches and centre lines, in document order. */
+function renderMarks(document: PatternDocument, piece: Piece): string[] {
+  const elements: string[] = [];
+  for (const mark of pieceMarks(document, piece.id)) {
+    const element =
+      mark.type === 'notch'
+        ? notchElement(document, piece, mark)
+        : centreLineElement(document, mark);
+    if (element !== null) elements.push(element);
+  }
+  return elements;
+}
+
+/** A closed `path` element for a piece loop. */ function loopElement(
+  points: readonly Vec2[],
+  attributes: string,
+): string | null {
   /* v8 ignore next -- every caller passes a resolved, non-empty loop */
   if (points.length === 0) return null;
 
@@ -184,6 +234,7 @@ export function toSvgPiece(
   const construction = options.construction ?? false;
   const stitch = options.stitch ?? true;
   const fold = options.fold ?? true;
+  const marks = options.marks ?? true;
   const padding = options.padding ?? DEFAULT_PADDING;
   const generatedAt = options.generatedAt ?? new Date().toISOString();
 
@@ -199,6 +250,7 @@ export function toSvgPiece(
     loop === null ? null : loopElement(loop.points, `${pieceAttr} data-kind="stitch"`);
   const foldElements = folds.map((points) => loopElement(points, `${pieceAttr} data-kind="fold"`)!);
   const constructionElements = construction ? renderConstruction(document, piece) : [];
+  const markElements = marks ? renderMarks(document, piece) : [];
   const metadata = pieceMetadata(document, piece);
   const box = computeViewBox(pieceCutBounds(document, piece), padding);
 
@@ -224,6 +276,14 @@ export function toSvgPiece(
     lines.push(
       `<g data-layer="fold" fill="none" stroke="${FOLD_COLOR}" stroke-width="0.35" stroke-dasharray="6 3">`,
       ...foldElements.map(indent),
+      '</g>',
+    );
+  }
+
+  if (markElements.length > 0) {
+    lines.push(
+      `<g data-layer="marks" fill="none" stroke="${MARK_COLOR}" stroke-width="0.5">`,
+      ...markElements.map(indent),
       '</g>',
     );
   }

@@ -43,7 +43,7 @@ describe('RIBBON_GROUPS', () => {
     ]);
   });
 
-  it('keeps the round corner tool in its own features group', () => {
+  it('keeps the feature tools in their own group', () => {
     expect(RIBBON_GROUPS[1]!.items).toEqual([
       {
         kind: 'tool',
@@ -51,6 +51,20 @@ describe('RIBBON_GROUPS', () => {
         label: 'Round corner',
         icon: 'round-corner',
         tool: 'round_corner',
+      },
+      {
+        kind: 'tool',
+        id: 'tool-notch',
+        label: 'Notch',
+        icon: 'notch',
+        tool: 'notch',
+      },
+      {
+        kind: 'tool',
+        id: 'tool-centre_line',
+        label: 'Centre line',
+        icon: 'centre-line',
+        tool: 'centre_line',
       },
     ]);
   });

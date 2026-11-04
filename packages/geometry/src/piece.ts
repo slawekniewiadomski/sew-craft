@@ -116,6 +116,7 @@ export function pieceEdges(document: PatternDocument, piece: Piece): PieceEdgeEn
       entity === undefined ||
       entity.kind === 'point' ||
       entity.kind === 'text' ||
+      entity.kind === 'mark' ||
       entity.kind === 'circle' ||
       !isCut(entity)
     ) {
@@ -1019,6 +1020,7 @@ export function basicPieceForLoops(
       entity.kind === 'point' ||
       entity.kind === 'circle' ||
       entity.kind === 'text' ||
+      entity.kind === 'mark' ||
       !isCut(entity)
     ) {
       continue;

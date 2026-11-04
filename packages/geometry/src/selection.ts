@@ -221,7 +221,11 @@ export function entitiesInRect(document: PatternDocument, rect: Rect, mode: Rect
     const ids =
       entity.kind === 'line'
         ? [entity.start, entity.end]
-        : [entity.p0, entity.p1, entity.p2, entity.p3];
+        : entity.kind === 'mark'
+          ? entity.type === 'notch'
+            ? [entity.point]
+            : [entity.start, entity.end]
+          : [entity.p0, entity.p1, entity.p2, entity.p3];
     const resolved = resolvePoints(points, ids);
     if (resolved === null) continue;
 

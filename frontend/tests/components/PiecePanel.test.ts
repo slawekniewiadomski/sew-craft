@@ -457,3 +457,59 @@ describe('PiecePanel corner allowances', () => {
     ]);
   });
 });
+
+describe('PiecePanel marks', () => {
+  const marks = [
+    {
+      id: 'notch-1',
+      type: 'notch' as const,
+      depth: 0.3,
+      cutDistance: 3,
+      detail: '30%',
+      broken: false,
+    },
+    {
+      id: 'centre-1',
+      type: 'centre_line' as const,
+      depth: 0,
+      cutDistance: 0,
+      detail: 'Centre line',
+      broken: false,
+    },
+    {
+      id: 'notch-2',
+      type: 'notch' as const,
+      depth: 0.5,
+      cutDistance: 0,
+      detail: '50%',
+      broken: true,
+    },
+  ];
+
+  it('lists each mark with its depth, reach and delete control', () => {
+    const wrapper = mountPanel({}, { marks });
+
+    expect(wrapper.find('[data-testid="entity-piece-mark-notch-1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="entity-piece-mark-depth-notch-1"]').element).toHaveProperty(
+      'value',
+      '30',
+    );
+    expect(wrapper.find('[data-testid="entity-piece-mark-reach-notch-1"]').text()).toBe('3 mm');
+    expect(wrapper.find('[data-testid="entity-piece-mark-depth-centre-1"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="entity-piece-mark-broken-notch-2"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="entity-piece-mark-depth-notch-2"]').exists()).toBe(false);
+  });
+
+  it('clamps a depth edit to 5–90 percent and deletes a row', async () => {
+    const wrapper = mountPanel({}, { marks });
+
+    await wrapper.find('[data-testid="entity-piece-mark-depth-notch-1"]').setValue('250');
+    expect(wrapper.emitted('set-notch-depth')?.at(-1)).toEqual(['notch-1', 0.9]);
+
+    await wrapper.find('[data-testid="entity-piece-mark-depth-notch-1"]').setValue('1');
+    expect(wrapper.emitted('set-notch-depth')?.at(-1)).toEqual(['notch-1', 0.05]);
+
+    await wrapper.find('[data-testid="entity-piece-mark-delete-centre-1"]').trigger('click');
+    expect(wrapper.emitted('delete-mark')?.at(-1)).toEqual(['centre-1']);
+  });
+});

@@ -40,6 +40,9 @@ import {
   isAnnotation,
   isConstruction,
   isCornerRoundDerived,
+  centreLineGeometry,
+  notchGeometry,
+  pieceMarks,
   lineEndpoints,
   type LineEntity,
   type LeaderGeometry,
@@ -161,6 +164,7 @@ import {
   type SelectionMode,
 } from '@/lib/selection';
 import { nearestLineMidpoint } from '@/lib/midpoint';
+import { notchTargetAt } from '@/lib/marks';
 import {
   MIDPOINT_SNAP_PIXELS,
   nearestPoint,
@@ -402,6 +406,8 @@ const emit = defineEmits<{
   'activate-piece': [id: EntityId];
   'cross-piece': [id: EntityId];
   'add-text': [anchor: DraftingEndpoint, leader?: DraftingEndpoint];
+  'add-notch': [point: EntityId, edge: EntityId];
+  'add-centre-line': [start: EntityId, end: EntityId];
 }>();
 
 const svg = ref<SVGSVGElement | null>(null);
@@ -437,6 +443,8 @@ const rectanglePointer = ref<Vec2 | null>(null);
 const textAnchor = ref<DraftingEndpoint | null>(null);
 /** The snapped arrow target while the leader gesture is pending. */
 const textPointer = ref<Vec2 | null>(null);
+/** The point the Centre line tool stored on its first click. */
+const centreStart = ref<EntityId | null>(null);
 const spaceHeld = ref(false);
 
 /** Anchors picked for a dimension that has not yet been placed. */
@@ -1861,6 +1869,46 @@ const textViews = computed<TextView[]>(() =>
   }),
 );
 
+interface MarkView {
+  id: EntityId;
+  kind: 'notch' | 'centre_line';
+  path: string;
+  selected: boolean;
+}
+
+/** Notches and centre lines, resolved from the piece on read like every mark. */
+const markViews = computed<MarkView[]>(() =>
+  props.document.pieces.flatMap((piece: Piece): MarkView[] =>
+    pieceMarks(props.document, piece.id).flatMap((mark): MarkView[] => {
+      const selected = props.selectedEntityIds.includes(mark.id);
+      if (mark.type === 'notch') {
+        const geometry = notchGeometry(props.document, piece, mark);
+        if (geometry === null) return [];
+        const [first, second] = geometry.feet;
+        return [
+          {
+            id: mark.id,
+            kind: 'notch',
+            path: `M ${first.x} ${first.y} L ${geometry.tip.x} ${geometry.tip.y} L ${second.x} ${second.y}`,
+            selected,
+          },
+        ];
+      }
+
+      const geometry = centreLineGeometry(props.document, mark);
+      if (geometry === null) return [];
+      return [
+        {
+          id: mark.id,
+          kind: 'centre_line',
+          path: `M ${geometry.start.x} ${geometry.start.y} L ${geometry.end.x} ${geometry.end.y}`,
+          selected,
+        },
+      ];
+    }),
+  ),
+);
+
 /** The synthetic label a pending leader gesture previews. */
 const TEXT_PREVIEW_ENTITY: TextEntity = {
   id: 'text-preview',
@@ -2534,6 +2582,38 @@ function onTextLeaderPointer(screen: Vec2): void {
   textPointer.value = null;
 }
 
+/**
+ * One click of the Notch tool. The hit must be a point on the active piece's
+ * loop; the edge nearest the pointer decides which allowance the V cuts into.
+ */
+function onNotchPointer(hit: Hit | null, screen: Vec2): void {
+  if (hit === null || hit.kind !== 'point') return;
+  const pieceId = props.activePieceId;
+  if (pieceId === null) return;
+
+  const target = notchTargetAt(
+    props.document,
+    pieceId,
+    hit.id,
+    screenToWorld(viewport.value, screen),
+  );
+  if (target !== null) emit('add-notch', target.point, target.edge);
+}
+
+/** Two clicks of the Centre line tool: the two snapped points it joins. */
+function onCentreLinePointer(hit: Hit | null): void {
+  if (hit === null || hit.kind !== 'point') return;
+
+  if (centreStart.value === null) {
+    centreStart.value = hit.id;
+    return;
+  }
+  if (centreStart.value === hit.id) return;
+
+  emit('add-centre-line', centreStart.value, hit.id);
+  centreStart.value = null;
+}
+
 function onPointerDown(event: PointerEvent): void {
   if (props.readOnly) return;
 
@@ -2659,6 +2739,12 @@ function onPointerDown(event: PointerEvent): void {
       break;
     case 'add_text_leader':
       onTextLeaderPointer(screen);
+      break;
+    case 'notch':
+      onNotchPointer(hit, screen);
+      break;
+    case 'centre_line':
+      onCentreLinePointer(hit);
       break;
   }
 }
@@ -3385,6 +3471,7 @@ watch(
     clearRectangleGesture();
     textAnchor.value = null;
     textPointer.value = null;
+    centreStart.value = null;
     dimensionPending.value = [];
     dimensionPlacement.value = null;
     dimensionHint.value = null;
@@ -3659,6 +3746,25 @@ watch(
               data-kind="circle"
             />
           </template>
+        </g>
+
+        <g data-testid="marks-layer">
+          <path
+            v-for="mark in markViews"
+            :key="mark.id"
+            :d="mark.path"
+            fill="none"
+            stroke-width="0.5"
+            vector-effect="non-scaling-stroke"
+            :class="
+              mark.selected
+                ? 'stroke-primary cursor-pointer'
+                : 'stroke-mark cursor-pointer hover:stroke-primary'
+            "
+            :data-entity-id="mark.id"
+            data-kind="mark"
+            :data-testid="`mark-${mark.id}`"
+          />
         </g>
 
         <g data-testid="annotation-layer">

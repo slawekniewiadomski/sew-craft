@@ -66,6 +66,8 @@ const RIBBON_LABELS = [
   'Delete',
   'Fit',
   'Round corner',
+  'Notch',
+  'Centre line',
   'Text',
   'Text modes',
   'Point',
@@ -101,7 +103,7 @@ describe('EditorRibbon', () => {
     const wrapper = mountRibbon();
 
     const buttons = wrapper.findAll('[role="toolbar"] button');
-    expect(buttons).toHaveLength(27);
+    expect(buttons).toHaveLength(29);
     expect(buttons.every((button) => button.find('svg').exists())).toBe(true);
     expect(buttons.map((button) => button.attributes('aria-label'))).toEqual(RIBBON_LABELS);
     expect(wrapper.findAll('button').every((button) => button.find('svg').exists())).toBe(true);

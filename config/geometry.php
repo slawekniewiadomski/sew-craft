@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.17.0',
+    'spec_version' => '0.18.0',
 
     /*
     |--------------------------------------------------------------------------
@@ -209,6 +209,42 @@ return [
                 'leader' => 'entity_id|null?',
             ],
             'inverse' => 'update_text',
+        ],
+        'add_notch' => [
+            'description' => 'Mark an edge with a V notch drawn into its seam allowance. The point carries the position; the edge fixes the direction. The cut loop is untouched.',
+            'params' => [
+                'piece' => 'entity_id',
+                'edge' => 'entity_id',
+                'point' => 'entity_id',
+                'depth' => 'number?',
+            ],
+            'inverse' => 'delete_entity',
+        ],
+        'update_notch' => [
+            'description' => 'Change how deep a notch reaches into the allowance, as a share of its width. Null returns it to the default.',
+            'params' => [
+                'id' => 'entity_id',
+                'depth' => 'number|null',
+            ],
+            'inverse' => 'update_notch',
+        ],
+        'add_centre_line' => [
+            'description' => 'Draw a centre line between two snapped points of a piece, as a sewing mark.',
+            'params' => [
+                'piece' => 'entity_id',
+                'start' => 'entity_id',
+                'end' => 'entity_id',
+            ],
+            'inverse' => 'delete_entity',
+        ],
+        'update_centre_line' => [
+            'description' => 'Move either end of a centre line to another snapped point of the same piece.',
+            'params' => [
+                'id' => 'entity_id',
+                'start' => 'entity_id?',
+                'end' => 'entity_id?',
+            ],
+            'inverse' => 'update_centre_line',
         ],
         'update_piece' => [
             'description' => 'Change a piece parameter: name, quantity, notes, fabric or colour. Null or empty text clears a field.',

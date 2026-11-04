@@ -25,6 +25,7 @@ import {
   pieceCreationFromSelection,
   pieceForEntity,
   pieceLabel,
+  pieceMarkRows,
   pieceOwningEdge,
   pieceSizeLine,
   pieceSizeText,
@@ -116,6 +117,80 @@ function squareDocument(): PatternDocument {
 }
 
 const squarePiece = (document: PatternDocument): Piece => document.pieces[0]!;
+
+describe('pieceMarkRows', () => {
+  const markDocument = (): PatternDocument => {
+    const base = squareDocument();
+    return {
+      ...base,
+      entities: [
+        ...base.entities,
+        point('mid', 50, 0),
+        {
+          id: 'notch-1',
+          kind: 'mark',
+          type: 'notch',
+          piece: 'p1',
+          edge: 'ab',
+          point: 'mid',
+          depth: 0.3,
+        },
+        {
+          id: 'centre-1',
+          kind: 'mark',
+          type: 'centre_line',
+          piece: 'p1',
+          start: 'a',
+          end: 'c',
+        },
+      ],
+    };
+  };
+
+  it('returns no rows for a piece without marks', () => {
+    expect(pieceMarkRows(squareDocument(), squarePiece(squareDocument()))).toEqual([]);
+  });
+
+  it('resolves a notch share and its reach into the allowance', () => {
+    const document = markDocument();
+    const rows = pieceMarkRows(document, squarePiece(document));
+
+    expect(rows[0]).toMatchObject({
+      id: 'notch-1',
+      type: 'notch',
+      depth: 0.3,
+      detail: '30%',
+      broken: false,
+    });
+    expect(rows[0]!.cutDistance).toBeCloseTo(3, 9);
+  });
+
+  it('marks a notch broken when its edge has no allowance', () => {
+    const document = markDocument();
+    const bare: PatternDocument = {
+      ...document,
+      pieces: [{ ...document.pieces[0]!, allowances: [] }],
+    };
+
+    expect(pieceMarkRows(bare, bare.pieces[0]!)[0]).toMatchObject({
+      broken: true,
+      cutDistance: 0,
+    });
+  });
+
+  it('describes a centre line', () => {
+    const document = markDocument();
+
+    expect(pieceMarkRows(document, squarePiece(document))[1]).toMatchObject({
+      id: 'centre-1',
+      type: 'centre_line',
+      depth: 0,
+      cutDistance: 0,
+      detail: 'Centre line',
+      broken: false,
+    });
+  });
+});
 
 describe('pieceAllowanceRows / pieceSummary', () => {
   it('reports one row per loop edge with its kind, width and cut distance', () => {

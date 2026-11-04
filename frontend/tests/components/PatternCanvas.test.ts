@@ -145,6 +145,8 @@ function mountCanvas(
       | 'add_3point_rectangle'
       | 'add_text'
       | 'add_text_leader'
+      | 'notch'
+      | 'centre_line'
       | 'dimension'
       | 'cut_dimension';
     selectedEntityIds: EntityId[];
@@ -5015,5 +5017,98 @@ describe('allowance band regions', () => {
     wrapper.find('svg').element.dispatchEvent(new MouseEvent('pointerleave', { bubbles: true }));
     await nextTick();
     expect(boundaryShown()).toBe(false);
+  });
+});
+
+describe('mark tools', () => {
+  const markDoc: PatternDocument = {
+    ...doc([
+      pt('a', 0, 0),
+      pt('b', 100, 0),
+      pt('c', 100, 100),
+      pt('d', 0, 100),
+      ln('ab', 'a', 'b'),
+      ln('bc', 'b', 'c'),
+      ln('cd', 'c', 'd'),
+      ln('da', 'd', 'a'),
+      { id: 'notch-1', kind: 'mark', type: 'notch', piece: 'p1', edge: 'ab', point: 'a' },
+      { id: 'centre-1', kind: 'mark', type: 'centre_line', piece: 'p1', start: 'a', end: 'c' },
+    ]),
+    pieces: [
+      {
+        id: 'p1',
+        edges: ['ab', 'bc', 'cd', 'da'],
+        allowances: [{ edge: 'ab', width: 10 }],
+      },
+    ],
+  };
+
+  it('draws the marks of the active piece', () => {
+    const wrapper = mountCanvas({ document: markDoc, activePieceId: 'p1' });
+
+    expect(wrapper.find('[data-testid="mark-notch-1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="mark-centre-1"]').exists()).toBe(true);
+  });
+
+  it('emits a notch for a point on the edge under the pointer', async () => {
+    const wrapper = mountCanvas({ document: markDoc, tool: 'notch', activePieceId: 'p1' });
+    const at = screenAt({ x: 40, y: 5 });
+
+    down(pointCircle(wrapper, 'a').element, at.x, at.y);
+    await nextTick();
+
+    expect(wrapper.emitted('add-notch')?.at(-1)).toEqual(['a', 'ab']);
+  });
+
+  it('skips a mark that has nothing to draw', () => {
+    const broken: PatternDocument = {
+      ...markDoc,
+      entities: [
+        ...markDoc.entities,
+        { id: 'notch-2', kind: 'mark', type: 'notch', piece: 'p1', edge: 'bc', point: 'a' },
+        { id: 'centre-2', kind: 'mark', type: 'centre_line', piece: 'p1', start: 'a', end: 'gone' },
+      ],
+    };
+
+    const wrapper = mountCanvas({ document: broken, activePieceId: 'p1' });
+
+    expect(wrapper.find('[data-testid="mark-notch-2"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="mark-centre-2"]').exists()).toBe(false);
+  });
+
+  it('ignores a notch click that is not on a point or has no active piece', async () => {
+    const wrapper = mountCanvas({ document: markDoc, tool: 'notch', activePieceId: 'p1' });
+    const line = wrapper.find('[data-kind="line"][data-entity-id="ab"]').element;
+
+    down(line, 400, 300);
+    await nextTick();
+    expect(wrapper.emitted('add-notch')).toBeUndefined();
+
+    const noPiece = mountCanvas({ document: markDoc, tool: 'notch' });
+    const at = screenAt({ x: 0, y: 0 });
+    down(pointCircle(noPiece, 'a').element, at.x, at.y);
+    await nextTick();
+    expect(noPiece.emitted('add-notch')).toBeUndefined();
+  });
+
+  it('emits a centre line from two point clicks and ignores a repeated point', async () => {
+    const wrapper = mountCanvas({ document: markDoc, tool: 'centre_line', activePieceId: 'p1' });
+    const first = screenAt({ x: 0, y: 0 });
+    const second = screenAt({ x: 100, y: 100 });
+
+    down(pointCircle(wrapper, 'a').element, first.x, first.y);
+    await nextTick();
+    down(pointCircle(wrapper, 'a').element, first.x, first.y);
+    await nextTick();
+    expect(wrapper.emitted('add-centre-line')).toBeUndefined();
+
+    const line = wrapper.find('[data-kind="line"][data-entity-id="bc"]').element;
+    down(line, second.x, second.y);
+    await nextTick();
+    expect(wrapper.emitted('add-centre-line')).toBeUndefined();
+
+    down(pointCircle(wrapper, 'c').element, second.x, second.y);
+    await nextTick();
+    expect(wrapper.emitted('add-centre-line')?.at(-1)).toEqual(['a', 'c']);
   });
 });

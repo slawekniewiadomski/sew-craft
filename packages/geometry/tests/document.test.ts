@@ -74,7 +74,7 @@ describe('createEmptyDocument', () => {
     const document = createEmptyDocument();
 
     expect(document.schema).toBe(PATTERN_SCHEMA);
-    expect(document.schema).toBe('sewcraft.pattern/0.5');
+    expect(document.schema).toBe('sewcraft.pattern/0.6');
     expect(document.units).toBe('mm');
     expect(document.entities).toEqual([]);
     expect(document.constraints).toEqual([]);
@@ -370,6 +370,35 @@ describe('bounds', () => {
     expect(bounds(missing)).toEqual({ min: { x: 0, y: 0 }, max: { x: 0, y: 0 } });
     expect(bounds(notFinite)).toEqual({ min: { x: 0, y: 0 }, max: { x: 0, y: 0 } });
     expect(bounds(nonPoint)).toEqual({ min: { x: 0, y: 0 }, max: { x: 0, y: 0 } });
+  });
+});
+
+describe('entityPoints marks', () => {
+  it('resolves a notch to its point and a centre line to both points', () => {
+    const a = point('a', 0, 0);
+    const b = point('b', 10, 0);
+    const document = { ...createEmptyDocument(), entities: [a, b] };
+
+    expect(
+      entityPoints(document, {
+        id: 'n',
+        kind: 'mark',
+        type: 'notch',
+        piece: 'p',
+        edge: 'e',
+        point: 'a',
+      }),
+    ).toEqual([a]);
+    expect(
+      entityPoints(document, {
+        id: 'c',
+        kind: 'mark',
+        type: 'centre_line',
+        piece: 'p',
+        start: 'a',
+        end: 'b',
+      }),
+    ).toEqual([a, b]);
   });
 });
 
