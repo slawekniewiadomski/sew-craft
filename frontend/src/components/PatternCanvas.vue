@@ -126,6 +126,7 @@ import {
   type DimensionPick,
   type FeedbackHit,
 } from '@/lib/dimension-feedback';
+import { isEditableTarget } from '@/lib/dom';
 import {
   endpointMissing,
   endpointPosition,
@@ -2827,6 +2828,8 @@ function onWheel(event: WheelEvent): void {
 }
 
 function onKeyDown(event: KeyboardEvent): void {
+  if (event.code === 'Space' && isEditableTarget(event.target)) return;
+
   if (event.key === 'Escape' && textAnchor.value !== null) {
     event.preventDefault();
     textAnchor.value = null;

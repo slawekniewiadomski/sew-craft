@@ -1672,6 +1672,22 @@ describe('PatternCanvas', () => {
     expect(wrapper.emitted('move-point')).toBeUndefined();
   });
 
+  it('leaves Space to a focused text field', () => {
+    mountCanvas();
+    const field = document.createElement('textarea');
+    document.body.appendChild(field);
+
+    const event = new KeyboardEvent('keydown', {
+      code: 'Space',
+      bubbles: true,
+      cancelable: true,
+    });
+    field.dispatchEvent(event);
+    field.remove();
+
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   it('pans while space is held, then selects once released', async () => {
     const wrapper = mountCanvas();
     const vp = fittedViewport(baseDoc);
