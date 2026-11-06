@@ -22,7 +22,7 @@ export const EDITOR_PANELS: PanelDefinition[] = [
   { id: 'outline', label: 'Outline', icon: 'line' },
   { id: 'dimensions', label: 'Dimensions', icon: 'dimension' },
   { id: 'constraints', label: 'Constraints', icon: 'constraints' },
-  { id: 'variables', label: 'Variables', icon: 'constraints' },
+  { id: 'variables', label: 'Variables', icon: 'variables' },
 ];
 
 const PANEL_IDS: Record<PanelMode, PanelId[]> = {

@@ -5308,6 +5308,23 @@ describe('mark tools', () => {
     expect(wrapper.find('[data-testid="mark-centre-1"]').exists()).toBe(true);
   });
 
+  it('selects a notch and a centre line through their wide hit strokes', () => {
+    const wrapper = mountCanvas({ document: markDoc, activePieceId: 'p1' });
+    const notchHit = wrapper.find('[data-testid="mark-hit-notch-1"]');
+
+    expect(notchHit.attributes('data-entity-id')).toBe('notch-1');
+    expect(notchHit.attributes('data-kind')).toBe('mark');
+    expect(notchHit.attributes('stroke-width')).toBe('12');
+    expect(notchHit.attributes('stroke')).toBe('transparent');
+
+    down(notchHit.element, 500, 300);
+    up();
+    down(wrapper.find('[data-testid="mark-hit-centre-1"]').element, 500, 300);
+    up();
+
+    expect(wrapper.emitted('update:selectedEntityIds')).toEqual([[['notch-1']], [['centre-1']]]);
+  });
+
   it('emits a notch for a point on the edge under the pointer', async () => {
     const wrapper = mountCanvas({ document: markDoc, tool: 'notch', activePieceId: 'p1' });
     const at = screenAt({ x: 40, y: 5 });

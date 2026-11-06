@@ -139,8 +139,9 @@ vertical axis, and rotation uses SVG's y-down convention (positive turns
 clockwise on screen). This is a contract: changing it would rewrite every stored
 instance, so asymmetric fixtures pin it in `tests/assembly.test.ts`.
 
-`instanceLoops` returns the cut loop, stitch loop and fold lines transformed into
-assembly coordinates; `assemblyBounds` unions the transformed cut bounds, ignoring
+`instanceLoops` returns the cut loop, stitch loop, fold lines and resolved V
+notches transformed into assembly coordinates; `assemblyBounds` unions the
+transformed cut bounds, ignoring
 pieces with no anchor and pieces whose cut loop does not resolve. An instance of
 an empty piece still has a placement when the piece owns points and renders a
 placeholder; the transform is always derived on read and never written back.

@@ -36,6 +36,7 @@ export type RibbonIconName =
   | 'download'
   | 'mirror'
   | 'rotate'
+  | 'variables'
   | ConstraintType;
 
 type ActionIconName = Exclude<RibbonIconName, ConstraintType>;
@@ -121,6 +122,15 @@ const ACTION_ICONS: Record<ActionIconName, RibbonIcon> = {
   },
   rotate: {
     paths: ['M19.2 12 A7.2 7.2 0 1 1 12 4.8', 'M12 2 L16 4.8 L12 7.8'],
+  },
+  // A function of x: named measurements read as expressions, not as a lock.
+  variables: {
+    paths: [
+      'M13.6 3.4 C10.6 3.4 10 6 10 8.4 V20.4',
+      'M7.4 9.8 H12.8',
+      'M14.8 13.4 L20.6 19.4',
+      'M20.6 13.4 L14.8 19.4',
+    ],
   },
 };
 

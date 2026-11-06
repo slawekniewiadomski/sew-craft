@@ -34,6 +34,22 @@ Open http://localhost:5173 (override the host port with `FRONTEND_PORT` in `.env
 Prefer running the frontend on the host while developing? Stop the `node` service
 and use `npm install && npm run dev`; Vite will proxy `/api` to `http://localhost:8000`.
 
+### Task shortcuts
+
+[Task](https://taskfile.dev) wraps the commands above. Install it once, then run
+`task` to list everything.
+
+```bash
+task setup        # install PHP + JS deps, create .env
+task up           # API + db + Vite
+task test         # Pest + Vitest
+task check        # full gate: format, lint, typecheck, coverage, build
+task down
+```
+
+`task` reads [`Taskfile.yml`](./Taskfile.yml); it is optional — the raw commands
+below always work.
+
 ### Common commands
 
 ```bash

@@ -599,13 +599,16 @@ describe('EditorView piece, pattern and assembly drawers', () => {
 describe('EditorView assembly tab', () => {
   const assemblyDoc = (): PatternDocument => ({
     ...withPiece(lineDoc, 'p1', ['ab', 'bc', 'cd', 'da']),
-    entities: lineDoc.entities.map((entity) => ({ ...entity, piece: 'p1' })),
+    entities: [
+      ...lineDoc.entities.map((entity) => ({ ...entity, piece: 'p1' })),
+      { id: 'n1', kind: 'mark', type: 'notch', piece: 'p1', edge: 'ab', point: 'a' },
+    ],
     pieces: [
       {
         id: 'p1',
         name: 'Front',
         edges: ['ab', 'bc', 'cd', 'da'],
-        allowances: [],
+        allowances: [{ edge: 'ab', width: 10 }],
         color: '#336699',
       },
     ],
@@ -710,6 +713,7 @@ describe('EditorView assembly tab', () => {
     const { wrapper } = await mountAssembly();
     expect(wrapper.findAll('[data-testid="instance-label"]')).toHaveLength(2);
     expect(wrapper.findAll('[data-testid="instance-cut-fill"]')).toHaveLength(2);
+    expect(wrapper.findAll('[data-testid="instance-notch"]')).toHaveLength(2);
 
     await toggleDisplay(wrapper, 'labels');
     expect(wrapper.findAll('[data-testid="instance-label"]')).toHaveLength(0);
@@ -717,10 +721,13 @@ describe('EditorView assembly tab', () => {
     await toggleDisplay(wrapper, 'cutShapes');
     expect(wrapper.findAll('[data-testid="instance-cut-fill"]')).toHaveLength(0);
 
+    await toggleDisplay(wrapper, 'notches');
+    expect(wrapper.findAll('[data-testid="instance-notch"]')).toHaveLength(0);
+
     const stored = JSON.parse(window.localStorage.getItem('sewcraft:display:1')!) as {
-      assembly: { labels: boolean; cutShapes: boolean };
+      assembly: { labels: boolean; cutShapes: boolean; notches: boolean };
     };
-    expect(stored.assembly).toMatchObject({ labels: false, cutShapes: false });
+    expect(stored.assembly).toMatchObject({ labels: false, cutShapes: false, notches: false });
   });
 
   it('mirrors and rotates the selected instance', async () => {

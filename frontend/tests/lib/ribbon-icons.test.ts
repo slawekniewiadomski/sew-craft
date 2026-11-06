@@ -42,6 +42,7 @@ describe('RIBBON_ICONS', () => {
       'text',
       'text-leader',
       'undo',
+      'variables',
       'vertical',
     ]);
     for (const icon of Object.values(RIBBON_ICONS)) {
@@ -70,6 +71,8 @@ describe('RIBBON_ICONS', () => {
     expect(RIBBON_ICONS['rectangle-aligned'].paths).toHaveLength(1);
     expect(RIBBON_ICONS.split.paths).toHaveLength(3);
     expect(RIBBON_ICONS.split.dots).toHaveLength(1);
+    expect(RIBBON_ICONS.variables.paths).toHaveLength(4);
+    expect(RIBBON_ICONS.variables).not.toEqual(RIBBON_ICONS.constraints);
   });
 
   it('resolves a glyph by name', () => {
