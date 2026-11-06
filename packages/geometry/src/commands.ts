@@ -47,6 +47,7 @@ import {
   type ExpressionError,
   evaluateLength,
   evaluateQuantity,
+  expressionSlugs,
   isExpressionParam,
   resolveParam,
   resolveVariable,
@@ -54,6 +55,13 @@ import {
   type Quantity,
   type VariableScope,
 } from './expression.js';
+import {
+  isMeasuredVariable,
+  isValueVariable,
+  measurementChain,
+  measurementChainMessage,
+  measurementLength,
+} from './measurement.js';
 import {
   midpointIssue,
   midpointTargetFor,
@@ -104,6 +112,7 @@ import {
   type TabRef,
   type Unit,
   type Variable,
+  type VariableKind,
   type TextAlignment,
   type TextEntity,
 } from './types.js';
@@ -149,6 +158,90 @@ function requireLengthParam(
     );
   }
   return { expr: param.expr, lastKnown: value };
+}
+
+/** The point ids a dimension anchors on, including a line anchor's endpoints. */
+function dimensionAnchorIds(document: PatternDocument, entities: readonly EntityId[]): EntityId[] {
+  const ids = new Set<EntityId>();
+  for (const id of entities) {
+    ids.add(id);
+    const entity = getEntity(document, id);
+    if (entity === undefined) continue;
+    if (entity.kind === 'line') {
+      ids.add(entity.start);
+      ids.add(entity.end);
+    }
+  }
+  return [...ids];
+}
+
+/** The endpoint point ids of one measured source, without resolving its geometry. */
+function measuredSourceEndpoints(document: PatternDocument, id: EntityId): EntityId[] {
+  const entity = getEntity(document, id);
+  if (entity === undefined) return [];
+  switch (entity.kind) {
+    case 'line':
+      return [entity.start, entity.end];
+    case 'curve':
+      return [entity.p0, entity.p3];
+    case 'arc':
+      return [entity.start, entity.end];
+    default:
+      return [];
+  }
+}
+
+/** Every measured variable a formula names, directly or through other variables. */
+function measuredVariablesInFormula(
+  document: PatternDocument,
+  expr: string,
+): Extract<Variable, { kind: 'measurement' }>[] {
+  const bySlug = new Map((document.variables ?? []).map((variable) => [variable.slug, variable]));
+  const found: Extract<Variable, { kind: 'measurement' }>[] = [];
+  const seen = new Set<string>();
+  const queue = expressionSlugs(expr);
+  while (queue.length > 0) {
+    const slug = queue.pop()!;
+    if (seen.has(slug)) continue;
+    seen.add(slug);
+    const variable = bySlug.get(slug);
+    /* v8 ignore next -- every slug in the closure resolved before the command was accepted */
+    if (variable === undefined) continue;
+    if (isMeasuredVariable(variable)) {
+      found.push(variable);
+    } else if (isExpressionParam(variable.value)) {
+      queue.push(...expressionSlugs(variable.value.expr));
+    }
+  }
+  return found;
+}
+
+/**
+ * Reject the obvious measurement/geometry loop: a dimension may not be driven by a
+ * variable that measures its own anchor points or edges. The solver's rollback
+ * remains the safety net for a loop the write-time check cannot see.
+ */
+function requireNoMeasurementFeedback(
+  document: PatternDocument,
+  commandType: CommandType,
+  param: ParamInput,
+  anchors: readonly EntityId[],
+): void {
+  if (typeof param === 'number') return;
+  const anchorSet = new Set(anchors);
+  for (const variable of measuredVariablesInFormula(document, param.expr)) {
+    const touches = variable.sources.some(
+      (id) =>
+        anchorSet.has(id) ||
+        measuredSourceEndpoints(document, id).some((point) => anchorSet.has(point)),
+    );
+    if (touches) {
+      throw new CommandValidationError(
+        commandType,
+        `$${variable.slug} measures the geometry this dimension drives`,
+      );
+    }
+  }
 }
 
 /** The longest assembly name `create_assembly`/`update_assembly` accepts. */
@@ -296,7 +389,12 @@ export interface SetVariableParams {
   name?: string;
   /** Defaults to `mm` on creation. */
   unit?: Unit;
-  value: ParamInput;
+  /** Omitted means a written variable. */
+  kind?: VariableKind;
+  /** Written variable: a literal in `unit` or a formula over other variables. */
+  value?: ParamInput;
+  /** Measured variable: line/curve/arc/circle ids, any order. */
+  sources?: EntityId[];
   /** Free text; `null` or empty clears it. */
   comment?: string | null;
 }
@@ -306,6 +404,8 @@ export interface UpdateVariableParams {
   name?: string;
   unit?: Unit;
   value?: ParamInput;
+  /** Replace a measured variable's chain; rejected on a written variable. */
+  sources?: EntityId[];
   comment?: string | null;
 }
 
@@ -1221,6 +1321,10 @@ function applyDeleteEntity(
     return noOp(document);
   }
 
+  // Refresh a measured variable's fallback before any source can disappear, so
+  // the row keeps the number it was showing instead of an older one.
+  document = captureMeasuredValues(document);
+
   const rounds = cornerRoundsForEntity(document, id);
   if (rounds.some((round) => round.corner === id || round.ends.some((end) => end.anchor === id))) {
     throw new CommandValidationError('delete_entity', 'Remove the corner round first.');
@@ -1446,6 +1550,12 @@ function applyAddConstraint(
     value === undefined ? undefined : typeof value === 'number' ? value : undefined;
   if (type === 'distance' && value !== undefined) {
     storedValue = requireLengthParam(document, 'add_constraint', value, 'distance value');
+    requireNoMeasurementFeedback(
+      document,
+      'add_constraint',
+      value,
+      dimensionAnchorIds(document, entities),
+    );
   }
   if (type === 'angle' && (typeof value !== 'number' || !Number.isFinite(value))) {
     throw new CommandValidationError('add_constraint', 'angle requires a finite value');
@@ -1604,6 +1714,12 @@ function applyUpdateConstraint(
     nextValue = undefined;
   } else if (constraint.type === 'distance') {
     nextValue = requireLengthParam(document, 'update_constraint', value, 'distance value');
+    requireNoMeasurementFeedback(
+      document,
+      'update_constraint',
+      value,
+      dimensionAnchorIds(document, [constraint.a, constraint.b]),
+    );
   } else if (typeof value === 'number' && Number.isFinite(value)) {
     nextValue = value;
   } else {
@@ -2723,6 +2839,9 @@ function applyDeletePiece(
     return noOp(document);
   }
 
+  // A piece takes its entities with it, which may break a measured chain.
+  document = captureMeasuredValues(document);
+
   const removed = new Set<EntityId>([
     ...piece.edges,
     ...document.entities.filter((entity) => entity.piece === id).map((entity) => entity.id),
@@ -3073,15 +3192,62 @@ function convertLiteral(value: number, from: Unit, to: Unit): number {
   return (value * UNIT_MM_PER[from]) / UNIT_MM_PER[to];
 }
 
-/** Whether two variables would store the same fields. */
+/**
+ * Validate a measured variable's chain, store it in traversal order and record the
+ * total it resolves to right now.
+ */
+function requireMeasurementSources(
+  document: PatternDocument,
+  commandType: CommandType,
+  sources: EntityId[],
+): { sources: EntityId[]; lastKnown: number } {
+  const result = measurementChain(document.entities, sources);
+  if (result.problem !== undefined) {
+    throw new CommandValidationError(commandType, measurementChainMessage(result.problem));
+  }
+  const total = measurementLength(document.entities, result.chain);
+  if (total === null) {
+    throw new CommandValidationError(
+      commandType,
+      'the selected sources do not currently resolve to a length',
+    );
+  }
+  return { sources: result.chain, lastKnown: total };
+}
+
+/**
+ * Refresh the reading every measured variable keeps before an entity is removed,
+ * so a chain that breaks falls back to the number it was showing. A chain that is
+ * already broken keeps its older reading.
+ */
+function captureMeasuredValues(document: PatternDocument): PatternDocument {
+  if (document.variables === undefined) return document;
+  let changed = false;
+  const variables = document.variables.map((variable) => {
+    if (!isMeasuredVariable(variable)) return variable;
+    const total = measurementLength(document.entities, variable.sources);
+    if (total === null || total === variable.lastKnown) return variable;
+    changed = true;
+    return { ...variable, lastKnown: total };
+  });
+  return changed ? { ...document, variables } : document;
+}
+
+/** Whether two variables of the same kind would store the same fields. */
 function sameVariable(a: Variable, b: Variable): boolean {
-  return (
-    a.slug === b.slug &&
-    a.name === b.name &&
-    a.unit === b.unit &&
-    sameParam(a.value, b.value) &&
-    a.comment === b.comment
-  );
+  if (a.slug !== b.slug || a.name !== b.name || a.unit !== b.unit || a.comment !== b.comment) {
+    return false;
+  }
+  // The caller only compares an existing variable with its own replacement, so the
+  // two always share a kind.
+  if (isMeasuredVariable(a)) {
+    const other = b as Extract<Variable, { kind: 'measurement' }>;
+    return (
+      a.sources.length === other.sources.length &&
+      a.sources.every((id, index) => id === other.sources[index])
+    );
+  }
+  return sameParam(a.value, (b as Extract<Variable, { kind?: 'value' }>).value);
 }
 
 /** Rewrite every formula parameter in the document through `rewrite`. */
@@ -3111,10 +3277,9 @@ function mapFormulaParams(
   };
 
   if (document.variables !== undefined) {
-    mapped.variables = document.variables.map((variable) => ({
-      ...variable,
-      value: rewrite(variable.value),
-    }));
+    mapped.variables = document.variables.map((variable) =>
+      isMeasuredVariable(variable) ? variable : { ...variable, value: rewrite(variable.value) },
+    );
   }
   if (document.cornerRounds !== undefined) {
     mapped.cornerRounds = document.cornerRounds.map((round) => ({
@@ -3149,7 +3314,7 @@ function applySetVariable(
   document: PatternDocument,
   command: CommandOf<'set_variable'>,
 ): CommandApplication {
-  const { slug: requestedSlug, name, unit, value, comment } = command.params;
+  const { slug: requestedSlug, name, unit, kind, value, sources, comment } = command.params;
   const variables = document.variables ?? [];
   const existing =
     requestedSlug === undefined
@@ -3164,7 +3329,8 @@ function applySetVariable(
         slug: existing.slug,
         ...(name === undefined ? {} : { name }),
         ...(unit === undefined ? {} : { unit }),
-        value,
+        ...(value === undefined ? {} : { value }),
+        ...(sources === undefined ? {} : { sources }),
         ...(comment === undefined ? {} : { comment }),
       },
     });
@@ -3179,21 +3345,47 @@ function applySetVariable(
       'slug must be lowercase letters, digits and underscores, starting with a letter',
     );
   }
+
+  const measured = kind === 'measurement';
+  if (measured) {
+    if (value !== undefined) {
+      throw new CommandValidationError('set_variable', 'a measured variable takes no value');
+    }
+    if (sources === undefined) {
+      throw new CommandValidationError('set_variable', 'a measured variable needs sources');
+    }
+  } else {
+    if (sources !== undefined) {
+      throw new CommandValidationError('set_variable', 'sources apply only to a measured variable');
+    }
+    if (value === undefined) {
+      throw new CommandValidationError('set_variable', 'a variable needs a value or sources');
+    }
+  }
+
   const displayName = requireVariableName(document, 'set_variable', name ?? requestedSlug!);
   const slug = requestedSlug ?? uniqueVariableSlug(document, slugFromName(displayName));
+  const trimmedComment =
+    comment === undefined || comment === null
+      ? undefined
+      : requireVariableComment('set_variable', comment);
 
-  const next: Variable = {
-    slug,
-    name: displayName,
-    unit: unit ?? 'mm',
-    value: requireVariableValue(document, 'set_variable', value),
-    ...(comment === undefined || comment === null
-      ? {}
-      : (() => {
-          const trimmed = requireVariableComment('set_variable', comment);
-          return trimmed === undefined ? {} : { comment: trimmed };
-        })()),
-  };
+  const next: Variable = measured
+    ? {
+        slug,
+        name: displayName,
+        unit: unit ?? 'mm',
+        kind: 'measurement',
+        ...requireMeasurementSources(document, 'set_variable', sources!),
+        ...(trimmedComment === undefined ? {} : { comment: trimmedComment }),
+      }
+    : {
+        slug,
+        name: displayName,
+        unit: unit ?? 'mm',
+        value: requireVariableValue(document, 'set_variable', value!),
+        ...(trimmedComment === undefined ? {} : { comment: trimmedComment }),
+      };
 
   return {
     document: { ...document, variables: [...variables, next] },
@@ -3201,16 +3393,28 @@ function applySetVariable(
   };
 }
 
-/** Change a variable's name, unit, value or comment; its slug never moves. */
+/** Change a variable's name, unit, value, chain or comment; its slug never moves. */
 function applyUpdateVariable(
   document: PatternDocument,
   command: CommandOf<'update_variable'>,
 ): CommandApplication {
-  const { slug, name, unit, value, comment } = command.params;
+  const { slug, name, unit, value, sources, comment } = command.params;
   const variables = document.variables ?? [];
   const existing = variables.find((variable) => variable.slug === slug);
   if (existing === undefined) {
     throw new CommandValidationError('update_variable', `unknown variable: ${slug}`);
+  }
+  if (isMeasuredVariable(existing) && value !== undefined) {
+    throw new CommandValidationError(
+      'update_variable',
+      'a measured variable reads its value from geometry; update its sources',
+    );
+  }
+  if (isValueVariable(existing) && sources !== undefined) {
+    throw new CommandValidationError(
+      'update_variable',
+      'sources apply only to a measured variable',
+    );
   }
 
   const nextName =
@@ -3218,14 +3422,19 @@ function applyUpdateVariable(
       ? existing.name
       : requireVariableName(document, 'update_variable', name, slug);
   const nextUnit = unit ?? existing.unit;
-  let nextValue: Param;
-  if (value !== undefined) {
-    nextValue = requireVariableValue(document, 'update_variable', value);
-  } else if (nextUnit !== existing.unit && !isExpressionParam(existing.value)) {
-    // A unit switch converts a literal so the measurement does not move.
-    nextValue = convertLiteral(existing.value, existing.unit, nextUnit);
-  } else {
-    nextValue = existing.value;
+  const measured = isMeasuredVariable(existing);
+  const nextChain =
+    sources === undefined
+      ? undefined
+      : requireMeasurementSources(document, 'update_variable', sources);
+  let nextValue: Param | undefined;
+  if (!measured) {
+    if (value !== undefined) {
+      nextValue = requireVariableValue(document, 'update_variable', value);
+    } else if (nextUnit !== existing.unit && !isExpressionParam(existing.value)) {
+      // A unit switch converts a literal so the measurement does not move.
+      nextValue = convertLiteral(existing.value, existing.unit, nextUnit);
+    }
   }
   const nextComment =
     comment === undefined
@@ -3234,13 +3443,27 @@ function applyUpdateVariable(
         ? undefined
         : requireVariableComment('update_variable', comment);
 
-  const next: Variable = {
+  const common = {
     slug,
     name: nextName,
     unit: nextUnit,
-    value: nextValue,
     ...(nextComment === undefined ? {} : { comment: nextComment }),
   };
+  const next: Variable = measured
+    ? {
+        ...common,
+        kind: 'measurement',
+        ...(nextChain ?? {
+          sources: (existing as Extract<Variable, { kind: 'measurement' }>).sources,
+          ...(existing.kind === 'measurement' && existing.lastKnown !== undefined
+            ? { lastKnown: existing.lastKnown }
+            : {}),
+        }),
+      }
+    : {
+        ...common,
+        value: nextValue ?? (existing as Extract<Variable, { kind?: 'value' }>).value,
+      };
   if (sameVariable(existing, next)) return noOp(document);
 
   return {
@@ -3255,7 +3478,9 @@ function applyUpdateVariable(
         slug,
         name: existing.name,
         unit: existing.unit,
-        value: existing.value,
+        ...(isMeasuredVariable(existing)
+          ? { sources: existing.sources }
+          : { value: existing.value }),
         ...(existing.comment === undefined ? { comment: null } : { comment: existing.comment }),
       },
     },
@@ -3285,7 +3510,9 @@ function applyRemoveVariable(
         slug: existing.slug,
         name: existing.name,
         unit: existing.unit,
-        value: existing.value,
+        ...(isMeasuredVariable(existing)
+          ? { kind: 'measurement' as const, sources: existing.sources }
+          : { value: existing.value }),
         ...(existing.comment === undefined ? {} : { comment: existing.comment }),
       },
     },

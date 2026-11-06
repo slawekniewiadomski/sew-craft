@@ -3,7 +3,7 @@
 it('exposes the command spec', function () {
     $this->getJson('/api/commands')
         ->assertOk()
-        ->assertJsonPath('version', '0.18.0')
+        ->assertJsonPath('version', '0.19.0')
         ->assertJsonStructure([
             'version',
             'commands' => [
@@ -49,10 +49,13 @@ it('exposes the variable commands', function () {
         ->assertOk()
         ->assertJsonPath('commands.set_variable.params.slug', 'string?')
         ->assertJsonPath('commands.set_variable.params.unit', 'mm|cm?')
-        ->assertJsonPath('commands.set_variable.params.value', 'number|expression')
+        ->assertJsonPath('commands.set_variable.params.value', 'number|expression?')
+        ->assertJsonPath('commands.set_variable.params.kind', 'value|measurement?')
+        ->assertJsonPath('commands.set_variable.params.sources', 'entity_id[]?')
         ->assertJsonPath('commands.set_variable.inverse', 'remove_variable')
         ->assertJsonPath('commands.update_variable.params.slug', 'string')
         ->assertJsonPath('commands.update_variable.params.value', 'number|expression?')
+        ->assertJsonPath('commands.update_variable.params.sources', 'entity_id[]?')
         ->assertJsonPath('commands.update_variable.inverse', 'update_variable')
         ->assertJsonPath('commands.remove_variable.params.slug', 'string')
         ->assertJsonPath('commands.remove_variable.inverse', 'set_variable');

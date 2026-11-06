@@ -772,3 +772,480 @@ describe('remove_variable', () => {
     });
   });
 });
+
+describe('measured variables', () => {
+  const geometry = (): Entity[] => [
+    point('a', 0, 0),
+    point('b', 100, 0),
+    point('c', 100, 50),
+    point('d', 0, 300),
+    point('e', 50, 300),
+    { id: 'ab', kind: 'line', start: 'a', end: 'b' },
+    { id: 'bc', kind: 'line', start: 'b', end: 'c' },
+    { id: 'de', kind: 'line', start: 'd', end: 'e' },
+  ];
+
+  const measured = (
+    document: PatternDocument,
+    params: Record<string, unknown> = {},
+  ): PatternDocument =>
+    applyCommand(document, {
+      id: 'm',
+      type: 'set_variable',
+      params: { name: 'Neckline', kind: 'measurement', sources: ['ab', 'bc'], ...params },
+    } as Command).document;
+
+  it('stores the chain in order and resolves its total length', () => {
+    const document = measured(documentOf(geometry(), []));
+    expect(document.variables?.[0]).toEqual({
+      slug: 'neckline',
+      name: 'Neckline',
+      unit: 'mm',
+      kind: 'measurement',
+      sources: ['ab', 'bc'],
+      lastKnown: 150,
+    });
+    expect(resolveVariable(document, 'neckline')).toEqual({ value: 150, exponent: 1 });
+  });
+
+  it('reorders an unordered selection and accepts a single edge', () => {
+    const document = documentOf(geometry(), []);
+    const applied = applyCommand(document, {
+      id: 'm',
+      type: 'set_variable',
+      params: { name: 'Side', kind: 'measurement', sources: ['bc', 'ab'] },
+    }).document;
+    expect(applied.variables?.[0]).toMatchObject({ sources: ['bc', 'ab'], lastKnown: 150 });
+
+    const single = measured(document, {
+      name: 'Shoulder',
+      sources: ['bc'],
+      comment: ' back neck ',
+    });
+    expect(single.variables?.[0]).toMatchObject({
+      sources: ['bc'],
+      lastKnown: 50,
+      comment: 'back neck',
+    });
+  });
+
+  it('reads the value in a formula and drives a dimension away from its own chain', () => {
+    const document = measured(documentOf(geometry(), []));
+    const applied = applyCommand(document, {
+      id: 'd1',
+      type: 'add_constraint',
+      params: { type: 'distance', entities: ['d', 'e'], value: { expr: '$neckline / 2' } },
+    }).document;
+    const constraint = applied.constraints[0]!;
+    expect(constraint.type === 'distance' && constraint.value).toEqual({
+      expr: '$neckline / 2',
+      lastKnown: 75,
+    });
+
+    const followed = {
+      ...applied,
+      entities: applied.entities.map((entity) =>
+        entity.id === 'b' ? { ...entity, x: 120, y: 0 } : entity,
+      ),
+    };
+    expect(
+      resolveParam(followed, constraint.type === 'distance' ? constraint.value! : 0),
+    ).toBeCloseTo((120 + Math.hypot(20, 50)) / 2, 10);
+  });
+
+  it('rejects the obvious self-reference on add and update', () => {
+    const document = measured(documentOf(geometry(), []));
+    expect(() =>
+      applyCommand(document, {
+        id: 'd1',
+        type: 'add_constraint',
+        params: { type: 'distance', entities: ['a', 'b'], value: { expr: '$neckline' } },
+      }),
+    ).toThrow('$neckline measures the geometry this dimension drives');
+
+    const driving = applyCommand(document, {
+      id: 'd2',
+      type: 'add_constraint',
+      params: { type: 'distance', entities: ['a', 'b'], value: 10 },
+    }).document;
+    expect(() =>
+      applyCommand(driving, {
+        id: 'u1',
+        type: 'update_constraint',
+        params: { id: 'd2', value: { expr: '$neckline' } },
+      }),
+    ).toThrow('$neckline measures the geometry this dimension drives');
+  });
+
+  it('guards curve and arc sources, and leaves a lone circle alone', () => {
+    const entities: Entity[] = [
+      point('s', 0, 0),
+      point('m', 10, 0),
+      point('t', 20, 0),
+      point('u', 15, 5),
+      point('o', 40, 40),
+      point('r', 50, 40),
+      { id: 'cv', kind: 'curve', p0: 's', p1: 'm', p2: 'm', p3: 'm' },
+      { id: 'a1', kind: 'arc', start: 'm', end: 't', through: 'u' },
+      { id: 'c1', kind: 'circle', center: 'o', rim: 'r' },
+    ];
+    const document = applyCommand(documentOf(entities, []), {
+      id: 'm',
+      type: 'set_variable',
+      params: { name: 'Curve', kind: 'measurement', sources: ['cv', 'a1'] },
+    }).document;
+    expect(() =>
+      applyCommand(document, {
+        id: 'd1',
+        type: 'add_constraint',
+        params: { type: 'distance', entities: ['s', 'm'], value: { expr: '$curve' } },
+      }),
+    ).toThrow('$curve measures the geometry this dimension drives');
+    expect(() =>
+      applyCommand(document, {
+        id: 'd2',
+        type: 'add_constraint',
+        params: { type: 'distance', entities: ['m', 't'], value: { expr: '$curve' } },
+      }),
+    ).toThrow('$curve measures the geometry this dimension drives');
+    expect(() =>
+      applyCommand(document, {
+        id: 'd4',
+        type: 'add_constraint',
+        params: { type: 'distance', entities: ['t', 'u'], value: { expr: '$curve' } },
+      }),
+    ).toThrow('$curve measures the geometry this dimension drives');
+
+    const circle = applyCommand(documentOf(entities, []), {
+      id: 'c',
+      type: 'set_variable',
+      params: { name: 'Round', kind: 'measurement', sources: ['c1'] },
+    }).document;
+    expect(() =>
+      applyCommand(circle, {
+        id: 'd3',
+        type: 'add_constraint',
+        params: { type: 'distance', entities: ['o', 'r'], value: { expr: '$round' } },
+      }),
+    ).not.toThrow();
+  });
+
+  it('follows a formula variable that names a measured one', () => {
+    const document = measured(documentOf(geometry(), []));
+    const withFormula = applyCommand(document, {
+      id: 'v2',
+      type: 'set_variable',
+      params: { name: 'Half neck', value: { expr: '$neckline / 2' } },
+    }).document;
+    expect(() =>
+      applyCommand(withFormula, {
+        id: 'd1',
+        type: 'add_constraint',
+        params: { type: 'distance', entities: ['a', 'b'], value: { expr: '$half_neck' } },
+      }),
+    ).toThrow('$neckline measures the geometry this dimension drives');
+  });
+
+  it('keeps the last reading when a source is deleted and still resolves', () => {
+    const document = measured(documentOf(geometry(), []));
+    const deleted = applyCommand(document, {
+      id: 'x',
+      type: 'delete_entity',
+      params: { id: 'ab' },
+    }).document;
+    expect(deleted.variables?.[0]).toMatchObject({ lastKnown: 150 });
+    expect(resolveVariable(deleted, 'neckline')).toEqual({ value: 150, exponent: 1 });
+  });
+
+  it('captures the reading the geometry had when the source disappears', () => {
+    const document = measured(documentOf(geometry(), []));
+    const moved = {
+      ...document,
+      entities: document.entities.map((entity) =>
+        entity.id === 'b' ? { ...entity, x: 120, y: 0 } : entity,
+      ),
+    };
+    const deleted = applyCommand(moved, {
+      id: 'x',
+      type: 'delete_entity',
+      params: { id: 'ab' },
+    }).document;
+    expect(deleted.variables?.[0]).toMatchObject({
+      lastKnown: 120 + Math.hypot(20, 50),
+    });
+  });
+
+  it('renames a measured variable that has no reading yet', () => {
+    const document = documentOf(geometry(), [
+      { slug: 'neck', name: 'Neck', unit: 'mm', kind: 'measurement', sources: ['ab'] },
+    ]);
+    const renamed = applyCommand(document, {
+      id: 'u',
+      type: 'update_variable',
+      params: { slug: 'neck', name: 'Front neck' },
+    }).document;
+    expect(renamed.variables?.[0]).toMatchObject({
+      name: 'Front neck',
+      sources: ['ab'],
+    });
+    expect(renamed.variables?.[0]?.lastKnown).toBeUndefined();
+  });
+
+  it('captures nothing when there is no measured variable to refresh', () => {
+    const entities = geometry();
+    const withoutVariables = { ...createEmptyDocument(), entities };
+    const deleted = applyCommand(withoutVariables, {
+      id: 'x',
+      type: 'delete_entity',
+      params: { id: 'ab' },
+    }).document;
+    expect(deleted.entities.map((entity) => entity.id)).not.toContain('ab');
+
+    const withValue = documentOf(geometry(), [variable('bust', 88)]);
+    const kept = applyCommand(withValue, {
+      id: 'x',
+      type: 'delete_entity',
+      params: { id: 'ab' },
+    }).document;
+    expect(kept.variables).toEqual([variable('bust', 88)]);
+  });
+
+  it('keeps the last reading when a whole piece goes', () => {
+    const base = documentOf(geometry(), []);
+    const withPiece: PatternDocument = {
+      ...base,
+      pieces: [{ id: 'p', edges: ['ab', 'bc'], allowances: [] }],
+      tabs: [{ kind: 'piece', id: 'p' }],
+    };
+    const document = measured(withPiece);
+    const deleted = applyCommand(document, {
+      id: 'x',
+      type: 'delete_piece',
+      params: { id: 'p' },
+    }).document;
+    expect(deleted.variables?.[0]).toMatchObject({ lastKnown: 150 });
+  });
+
+  it('re-picks sources through an update and restores them on undo', () => {
+    const document = measured(documentOf(geometry(), []));
+    const repicked = applyCommand(document, {
+      id: 'u',
+      type: 'update_variable',
+      params: { slug: 'neckline', sources: ['de'] },
+    });
+    expect(repicked.document.variables?.[0]).toMatchObject({ sources: ['de'], lastKnown: 50 });
+    expect(resolveVariable(repicked.document, 'neckline')).toEqual({ value: 50, exponent: 1 });
+
+    const restored = applyCommand(repicked.document, repicked.inverse!).document;
+    expect(restored.variables?.[0]).toMatchObject({ sources: ['ab', 'bc'], lastKnown: 150 });
+  });
+
+  it('rejects a value on a measured variable and sources on a written one', () => {
+    const document = measured(documentOf(geometry(), [variable('bust', 88)]));
+    expect(() =>
+      applyCommand(document, {
+        id: 'u',
+        type: 'update_variable',
+        params: { slug: 'neckline', value: 10 },
+      }),
+    ).toThrow('a measured variable reads its value from geometry');
+    expect(() =>
+      applyCommand(document, {
+        id: 'u',
+        type: 'update_variable',
+        params: { slug: 'bust', sources: ['ab'] },
+      }),
+    ).toThrow('sources apply only to a measured variable');
+    expect(() =>
+      applyCommand(document, {
+        id: 's',
+        type: 'set_variable',
+        params: { name: 'X', value: 1, sources: ['ab'] },
+      }),
+    ).toThrow('sources apply only to a measured variable');
+    expect(() =>
+      applyCommand(document, {
+        id: 's',
+        type: 'set_variable',
+        params: { name: 'X', kind: 'measurement', value: 1, sources: ['ab'] },
+      }),
+    ).toThrow('a measured variable takes no value');
+  });
+
+  it('rejects an empty, broken or disjoint chain with its reason', () => {
+    const document = documentOf(geometry(), []);
+    expect(() =>
+      applyCommand(document, {
+        id: 's',
+        type: 'set_variable',
+        params: { name: 'X', kind: 'measurement' },
+      }),
+    ).toThrow('a measured variable needs sources');
+    expect(() =>
+      applyCommand(document, {
+        id: 's',
+        type: 'set_variable',
+        params: { name: 'X', kind: 'measurement', sources: [] },
+      }),
+    ).toThrow('a measured variable needs at least one source edge');
+    expect(() =>
+      applyCommand(document, {
+        id: 's',
+        type: 'set_variable',
+        params: { name: 'X', kind: 'measurement', sources: ['ab', 'de'] },
+      }),
+    ).toThrow('sources ab and de do not share an endpoint');
+    expect(() =>
+      applyCommand(document, {
+        id: 's',
+        type: 'set_variable',
+        params: { name: 'X', kind: 'measurement', sources: ['a'] },
+      }),
+    ).toThrow('source a is not a line, curve, arc or circle');
+  });
+
+  it('rejects a chain whose points are already missing', () => {
+    const entities = geometry().filter((entity) => entity.id !== 'b');
+    expect(() =>
+      applyCommand(documentOf(entities, []), {
+        id: 's',
+        type: 'set_variable',
+        params: { name: 'X', kind: 'measurement', sources: ['ab'] },
+      }),
+    ).toThrow('the selected sources do not currently resolve to a length');
+  });
+
+  it('re-picks sources through set_variable on an existing slug', () => {
+    const document = measured(documentOf(geometry(), []));
+    const repicked = applyCommand(document, {
+      id: 's',
+      type: 'set_variable',
+      params: { slug: 'neckline', sources: ['de'] },
+    }).document;
+    expect(repicked.variables?.[0]).toMatchObject({ sources: ['de'], lastKnown: 50 });
+  });
+
+  it('survives a dangling anchor and a deleted source while guarding', () => {
+    const document = measured(documentOf(geometry(), []));
+    const dangling = {
+      ...document,
+      constraints: [{ id: 'dx', type: 'distance' as const, a: 'gone', b: 'd', value: 10 }],
+    };
+    expect(() =>
+      applyCommand(dangling, {
+        id: 'u',
+        type: 'update_constraint',
+        params: { id: 'dx', value: { expr: '$neckline' } },
+      }),
+    ).not.toThrow();
+
+    const deleted = applyCommand(document, {
+      id: 'x',
+      type: 'delete_entity',
+      params: { id: 'ab' },
+    }).document;
+    expect(() =>
+      applyCommand(deleted, {
+        id: 'd1',
+        type: 'add_constraint',
+        params: { type: 'distance', entities: ['d', 'e'], value: { expr: '$neckline' } },
+      }),
+    ).not.toThrow();
+  });
+
+  it('guards a literal formula on a document with no variables', () => {
+    const document = { ...createEmptyDocument(), entities: geometry() };
+    expect(() =>
+      applyCommand(document, {
+        id: 'd1',
+        type: 'add_constraint',
+        params: { type: 'distance', entities: ['d', 'e'], value: { expr: '2cm' } },
+      }),
+    ).not.toThrow();
+  });
+
+  it('reads the same variable twice in a guarded formula', () => {
+    const document = measured(documentOf(geometry(), []));
+    expect(() =>
+      applyCommand(document, {
+        id: 'd1',
+        type: 'add_constraint',
+        params: {
+          type: 'distance',
+          entities: ['d', 'e'],
+          value: { expr: '$neckline + $neckline' },
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it('renames a measured variable without touching its chain', () => {
+    const document = measured(documentOf(geometry(), []));
+    const renamed = applyCommand(document, {
+      id: 'u',
+      type: 'update_variable',
+      params: { slug: 'neckline', name: 'Front neck' },
+    }).document;
+    expect(renamed.variables?.[0]).toMatchObject({
+      name: 'Front neck',
+      sources: ['ab', 'bc'],
+      lastKnown: 150,
+    });
+  });
+
+  it('needs a value when no source chain is given', () => {
+    expect(() =>
+      applyCommand(documentOf(geometry(), []), {
+        id: 's',
+        type: 'set_variable',
+        params: { name: 'X' },
+      }),
+    ).toThrow('a variable needs a value or sources');
+  });
+
+  it('is a no-op when the chain and fields are unchanged', () => {
+    const document = measured(documentOf(geometry(), []));
+    const unchanged = applyCommand(document, {
+      id: 'u',
+      type: 'update_variable',
+      params: { slug: 'neckline', sources: ['ab', 'bc'], name: 'Neckline' },
+    });
+    expect(unchanged.document).toBe(document);
+  });
+
+  it('removes and restores a measured variable with its chain', () => {
+    const document = measured(documentOf(geometry(), []));
+    const removed = applyCommand(document, {
+      id: 'r',
+      type: 'remove_variable',
+      params: { slug: 'neckline' },
+    });
+    expect(removed.inverse).toMatchObject({
+      type: 'set_variable',
+      params: { kind: 'measurement', sources: ['ab', 'bc'] },
+    });
+    const restored = applyCommand(removed.document, removed.inverse!).document;
+    expect(restored.variables?.[0]).toMatchObject({ sources: ['ab', 'bc'], lastKnown: 150 });
+  });
+
+  it('does not resolve without geometry and falls back to its stored reading', () => {
+    const document = measured(documentOf(geometry(), []));
+    expect(resolveVariable({ variables: document.variables! }, 'neckline')).toEqual({
+      value: 150,
+      exponent: 1,
+    });
+    const broken = {
+      ...document,
+      entities: document.entities.filter((entity) => entity.id !== 'a'),
+    };
+    expect(resolveVariable({ variables: broken.variables! }, 'neckline')).toEqual({
+      value: 150,
+      exponent: 1,
+    });
+    const withoutReading = {
+      ...broken,
+      variables: [{ ...document.variables![0]!, lastKnown: undefined }],
+    };
+    expect(resolveVariable({ variables: withoutReading.variables! }, 'neckline')).toBeNull();
+  });
+});

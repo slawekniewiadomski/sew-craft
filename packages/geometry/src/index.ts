@@ -8,6 +8,7 @@ export * from './mark.js';
 export * from './errors.js';
 export * from './number.js';
 export * from './expression.js';
+export * from './measurement.js';
 export * from './defaults.js';
 export * from './flatten.js';
 export * from './arc.js';

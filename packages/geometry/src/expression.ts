@@ -1,4 +1,5 @@
-import type { ExpressionParam, Param, Unit, Variable } from './types.js';
+import { isMeasuredVariable, measurementLength } from './measurement.js';
+import type { Entity, ExpressionParam, Param, Unit, Variable } from './types.js';
 
 /** Largest nesting of parentheses or unary signs the parser accepts. */
 export const MAX_EXPRESSION_DEPTH = 64;
@@ -340,9 +341,22 @@ export function evaluateLength(source: string, context: ExpressionContext): numb
   return result.value;
 }
 
-/** The document fields a formula needs: its variables. */
+/**
+ * The variable slugs a formula names, without cycles or resolution. A formula that
+ * does not parse names nothing; callers use this after a successful evaluation.
+ */
+export function expressionSlugs(source: string): string[] {
+  try {
+    return tokenize(source).flatMap((token) => (token.kind === 'slug' ? [token.name] : []));
+  } catch {
+    return [];
+  }
+}
+
+/** The document fields a formula needs: its variables, and the geometry a measured one reads. */
 export interface VariableScope {
   variables?: readonly Variable[] | undefined;
+  entities?: readonly Entity[] | undefined;
 }
 
 /** Whether two parameters store the same thing; a formula compares by its text. */
@@ -369,6 +383,17 @@ export function resolveVariable(
   if (chain.has(slug)) return null;
   const variable = scope.variables?.find((candidate) => candidate.slug === slug);
   if (variable === undefined) return null;
+
+  if (isMeasuredVariable(variable)) {
+    const length =
+      scope.entities === undefined ? null : measurementLength(scope.entities, variable.sources);
+    if (length !== null) return { value: length, exponent: 1 };
+    // A chain whose source disappeared keeps the reading captured at delete time,
+    // so formulas that name it keep resolving instead of cascading.
+    return variable.lastKnown !== undefined && Number.isFinite(variable.lastKnown)
+      ? { value: variable.lastKnown, exponent: 1 }
+      : null;
+  }
 
   const branch = new Set(chain);
   branch.add(slug);
