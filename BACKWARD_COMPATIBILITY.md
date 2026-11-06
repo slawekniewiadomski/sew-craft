@@ -10,6 +10,16 @@ or the geometry package depend on.
 
 ## Development-stage exemptions
 
+### 2026-11-06 — pattern schema 0.8 (per-piece placement)
+
+Additive and still readable by every earlier 0.7 build: `Piece` gains optional
+`placement`, the command spec gains `place_piece`, and `create_piece` assigns one.
+Entity coordinates are unchanged, so a 0.7 document loads and is repacked
+(placements only) on its first save. The sketch canvas adds a shared view; piece
+tabs, assemblies and per-piece export are unchanged. Details:
+`.ai/specs/briefs/2026-11-06-single-sketch-canvas.md` and
+`docs/domain/command-spec.md` (Migration from spec 0.20.0).
+
 ### 2026-11-04 — project settings: one name
 
 `GET /api/projects/{id}/pattern` no longer returns `name`, and the

@@ -3,7 +3,7 @@
 it('exposes the command spec', function () {
     $this->getJson('/api/commands')
         ->assertOk()
-        ->assertJsonPath('version', '0.20.0')
+        ->assertJsonPath('version', '0.21.0')
         ->assertJsonStructure([
             'version',
             'commands' => [
@@ -28,6 +28,15 @@ it('exposes dimension presentation and update params', function () {
             'commands.add_constraint.params.type',
             'coincident|horizontal|vertical|point_on_line|distance|angle|equal|midpoint',
         );
+});
+
+it('exposes the sketch placement command', function () {
+    $this->getJson('/api/commands')
+        ->assertOk()
+        ->assertJsonPath('commands.place_piece.params.id', 'entity_id')
+        ->assertJsonPath('commands.place_piece.params.x', 'number')
+        ->assertJsonPath('commands.place_piece.params.y', 'number')
+        ->assertJsonPath('commands.place_piece.inverse', 'place_piece');
 });
 
 it('exposes the corner round commands', function () {

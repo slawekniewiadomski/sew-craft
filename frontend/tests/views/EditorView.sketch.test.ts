@@ -157,6 +157,34 @@ describe('EditorView sketch canvas', () => {
     expect(canvas.props('selectedEntityIds')).toEqual([]);
   });
 
+  it('stores a new point in the target piece coordinates', async () => {
+    const { wrapper, store } = await mountSketch();
+    await wrapper.find('[data-testid="sketch-target"]').setValue('p2');
+    await nextTick();
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('add-point', 320, 40);
+    await nextTick();
+
+    const created = store.document.entities.find(
+      (entity) => entity.kind === 'point' && entity.piece === 'p2' && entity.x === 20,
+    );
+    expect(created).toMatchObject({ kind: 'point', y: 40 });
+  });
+
+  it('moves a point by the target piece offset', async () => {
+    const { wrapper, store } = await mountSketch();
+    await wrapper.find('[data-testid="sketch-target"]').setValue('p2');
+    await nextTick();
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('move-point', 'e', 350, 20);
+    await nextTick();
+
+    expect(store.document.entities.find((entity) => entity.id === 'e')).toMatchObject({
+      x: 50,
+      y: 20,
+    });
+  });
+
   it('ignores a canvas retarget outside the sketch canvas', async () => {
     const { wrapper, store } = await mountLoaded(twoPieceDoc);
     store.setActiveTab({ kind: 'piece', id: 'p1' });

@@ -31,7 +31,7 @@ length rejects a ratio or an area. Variables are managed with `set_variable`,
 `update_variable` and `remove_variable`; a variable is either written (a literal
 or a formula) or measured from a connected chain of edges.
 
-## Commands (v0.20)
+## Commands (v0.21)
 
 ### `add_point`
 
@@ -479,6 +479,17 @@ Change a piece's parameters.
 - inverse: `update_piece` with the previous values (`null` for a value that was
   absent).
 
+### `place_piece`
+
+Move a piece in the shared sketch canvas.
+
+- params: `id: entity_id`, `x: number`, `y: number`
+- The position is in the sketch space in millimetres; the piece's entity
+  coordinates stay local and are never rewritten.
+- Re-applying the current placement is a no-op with `inverse: null`.
+- inverse: `place_piece` with the previous placement (the origin when the piece
+  had none).
+
 ### `delete_piece`
 
 Remove a piece and cascade its owned geometry, constraints, texts, corner rounds
@@ -864,6 +875,15 @@ Request a solver rebuild. Typically emitted after a batch of geometry commands.
 3. Implement `applyCommand` handling in `@sewcraft/geometry` with tests.
 4. Wire any UI affordance. Emit it from the command bus — never mutate state
    directly.
+
+## Migration from spec 0.20.0
+
+`spec_version` is **0.21.0** and the pattern schema is `sewcraft.pattern/0.8`.
+Additive: `Piece` gains optional `placement`, written by the new `place_piece`,
+and `create_piece` now assigns one. A 0.7 document loads without conversion:
+`normalizeDocument` packs pieces without a placement left to right once, then
+stores them on the next save. Entity coordinates are untouched, so an older
+build reads the document normally and ignores the field; keep it on rollback.
 
 ## Migration from spec 0.19.0
 

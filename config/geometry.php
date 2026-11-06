@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.20.0',
+    'spec_version' => '0.21.0',
 
     /*
     |--------------------------------------------------------------------------
@@ -265,6 +265,15 @@ return [
                 'color' => '#rrggbb|null?',
             ],
             'inverse' => 'update_piece',
+        ],
+        'place_piece' => [
+            'description' => 'Move a piece in the shared sketch space without touching its geometry.',
+            'params' => [
+                'id' => 'entity_id',
+                'x' => 'number',
+                'y' => 'number',
+            ],
+            'inverse' => 'place_piece',
         ],
         'delete_piece' => [
             'description' => 'Remove a piece together with its cut dimensions, its instances in every assembly and its tab.',
