@@ -7,6 +7,7 @@ import {
   getConstraint,
   getEntity,
   getSeam,
+  nextPiecePlacement,
   seamForEdge,
 } from './document.js';
 import {
@@ -543,6 +544,13 @@ export interface UpdateCentreLineParams {
   end?: EntityId;
 }
 
+export interface PlacePieceParams {
+  id: EntityId;
+  /** Position in the shared sketch space, in millimetres. */
+  x: number;
+  y: number;
+}
+
 export interface UpdatePieceParams {
   id: EntityId;
   /** A string renames; `null` clears the name. */
@@ -656,6 +664,7 @@ export type Command =
     }
   | { id: EntityId; type: 'create_piece'; params: CreatePieceParams; issuedAt?: string }
   | { id: EntityId; type: 'update_piece'; params: UpdatePieceParams; issuedAt?: string }
+  | { id: EntityId; type: 'place_piece'; params: PlacePieceParams; issuedAt?: string }
   | { id: EntityId; type: 'delete_piece'; params: DeletePieceParams; issuedAt?: string }
   | {
       id: EntityId;
@@ -831,6 +840,8 @@ export function applyCommand(document: PatternDocument, command: Command): Comma
       return applyCreatePiece(document, command);
     case 'update_piece':
       return applyUpdatePiece(document, command);
+    case 'place_piece':
+      return applyPlacePiece(document, command);
     case 'delete_piece':
       return applyDeletePiece(document, command);
     case 'set_piece_loop':
@@ -2946,7 +2957,12 @@ function applyCreatePiece(
   const nextColor = requirePieceColor('create_piece', color);
   const nextDefaults = requirePieceDefaults(document, 'create_piece', defaults);
 
-  const piece: Piece = { id: command.id, edges: [], allowances: [] };
+  const piece: Piece = {
+    id: command.id,
+    edges: [],
+    allowances: [],
+    placement: nextPiecePlacement(document),
+  };
   if (name !== undefined) piece.name = name.trim();
   if (quantity !== undefined) piece.quantity = quantity;
   if (nextColor !== undefined) piece.color = nextColor;
@@ -2959,6 +2975,35 @@ function applyCreatePiece(
       tabs: withTab(document, { kind: 'piece', id: command.id }),
     },
     inverse: { id: command.id, type: 'delete_piece', params: { id: command.id } },
+  };
+}
+
+/** Move a piece in the shared sketch space without touching its geometry. */
+function applyPlacePiece(
+  document: PatternDocument,
+  command: CommandOf<'place_piece'>,
+): CommandApplication {
+  const { id, x, y } = command.params;
+  const piece = pieceById(document, id);
+  if (piece === undefined) {
+    throw new CommandValidationError('place_piece', `unknown piece: ${id}`);
+  }
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    throw new CommandValidationError('place_piece', 'x and y must be finite numbers');
+  }
+
+  const previous = piece.placement ?? { x: 0, y: 0 };
+  if (previous.x === x && previous.y === y) {
+    return noOp(document);
+  }
+
+  return {
+    document: replacePiece(document, { ...piece, placement: { x, y } }),
+    inverse: {
+      id: command.id,
+      type: 'place_piece',
+      params: { id, x: previous.x, y: previous.y },
+    },
   };
 }
 

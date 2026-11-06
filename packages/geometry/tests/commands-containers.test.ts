@@ -152,7 +152,13 @@ describe('create_piece and set_piece_loop', () => {
       params: { name: 'Front' },
     });
 
-    expect(pieceById(added, 'p1')).toEqual({ id: 'p1', name: 'Front', edges: [], allowances: [] });
+    expect(pieceById(added, 'p1')).toEqual({
+      id: 'p1',
+      name: 'Front',
+      edges: [],
+      allowances: [],
+      placement: { x: 0, y: 0 },
+    });
   });
 
   it('captures a loop and applies the document default allowance', () => {

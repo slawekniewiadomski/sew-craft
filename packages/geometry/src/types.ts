@@ -64,7 +64,7 @@ export interface MeasuredVariable extends VariableBase {
  */
 export type Variable = ValueVariable | MeasuredVariable;
 
-export const PATTERN_SCHEMA = 'sewcraft.pattern/0.7';
+export const PATTERN_SCHEMA = 'sewcraft.pattern/0.8';
 
 export type PatternSchema = typeof PATTERN_SCHEMA;
 
@@ -362,10 +362,22 @@ export interface PatternDefaults {
 }
 
 /** A closed loop of existing cut edges cut from fabric. */
+/** Where a piece sits in the shared sketch space, in millimetres. */
+export interface PiecePlacement {
+  x: number;
+  y: number;
+}
+
 export interface Piece {
   id: EntityId;
   /** Optional; the UI falls back to "Piece 1". */
   name?: string;
+  /**
+   * The piece's position in the shared sketch canvas. Entity coordinates stay
+   * piece-local; the editor adds this offset only when rendering every piece
+   * together. Absent means the origin (legacy documents are given one on load).
+   */
+  placement?: PiecePlacement;
   /** Ordered, closed loop of line/curve/arc ids. */
   edges: EntityId[];
   /** Allowances for loop edges; an edge with no entry has none. */
