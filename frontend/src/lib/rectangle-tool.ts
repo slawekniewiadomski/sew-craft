@@ -221,7 +221,7 @@ export function buildRectangleCommands(
     commands.push({
       id,
       type: 'add_point',
-      params: { x: corner.x, y: corner.y, ...(piece === undefined ? {} : { piece }) },
+      params: { x: corner.x, y: corner.y, piece },
     });
 
     const midpointLine = midpointByCorner.get(index);
@@ -232,7 +232,7 @@ export function buildRectangleCommands(
         params: {
           type: 'midpoint',
           entities: [id, midpointLine],
-          ...(piece === undefined ? {} : { piece }),
+          piece,
         },
       });
     }
@@ -246,7 +246,7 @@ export function buildRectangleCommands(
       params: {
         start,
         end: ids[(index + 1) % ids.length]!,
-        ...(piece === undefined ? {} : { piece }),
+        piece,
       },
     });
   });
@@ -267,7 +267,7 @@ export function buildRectangleCommands(
         params: {
           type: 'angle',
           entities: [previous, vertex, next],
-          ...(piece === undefined ? {} : { piece }),
+          piece,
           value: rightAngle(corners[(index + 3) % 4]!, corners[index]!, corners[(index + 1) % 4]!),
         },
       });
@@ -279,7 +279,7 @@ export function buildRectangleCommands(
     commands.push({
       id: nextId('constraint'),
       type: 'add_constraint',
-      params: { type, entities: [ids[from]!, ids[to]!], ...(piece === undefined ? {} : { piece }) },
+      params: { type, entities: [ids[from]!, ids[to]!], piece },
     });
   }
 

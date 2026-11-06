@@ -9,7 +9,9 @@ import {
   getSeam,
   nextPiecePlacement,
   seamForEdge,
+  sharedCorner,
 } from './document.js';
+import { formatMillimetres } from './number.js';
 import {
   allowanceForEdge,
   cornerAllowanceForRound,
@@ -1001,17 +1003,6 @@ function requireLine(document: PatternDocument, id: EntityId, type: CommandType)
     throw new CommandValidationError(type, `entity ${id} is a ${entity.kind}, expected a line`);
   }
   return entity;
-}
-
-/** The single point two distinct lines share, or `null` when they share none. */
-function sharedCorner(first: LineEntity, second: LineEntity): EntityId | null {
-  const shared = [first.start, first.end].filter((id) => id === second.start || id === second.end);
-  return shared.length === 1 ? shared[0]! : null;
-}
-
-/** Millimetre text for an error message, rounded to the field precision. */
-function radiusText(radius: number): string {
-  return String(Math.round(radius * 1000) / 1000);
 }
 
 /** Resolve a command's `role`/legacy `construction` pair to the stored role. */
@@ -2424,7 +2415,7 @@ function applyAddCornerRound(
   if (radiusValue > maximum + 1e-9) {
     throw new CommandValidationError(
       'add_corner_round',
-      `Radius ${radiusText(radiusValue)} mm is too large for these lines; the maximum is ${radiusText(maximum)} mm.`,
+      `Radius ${formatMillimetres(radiusValue)} mm is too large for these lines; the maximum is ${formatMillimetres(maximum)} mm.`,
     );
   }
 
@@ -2593,7 +2584,7 @@ function applySetCornerRoundRadius(
   if (radiusValue > maximum + 1e-9) {
     throw new CommandValidationError(
       'set_corner_round_radius',
-      `Radius ${radiusText(radiusValue)} mm is too large for these lines; the maximum is ${radiusText(maximum)} mm.`,
+      `Radius ${formatMillimetres(radiusValue)} mm is too large for these lines; the maximum is ${formatMillimetres(maximum)} mm.`,
     );
   }
 

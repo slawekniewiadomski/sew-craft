@@ -25,7 +25,7 @@ export function buildPointMidpointCommands(
     {
       id: pointId,
       type: 'add_point',
-      params: { x: midpoint.x, y: midpoint.y, ...(piece === undefined ? {} : { piece }) },
+      params: { x: midpoint.x, y: midpoint.y, piece },
     },
     {
       id: nextId('constraint'),
@@ -33,7 +33,7 @@ export function buildPointMidpointCommands(
       params: {
         type: 'midpoint',
         entities: [pointId, lineId],
-        ...(piece === undefined ? {} : { piece }),
+        piece,
       },
     },
   ];

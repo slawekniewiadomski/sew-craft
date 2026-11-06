@@ -49,6 +49,16 @@ export function cornerRounds(document: PatternDocument): CornerRound[] {
   return document.cornerRounds ?? [];
 }
 
+/**
+ * The single point two distinct lines share, or `null` when they share none or
+ * both ends (the same pair of points, so no corner). Used by the corner-round
+ * tool and command, which must agree on what "these lines meet" means.
+ */
+export function sharedCorner(first: LineEntity, second: LineEntity): EntityId | null {
+  const shared = [first.start, first.end].filter((id) => id === second.start || id === second.end);
+  return shared.length === 1 ? shared[0]! : null;
+}
+
 export function getConstraint(document: PatternDocument, id: EntityId): Constraint | undefined {
   return document.constraints.find((constraint) => constraint.id === id);
 }

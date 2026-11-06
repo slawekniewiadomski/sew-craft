@@ -61,7 +61,7 @@ export function buildArcCommands(
       start: startId,
       end: endId,
       through: throughId,
-      ...(piece === undefined ? {} : { piece }),
+      piece,
     },
   });
 

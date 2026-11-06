@@ -2,12 +2,15 @@ import {
   cornerRoundGeometry,
   cornerRounds,
   documentSeams,
+  formatMillimetres,
   getEntity,
   incidentLines,
   isCornerRoundDerived,
   lineEndpointAnchor,
   maxCornerRadius,
   MIN_CORNER_ROUND,
+  roundToThousandth,
+  sharedCorner,
   type CornerRound,
   type EntityId,
   type LineEntity,
@@ -55,11 +58,6 @@ export function emptyCornerRoundPicks(): CornerRoundPicks {
 function lineOf(document: PatternDocument, id: EntityId): LineEntity | undefined {
   const entity = getEntity(document, id);
   return entity?.kind === 'line' ? entity : undefined;
-}
-
-function sharedCorner(first: LineEntity, second: LineEntity): EntityId | null {
-  const shared = [first.start, first.end].filter((id) => id === second.start || id === second.end);
-  return shared.length === 1 ? shared[0]! : null;
 }
 
 /** The largest radius the two picked lines can take, or `null` when unusable. */
@@ -126,7 +124,7 @@ export function radiusFromTangentDistance(tangentDistance: number, angle: number
 
 /** A safe field default: five millimetres, or the largest radius that fits. */
 export function defaultCornerRadius(maxRadius: number): number {
-  return Math.round(Math.min(5, maxRadius) * 1000) / 1000;
+  return roundToThousandth(Math.min(5, maxRadius));
 }
 
 /** A valid radius from field text, or `null` when invalid. */
@@ -166,7 +164,7 @@ export function parseCornerRadiusField(scope: VariableScope, text: string): Corn
 
 /** Millimetre text rounded to the field precision. */
 export function formatCornerRadius(radius: number): string {
-  return String(Math.round(radius * 1000) / 1000);
+  return formatMillimetres(radius);
 }
 
 /** The radius field's text: the stored formula, else the rounded number. */
@@ -558,5 +556,5 @@ export function tangentDragRadius(
   const raw = radiusFromTangentDistance(tangentDistance, angle);
 
   const clamped = Math.min(Math.max(raw, MIN_CORNER_ROUND), maximum);
-  return Math.min(Math.round(clamped * 1000) / 1000, maximum);
+  return Math.min(roundToThousandth(clamped), maximum);
 }

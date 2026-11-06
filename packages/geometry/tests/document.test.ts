@@ -12,6 +12,7 @@ import {
   PATTERN_SCHEMA,
   seamForEdge,
   seamSide,
+  sharedCorner,
   type ArcEntity,
   type CircleEntity,
   type CurveEntity,
@@ -428,5 +429,27 @@ describe('entityPoints text', () => {
     };
 
     expect(() => entityPoints(document, text)).toThrow('references unknown point: missing');
+  });
+});
+
+describe('sharedCorner', () => {
+  const line = (start: string, end: string): LineEntity => ({
+    id: `${start}-${end}`,
+    kind: 'line',
+    start,
+    end,
+  });
+
+  it('returns the single point two lines meet at', () => {
+    expect(sharedCorner(line('a', 'b'), line('b', 'c'))).toBe('b');
+    expect(sharedCorner(line('a', 'b'), line('c', 'a'))).toBe('a');
+  });
+
+  it('returns null when the lines do not meet', () => {
+    expect(sharedCorner(line('a', 'b'), line('c', 'd'))).toBeNull();
+  });
+
+  it('returns null when both ends are shared, so there is no corner', () => {
+    expect(sharedCorner(line('a', 'b'), line('b', 'a'))).toBeNull();
   });
 });

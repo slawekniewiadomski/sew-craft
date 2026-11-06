@@ -47,7 +47,7 @@ export function buildCircleCommands(
     commands.push({
       id,
       type: 'add_point',
-      params: { x: endpoint.x, y: endpoint.y, ...(piece === undefined ? {} : { piece }) },
+      params: { x: endpoint.x, y: endpoint.y, piece },
     });
     return id;
   };
@@ -57,7 +57,7 @@ export function buildCircleCommands(
   commands.push({
     id: nextId('circle'),
     type: 'add_circle',
-    params: { center: centerId, rim: rimId, ...(piece === undefined ? {} : { piece }) },
+    params: { center: centerId, rim: rimId, piece },
   });
 
   return commands;

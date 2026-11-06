@@ -10,6 +10,7 @@ import {
   magnitude,
   midpointTargetFor,
   midpointTargets,
+  roundToThousandth,
   sub,
   type AddConstraintParams,
   type ConstraintType,
@@ -412,14 +413,10 @@ export function constraintValueSpec(type: ConstraintType): ConstraintValueSpec |
   return null;
 }
 
-function roundMeasurement(value: number): number {
-  return Math.round(value * 1000) / 1000;
-}
-
 function distanceMeasurement(a: PointEntity, b: PointEntity): string {
   const measured = distance(a, b);
   if (measured === 0) return '';
-  const rounded = roundMeasurement(measured);
+  const rounded = roundToThousandth(measured);
   return String(rounded === 0 ? measured : rounded);
 }
 
@@ -428,7 +425,7 @@ function angleMeasurement(a: PointEntity, vertex: PointEntity, c: PointEntity): 
   const v = sub(c, vertex);
   if (magnitude(u) === 0 || magnitude(v) === 0) return '';
   const degrees = (Math.atan2(cross(u, v), dot(u, v)) * 180) / Math.PI;
-  return String(roundMeasurement(degrees));
+  return String(roundToThousandth(degrees));
 }
 
 /**

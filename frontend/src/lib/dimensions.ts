@@ -1,5 +1,6 @@
 import {
   dimensionValue,
+  formatMillimetres,
   isLineAnchor,
   referenceCandidates,
   type CutAnchor,
@@ -63,8 +64,7 @@ export const DIMENSION_ORIENTATION_OPTIONS: DimensionOrientationOption[] = [
 
 /** Millimetre text for a dimension, rounded to 1 µm while staying a number input. */
 export function formatDimensionValue(value: number): string {
-  const rounded = Math.round(value * 1000) / 1000;
-  return String(rounded === 0 ? 0 : rounded);
+  return formatMillimetres(value);
 }
 
 /** Parse an editable dimension value; `null` for empty or non-numeric text. */

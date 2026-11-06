@@ -188,8 +188,8 @@ export function resolveEndpointCommands(
     params: {
       x: endpoint.x,
       y: endpoint.y,
-      ...(piece === undefined ? {} : { piece }),
-      ...(role === undefined ? {} : { role }),
+      piece,
+      role,
     },
   });
 
@@ -202,7 +202,7 @@ export function resolveEndpointCommands(
       params: {
         type: 'midpoint',
         entities: [id, endpoint.lineId],
-        ...(piece === undefined ? {} : { piece }),
+        piece,
       },
     });
   }
