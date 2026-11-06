@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.19.0',
+    'spec_version' => '0.20.0',
 
     /*
     |--------------------------------------------------------------------------
@@ -63,6 +63,14 @@ return [
                 'role' => 'construction|annotation?',
             ],
             'inverse' => 'delete_entity',
+        ],
+        'split_line' => [
+            'description' => 'Split a straight line at an existing point. The original keeps its id as the first half; both halves share the point.',
+            'params' => [
+                'line' => 'entity_id',
+                'point' => 'entity_id',
+            ],
+            'inverse' => null,
         ],
         'add_curve' => [
             'description' => 'Create a cubic Bézier curve through four control points.',

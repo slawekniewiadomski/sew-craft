@@ -3,7 +3,7 @@
 it('exposes the command spec', function () {
     $this->getJson('/api/commands')
         ->assertOk()
-        ->assertJsonPath('version', '0.19.0')
+        ->assertJsonPath('version', '0.20.0')
         ->assertJsonStructure([
             'version',
             'commands' => [
@@ -59,6 +59,14 @@ it('exposes the variable commands', function () {
         ->assertJsonPath('commands.update_variable.inverse', 'update_variable')
         ->assertJsonPath('commands.remove_variable.params.slug', 'string')
         ->assertJsonPath('commands.remove_variable.inverse', 'set_variable');
+});
+
+it('exposes the split line command', function () {
+    $this->getJson('/api/commands')
+        ->assertOk()
+        ->assertJsonPath('commands.split_line.params.line', 'entity_id')
+        ->assertJsonPath('commands.split_line.params.point', 'entity_id')
+        ->assertJsonPath('commands.split_line.inverse', null);
 });
 
 it('exposes the arc command', function () {
