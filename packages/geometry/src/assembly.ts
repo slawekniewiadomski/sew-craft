@@ -1,4 +1,6 @@
 import type { Bounds } from './document.js';
+import type { NotchGeometry } from './mark.js';
+import { notchGeometry, pieceMarks } from './mark.js';
 import { pieceBounds, pieceCutLoop, pieceFoldLines, pieceLoop, loopBounds } from './piece.js';
 import type { Assembly, AssemblyInstance, EntityId, PatternDocument, Piece } from './types.js';
 import type { Vec2 } from './vector.js';
@@ -27,6 +29,8 @@ export interface InstanceLoops {
   stitch: Vec2[];
   /** Every double-fold fold line. */
   folds: Vec2[][];
+  /** Every resolved V notch, with its feet and tip placed like the loops. */
+  notches: NotchGeometry[];
 }
 
 /** The centre of a piece's stitch bounds, falling back to its owned points. */
@@ -74,6 +78,15 @@ export function placePoint(point: Vec2, placement: InstancePlacement): Vec2 {
   };
 }
 
+/** One piece-local V mapped into assembly space, every vertex through the placement. */
+function placeNotch(notch: NotchGeometry, placement: InstancePlacement): NotchGeometry {
+  return {
+    mouth: placePoint(notch.mouth, placement),
+    tip: placePoint(notch.tip, placement),
+    feet: [placePoint(notch.feet[0], placement), placePoint(notch.feet[1], placement)],
+  };
+}
+
 /** Every derived loop of a placed instance, in assembly coordinates. */
 export function instanceLoops(
   document: PatternDocument,
@@ -86,11 +99,17 @@ export function instanceLoops(
   const cut = pieceCutLoop(document, piece);
   const stitch = pieceLoop(document, piece);
   const folds = pieceFoldLines(document, piece);
+  const notches = pieceMarks(document, piece.id).flatMap((mark) => {
+    if (mark.type !== 'notch') return [];
+    const geometry = notchGeometry(document, piece, mark);
+    return geometry === null ? [] : [placeNotch(geometry, placement)];
+  });
 
   return {
     cut: cut === null ? [] : cut.points.map((point) => placePoint(point, placement)),
     stitch: stitch === null ? [] : stitch.points.map((point) => placePoint(point, placement)),
     folds: folds.map((fold) => fold.map((point) => placePoint(point, placement))),
+    notches,
   };
 }
 

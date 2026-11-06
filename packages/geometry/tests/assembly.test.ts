@@ -183,6 +183,41 @@ describe('instanceLoops', () => {
     expect(loops.cut).toEqual([]);
     expect(loops.stitch).toEqual([]);
     expect(loops.folds).toEqual([]);
+    expect(loops.notches).toEqual([]);
+  });
+
+  it('places every notch with the instance transform', () => {
+    const allowed = piece({ allowances: [{ edge: 'bottom', width: 10 }] });
+    const document = documentOf(
+      [allowed],
+      [
+        { id: 'n1', kind: 'mark', type: 'notch', piece: 'p1', edge: 'bottom', point: 'a' },
+        { id: 'c1', kind: 'mark', type: 'centre_line', piece: 'p1', start: 'a', end: 'c' },
+      ],
+    );
+    const loops = instanceLoops(document, allowed, instance({ x: 100, y: 100 }))!;
+
+    expect(loops.notches).toHaveLength(1);
+    // The V opens on the (0, -10) cut line and points at (0, -5); the anchor
+    // (50, 50) sitting at the instance position translates every vertex by 50.
+    expect(loops.notches[0]).toEqual({
+      mouth: { x: 50, y: 40 },
+      tip: { x: 50, y: 45 },
+      feet: [
+        { x: 47, y: 40 },
+        { x: 53, y: 40 },
+      ],
+    });
+  });
+
+  it('skips a notch whose edge has no allowance', () => {
+    const allowed = piece({ allowances: [{ edge: 'right', width: 10 }] });
+    const document = documentOf(
+      [allowed],
+      [{ id: 'n1', kind: 'mark', type: 'notch', piece: 'p1', edge: 'bottom', point: 'a' }],
+    );
+
+    expect(instanceLoops(document, allowed, instance())!.notches).toEqual([]);
   });
 });
 
