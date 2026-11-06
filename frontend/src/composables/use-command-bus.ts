@@ -1,7 +1,7 @@
 import type { Command } from '@sewcraft/geometry';
 import { computed } from 'vue';
 
-import { localizeForSketch } from '@/composables/sketch-command-localization';
+import { localizeForSketch } from '@/lib/sketch';
 import { useEditorStore } from '@/stores/editor';
 
 export function useCommandBus() {

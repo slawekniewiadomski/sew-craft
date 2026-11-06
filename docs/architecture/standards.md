@@ -61,7 +61,8 @@ This doc is the baseline for anything those do not cover.
   and components. Module-level constant naming is not mandated — use local
   judgement (`SCREAMING_SNAKE_CASE` only for true fixed constants).
 - Prefer named exports over default exports (SFCs are the exception).
-- `type` for object shapes; reserve `interface` for declaration merging.
+- Use `interface` for object shapes; use `type` for unions, aliases and function
+  signatures.
 
 ### Vue / frontend (Reviewed)
 
@@ -194,7 +195,9 @@ Rules:
   the module under test through the `@/` alias, never a relative path. New
   shadcn-vue components follow the same rule
   (`frontend/tests/components/ui/<component>/<component>.test.ts`). Geometry tests
-  stay colocated with their code as `*.test.ts` under `packages/geometry/src/`.
+  live under `packages/geometry/tests/`, mirroring `packages/geometry/src/` path
+  for path (`src/corner-round.ts` → `tests/corner-round.test.ts`) and importing
+  the package through `../src/index.js`, never a deep module path.
 - Vitest runs files in parallel, never tests inside one file, so a heavy suite is
   split by topic into several files that share fixtures, mounts and hooks from a
   `tests/**/support/` module. One long view suite would otherwise set the wall
