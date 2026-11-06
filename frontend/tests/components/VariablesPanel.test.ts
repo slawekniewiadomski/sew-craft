@@ -164,13 +164,15 @@ describe('VariablesPanel', () => {
   it('enables the measured action only with a connected chain', async () => {
     const wrapper = mountPanel(createEmptyDocument());
     const action = wrapper.find('[data-testid="add-measured-variable"]');
+    expect(action.text()).toBe('+ Measured');
     expect(action.attributes('disabled')).toBeDefined();
+    expect(action.attributes('title')).toBe('Select one or more connected edges first');
 
     await wrapper.setProps({ canMeasure: true });
-    expect(
-      wrapper.find('[data-testid="add-measured-variable"]').attributes('disabled'),
-    ).toBeUndefined();
-    await wrapper.find('[data-testid="add-measured-variable"]').trigger('click');
+    const enabled = wrapper.find('[data-testid="add-measured-variable"]');
+    expect(enabled.attributes('disabled')).toBeUndefined();
+    expect(enabled.attributes('title')).toBe('Measure the connected edges you have selected');
+    await enabled.trigger('click');
     expect(wrapper.emitted('create-measured')).toHaveLength(1);
   });
 
