@@ -90,10 +90,10 @@ the only cross-piece arithmetic channel. Piece tabs and assemblies are untouched
 
 ### Phase 2: Editor sketch view
 
-- [ ] 2.1 Editor store sketch view state and effective target piece
-- [ ] 2.2 Editor view sketch document and command localisation
-- [ ] 2.3 Sketch entry, target picker and Arrange mode UI
-- [ ] 2.4 Click retargeting and Arrange drag wiring
+- [x] 2.1 Editor store sketch view state and effective target piece — 7c61255
+- [x] 2.2 Editor view sketch document and command localisation — 7c61255
+- [x] 2.3 Sketch entry, target picker and Arrange mode UI — 7c61255
+- [x] 2.4 Click retargeting and Arrange drag wiring — 7c61255
 
 ### Phase 3: Docs and verification
 
