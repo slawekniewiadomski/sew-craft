@@ -84,9 +84,9 @@ the only cross-piece arithmetic channel. Piece tabs and assemblies are untouched
 
 ### Phase 1: Geometry model, placement and the shared-space view
 
-- [ ] 1.1 Add `Piece.placement`, `place_piece` command and schema 0.8
-- [ ] 1.2 Add `documentForSketch`, placement helpers and new-piece auto-placement
-- [ ] 1.3 Migrate legacy documents with packed placements
+- [x] 1.1 Add `Piece.placement`, `place_piece` command and schema 0.8 — b4a9160
+- [x] 1.2 Add `documentForSketch`, placement helpers and new-piece auto-placement — b4a9160
+- [x] 1.3 Migrate legacy documents with packed placements — b4a9160
 
 ### Phase 2: Editor sketch view
 
