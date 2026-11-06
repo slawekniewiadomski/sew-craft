@@ -152,6 +152,7 @@ import { entityProperties } from '@/lib/entity-properties';
 import { buildLineCommands, type LineEndpoint } from '@/lib/line-tool';
 import { buildPointMidpointCommands } from '@/lib/point-midpoint';
 import { buildPointOnLineCommands } from '@/lib/point-on-line';
+import { buildSplitLineCommands } from '@/lib/split-line';
 import { buildRectangleCommands, type RectangleMode } from '@/lib/rectangle-tool';
 import { buildTextCommands, textContentError } from '@/lib/text-tool';
 import {
@@ -1438,6 +1439,20 @@ function onAddPointOnLine(lineId: EntityId, x: number, y: number): void {
 }
 
 /**
+ * One gesture: split the line, creating the shared point first when the pointer
+ * did not reuse an authored one. `null` means the line no longer resolves or the
+ * projection is an endpoint, so nothing is dispatched.
+ */
+function onSplitLine(lineId: EntityId, x: number, y: number): void {
+  const commands = buildSplitLineCommands(pattern.value, lineId, { x, y }, nextCommandId);
+  if (commands === null) return;
+  // The original id belongs to only one half now, so a stale selection would
+  // highlight the wrong edge; the user picks a half deliberately.
+  selectedEntityIds.value = [];
+  run(() => dispatchGroup(commands));
+}
+
+/**
  * One gesture: the point at the line's visible middle and its `midpoint`
  * relation, as a single journal entry. `null` means the line no longer resolves,
  * so nothing is dispatched.
@@ -2561,6 +2576,7 @@ onBeforeUnmount(() => {
             @add-point="onAddPoint"
             @add-point-on-line="onAddPointOnLine"
             @add-point-midpoint="onAddPointMidpoint"
+            @split-line="onSplitLine"
             @add-line="onAddLine"
             @add-curve="onAddCurve"
             @add-arc="onAddArc"

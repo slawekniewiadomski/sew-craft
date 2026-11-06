@@ -26,6 +26,7 @@ export type RibbonIconName =
   | 'constraints'
   | 'eye'
   | 'round-corner'
+  | 'split'
   | 'notch'
   | 'centre-line'
   | 'undo'
@@ -102,6 +103,10 @@ const ACTION_ICONS: Record<ActionIconName, RibbonIcon> = {
     dots: [{ cx: 12, cy: 12, r: 2.6 }],
   },
   'round-corner': { paths: ['M4 20 V10 A6 6 0 0 1 10 4 H20'] },
+  split: {
+    paths: ['M4 12 H20', 'M12 7.2 V9', 'M12 15 V16.8'],
+    dots: [{ cx: 12, cy: 12, r: 2.2 }],
+  },
   undo: {
     paths: ['M8.8 7.2 L3.6 12 L8.8 16.8', 'M3.6 12 H14.6 A5 5 0 0 1 14.6 22 H12'],
   },

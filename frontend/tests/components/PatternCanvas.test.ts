@@ -146,6 +146,7 @@ function mountCanvas(
       | 'add_text'
       | 'add_text_leader'
       | 'notch'
+      | 'split_line'
       | 'centre_line'
       | 'dimension'
       | 'cut_dimension';
@@ -978,6 +979,144 @@ describe('PatternCanvas', () => {
     expect(wrapper.find('[data-testid="point-on-line-hint"]').exists()).toBe(false);
     down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, at.x, at.y);
     expect(wrapper.emitted('add-point-on-line')).toBeUndefined();
+  });
+
+  it('shows the split hint while the Split tool is armed', () => {
+    const wrapper = mountCanvas({ tool: 'split_line' });
+
+    expect(wrapper.find('[data-testid="split-line-hint"]').text()).toBe(
+      'Click a straight line to split it.',
+    );
+    expect(wrapper.find('[data-testid="split-line-ghost"]').exists()).toBe(false);
+  });
+
+  it('highlights the hovered line and previews the split point', async () => {
+    const wrapper = mountCanvas({ tool: 'split_line' });
+    const at = screenAt({ x: 50, y: 20 });
+
+    hover(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, at.x, at.y);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="split-line-hint"]').text()).toBe(
+      'Click to split this line here.',
+    );
+    const ghost = wrapper.find('[data-testid="split-line-ghost"] circle');
+    expect(ghost.attributes('cx')).toBe('50');
+    expect(ghost.attributes('cy')).toBe('0');
+    expect(ghost.attributes('r')).toBe('4');
+
+    const line = wrapper.find('[data-kind="line"][data-entity-id="ab"]');
+    expect(line.classes()).toContain('text-primary');
+    expect(line.attributes('stroke-width')).toBe('3');
+  });
+
+  it('reuses an authored point within the snap tolerance', async () => {
+    const withPoint = doc([...baseDoc.entities, pt('mid', 40, 0)]);
+    const wrapper = mountCanvas({ tool: 'split_line', document: withPoint });
+    const at = screenAt({ x: 42, y: 2 });
+
+    hover(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, at.x, at.y);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="split-line-hint"]').text()).toBe(
+      'Click to split this line at this point.',
+    );
+    const ghost = wrapper.find('[data-testid="split-line-ghost"] circle');
+    expect(ghost.attributes('cx')).toBe('40');
+    expect(ghost.attributes('cy')).toBe('0');
+    expect(ghost.attributes('r')).toBe('5');
+  });
+
+  it('emits split-line with the raw pointer for a line click', () => {
+    const wrapper = mountCanvas({ tool: 'split_line' });
+    const at = screenAt({ x: 50, y: 20 });
+
+    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, at.x, at.y);
+
+    const [emitted] = wrapper.emitted('split-line')!;
+    expect(emitted![0]).toBe('ab');
+    expect(emitted![1]).toBeCloseTo(50, 6);
+    expect(emitted![2]).toBeCloseTo(20, 6);
+  });
+
+  it('ignores endpoints, curves and non-lines', async () => {
+    const wrapper = mountCanvas({ tool: 'split_line' });
+
+    const start = screenAt({ x: 0, y: 0 });
+    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, start.x, start.y);
+    const curve = screenAt({ x: 20, y: 20 });
+    down(wrapper.find('[data-kind="curve"][data-entity-id="curve"]').element, curve.x, curve.y);
+    down(wrapper.find('[data-testid="grid"]').element, 400, 300);
+
+    expect(wrapper.emitted('split-line')).toBeUndefined();
+  });
+
+  it('clears the split preview on pointer leave and Escape', async () => {
+    const wrapper = mountCanvas({ tool: 'split_line' });
+    const line = () => wrapper.find('[data-kind="line"][data-entity-id="ab"]');
+    const at = screenAt({ x: 50, y: 0 });
+
+    hover(line().element, at.x, at.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="split-line-ghost"]').exists()).toBe(true);
+
+    const empty = screenAt({ x: 50, y: 60 });
+    pointerMove(wrapper, empty.x, empty.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="split-line-ghost"]').exists()).toBe(false);
+
+    hover(line().element, at.x, at.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="split-line-ghost"]').exists()).toBe(true);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    await nextTick();
+    expect(wrapper.find('[data-testid="split-line-ghost"]').exists()).toBe(false);
+
+    hover(line().element, at.x, at.y);
+    await nextTick();
+    await wrapper.setProps({ tool: 'select' });
+    expect(wrapper.find('[data-testid="split-line-hint"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="split-line-ghost"]').exists()).toBe(false);
+  });
+
+  it('does not preview or emit on a read-only document', async () => {
+    const wrapper = mountCanvas({ tool: 'split_line', readOnly: true });
+    const line = wrapper.find('[data-kind="line"][data-entity-id="ab"]');
+    const at = screenAt({ x: 50, y: 0 });
+
+    hover(line.element, at.x, at.y);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="split-line-hint"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="split-line-ghost"]').exists()).toBe(false);
+    down(line.element, at.x, at.y);
+    expect(wrapper.emitted('split-line')).toBeUndefined();
+  });
+
+  it('ignores curves and lines owned by another piece', async () => {
+    const wrapper = mountCanvas({ tool: 'split_line' });
+    const curve = screenAt({ x: 20, y: 20 });
+    hover(wrapper.find('[data-kind="curve"][data-entity-id="curve"]').element, curve.x, curve.y);
+    await nextTick();
+    expect(wrapper.find('[data-testid="split-line-ghost"]').exists()).toBe(false);
+
+    const crossPiece = doc([
+      { ...pt('a', 0, 0), piece: 'p1' },
+      { ...pt('b', 100, 0), piece: 'p1' },
+      { ...ln('ab', 'a', 'b'), piece: 'p1' },
+      { ...pt('x', 0, 100), piece: 'p2' },
+      { ...pt('y', 100, 100), piece: 'p2' },
+      { ...ln('xy', 'x', 'y'), piece: 'p2' },
+    ]);
+    crossPiece.pieces = [
+      { id: 'p1', edges: ['ab'], allowances: [] },
+      { id: 'p2', edges: ['xy'], allowances: [] },
+    ];
+    const other = mountCanvas({ tool: 'split_line', document: crossPiece, activePieceId: 'p1' });
+    const at = screenAt({ x: 50, y: 100 });
+    hover(other.find('[data-kind="line"][data-entity-id="xy"]').element, at.x, at.y);
+    await nextTick();
+    expect(other.find('[data-testid="split-line-ghost"]').exists()).toBe(false);
   });
 
   it('commits a line between two existing points as endpoints', async () => {

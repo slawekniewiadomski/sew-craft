@@ -201,6 +201,79 @@ describe('EditorView', () => {
     expect(store.journal).toHaveLength(0);
   });
 
+  it('splits a line with a new shared point as one undoable gesture', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+    const lines = store.document.entities.filter((entity) => entity.kind === 'line').length;
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedEntityIds', ['ab']);
+    await nextTick();
+    expect(wrapper.findComponent(PatternCanvas).props('selectedEntityIds')).toEqual(['ab']);
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('split-line', 'ab', 30, 12);
+    await flushPromises();
+
+    expect(wrapper.findComponent(PatternCanvas).props('selectedEntityIds')).toEqual([]);
+    const original = store.document.entities.find((entity) => entity.id === 'ab');
+    expect(original).toMatchObject({ kind: 'line', start: 'a' });
+    const shared = store.document.entities.find(
+      (entity) => entity.kind === 'point' && entity.x === 30 && entity.y === 0,
+    );
+    expect(shared).toBeDefined();
+    expect(original).toMatchObject({ end: shared!.id });
+    const halves = store.document.entities.filter(
+      (entity) =>
+        entity.kind === 'line' && (entity.start === shared!.id || entity.end === shared!.id),
+    );
+    expect(halves).toHaveLength(2);
+    expect(store.document.entities.filter((entity) => entity.kind === 'line')).toHaveLength(
+      lines + 1,
+    );
+    expect(store.journal).toHaveLength(1);
+
+    await wrapper.find('[data-testid="undo"]').trigger('click');
+    expect(store.document.entities.filter((entity) => entity.kind === 'line')).toHaveLength(lines);
+    expect(store.document.entities.some((entity) => entity.id === shared!.id)).toBe(false);
+  });
+
+  it('reuses an authored point when splitting', async () => {
+    const withPoint: PatternDocument = {
+      ...lineDoc,
+      entities: [
+        ...lineDoc.entities,
+        { id: 'mid', kind: 'point', x: 30, y: 0, construction: false, fixed: false },
+      ],
+    };
+    const { wrapper, store } = await mountLoaded(withPoint);
+    const points = store.document.entities.filter((entity) => entity.kind === 'point').length;
+    const lines = store.document.entities.filter((entity) => entity.kind === 'line').length;
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('split-line', 'ab', 30, 12);
+    await flushPromises();
+
+    expect(store.document.entities.filter((entity) => entity.kind === 'point')).toHaveLength(
+      points,
+    );
+    expect(store.document.entities.filter((entity) => entity.kind === 'line')).toHaveLength(
+      lines + 1,
+    );
+    expect(store.document.entities.find((entity) => entity.id === 'ab')).toMatchObject({
+      start: 'a',
+      end: 'mid',
+    });
+    expect(store.journal).toHaveLength(1);
+  });
+
+  it('dispatches nothing when the split line no longer resolves', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+    const before = store.document;
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('split-line', 'missing', 30, 12);
+    await flushPromises();
+
+    expect(store.document).toBe(before);
+    expect(store.journal).toHaveLength(0);
+  });
+
   it('enables delete only with a selection and removes the point on Delete', async () => {
     const { wrapper } = await mountLoaded(simpleDoc);
 
