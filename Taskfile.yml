@@ -1,0 +1,162 @@
+version: '3'
+
+# Local workflow shortcuts — https://taskfile.dev
+# Install go-task once:  https://taskfile.dev/installation/
+# PHP is not installed on the host, so every backend command runs in Docker.
+
+vars:
+  DC: docker compose
+  APP_RUN: docker compose run --rm --no-deps app
+  SQLITE: '-e DB_CONNECTION=sqlite -e DB_DATABASE=:memory:'
+
+tasks:
+  default:
+    desc: List available tasks
+    silent: true
+    cmds:
+      - task --list-all
+
+  setup:
+    desc: Install PHP + JS dependencies and create .env
+    cmds:
+      - '[ -f .env ] || cp .env.example .env'
+      - npm install
+      - '{{.APP_RUN}} composer install --no-interaction'
+
+  up:
+    desc: Start the stack — API :8000, db :5432, Vite :5173
+    aliases: [start]
+    cmds:
+      - '{{.DC}} up -d'
+      - '{{.DC}} ps'
+
+  down:
+    desc: Stop the stack
+    aliases: [stop]
+    cmds:
+      - '{{.DC}} down'
+
+  restart:
+    desc: Restart the stack
+    cmds:
+      - '{{.DC}} restart'
+
+  logs:
+    desc: Tail logs, optionally one service — task logs -- app
+    cmds:
+      - '{{.DC}} logs -f {{.CLI_ARGS}}'
+
+  shell:
+    desc: Open a shell in the app container
+    cmds:
+      - '{{.DC}} exec app sh'
+
+  artisan:
+    desc: Run an artisan command — task artisan -- route:list
+    cmds:
+      - '{{.DC}} exec app php artisan {{.CLI_ARGS}}'
+
+  migrate:
+    desc: Run migrations
+    cmds:
+      - '{{.DC}} exec app php artisan migrate'
+
+  test:
+    desc: Run all unit tests (Pest + Vitest)
+    cmds:
+      - task: test:backend
+      - task: test:frontend
+
+  test:backend:
+    desc: Pest against SQLite in memory
+    cmds:
+      - '{{.APP_RUN}} {{.SQLITE}} php artisan test'
+
+  test:frontend:
+    desc: Vitest for every workspace
+    cmds:
+      - npm test
+
+  test:changed:
+    desc: Vitest only for files affected by the current diff
+    cmds:
+      - npm run test:changed -w @sewcraft/frontend
+
+  test:watch:
+    desc: Vitest in watch mode (frontend)
+    cmds:
+      - npm run test:watch -w @sewcraft/frontend
+
+  coverage:
+    desc: Frontend + geometry coverage gate (100%)
+    cmds:
+      - npm run test:coverage
+
+  coverage:backend:
+    desc: Pest coverage gate (100%)
+    cmds:
+      - '{{.APP_RUN}} {{.SQLITE}} php artisan test --coverage --min=100'
+
+  lint:
+    desc: ESLint for every workspace
+    cmds:
+      - npm run lint
+
+  typecheck:
+    desc: tsc / vue-tsc for every workspace
+    cmds:
+      - npm run typecheck
+
+  format:
+    desc: Prettier + Pint (writes)
+    cmds:
+      - npm run format
+      - '{{.APP_RUN}} vendor/bin/pint'
+
+  format:check:
+    desc: Verify formatting without writing
+    cmds:
+      - npm run format:check
+      - '{{.APP_RUN}} vendor/bin/pint --test'
+
+  build:
+    desc: Typecheck + production build
+    cmds:
+      - npm run build
+
+  check:
+    desc: Full local gate, mirrors CI
+    cmds:
+      - task: format
+      - task: typecheck
+      - task: lint
+      - task: format:check
+      - task: coverage
+      - task: build
+      - task: coverage:backend
+
+  integration:setup:
+    desc: Install the Playwright browser once
+    cmds:
+      - npx playwright install --with-deps chromium
+
+  integration:
+    desc: Integration suite (Testcontainers + Playwright)
+    cmds:
+      - npm run test:integration
+
+  integration:api:
+    desc: Integration API specs only
+    cmds:
+      - npm run test:api -w @sewcraft/integration
+
+  integration:ui:
+    desc: Integration UI specs only
+    cmds:
+      - npm run test:ui -w @sewcraft/integration
+
+  clean:
+    desc: Remove coverage output, builds and test scratch files
+    cmds:
+      - rm -rf frontend/coverage packages/geometry/coverage packages/geometry/dist
+      - rm -rf frontend/dist integration/.tmp integration/test-results integration/playwright-report
