@@ -350,6 +350,15 @@ const visibleDocument = computed(() =>
       },
 );
 
+/**
+ * The document whose coordinates the canvas's pointer math uses: the shared
+ * sketch document when that canvas is showing, otherwise the full piece document
+ * (the visible slice drops construction geometry and could lose an unowned point).
+ */
+const interactionDocument = computed(() =>
+  isSketch.value ? visibleDocument.value : pattern.value,
+);
+
 /** The assembly canvas's slice: the pieces its instances reference. */
 const assemblyDocument = computed(() => {
   /* v8 ignore start -- evaluated only while an assembly tab is active */
@@ -1504,8 +1513,10 @@ function onAddPoint(x: number, y: number): void {
  * nothing is dispatched.
  */
 function onAddPointOnLine(lineId: EntityId, x: number, y: number): void {
+  // The canvas hands us shared-space coordinates, so resolve them against the
+  // same document it draws; the bus translates the new point back afterwards.
   const commands = buildPointOnLineCommands(
-    pattern.value,
+    interactionDocument.value,
     lineId,
     { x, y },
     nextCommandId,
@@ -1522,7 +1533,12 @@ function onAddPointOnLine(lineId: EntityId, x: number, y: number): void {
  * projection is an endpoint, so nothing is dispatched.
  */
 function onSplitLine(lineId: EntityId, x: number, y: number): void {
-  const commands = buildSplitLineCommands(pattern.value, lineId, { x, y }, nextCommandId);
+  const commands = buildSplitLineCommands(
+    interactionDocument.value,
+    lineId,
+    { x, y },
+    nextCommandId,
+  );
   if (commands === null) return;
   // The original id belongs to only one half now, so a stale selection would
   // highlight the wrong edge; the user picks a half deliberately.

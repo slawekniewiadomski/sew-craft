@@ -185,6 +185,40 @@ describe('EditorView sketch canvas', () => {
     });
   });
 
+  it('splits a placed line using shared-space coordinates', async () => {
+    const { wrapper, store } = await mountSketch();
+    await wrapper.find('[data-testid="sketch-target"]').setValue('p2');
+    await nextTick();
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('split-line', 'ef', 340, 0);
+    await nextTick();
+
+    const points = store.document.entities.filter(
+      (entity) => entity.kind === 'point' && entity.piece === 'p2',
+    );
+    expect(points).toHaveLength(3);
+    expect(points.some((point) => point.kind === 'point' && point.x === 40)).toBe(true);
+    const lines = store.document.entities.filter(
+      (entity) => entity.kind === 'line' && entity.piece === 'p2',
+    );
+    expect(lines).toHaveLength(2);
+  });
+
+  it('adds a point on a placed line using shared-space coordinates', async () => {
+    const { wrapper, store } = await mountSketch();
+    await wrapper.find('[data-testid="sketch-target"]').setValue('p2');
+    await nextTick();
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('add-point-on-line', 'ef', 340, 0);
+    await nextTick();
+
+    const created = store.document.entities.find(
+      (entity) => entity.kind === 'point' && entity.piece === 'p2' && entity.x === 40,
+    );
+    expect(created).toMatchObject({ kind: 'point', y: 0 });
+    expect(store.document.constraints).toHaveLength(1);
+  });
+
   it('ignores a canvas retarget outside the sketch canvas', async () => {
     const { wrapper, store } = await mountLoaded(twoPieceDoc);
     store.setActiveTab({ kind: 'piece', id: 'p1' });
