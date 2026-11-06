@@ -80,6 +80,8 @@ the only cross-piece arithmetic channel. Piece tabs and assemblies are untouched
 
 ## Progress
 
+PR: #118
+
 > Convention: `- [ ]` pending, `- [x]` done. Append ` — <commit sha>` when a step lands. Do not rename step titles.
 
 ### Phase 1: Geometry model, placement and the shared-space view
