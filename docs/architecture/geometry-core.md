@@ -558,6 +558,23 @@ corner's construction flag and deletes the derived entities. See
 Seam allowances on rounded lines are rejected in v1: a straight offset would
 stop at the tangent point and leave a gap around the arc.
 
+## Line split (`commands.ts`)
+
+`split_line { line, point }` replaces a straight edge with two halves that share
+`point`: the original keeps its id as `start → point`, and the new half takes the
+command id as `point → end`. The point must be an authored, non-derived point
+within 0.001 mm of the edge and at least 0.001 mm from either end. An
+`at: 'edge'` cut anchor on the edge blocks the split, because it measures the
+whole edge rather than one half.
+
+The split is a geometric no-op, so the command returns `inverse: null` and undo
+uses the journal snapshot. The piece loop inserts the new half after the
+original; a per-edge allowance and a legacy seam are copied; a corner round's end
+follows the tangent it owns; a notch follows the half that contains its point; a
+measured chain becomes both halves and is canonicalised with
+`measurementChain`; a line-form midpoint becomes the two-point form; and an
+`at: 'end'` cut anchor moves to the second half.
+
 ## Public API
 
 ```ts
