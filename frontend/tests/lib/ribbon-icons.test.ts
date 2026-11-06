@@ -38,6 +38,7 @@ describe('RIBBON_ICONS', () => {
       'rotate',
       'round-corner',
       'select',
+      'split',
       'text',
       'text-leader',
       'undo',
@@ -67,6 +68,8 @@ describe('RIBBON_ICONS', () => {
     expect(RIBBON_ICONS['piece-add'].paths.slice(0, 3)).toEqual(RIBBON_ICONS.piece.paths);
     expect(RIBBON_ICONS['rectangle-center'].dots).toHaveLength(1);
     expect(RIBBON_ICONS['rectangle-aligned'].paths).toHaveLength(1);
+    expect(RIBBON_ICONS.split.paths).toHaveLength(3);
+    expect(RIBBON_ICONS.split.dots).toHaveLength(1);
   });
 
   it('resolves a glyph by name', () => {

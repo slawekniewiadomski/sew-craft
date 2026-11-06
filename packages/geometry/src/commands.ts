@@ -278,6 +278,13 @@ export interface AddLineParams {
   construction?: boolean;
 }
 
+export interface SplitLineParams {
+  /** The straight line to split. */
+  line: EntityId;
+  /** An existing authored point on the line, strictly between its ends. */
+  point: EntityId;
+}
+
 export interface AddCurveParams {
   p0: EntityId;
   p1: EntityId;
@@ -601,6 +608,7 @@ export type Command =
   | { id: EntityId; type: 'add_point'; params: AddPointParams; issuedAt?: string }
   | { id: EntityId; type: 'move_point'; params: MovePointParams; issuedAt?: string }
   | { id: EntityId; type: 'add_line'; params: AddLineParams; issuedAt?: string }
+  | { id: EntityId; type: 'split_line'; params: SplitLineParams; issuedAt?: string }
   | { id: EntityId; type: 'add_curve'; params: AddCurveParams; issuedAt?: string }
   | { id: EntityId; type: 'add_arc'; params: AddArcParams; issuedAt?: string }
   | { id: EntityId; type: 'add_circle'; params: AddCircleParams; issuedAt?: string }
@@ -787,6 +795,8 @@ export function applyCommand(document: PatternDocument, command: Command): Comma
         roleFromParams(command.params.role, command.params.construction),
         'add_line',
       );
+    case 'split_line':
+      return applySplitLine(document, command);
     case 'add_construction_line':
       return applyAddLine(document, command, 'construction', 'add_construction_line');
     case 'set_construction':
@@ -1135,6 +1145,212 @@ function applyAddLine(
   return {
     document: { ...document, entities: [...document.entities, line] },
     inverse: deleteEntityCommand(command.id),
+  };
+}
+
+/** The shortest length either half of a split line may keep, in millimetres. */
+export const MIN_SPLIT_LENGTH = 0.001;
+
+interface LineProjection {
+  /** The full length of the projected line, in millimetres. */
+  length: number;
+  /** Distance from the line's start to the projected point. */
+  along: number;
+  /** Perpendicular distance from the point to the line. */
+  off: number;
+}
+
+/** Project a point onto a non-degenerate line through `start` and `end`. */
+function projectOnLine(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  point: { x: number; y: number },
+): LineProjection {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  const ux = dx / length;
+  const uy = dy / length;
+  const rx = point.x - start.x;
+  const ry = point.y - start.y;
+  return { length, along: rx * ux + ry * uy, off: Math.abs(-rx * uy + ry * ux) };
+}
+
+/**
+ * Split a straight line at an existing authored point. The original line keeps
+ * its id as the first half; the new half takes the command id. Both halves share
+ * the split point, so the piece loop stays closed.
+ *
+ * Everything that names the line is re-pointed at the half that now owns it:
+ * piece loops and per-edge allowances, legacy seams, corner rounds, notches,
+ * measured-variable chains, the line form of a midpoint constraint, and cut
+ * anchors that resolve to the line's natural end. The split is a geometric
+ * no-op, so undo relies on the journal snapshot (`inverse: null`).
+ */
+function applySplitLine(
+  document: PatternDocument,
+  command: CommandOf<'split_line'>,
+): CommandApplication {
+  const { line: lineId, point: pointId } = command.params;
+  if (getEntity(document, command.id) !== undefined) {
+    return noOp(document);
+  }
+
+  const line = requireLine(document, lineId, 'split_line');
+  const point = requirePoint(document, pointId, 'split_line');
+  if (isCornerRoundDerived(document, pointId)) {
+    throw new CommandValidationError(
+      'split_line',
+      'This point is derived by a corner round; edit the radius.',
+    );
+  }
+  if (midpointTargetFor(document, pointId) !== undefined) {
+    throw new CommandValidationError(
+      'split_line',
+      'This point is fixed at the midpoint; split at another point.',
+    );
+  }
+  if (line.piece !== undefined && point.piece !== undefined && point.piece !== line.piece) {
+    throw new CommandValidationError(
+      'split_line',
+      'The point and the line must belong to the same piece.',
+    );
+  }
+  if (pointId === line.start || pointId === line.end) {
+    throw new CommandValidationError('split_line', 'The point is already an end of this line.');
+  }
+
+  const start = requirePoint(document, line.start, 'split_line');
+  const end = requirePoint(document, line.end, 'split_line');
+  if (start.x === end.x && start.y === end.y) {
+    throw new CommandValidationError('split_line', 'The line has no length.');
+  }
+  const projection = projectOnLine(start, end, point);
+  if (projection.off > MIN_SPLIT_LENGTH) {
+    throw new CommandValidationError('split_line', 'The point is not on this line.');
+  }
+  if (
+    projection.along <= MIN_SPLIT_LENGTH ||
+    projection.length - projection.along <= MIN_SPLIT_LENGTH
+  ) {
+    throw new CommandValidationError(
+      'split_line',
+      'The point must sit between the ends of the line.',
+    );
+  }
+
+  // A cut dimension on `at: 'edge'` measures the whole edge; splitting it would
+  // silently halve the value, so refuse until the user removes it.
+  const wholeEdge = document.constraints.some(
+    (constraint) =>
+      constraint.type === 'derived_distance' &&
+      ((constraint.a.edge === lineId && constraint.a.at === 'edge') ||
+        (constraint.b.edge === lineId && constraint.b.at === 'edge')),
+  );
+  if (wholeEdge) {
+    throw new CommandValidationError(
+      'split_line',
+      'A cut dimension measures this edge as a whole; remove it before splitting.',
+    );
+  }
+
+  const first: LineEntity = { ...line, end: pointId };
+  const second: LineEntity = { ...line, id: command.id, start: pointId };
+  const splitEntities: Entity[] = [
+    ...document.entities.map((entity) => (entity.id === lineId ? first : entity)),
+    second,
+  ];
+
+  // A notch cuts the allowance of the half that contains its point.
+  const entities = splitEntities.map((entity): Entity => {
+    if (entity.kind !== 'mark' || entity.type !== 'notch' || entity.edge !== lineId) return entity;
+    const notchPoint = getEntity(document, entity.point);
+    if (notchPoint === undefined || notchPoint.kind !== 'point') return entity;
+    return projectOnLine(start, end, notchPoint).along > projection.along
+      ? { ...entity, edge: command.id }
+      : entity;
+  });
+
+  // Insert the new half immediately after the original wherever it appears.
+  const pieces = document.pieces.map((piece) => {
+    const index = piece.edges.indexOf(lineId);
+    if (index < 0) return piece;
+    const edges = [...piece.edges];
+    edges.splice(index + 1, 0, command.id);
+    const allowance = piece.allowances.find((candidate) => candidate.edge === lineId);
+    return allowance === undefined
+      ? { ...piece, edges }
+      : {
+          ...piece,
+          edges,
+          allowances: [...piece.allowances, { ...allowance, edge: command.id }],
+        };
+  });
+
+  // A round owns the half that keeps its tangent; a round at the original start
+  // stays on the original line, a round at the original end moves to the new one.
+  const remapRoundEnd = (roundEnd: CornerRound['ends'][number]): CornerRound['ends'][number] =>
+    roundEnd.line === lineId && roundEnd.tangent !== line.start
+      ? { ...roundEnd, line: command.id }
+      : roundEnd;
+  const nextRounds =
+    document.cornerRounds === undefined
+      ? undefined
+      : cornerRounds(document).map((round): CornerRound => ({
+          ...round,
+          ends: [remapRoundEnd(round.ends[0]), remapRoundEnd(round.ends[1])],
+        }));
+
+  const remapAnchor = (anchor: CutAnchor): CutAnchor =>
+    anchor.edge === lineId && anchor.at === 'end' ? { ...anchor, edge: command.id } : anchor;
+  const constraints = document.constraints.map((constraint): Constraint => {
+    if (constraint.type === 'midpoint' && 'line' in constraint && constraint.line === lineId) {
+      return {
+        id: constraint.id,
+        type: 'midpoint',
+        point: constraint.point,
+        ...(constraint.piece === undefined ? {} : { piece: constraint.piece }),
+        a: line.start,
+        b: line.end,
+      };
+    }
+    if (constraint.type !== 'derived_distance') return constraint;
+    const a = remapAnchor(constraint.a);
+    const b = remapAnchor(constraint.b);
+    return a === constraint.a && b === constraint.b ? constraint : { ...constraint, a, b };
+  });
+
+  // A measured chain replaces the edge with its two halves, then canonicalises
+  // the order; a chain that already failed to resolve is left untouched.
+  const variables =
+    document.variables === undefined
+      ? undefined
+      : document.variables.map((variable): Variable => {
+          if (!isMeasuredVariable(variable) || !variable.sources.includes(lineId)) return variable;
+          const ids = variable.sources.flatMap((id) =>
+            id === lineId ? [lineId, command.id] : [id],
+          );
+          const chain = measurementChain(entities, ids);
+          return chain.chain === undefined ? variable : { ...variable, sources: chain.chain };
+        });
+
+  const seam = documentSeams(document).find((candidate) => candidate.edge === lineId);
+  const seams =
+    document.seams === undefined || seam === undefined
+      ? document.seams
+      : [...document.seams, { ...seam, id: `${command.id}:seam`, edge: command.id }];
+
+  return {
+    document: {
+      ...document,
+      entities,
+      constraints,
+      pieces,
+      ...(nextRounds === undefined ? {} : { cornerRounds: nextRounds }),
+      ...(variables === undefined ? {} : { variables }),
+      ...(seams === undefined ? {} : { seams }),
+    },
+    inverse: null,
   };
 }
 

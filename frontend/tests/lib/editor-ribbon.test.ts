@@ -54,6 +54,13 @@ describe('RIBBON_GROUPS', () => {
       },
       {
         kind: 'tool',
+        id: 'tool-split_line',
+        label: 'Split',
+        icon: 'split',
+        tool: 'split_line',
+      },
+      {
+        kind: 'tool',
         id: 'tool-notch',
         label: 'Notch',
         icon: 'notch',

@@ -31,7 +31,7 @@ length rejects a ratio or an area. Variables are managed with `set_variable`,
 `update_variable` and `remove_variable`; a variable is either written (a literal
 or a formula) or measured from a connected chain of edges.
 
-## Commands (v0.19)
+## Commands (v0.20)
 
 ### `add_point`
 
@@ -60,6 +60,28 @@ Segment between two existing points.
 - params: `start: entity_id`, `end: entity_id`, `piece: entity_id`,
   `role?: 'construction' | 'annotation'`
 - inverse: `delete_entity`
+
+### `split_line`
+
+Split a straight **line** at an existing point. The two halves stay connected at
+the split point — the shared vertex keeps the piece loop closed and leaves no
+gap. The original line keeps its id as the first half (`start → point`); the new
+half (`point → end`) takes the command id.
+
+- params: `line: entity_id`, `point: entity_id`
+- The line must be a line (curves and arcs are out of scope), the point must be
+  an authored point within **0.001 mm** of the line and strictly between its
+  ends, and neither may be derived (corner round or midpoint). The point may not
+  be an endpoint, and a split may not leave a half shorter than **0.001 mm**.
+- A `derived_distance` anchor with `at: 'edge'` measures the whole edge; the
+  command refuses until that dimension is removed.
+- Everything that names the line follows the geometry: the piece loop and its
+  per-edge allowance, legacy `seams`, corner rounds (each round stays with the
+  half that owns its tangent), notches (the half containing the notch point),
+  measured-variable chains (the id becomes both halves and the chain is
+  canonicalised), line-form midpoint constraints (converted to `{a, b}`), and
+  cut anchors with `at: 'end'` (re-pointed at the new half).
+- inverse: `null` — the journal snapshot restores the document.
 
 ### `add_curve`
 
@@ -842,6 +864,12 @@ Request a solver rebuild. Typically emitted after a batch of geometry commands.
 3. Implement `applyCommand` handling in `@sewcraft/geometry` with tests.
 4. Wire any UI affordance. Emit it from the command bus — never mutate state
    directly.
+
+## Migration from spec 0.19.0
+
+`spec_version` is **0.20.0**. Additive: `split_line` splits a straight line at an
+existing point without changing the document schema or the visible geometry. An
+older build that meets the command rejects it; the pattern itself stays readable.
 
 ## Migration from spec 0.18.0
 

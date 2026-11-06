@@ -175,6 +175,7 @@ import {
 } from '@/lib/selection';
 import { nearestLineMidpoint } from '@/lib/midpoint';
 import { notchTargetAt } from '@/lib/marks';
+import { splitCandidate, type SplitCandidate } from '@/lib/split-line';
 import {
   MIDPOINT_SNAP_PIXELS,
   nearestPoint,
@@ -404,6 +405,7 @@ const emit = defineEmits<{
   'add-point': [x: number, y: number];
   'add-point-on-line': [lineId: EntityId, x: number, y: number];
   'add-point-midpoint': [lineId: EntityId];
+  'split-line': [lineId: EntityId, x: number, y: number];
   'add-line': [start: DraftingEndpoint, end: DraftingEndpoint];
   'add-arc': [start: DraftingEndpoint, end: DraftingEndpoint, through: DraftingEndpoint];
   'add-curve': [points: [EntityId, EntityId, EntityId, EntityId]];
@@ -512,6 +514,7 @@ const touchRegion = ref<{ target: BandTarget; start: Vec2 } | null>(null);
  * pointer and the projection that click would use.
  */
 const pointOnLineHover = ref<{ lineId: EntityId; pointer: Vec2; point: Vec2 } | null>(null);
+const splitLineHover = ref<SplitCandidate | null>(null);
 /**
  * The visible line whose middle is under the pointer while a point-creating tool
  * is armed. `pointer` is kept so a document edit can re-resolve the candidate.
@@ -1815,6 +1818,7 @@ function entityClass(entity: {
   role?: 'construction' | 'annotation';
 }): string {
   if (pointOnLineHover.value?.lineId === entity.id) return 'text-primary';
+  if (splitLineHover.value?.lineId === entity.id) return 'text-primary';
   if (midpointHover.value?.lineId === entity.id) return 'text-primary';
   if (
     dimensionPickLineIds.value.has(entity.id) ||
@@ -1983,6 +1987,7 @@ const textLeaderHint = computed<string | null>(() => {
 
 function lineWidth(id: EntityId): number {
   return pointOnLineHover.value?.lineId === id ||
+    splitLineHover.value?.lineId === id ||
     midpointHover.value?.lineId === id ||
     dimensionPickLineIds.value.has(id) ||
     dimensionCandidateLineIds.value.has(id) ||
@@ -2606,6 +2611,7 @@ const DRAFTING_TOOLS = new Set<EditorTool>([
   'add_3point_rectangle',
   'add_text',
   'add_text_leader',
+  'split_line',
 ]);
 
 /** The translation the active piece's cut loop previews during a move. */
@@ -2795,6 +2801,9 @@ function onPointerDown(event: PointerEvent): void {
     case 'notch':
       onNotchPointer(hit, screen);
       break;
+    case 'split_line':
+      onSplitLinePointer(hit, screen);
+      break;
     case 'centre_line':
       onCentreLinePointer(hit);
       break;
@@ -2919,6 +2928,10 @@ function onCanvasPointerMove(event: PointerEvent): void {
     else pointOnLineHover.value = null;
   }
 
+  if (props.tool === 'split_line' && !props.readOnly) {
+    updateSplitLineHover(event, screen);
+  }
+
   if (props.tool === 'add_circle' && circleCenter.value !== null) {
     circlePreview.value = snappedPoint(screenToWorld(viewport.value, screen));
   }
@@ -2945,6 +2958,7 @@ function onCanvasPointerLeave(): void {
   bandHovered.value = false;
   pointerWorld.value = null;
   pointOnLineHover.value = null;
+  splitLineHover.value = null;
   midpointHover.value = null;
   textPointer.value = null;
 }
@@ -3061,6 +3075,12 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
+  if (event.key === 'Escape' && splitLineHover.value !== null) {
+    event.preventDefault();
+    splitLineHover.value = null;
+    return;
+  }
+
   if (
     event.key === 'Escape' &&
     (dimensionPending.value.length > 0 ||
@@ -3143,6 +3163,36 @@ function updatePointOnLineHover(event: Event, screen: Vec2): void {
   const pointer = screenToWorld(viewport.value, screen);
   const point = pointOnLineTarget(hit.id, pointer);
   pointOnLineHover.value = point === null ? null : { lineId: hit.id, pointer, point };
+}
+
+/**
+ * Track the straight line under the Split tool and where the split would land,
+ * so the highlighted line and the ghost match what a click will do.
+ */
+function updateSplitLineHover(event: Event, screen: Vec2): void {
+  const hit = hitEntity(event);
+  if (
+    hit === null ||
+    hit.kind !== 'line' ||
+    (props.activePieceId !== null && !canEditEntity(props.document, hit.id, props.activePieceId))
+  ) {
+    splitLineHover.value = null;
+    return;
+  }
+  splitLineHover.value = splitCandidate(
+    props.document,
+    hit.id,
+    screenToWorld(viewport.value, screen),
+  );
+}
+
+/** One click of the Split tool: a valid projection dispatches the split. */
+function onSplitLinePointer(hit: Hit | null, screen: Vec2): void {
+  if (hit === null || hit.kind !== 'line') return;
+  const world = screenToWorld(viewport.value, screen);
+  if (splitCandidate(props.document, hit.id, world) === null) return;
+  splitLineHover.value = null;
+  emit('split-line', hit.id, world.x, world.y);
 }
 
 /**
@@ -3537,6 +3587,7 @@ watch(
     hoveredRoundId.value = null;
     editingCornerRound.value = null;
     pointOnLineHover.value = null;
+    splitLineHover.value = null;
     midpointHover.value = null;
   },
 );
@@ -3549,6 +3600,7 @@ watch(
   () => {
     editingDimension.value = null;
     editingCornerRound.value = null;
+    splitLineHover.value = null;
 
     // Recompute the Point tool's inferred line against the new document so a
     // removed or degenerate line clears the hover signal.
@@ -4105,6 +4157,21 @@ watch(
             class="fill-primary stroke-primary-foreground"
             stroke-width="1"
             data-testid="point-on-line-ghost"
+          />
+        </g>
+
+        <g
+          v-if="splitLineHover !== null"
+          class="pointer-events-none"
+          aria-hidden="true"
+          data-testid="split-line-ghost"
+        >
+          <circle
+            :cx="splitLineHover.position.x"
+            :cy="splitLineHover.position.y"
+            :r="splitLineHover.pointId === null ? 4 : 5"
+            class="fill-primary stroke-primary-foreground"
+            stroke-width="1"
           />
         </g>
 
@@ -4895,6 +4962,28 @@ watch(
       data-testid="point-on-line-hint"
     >
       Click to create a point constrained to this line.
+    </p>
+
+    <p
+      v-if="props.tool === 'split_line' && !props.readOnly && splitLineHover === null"
+      class="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground shadow-sm"
+      role="status"
+      data-testid="split-line-hint"
+    >
+      Click a straight line to split it.
+    </p>
+
+    <p
+      v-if="splitLineHover !== null"
+      class="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground shadow-sm"
+      role="status"
+      data-testid="split-line-hint"
+    >
+      {{
+        splitLineHover.pointId === null
+          ? 'Click to split this line here.'
+          : 'Click to split this line at this point.'
+      }}
     </p>
 
     <p
