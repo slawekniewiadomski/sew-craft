@@ -3920,22 +3920,29 @@ watch(
         </g>
 
         <g data-testid="marks-layer">
-          <path
-            v-for="mark in markViews"
-            :key="mark.id"
-            :d="mark.path"
-            fill="none"
-            stroke-width="0.5"
-            vector-effect="non-scaling-stroke"
-            :class="
-              mark.selected
-                ? 'stroke-primary cursor-pointer'
-                : 'stroke-mark cursor-pointer hover:stroke-primary'
-            "
-            :data-entity-id="mark.id"
-            data-kind="mark"
-            :data-testid="`mark-${mark.id}`"
-          />
+          <g v-for="mark in markViews" :key="mark.id" class="group cursor-pointer">
+            <path
+              :d="mark.path"
+              fill="none"
+              stroke-width="0.5"
+              vector-effect="non-scaling-stroke"
+              :class="mark.selected ? 'stroke-primary' : 'stroke-mark group-hover:stroke-primary'"
+              :data-entity-id="mark.id"
+              data-kind="mark"
+              :data-testid="`mark-${mark.id}`"
+            />
+            <!-- A hairline mark needs its own wide, invisible hit stroke. -->
+            <path
+              :d="mark.path"
+              fill="none"
+              stroke="transparent"
+              stroke-width="12"
+              vector-effect="non-scaling-stroke"
+              :data-entity-id="mark.id"
+              data-kind="mark"
+              :data-testid="`mark-hit-${mark.id}`"
+            />
+          </g>
         </g>
 
         <g data-testid="annotation-layer">
