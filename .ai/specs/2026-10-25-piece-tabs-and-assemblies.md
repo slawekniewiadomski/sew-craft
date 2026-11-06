@@ -171,8 +171,8 @@ Existing components stay where they are; new modules are labelled by their role:
   only holds placed pieces); a drag previews only the pressed instance. The view
   fits on mount, on an assembly/tab change and on Fit — never on an instance
   edit — and the wheel zooms around the pointer while the middle button pans.
-  The canvas display menu drives five layer props: cut shapes, allowances, stitch
-  lines, fold lines and piece labels.
+  The canvas display menu drives six layer props: cut shapes, allowances, stitch
+  lines, fold lines, notches and piece labels.
 - `frontend/src/components/AssemblyPanel.vue` — assembly name, instance transform
   fields, selected piece parameters and the "Open piece tab" action.
 - `frontend/src/components/PiecePanel.vue` — the active piece's parameters; the
@@ -360,9 +360,11 @@ mode are removed.
 
 **Assembly tab.** A dedicated canvas renders every instance of that assembly: the
 cut loop filled with the piece colour at low opacity, the allowance band slightly
-stronger, the cut line in the foreground colour and the stitch/fold lines dashed.
-Only cut, stitch, fold and the allowance band render — no construction, annotation,
-text, dimension or handle geometry. A persistent muted label under each instance
+stronger, the cut line in the foreground colour, the stitch/fold lines dashed and
+the piece's V notches in the mark colour.
+Only cut, stitch, fold, notches and the allowance band render — no construction,
+annotation, text, dimension or handle geometry. A persistent muted label under
+each instance
 shows the piece name (`· mirrored` when flipped); the selected instance's label
 turns primary and the instance gets a dashed selection box with corner handles.
 Click selects; a plain drag moves the selected instance with a live preview and
