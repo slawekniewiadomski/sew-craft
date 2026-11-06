@@ -92,13 +92,18 @@ function measuredPill(row: VariableRow): string {
     <div class="mb-2 flex items-center justify-between gap-2">
       <SidebarHeading label="Measurements" :count="rows.length" />
       <div class="flex items-center gap-0.5">
-        <SidebarAction
-          icon="constraints"
-          label="Add measured variable from selection"
+        <SidebarButton
           :disabled="props.readOnly || !props.canMeasure"
+          :title="
+            props.canMeasure
+              ? 'Measure the connected edges you have selected'
+              : 'Select one or more connected edges first'
+          "
           data-testid="add-measured-variable"
           @click="emit('create-measured')"
-        />
+        >
+          + Measured
+        </SidebarButton>
         <SidebarButton
           :disabled="props.readOnly"
           data-testid="add-variable"
