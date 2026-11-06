@@ -24,7 +24,9 @@ import {
   PATTERN_SCHEMA,
   documentForAssembly,
   documentForPiece,
+  documentForSketch,
   pieceById,
+  piecePlacement,
   pieceCutLoop,
   seamForEdge,
   toSvgPiece,
@@ -73,6 +75,7 @@ import {
 } from '@/lib/allowance-edit';
 import RibbonIcon from '@/components/RibbonIcon.vue';
 import SaveConflictDialog from '@/components/SaveConflictDialog.vue';
+import SketchToolbar from '@/components/SketchToolbar.vue';
 import Pill from '@/components/sidebar/Pill.vue';
 import SidebarAction from '@/components/sidebar/SidebarAction.vue';
 import SidebarButton from '@/components/sidebar/SidebarButton.vue';
@@ -220,7 +223,9 @@ const selectedAllowanceTargets = ref<BandTarget[]>([]);
 const selectedDimensionIds = ref<EntityId[]>([]);
 /** The active tab, mirrored from the store; switching it is view state only. */
 const activeTab = computed(() => editor.activeTab);
-const isAssemblyTab = computed(() => activeTab.value?.kind === 'assembly');
+/** Whether the shared Sketch canvas is showing instead of a tab canvas. */
+const isSketch = computed(() => editor.sketchView);
+const isAssemblyTab = computed(() => !isSketch.value && activeTab.value?.kind === 'assembly');
 /** The piece every new entity belongs to, derived from the active tab. */
 const activePieceId = computed(() => editor.activePieceId);
 const activePiece = computed(
@@ -328,6 +333,8 @@ const cornerRoundPreviewRadius = ref<number | null>(null);
  * is gone rather than refused, so every hit is editable.
  */
 const pieceDocument = computed(() => {
+  // The Sketch canvas shows every piece at its placement, in shared coordinates.
+  if (isSketch.value) return documentForSketch(pattern.value);
   /* v8 ignore start -- the canvas only renders with a piece tab */
   if (activePieceId.value === null) return pattern.value;
   /* v8 ignore stop */
@@ -989,6 +996,76 @@ function setActiveTab(tab: TabRef | null): void {
   activeTool.value = 'select';
   fit();
 }
+
+/** The Sketch canvas's own Arrange mode; local view state, never stored. */
+const sketchArrange = ref(false);
+
+/**
+ * Open the shared Sketch canvas. The piece the user was editing becomes the
+ * target, so drawing continues where they left off; the view fits every piece.
+ */
+function openSketch(): void {
+  editor.showSketch();
+  selectedEntityIds.value = [];
+  selectedDimensionIds.value = [];
+  selectedInstanceId.value = null;
+  assemblyPickerOpen.value = false;
+  exitConstraint();
+  exitCornerRound();
+  activeTool.value = 'select';
+  fit();
+}
+
+/** The Sketch canvas switched its target piece (a picker choice or a click). */
+function onSketchTarget(id: EntityId): void {
+  if (!isSketch.value) return;
+  if (!editor.setSketchTarget(id)) return;
+  selectedEntityIds.value = [];
+  selectedDimensionIds.value = [];
+}
+
+/**
+ * Keep selection inside one piece on the Sketch canvas: the piece that owns the
+ * first selected entity becomes the target and everything else is dropped.
+ */
+function onSelectEntities(ids: EntityId[]): void {
+  if (!isSketch.value) {
+    selectedEntityIds.value = ids;
+    return;
+  }
+  if (ids.length === 0) {
+    selectedEntityIds.value = [];
+    return;
+  }
+
+  const owner =
+    ids
+      .map((id) => pieceForEntity(pattern.value, id)?.id)
+      .find((id): id is EntityId => id !== undefined) ?? null;
+  if (owner !== null) editor.setSketchTarget(owner);
+  const target = owner ?? editor.sketchTarget;
+  selectedEntityIds.value =
+    target === null ? ids : ids.filter((id) => pieceForEntity(pattern.value, id)?.id === target);
+}
+
+/** Arrange mode moves a whole piece; geometry is never touched. */
+function onMovePiece(dx: number, dy: number): void {
+  const piece = editor.sketchTarget;
+  if (!isSketch.value || piece === null) return;
+
+  const current = piecePlacement(pattern.value, piece);
+  run(() =>
+    dispatch({
+      id: nextCommandId('place'),
+      type: 'place_piece',
+      params: { id: piece, x: current.x + dx, y: current.y + dy },
+    }),
+  );
+}
+
+watch(isSketch, (on) => {
+  if (!on) sketchArrange.value = false;
+});
 
 function onReorderTabs(tabs: TabRef[]): void {
   run(() => dispatch({ id: nextCommandId('tabs'), type: 'reorder_tabs', params: { tabs } }));
@@ -2521,6 +2598,17 @@ onBeforeUnmount(() => {
         {{ selectionStatus }}
       </p>
 
+      <SketchToolbar
+        v-if="isSketch"
+        :pieces="pattern.pieces"
+        :target="editor.sketchTarget"
+        :arrange="sketchArrange"
+        :read-only="editor.readOnly"
+        @update:target="onSketchTarget"
+        @update:arrange="sketchArrange = $event"
+        @fit="fit"
+      />
+
       <div class="flex min-h-0 flex-1">
         <div class="relative min-h-0 flex-1 p-2">
           <p
@@ -2554,7 +2642,7 @@ onBeforeUnmount(() => {
           />
           <PatternCanvas
             v-else
-            v-model:selected-entity-ids="selectedEntityIds"
+            :selected-entity-ids="selectedEntityIds"
             v-model:selected-dimension-ids="selectedDimensionIds"
             v-model:selected-allowance-targets="selectedAllowanceTargets"
             :document="visibleDocument"
@@ -2570,7 +2658,12 @@ onBeforeUnmount(() => {
             :corner-round-preview-radius="cornerRoundPreviewRadius"
             :read-only="editor.readOnly"
             :active-piece-id="activePieceId"
+            :move-mode="isSketch && sketchArrange"
             :highlighted-entity-ids="measuredHighlightIds"
+            @update:selected-entity-ids="onSelectEntities"
+            @move-piece="onMovePiece"
+            @activate-piece="onSketchTarget"
+            @cross-piece="onSketchTarget"
             @move-point="onMovePoint"
             @add-text="onAddText"
             @add-notch="onAddNotch"
@@ -3051,11 +3144,13 @@ onBeforeUnmount(() => {
 
       <EditorTabs
         :document="pattern"
-        :model-value="activeTab"
+        :model-value="isSketch ? null : activeTab"
+        :sketch="isSketch"
         :read-only="editor.readOnly"
         @update:model-value="setActiveTab"
         @new-piece="newPiece"
         @new-assembly="newAssembly"
+        @show-sketch="openSketch"
         @reorder="onReorderTabs"
       />
 

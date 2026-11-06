@@ -79,7 +79,7 @@ export function withPiece(
   return {
     ...document,
     entities: document.entities.map((entity) => ({ ...entity, piece: id })),
-    pieces: [{ id, edges, allowances: [] }],
+    pieces: [{ id, edges, allowances: [], placement: { x: 0, y: 0 } }],
     tabs: [{ kind: 'piece', id }],
   };
 }
