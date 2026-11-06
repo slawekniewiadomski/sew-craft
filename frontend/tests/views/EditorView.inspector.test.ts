@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import PatternCanvas from '@/components/PatternCanvas.vue';
+import SelectionSummary from '@/components/SelectionSummary.vue';
 import CornerRoundPromptBar from '@/components/CornerRoundPromptBar.vue';
 import { useEditorStore } from '@/stores/editor';
 import {
@@ -1678,13 +1679,15 @@ describe('EditorView variables panel', () => {
     expect(store.document.variables![1]!.name).toBe('Ease');
 
     await wrapper.find(`[data-testid="variable-value-${added.slug}"]`).setValue('$bust/10');
-    expect(store.document.variables![1]!.value).toEqual({ expr: '$bust/10', lastKnown: 88 });
+    expect(store.document.variables![1]).toMatchObject({
+      value: { expr: '$bust/10', lastKnown: 88 },
+    });
 
     await wrapper.find(`[data-testid="variable-comment-${added.slug}"]`).setValue('design ease');
     expect(store.document.variables![1]!.comment).toBe('design ease');
 
     await wrapper.find('[data-testid="variable-unit-bust"]').trigger('click');
-    expect(store.document.variables![0]!.value).toBe(880);
+    expect(store.document.variables![0]).toMatchObject({ value: 880 });
 
     await wrapper.find(`[data-testid="variable-remove-${added.slug}"]`).trigger('click');
     expect(store.document.variables).toHaveLength(1);
@@ -1765,9 +1768,82 @@ describe('EditorView variables panel', () => {
     const { wrapper, store } = await mountLoaded(documentWithVariable());
     await openPanel(wrapper, 'variables');
 
-    const before = store.document.variables![0]!.value;
+    const before = store.document.variables![0];
     await wrapper.find('[data-testid="variable-value-bust"]').setValue('$missing + 1mm');
-    expect(store.document.variables![0]!.value).toEqual(before);
+    expect(store.document.variables![0]).toEqual(before);
     expect(wrapper.text()).toContain('unknown variable $missing');
+  });
+
+  it('creates a measured variable from a chain, highlights it and re-picks its sources', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+    await openPanel(wrapper, 'variables');
+    const canvas = wrapper.findComponent(PatternCanvas);
+
+    canvas.vm.$emit('update:selectedEntityIds', ['ab', 'bc']);
+    await nextTick();
+
+    const action = wrapper.find('[data-testid="add-measured-variable"]');
+    expect(action.attributes('disabled')).toBeUndefined();
+    await action.trigger('click');
+    await nextTick();
+
+    const measured = store.document.variables![0]!;
+    expect(measured).toMatchObject({
+      kind: 'measurement',
+      name: 'Measured 1',
+      sources: ['ab', 'bc'],
+      lastKnown: 200,
+    });
+    const slug = measured.slug;
+    expect(wrapper.find(`[data-testid="variable-value-${slug}"]`).text()).toBe('200');
+    expect(wrapper.find(`[data-testid="variable-type-${slug}"]`).text()).toBe('Measured · 2');
+
+    await wrapper.find(`[data-testid="variable-highlight-${slug}"]`).trigger('click');
+    await nextTick();
+    expect(wrapper.findComponent(PatternCanvas).props('highlightedEntityIds')).toEqual([
+      'ab',
+      'bc',
+    ]);
+
+    await wrapper.find(`[data-testid="variable-highlight-${slug}"]`).trigger('click');
+    await nextTick();
+    expect(wrapper.findComponent(PatternCanvas).props('highlightedEntityIds')).toEqual([]);
+
+    await wrapper.find(`[data-testid="variable-highlight-${slug}"]`).trigger('click');
+    await nextTick();
+    await openPanel(wrapper, 'properties');
+    wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedEntityIds', ['bc', 'cd']);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="selection-measure"]').text()).toBe(
+      'Update sources for Measured 1',
+    );
+    await wrapper.find('[data-testid="selection-measure"]').trigger('click');
+    await nextTick();
+    expect(store.document.variables![0]).toMatchObject({
+      sources: ['bc', 'cd'],
+      lastKnown: 200,
+    });
+  });
+
+  it('refuses the measured action for a selection that is not a connected chain', async () => {
+    const { wrapper, store } = await mountLoaded(lineDoc);
+    await openPanel(wrapper, 'variables');
+
+    wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedEntityIds', ['ab', 'cd']);
+    await nextTick();
+    expect(
+      wrapper.find('[data-testid="add-measured-variable"]').attributes('disabled'),
+    ).toBeDefined();
+
+    await openPanel(wrapper, 'properties');
+    const action = wrapper.find('[data-testid="selection-measure"]');
+    expect(action.attributes('disabled')).toBeDefined();
+    expect(action.attributes('title')).toContain('do not share an endpoint');
+
+    // The handler is defensive even if a caller emits without a chain.
+    wrapper.findComponent(SelectionSummary).vm.$emit('measure');
+    await nextTick();
+    expect(store.document.variables ?? []).toHaveLength(0);
   });
 });

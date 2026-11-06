@@ -165,6 +165,7 @@ function mountCanvas(
     readOnly: boolean;
     activePieceId: EntityId | null;
     moveMode: boolean;
+    highlightedEntityIds: EntityId[];
   }> = {},
 ): VueWrapper {
   return mount(PatternCanvas, {
@@ -174,6 +175,7 @@ function mountCanvas(
       selectedEntityIds: [],
       selectedDimensionIds: [],
       selectedAllowanceTargets: [],
+      highlightedEntityIds: [],
       fitToken: 0,
       ...overrides,
     },
@@ -315,6 +317,24 @@ describe('PatternCanvas', () => {
     const wrapper = mountCanvas({ document: seamDoc, showAllowances: false });
 
     expect(wrapper.findAll('[data-seam-edge]')).toHaveLength(0);
+  });
+
+  it('paints the edges a measured variable reads above the geometry', () => {
+    expect(mountCanvas().find('[data-testid="measured-highlight-layer"]').exists()).toBe(false);
+
+    const wrapper = mountCanvas({ highlightedEntityIds: ['ab', 'curve', 'ccurve'] });
+    const layer = wrapper.find('[data-testid="measured-highlight-layer"]');
+    expect(layer.exists()).toBe(true);
+    expect(layer.classes()).toContain('pointer-events-none');
+    expect(
+      layer.findAll('[data-measured-source]').map((el) => el.attributes('data-measured-source')),
+    ).toEqual(['ab', 'curve', 'ccurve']);
+    // An id that is not an edge of this document paints nothing extra.
+    expect(
+      mountCanvas({ highlightedEntityIds: ['gone'] })
+        .find('[data-testid="measured-highlight-layer"]')
+        .findAll('[data-measured-source]'),
+    ).toHaveLength(0);
   });
 
   it('keeps the legacy allowance read-only: no hit path and no editor', async () => {

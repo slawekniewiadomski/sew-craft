@@ -84,7 +84,7 @@ describe('ConstraintPromptBar', () => {
       valueReady: true,
       initialValue: '125.5',
       document: {
-        schema: 'sewcraft.pattern/0.6',
+        schema: 'sewcraft.pattern/0.7',
         units: 'mm',
         entities: [],
         constraints: [],

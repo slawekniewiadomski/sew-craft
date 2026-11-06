@@ -15,6 +15,9 @@ import {
   getEntity,
   isConstruction,
   isDrivenDimension,
+  isMeasuredVariable,
+  measurementChain,
+  measurementChainMessage,
   isLineAnchor,
   measureDistanceDimension,
   measureLinearDimension,
@@ -417,6 +420,85 @@ const selectedEntities = computed(() =>
     return entity === undefined ? [] : [entity];
   }),
 );
+
+/** The selected edges, in selection order: the only kinds a measurement reads. */
+const measuredSourceIds = computed(() =>
+  selectedEntities.value
+    .filter(
+      (entity) =>
+        entity.kind === 'line' ||
+        entity.kind === 'curve' ||
+        entity.kind === 'arc' ||
+        entity.kind === 'circle',
+    )
+    .map((entity) => entity.id),
+);
+
+/** The ordered chain the current selection forms, or why it does not form one. */
+const measuredSelection = computed<{ chain: EntityId[] | null; problem?: string }>(() => {
+  const ids = measuredSourceIds.value;
+  if (ids.length === 0) {
+    return { chain: null, problem: 'Select one or more connected edges first.' };
+  }
+  const result = measurementChain(pattern.value.entities, ids);
+  return result.problem === undefined
+    ? { chain: result.chain }
+    : { chain: null, problem: measurementChainMessage(result.problem) };
+});
+
+/** The measured variable whose sources the canvas is showing, if any. */
+const highlightedVariableSlug = ref<string | null>(null);
+const highlightedVariable = computed(
+  () =>
+    (pattern.value.variables ?? []).find(
+      (variable) => variable.slug === highlightedVariableSlug.value,
+    ) ?? null,
+);
+const measuredHighlightIds = computed(() => {
+  const variable = highlightedVariable.value;
+  return variable !== null && isMeasuredVariable(variable) ? variable.sources : [];
+});
+
+/** The row a Selection action would re-pick, when a measured row is highlighted. */
+const measureTarget = computed(() =>
+  highlightedVariable.value !== null && isMeasuredVariable(highlightedVariable.value)
+    ? highlightedVariable.value
+    : null,
+);
+
+/** Label for the Selection action: create, or re-pick the highlighted chain. */
+const measureLabel = computed(() =>
+  measureTarget.value === null
+    ? 'Add as measured variable'
+    : `Update sources for ${measureTarget.value.name}`,
+);
+
+function onHighlightVariable(slug: string | null): void {
+  highlightedVariableSlug.value = slug;
+}
+
+/** Create a measured variable from the selection, or re-pick a highlighted one. */
+function onMeasureSelection(): void {
+  const chain = measuredSelection.value.chain;
+  if (chain === null) return;
+  const target = measureTarget.value;
+  const count = (pattern.value.variables ?? []).length + 1;
+  run(() =>
+    dispatch(
+      target === null
+        ? {
+            id: nextCommandId('variable'),
+            type: 'set_variable',
+            params: { name: `Measured ${count}`, kind: 'measurement', sources: chain },
+          }
+        : {
+            id: nextCommandId('variable'),
+            type: 'update_variable',
+            params: { slug: target.slug, sources: chain },
+          },
+    ),
+  );
+}
 
 /** Edges a bulk Delete would orphan; a non-empty list disables the action. */
 const orphanCandidates = computed(() => orphanedEdges(pattern.value, selectedEntityIds.value));
@@ -2471,6 +2553,7 @@ onBeforeUnmount(() => {
             :corner-round-preview-radius="cornerRoundPreviewRadius"
             :read-only="editor.readOnly"
             :active-piece-id="activePieceId"
+            :highlighted-entity-ids="measuredHighlightIds"
             @move-point="onMovePoint"
             @add-text="onAddText"
             @add-notch="onAddNotch"
@@ -2517,7 +2600,11 @@ onBeforeUnmount(() => {
               :dimensions="selectedDimensionIds.length"
               :delete-disabled="orphanCandidates.length > 0"
               :delete-hint="orphanHint"
+              :measure-label="measureLabel"
+              :measure-disabled="measuredSelection.chain === null"
+              :measure-hint="measuredSelection.problem"
               @delete="deleteSelected"
+              @measure="onMeasureSelection"
             />
 
             <EntityPropertiesPanel
@@ -2899,6 +2986,10 @@ onBeforeUnmount(() => {
               @set-unit="onSetVariableUnit"
               @set-comment="onSetVariableComment"
               @remove="onRemoveVariable"
+              :can-measure="measuredSelection.chain !== null"
+              :active-slug="highlightedVariableSlug"
+              @create-measured="onMeasureSelection"
+              @highlight="onHighlightVariable"
             />
           </template>
 
