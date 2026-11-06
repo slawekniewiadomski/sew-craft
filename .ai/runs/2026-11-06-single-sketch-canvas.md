@@ -97,5 +97,5 @@ the only cross-piece arithmetic channel. Piece tabs and assemblies are untouched
 
 ### Phase 3: Docs and verification
 
-- [ ] 3.1 Update data model and command spec docs
-- [ ] 3.2 Full validation gate and coverage top-up
+- [x] 3.1 Update data model and command spec docs — 7892570
+- [x] 3.2 Full validation gate and coverage top-up — 87a185f
