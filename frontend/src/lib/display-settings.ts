@@ -15,6 +15,7 @@ export interface AssemblyDisplaySettings {
   allowances: boolean;
   stitch: boolean;
   folds: boolean;
+  notches: boolean;
   labels: boolean;
 }
 
@@ -41,7 +42,14 @@ export interface CanvasDisplayItem {
 export function defaultDisplaySettings(): DisplaySettings {
   return {
     piece: { construction: true, allowances: true, constraints: true, dimensions: true },
-    assembly: { cutShapes: true, allowances: true, stitch: true, folds: true, labels: true },
+    assembly: {
+      cutShapes: true,
+      allowances: true,
+      stitch: true,
+      folds: true,
+      notches: true,
+      labels: true,
+    },
     export: { construction: false, stitch: true, fold: true },
   };
 }
@@ -95,6 +103,7 @@ export function parseDisplaySettings(value: string | null | undefined): DisplayS
       allowances: pickFlag(assembly, 'allowances', defaults.assembly.allowances),
       stitch: pickFlag(assembly, 'stitch', defaults.assembly.stitch),
       folds: pickFlag(assembly, 'folds', defaults.assembly.folds),
+      notches: pickFlag(assembly, 'notches', defaults.assembly.notches),
       labels: pickFlag(assembly, 'labels', defaults.assembly.labels),
     },
     export: {

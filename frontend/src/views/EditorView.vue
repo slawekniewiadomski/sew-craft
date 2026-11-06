@@ -283,6 +283,7 @@ const ASSEMBLY_DISPLAY_ITEMS: CanvasDisplayItem[] = [
   { key: 'allowances', label: 'Allowances' },
   { key: 'stitch', label: 'Stitch lines' },
   { key: 'folds', label: 'Fold lines' },
+  { key: 'notches', label: 'Notches' },
   { key: 'labels', label: 'Piece labels' },
 ];
 
@@ -2542,6 +2543,7 @@ onBeforeUnmount(() => {
             :show-allowances="display.assembly.allowances"
             :show-stitch="display.assembly.stitch"
             :show-folds="display.assembly.folds"
+            :show-notches="display.assembly.notches"
             :show-labels="display.assembly.labels"
             @select="selectInstance"
             @move="onMoveInstance"

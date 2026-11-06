@@ -16,6 +16,7 @@ const documentOf = (): PatternDocument => ({
     { id: 'bc', kind: 'line', start: 'b', end: 'c', piece: 'p1' },
     { id: 'cd', kind: 'line', start: 'c', end: 'd', piece: 'p1' },
     { id: 'da', kind: 'line', start: 'd', end: 'a', piece: 'p1' },
+    { id: 'n1', kind: 'mark', type: 'notch', piece: 'p1', edge: 'ab', point: 'a' },
   ],
   pieces: [
     {
@@ -75,6 +76,8 @@ describe('AssemblyCanvas rendering', () => {
     expect(wrapper.findAll('[data-testid="instance-cut-line"]')).toHaveLength(1);
     expect(wrapper.findAll('[data-testid="instance-stitch-line"]')).toHaveLength(1);
     expect(wrapper.findAll('[data-testid="instance-fold-line"]')).toHaveLength(1);
+    expect(wrapper.findAll('[data-testid="instance-notch"]')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="instance-notch"]').classes()).toContain('stroke-mark');
     expect(wrapper.find('[data-testid="instance-cut-fill"]').attributes('fill')).toBe('#336699');
     expect(wrapper.findAll('[data-testid="instance-label"]').map((node) => node.text())).toEqual([
       'Front',
@@ -88,6 +91,7 @@ describe('AssemblyCanvas rendering', () => {
       showAllowances: false,
       showStitch: false,
       showFolds: false,
+      showNotches: false,
       showLabels: false,
     });
 
@@ -95,6 +99,7 @@ describe('AssemblyCanvas rendering', () => {
     expect(wrapper.findAll('[data-testid="instance-allowance-band"]')).toHaveLength(0);
     expect(wrapper.findAll('[data-testid="instance-stitch-line"]')).toHaveLength(0);
     expect(wrapper.findAll('[data-testid="instance-fold-line"]')).toHaveLength(0);
+    expect(wrapper.findAll('[data-testid="instance-notch"]')).toHaveLength(0);
     expect(wrapper.findAll('[data-testid="instance-label"]')).toHaveLength(0);
     // The cut outline and the selection affordance are not display layers.
     expect(wrapper.findAll('[data-testid="instance-cut-line"]')).toHaveLength(1);

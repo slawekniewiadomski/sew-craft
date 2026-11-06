@@ -12,7 +12,14 @@ describe('defaultDisplaySettings', () => {
   it('shows every layer and exports stitch and fold by default', () => {
     expect(defaultDisplaySettings()).toEqual({
       piece: { construction: true, allowances: true, constraints: true, dimensions: true },
-      assembly: { cutShapes: true, allowances: true, stitch: true, folds: true, labels: true },
+      assembly: {
+        cutShapes: true,
+        allowances: true,
+        stitch: true,
+        folds: true,
+        notches: true,
+        labels: true,
+      },
       export: { construction: false, stitch: true, fold: true },
     });
   });
@@ -44,7 +51,14 @@ describe('parseDisplaySettings', () => {
 
     expect(parsed).toEqual({
       piece: { construction: false, allowances: true, constraints: true, dimensions: true },
-      assembly: { cutShapes: true, allowances: true, stitch: false, folds: true, labels: true },
+      assembly: {
+        cutShapes: true,
+        allowances: true,
+        stitch: false,
+        folds: true,
+        notches: true,
+        labels: true,
+      },
       export: { construction: false, stitch: true, fold: false },
     });
   });

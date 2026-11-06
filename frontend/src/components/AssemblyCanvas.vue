@@ -5,6 +5,7 @@ import {
   type Assembly,
   type AssemblyInstance,
   type EntityId,
+  type NotchGeometry,
   type PatternDocument,
   type Piece,
   type Vec2,
@@ -36,6 +37,8 @@ const props = withDefaults(
     showStitch?: boolean;
     showFolds?: boolean;
     showLabels?: boolean;
+    /** Notch marks, which sit in the allowance and follow the instance transform. */
+    showNotches?: boolean;
   }>(),
   {
     selectedInstanceId: null,
@@ -47,6 +50,7 @@ const props = withDefaults(
     showStitch: true,
     showFolds: true,
     showLabels: true,
+    showNotches: true,
   },
 );
 
@@ -143,6 +147,11 @@ function pathOf(points: { x: number; y: number }[]): string {
 
 function round(value: number): number {
   return Math.round(value * 1000) / 1000;
+}
+
+/** The open V a notch draws: foot → tip → foot. */
+function notchPath(notch: NotchGeometry): string {
+  return `M ${round(notch.feet[0].x)} ${round(notch.feet[0].y)} L ${round(notch.tip.x)} ${round(notch.tip.y)} L ${round(notch.feet[1].x)} ${round(notch.feet[1].y)}`;
 }
 
 function fillOf(instance: { piece: EntityId }): string {
@@ -422,6 +431,15 @@ watch(
               stroke-width="0.35"
               stroke-dasharray="6 3"
               data-testid="instance-fold-line"
+            />
+            <path
+              v-for="(notch, index) in props.showNotches ? loopsFor(instance)!.notches : []"
+              :key="index"
+              :d="notchPath(notch)"
+              fill="none"
+              stroke-width="0.5"
+              class="stroke-mark"
+              data-testid="instance-notch"
             />
             <rect
               v-if="props.selectedInstanceId === instance.id"
