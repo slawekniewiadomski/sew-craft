@@ -20,23 +20,51 @@ export interface ExpressionParam {
   lastKnown: number;
 }
 
-/**
- * A named measurement the document's formulas may use. `slug` is the stable
- * token (`$bust_cm` in a formula); `name` is what the maker sees and may rename.
- */
-export interface Variable {
+/** How a variable gets its value: written by the maker, or read from geometry. */
+export type VariableKind = 'value' | 'measurement';
+
+/** Fields every variable carries, whichever kind it is. */
+interface VariableBase {
   /** Stable identifier, bare: a formula writes it as `$` + slug. */
   slug: string;
   /** Free-form display name, unique case-insensitively. */
   name: string;
-  /** The unit a literal `value` is written in; a formula ignores it. */
+  /** The unit a value is written and displayed in; a measurement is mm underneath. */
   unit: Unit;
-  value: Param;
   /** Optional free text; absent or empty means none. */
   comment?: string;
 }
 
-export const PATTERN_SCHEMA = 'sewcraft.pattern/0.6';
+/**
+ * A named value: a literal in its unit, or a formula over other variables. Omitted
+ * `kind` means this kind, so documents written before measurements existed load
+ * unchanged.
+ */
+export interface ValueVariable extends VariableBase {
+  kind?: 'value';
+  value: Param;
+}
+
+/**
+ * A named length read from a connected chain of edges. The value is resolved from
+ * the current geometry on every read, so it follows a drag without a command;
+ * `lastKnown` is the fallback captured when a source disappears.
+ */
+export interface MeasuredVariable extends VariableBase {
+  kind: 'measurement';
+  /** Ordered connected chain of line, curve, arc or circle ids. */
+  sources: EntityId[];
+  /** The last total in millimetres, kept for a chain that no longer resolves. */
+  lastKnown?: number;
+}
+
+/**
+ * A named measurement the document's formulas may use. `slug` is the stable
+ * token (`$bust_cm` in a formula); `name` is what the maker sees and may rename.
+ */
+export type Variable = ValueVariable | MeasuredVariable;
+
+export const PATTERN_SCHEMA = 'sewcraft.pattern/0.7';
 
 export type PatternSchema = typeof PATTERN_SCHEMA;
 

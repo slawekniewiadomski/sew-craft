@@ -11,7 +11,7 @@ return [
     | and the SPA can discover the contract at runtime.
     |
     */
-    'spec_version' => '0.18.0',
+    'spec_version' => '0.19.0',
 
     /*
     |--------------------------------------------------------------------------
@@ -275,23 +275,26 @@ return [
             'inverse' => 'set_piece_default_allowance',
         ],
         'set_variable' => [
-            'description' => 'Create a named measurement, or update the one stored under the same slug. A formula value must resolve to a length or a ratio; its result is recorded as lastKnown.',
+            'description' => 'Create a named measurement, or update the one stored under the same slug. A written variable takes a value; a measured variable takes a connected chain of line, curve, arc or circle ids and records the length it resolves to as lastKnown.',
             'params' => [
                 'slug' => 'string?',
                 'name' => 'string?',
                 'unit' => 'mm|cm?',
-                'value' => 'number|expression',
+                'kind' => 'value|measurement?',
+                'value' => 'number|expression?',
+                'sources' => 'entity_id[]?',
                 'comment' => 'string|null?',
             ],
             'inverse' => 'remove_variable',
         ],
         'update_variable' => [
-            'description' => 'Rename a variable, change its unit, value or comment. The slug never moves, so formulas keep resolving; a unit change converts a literal and leaves a formula as written.',
+            'description' => 'Rename a variable, change its unit, value, source chain or comment. The slug never moves, so formulas keep resolving; a unit change converts a literal and leaves a formula as written. A measured variable accepts sources and no value.',
             'params' => [
                 'slug' => 'string',
                 'name' => 'string?',
                 'unit' => 'mm|cm?',
                 'value' => 'number|expression?',
+                'sources' => 'entity_id[]?',
                 'comment' => 'string|null?',
             ],
             'inverse' => 'update_variable',

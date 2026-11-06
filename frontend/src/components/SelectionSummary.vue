@@ -3,6 +3,7 @@ import type { Entity } from '@sewcraft/geometry';
 import { computed } from 'vue';
 
 import SidebarAction from '@/components/sidebar/SidebarAction.vue';
+import SidebarButton from '@/components/sidebar/SidebarButton.vue';
 import SidebarSection from '@/components/sidebar/SidebarSection.vue';
 
 const props = withDefaults(
@@ -15,11 +16,25 @@ const props = withDefaults(
     deleteDisabled?: boolean;
     /** Explains why Delete is refused; shown as the button tooltip. */
     deleteHint?: string;
+    /** Label for the measured-variable action; absent hides it. */
+    measureLabel?: string;
+    /** Refuse the measure action while the selection is not a connected chain. */
+    measureDisabled?: boolean;
+    /** Explains why the measure action is refused; shown as the button tooltip. */
+    measureHint?: string;
   }>(),
-  { entities: () => [], dimensions: 0, deleteDisabled: false, deleteHint: undefined },
+  {
+    entities: () => [],
+    dimensions: 0,
+    deleteDisabled: false,
+    deleteHint: undefined,
+    measureLabel: undefined,
+    measureDisabled: false,
+    measureHint: undefined,
+  },
 );
 
-const emit = defineEmits<{ delete: [] }>();
+const emit = defineEmits<{ delete: []; measure: [] }>();
 
 const dimensionMode = computed(() => props.dimensions > 0);
 
@@ -83,6 +98,15 @@ const breakdown = computed(() => {
       >
         {{ breakdown }}
       </p>
+      <SidebarButton
+        v-if="props.measureLabel !== undefined"
+        :disabled="props.measureDisabled"
+        :title="props.measureHint"
+        data-testid="selection-measure"
+        @click="emit('measure')"
+      >
+        {{ props.measureLabel }}
+      </SidebarButton>
       <SidebarAction
         icon="delete"
         label="Delete selection"

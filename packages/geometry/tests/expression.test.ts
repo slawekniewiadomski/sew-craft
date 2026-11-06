@@ -5,6 +5,7 @@ import {
   MAX_EXPRESSION_DEPTH,
   evaluateLength,
   evaluateQuantity,
+  expressionSlugs,
   type ExpressionContext,
   type Quantity,
 } from '../src/index.js';
@@ -330,5 +331,18 @@ describe('evaluateLength', () => {
     const error = capture(() => evaluateLength('2cm * 2cm', NO_VARIABLES));
     expect(error.code).toBe('dimension');
     expect(error.message).toBe('expected a length, got an area');
+  });
+});
+
+describe('expressionSlugs', () => {
+  it('lists the variables a formula names, once per mention', () => {
+    expect(expressionSlugs('$bust / 4 + $waist')).toEqual(['bust', 'waist']);
+    expect(expressionSlugs('$bust + $bust')).toEqual(['bust', 'bust']);
+    expect(expressionSlugs('2cm + 5mm')).toEqual([]);
+  });
+
+  it('names nothing for a formula that does not parse', () => {
+    expect(expressionSlugs('$')).toEqual([]);
+    expect(expressionSlugs('2 +')).toEqual([]);
   });
 });

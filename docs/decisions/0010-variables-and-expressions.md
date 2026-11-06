@@ -125,3 +125,29 @@ beyond mm and cm (`in`, `ft`, and paper sizes) — that is where variables eithe
 grow into spec 012 or move out of the document into a project-level measurement
 library. Also revisit if formula-driven placement becomes a real drafting need
 rather than a curiosity.
+
+## Addendum 2026-11-05: measured variables
+
+A variable may now be **measured** rather than written. A
+`kind: 'measurement'` variable keeps an ordered, connected chain of line, curve,
+arc or circle ids in `sources` and no `value`; `@sewcraft/geometry` resolves their
+total length on every read, so the value follows a point drag without a command.
+
+- The chain is validated at write time: consecutive edges share an endpoint point
+  id in either orientation, a single edge is valid, a circle is valid only alone,
+  and a gap, branch or duplicate is rejected. The stored list is the traversal
+  order, so a caller may send a selection set.
+- A break keeps a number: `delete_entity` and `delete_piece` capture the total
+  into `lastKnown` before removing a source, the same way a dangling reference
+  keeps `lastKnownValue`. The row reports broken; formulas naming it still
+  resolve.
+- Measured variables are usable in any formula, including a driving dimension's
+  value. The obvious self-reference (the dimension covers the measured chain) is
+  rejected at write time; deeper loops rely on the solver's non-convergence
+  rollback.
+- Schema moves to `sewcraft.pattern/0.7`. The addition is a superset of 0.6
+  (measured variables are a new `kind`), so 0.6 documents load unchanged.
+
+Deliberately out of scope for v1: seam-allowance offsets and piece cut loops as
+sources, aggregates other than a sum, and static detection of an indirect
+measurement/geometry cycle.

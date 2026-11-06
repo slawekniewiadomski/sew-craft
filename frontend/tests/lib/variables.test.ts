@@ -8,7 +8,10 @@ const documentOf = (variables: Variable[]): PatternDocument => ({
   variables,
 });
 
-const variable = (overrides: Partial<Variable> = {}): Variable => ({
+/** A written variable; measured ones are built explicitly where a test needs one. */
+type ValueVariable = Extract<Variable, { kind?: 'value' }>;
+
+const variable = (overrides: Partial<ValueVariable> = {}): ValueVariable => ({
   slug: 'bust',
   name: 'Bust (cm)',
   unit: 'cm',
@@ -27,6 +30,7 @@ describe('variableRows', () => {
         valueText: '88',
         resolved: '880 mm',
         type: 'number',
+        sources: [],
         broken: false,
         comment: '',
       },
@@ -88,5 +92,57 @@ describe('parseVariableValueInput', () => {
     expect(parseVariableValueInput('   ')).toBeNull();
     expect(parseVariableValueInput('=')).toBeNull();
     expect(parseVariableValueInput('=   ')).toBeNull();
+  });
+});
+
+describe('measured rows', () => {
+  const geometry = createEmptyDocument().entities;
+  const measuredDocument = (overrides: Record<string, unknown> = {}): PatternDocument => ({
+    ...createEmptyDocument(),
+    entities: [
+      { id: 'a', kind: 'point', x: 0, y: 0, fixed: false },
+      { id: 'b', kind: 'point', x: 100, y: 0, fixed: false },
+      { id: 'ab', kind: 'line', start: 'a', end: 'b' },
+      ...geometry,
+    ],
+    variables: [
+      {
+        slug: 'neck',
+        name: 'Neckline',
+        unit: 'mm',
+        kind: 'measurement',
+        sources: ['ab'],
+        ...overrides,
+      },
+    ],
+  });
+
+  it('shows the live chain length in the display unit', () => {
+    expect(variableRows(measuredDocument())[0]).toEqual({
+      slug: 'neck',
+      name: 'Neckline',
+      unit: 'mm',
+      valueText: '100',
+      resolved: '100 mm',
+      type: 'measured',
+      sources: ['ab'],
+      broken: false,
+      comment: '',
+    });
+    expect(variableRows(measuredDocument({ unit: 'cm' }))[0]?.valueText).toBe('10');
+  });
+
+  it('falls back to the last reading when a source disappeared', () => {
+    const rows = variableRows(measuredDocument({ sources: ['gone'], lastKnown: 42.5 }));
+    expect(rows[0]).toMatchObject({
+      valueText: '42.5',
+      resolved: '42.5 mm',
+      broken: true,
+    });
+  });
+
+  it('shows a dash when a broken chain has no reading', () => {
+    const rows = variableRows(measuredDocument({ sources: ['gone'] }));
+    expect(rows[0]).toMatchObject({ valueText: '—', resolved: '—', broken: true });
   });
 });

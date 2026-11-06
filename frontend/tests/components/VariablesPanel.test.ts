@@ -1,10 +1,18 @@
-import { createEmptyDocument, type PatternDocument, type Variable } from '@sewcraft/geometry';
+import {
+  createEmptyDocument,
+  type Entity,
+  type PatternDocument,
+  type Variable,
+} from '@sewcraft/geometry';
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 
 import VariablesPanel from '@/components/VariablesPanel.vue';
 
-const variable = (overrides: Partial<Variable> = {}): Variable => ({
+/** A written variable; measured ones are built explicitly where a test needs one. */
+type ValueVariable = Extract<Variable, { kind?: 'value' }>;
+
+const variable = (overrides: Partial<ValueVariable> = {}): ValueVariable => ({
   slug: 'bust',
   name: 'Bust (cm)',
   unit: 'cm',
@@ -19,6 +27,29 @@ function documentOf(variables: Variable[]): PatternDocument {
 function mountPanel(document: PatternDocument, props: Record<string, unknown> = {}) {
   return mount(VariablesPanel, { props: { document, ...props } });
 }
+
+const chainEntities: Entity[] = [
+  { id: 'a', kind: 'point', x: 0, y: 0, fixed: false },
+  { id: 'b', kind: 'point', x: 100, y: 0, fixed: false },
+  { id: 'ab', kind: 'line', start: 'a', end: 'b' },
+  { id: 'bc', kind: 'line', start: 'b', end: 'c' },
+  { id: 'c', kind: 'point', x: 100, y: 50, fixed: false },
+];
+
+const measuredDocument = (overrides: Record<string, unknown> = {}): PatternDocument => ({
+  ...createEmptyDocument(),
+  entities: chainEntities,
+  variables: [
+    {
+      slug: 'neck',
+      name: 'Neckline',
+      unit: 'mm',
+      kind: 'measurement',
+      sources: ['ab', 'bc'],
+      ...overrides,
+    },
+  ],
+});
 
 describe('VariablesPanel', () => {
   it('renders one row per variable with its type and resolved value', () => {
@@ -104,6 +135,43 @@ describe('VariablesPanel', () => {
     const wrapper = mountPanel(documentOf([variable({ slug: 'ease', unit: 'mm', value: 8 })]));
     await wrapper.find('[data-testid="variable-unit-ease"]').trigger('click');
     expect(wrapper.emitted('set-unit')?.[0]).toEqual(['ease', 'cm']);
+  });
+
+  it('renders a measured row as a read-only length with its source count', async () => {
+    const wrapper = mountPanel(measuredDocument());
+
+    const value = wrapper.find('[data-testid="variable-value-neck"]');
+    expect(value.element.tagName).toBe('DIV');
+    expect(value.text()).toBe('150');
+    expect(value.attributes('title')).toBe('150 mm');
+    expect(wrapper.find('[data-testid="variable-type-neck"]').text()).toBe('Measured · 2');
+    expect(wrapper.find('[data-testid="variable-highlight-neck"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="variable-highlight-neck"]').trigger('click');
+    expect(wrapper.emitted('highlight')?.[0]).toEqual(['neck']);
+
+    await wrapper.setProps({ activeSlug: 'neck' });
+    await wrapper.find('[data-testid="variable-highlight-neck"]').trigger('click');
+    expect(wrapper.emitted('highlight')?.[1]).toEqual([null]);
+  });
+
+  it('marks a measured row broken when a source disappeared', () => {
+    const wrapper = mountPanel(measuredDocument({ sources: ['gone'], lastKnown: 42 }));
+    expect(wrapper.find('[data-testid="variable-type-neck"]').text()).toBe('Broken');
+    expect(wrapper.find('[data-testid="variable-value-neck"]').text()).toBe('42');
+  });
+
+  it('enables the measured action only with a connected chain', async () => {
+    const wrapper = mountPanel(createEmptyDocument());
+    const action = wrapper.find('[data-testid="add-measured-variable"]');
+    expect(action.attributes('disabled')).toBeDefined();
+
+    await wrapper.setProps({ canMeasure: true });
+    expect(
+      wrapper.find('[data-testid="add-measured-variable"]').attributes('disabled'),
+    ).toBeUndefined();
+    await wrapper.find('[data-testid="add-measured-variable"]').trigger('click');
+    expect(wrapper.emitted('create-measured')).toHaveLength(1);
   });
 
   it('flags a broken formula and hides mutation controls when read-only', () => {

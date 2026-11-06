@@ -41,12 +41,42 @@ const arc = (id: string, start: string, end: string, through: string): Entity =>
 
 function mountSummary(
   entities: Entity[],
-  options: { deleteDisabled?: boolean; deleteHint?: string } = {},
+  options: {
+    deleteDisabled?: boolean;
+    deleteHint?: string;
+    measureLabel?: string;
+    measureDisabled?: boolean;
+    measureHint?: string;
+  } = {},
 ): VueWrapper {
   return mount(SelectionSummary, { props: { entities, ...options } });
 }
 
 describe('SelectionSummary', () => {
+  it('offers the measured action when asked and explains a refusal', async () => {
+    const wrapper = mountSummary([line('ab', 'a', 'b'), line('bc', 'b', 'c')], {
+      measureLabel: 'Add as measured variable',
+      measureDisabled: true,
+      measureHint: 'sources ab and bc do not share an endpoint',
+    });
+    const action = wrapper.find('[data-testid="selection-measure"]');
+    expect(action.text()).toBe('Add as measured variable');
+    expect(action.attributes('title')).toBe('sources ab and bc do not share an endpoint');
+    expect(action.attributes('disabled')).toBeDefined();
+
+    await action.trigger('click');
+    expect(wrapper.emitted('measure')).toBeUndefined();
+
+    await wrapper.setProps({ measureDisabled: false });
+    await wrapper.find('[data-testid="selection-measure"]').trigger('click');
+    expect(wrapper.emitted('measure')).toHaveLength(1);
+  });
+
+  it('hides the measured action when no label is given', () => {
+    const wrapper = mountSummary([line('ab', 'a', 'b'), line('bc', 'b', 'c')]);
+    expect(wrapper.find('[data-testid="selection-measure"]').exists()).toBe(false);
+  });
+
   it('shows the count and a pluralized breakdown by kind', () => {
     const wrapper = mountSummary([
       line('ab', 'a', 'b'),

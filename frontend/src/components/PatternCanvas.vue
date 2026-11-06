@@ -371,6 +371,8 @@ const props = withDefaults(
     activePieceId?: EntityId | null;
     /** True while the piece card's Move toggle arms the gesture. */
     moveMode?: boolean;
+    /** Edges a measured variable reads; painted above the normal geometry. */
+    highlightedEntityIds?: EntityId[];
   }>(),
   {
     selectedEntityIds: () => [],
@@ -389,6 +391,7 @@ const props = withDefaults(
     readOnly: false,
     activePieceId: null,
     moveMode: false,
+    highlightedEntityIds: () => [],
   },
 );
 
@@ -1005,6 +1008,9 @@ const tangentPreview = computed(() => {
 
 /** Membership test for every selected entity's highlight. */
 const selectedIds = computed(() => new Set(props.selectedEntityIds));
+
+/** The edges a measured variable reads, for the highlight layer. */
+const highlightedIds = computed(() => new Set(props.highlightedEntityIds));
 
 /** The dimension selection as a set, so a render never scans per segment. */
 const selectedDimensionIds = computed(() => new Set(props.selectedDimensionIds));
@@ -3790,6 +3796,73 @@ watch(
               vector-effect="non-scaling-stroke"
               :data-entity-id="entry.circle.id"
               data-kind="circle"
+            />
+          </template>
+        </g>
+
+        <g
+          v-if="highlightedIds.size > 0"
+          class="pointer-events-none"
+          data-testid="measured-highlight-layer"
+          aria-hidden="true"
+        >
+          <template v-for="entry in lines" :key="`highlight-line-${entry.line.id}`">
+            <line
+              v-if="highlightedIds.has(entry.line.id)"
+              :x1="entry.start.x"
+              :y1="entry.start.y"
+              :x2="entry.end.x"
+              :y2="entry.end.y"
+              class="text-dimension-formula"
+              stroke="currentColor"
+              stroke-width="7"
+              stroke-linecap="round"
+              stroke-opacity="0.45"
+              vector-effect="non-scaling-stroke"
+              :data-measured-source="entry.line.id"
+            />
+          </template>
+          <template v-for="entry in curves" :key="`highlight-curve-${entry.curve.id}`">
+            <path
+              v-if="highlightedIds.has(entry.curve.id)"
+              :d="entry.d"
+              fill="none"
+              class="text-dimension-formula"
+              stroke="currentColor"
+              stroke-width="7"
+              stroke-linecap="round"
+              stroke-opacity="0.45"
+              vector-effect="non-scaling-stroke"
+              :data-measured-source="entry.curve.id"
+            />
+          </template>
+          <template v-for="entry in arcs" :key="`highlight-arc-${entry.arc.id}`">
+            <path
+              v-if="highlightedIds.has(entry.arc.id)"
+              :d="entry.d"
+              fill="none"
+              class="text-dimension-formula"
+              stroke="currentColor"
+              stroke-width="7"
+              stroke-linecap="round"
+              stroke-opacity="0.45"
+              vector-effect="non-scaling-stroke"
+              :data-measured-source="entry.arc.id"
+            />
+          </template>
+          <template v-for="entry in circles" :key="`highlight-circle-${entry.circle.id}`">
+            <circle
+              v-if="highlightedIds.has(entry.circle.id)"
+              :cx="entry.cx"
+              :cy="entry.cy"
+              :r="entry.r"
+              fill="none"
+              class="text-dimension-formula"
+              stroke="currentColor"
+              stroke-width="7"
+              stroke-opacity="0.45"
+              vector-effect="non-scaling-stroke"
+              :data-measured-source="entry.circle.id"
             />
           </template>
         </g>

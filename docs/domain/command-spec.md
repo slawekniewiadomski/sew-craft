@@ -28,9 +28,10 @@ Formulas are unit-aware. A bare number is a ratio, `5cm` and `2 mm` are lengths,
 and `$slug` names a variable. `+` and `-` require equal dimensions (length plus a
 plain number is rejected), `*` and `/` combine them, and a field that takes a
 length rejects a ratio or an area. Variables are managed with `set_variable`,
-`update_variable` and `remove_variable`; their values may be lengths or ratios.
+`update_variable` and `remove_variable`; a variable is either written (a literal
+or a formula) or measured from a connected chain of edges.
 
-## Commands (v0.18)
+## Commands (v0.19)
 
 ### `add_point`
 
@@ -484,8 +485,9 @@ Set, clear or hand back a piece's allowance override.
 Create a named measurement, or update the variable already stored under the same
 slug.
 
-- params: `slug?: string`, `name?: string`, `unit?: 'mm' | 'cm'`, `value:
-number | { expr }`, `comment?: string | null`
+- params: `slug?: string`, `name?: string`, `unit?: 'mm' | 'cm'`,
+  `kind?: 'value' | 'measurement'`, `value: number | { expr }` (written kind),
+  `sources: entity_id[]` (measured kind), `comment?: string | null`
 - A new variable needs `name` (or an explicit `slug`); omitting `slug` mints one
   from the name: ascii-folded, lowercased, non-alphanumerics collapsed to `_`,
   prefixed with `v` when it would start with a digit, truncated to 40 characters
@@ -494,6 +496,14 @@ number | { expr }`, `comment?: string | null`
 - A literal `value` is read in the variable's unit and must be finite and `>= 0`.
   A formula may resolve to a length or a ratio, never an area; its result is
   stored as `lastKnown`.
+- `kind: 'measurement'` binds the variable to a chain of `line`, `curve`, `arc`
+  or `circle` ids and stores no `value`. The ids may arrive in any order; they
+  are validated and stored in traversal order. Consecutive edges must share an
+  endpoint point id, a single edge is valid, a circle is valid only alone, and a
+  gap, branch, duplicate, unknown id or non-edge is rejected with a message
+  naming it. The total length is recorded as `lastKnown`. A measured variable
+  resolves on every read, so a point drag moves its value without a command.
+- `sources` on a written variable, or `value` on a measured one, is rejected.
 - `comment` is trimmed, at most 120 characters, and empty clears it.
 - An existing slug updates through `update_variable`; nothing else changes.
 - inverse: `remove_variable` for a new variable, `update_variable` with the
@@ -501,13 +511,32 @@ number | { expr }`, `comment?: string | null`
 
 ### `update_variable`
 
-- params: `slug: string`, and any of `name`, `unit`, `value`, `comment`
+- params: `slug: string`, and any of `name`, `unit`, `value`, `sources`,
+  `comment`
 - The slug is immutable, so a rename never re-parses a formula. A `unit` change
   converts a literal to keep the measurement (`88 cm` becomes `880 mm`) and
   leaves a formula's text alone; a `value` in the same command is read in the new
   unit. `comment: null` clears it.
+- `sources` re-picks a measured variable's chain with the same rules as
+  `set_variable` and records the new total; the kind never changes, and `value`
+  on a measured variable is rejected. A unit change on a measured variable only
+  changes how the number is displayed.
 - Re-applying the same fields is a no-op.
 - inverse: `update_variable` with the previous fields.
+
+### Measured variables and geometry
+
+- A measured variable may be used in any formula, including the value of a
+  driving dimension. The value it contributes is resolved from the geometry as it
+  stands before the solve, so a dimension that moves a different part of the
+  sketch follows a measurement change.
+- The obvious self-reference is rejected at write time: a driving dimension may
+  not take a formula whose variable closure names a measured variable that covers
+  one of the dimension's own anchor points or anchor lines. Deeper feedback loops
+  are left to the solver's non-convergence rollback.
+- Deleting a source (`delete_entity` or `delete_piece`) first records the total
+  the chain had, so the variable keeps that reading and dependent formulas keep
+  resolving; `variableRows` reports it as broken.
 
 ### `remove_variable`
 
@@ -813,6 +842,13 @@ Request a solver rebuild. Typically emitted after a batch of geometry commands.
 3. Implement `applyCommand` handling in `@sewcraft/geometry` with tests.
 4. Wire any UI affordance. Emit it from the command bus — never mutate state
    directly.
+
+## Migration from spec 0.18.0
+
+`spec_version` is **0.19.0**. Additive: `set_variable` and `update_variable`
+accept `kind: 'measurement'` and `sources`, and `value` becomes optional, inside
+the new `sewcraft.pattern/0.7` schema. A 0.6 document has no measured variables
+and loads without conversion.
 
 ## Migration from spec 0.17.0
 
