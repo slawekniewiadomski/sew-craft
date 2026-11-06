@@ -1,8 +1,11 @@
 # Command Spec
 
-The machine-readable contract is [`command-spec.json`](./command-spec.json). The
-runtime source of truth is `config/geometry.php`, exposed at `GET /api/commands`.
-**Keep all three in sync** when a command changes.
+[`command-spec.json`](./command-spec.json) is the single source of truth. The
+runtime reads it directly (`config/geometry.php`) and exposes it at
+`GET /api/commands`, so the PHP array and the JSON can no longer drift.
+
+This page is the human-readable explanation. A Pest test fails if a command in
+the JSON has no section here, or if the version heading falls behind the spec.
 
 ## Envelope
 

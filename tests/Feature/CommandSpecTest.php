@@ -200,3 +200,35 @@ it('exposes the piece mark commands', function () {
         ->assertJsonPath('commands.update_centre_line.params.end', 'entity_id?')
         ->assertJsonPath('commands.update_centre_line.inverse', 'update_centre_line');
 });
+
+it('serves exactly the contract the spec file declares', function () {
+    $spec = json_decode(
+        (string) file_get_contents(base_path('docs/domain/command-spec.json')),
+        true,
+        flags: JSON_THROW_ON_ERROR,
+    );
+
+    $this->getJson('/api/commands')
+        ->assertOk()
+        ->assertExactJson([
+            'version' => $spec['spec_version'],
+            'commands' => $spec['commands'],
+        ]);
+});
+
+it('documents every command in the prose spec, at the current version', function () {
+    $spec = json_decode(
+        (string) file_get_contents(base_path('docs/domain/command-spec.json')),
+        true,
+        flags: JSON_THROW_ON_ERROR,
+    );
+    $page = (string) file_get_contents(base_path('docs/domain/command-spec.md'));
+
+    [$major, $minor] = explode('.', $spec['spec_version']);
+
+    expect($page)->toContain("## Commands (v{$major}.{$minor})");
+
+    foreach (array_keys($spec['commands']) as $command) {
+        expect($page)->toContain("### `{$command}`");
+    }
+});
