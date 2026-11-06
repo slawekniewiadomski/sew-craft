@@ -27,6 +27,8 @@ export interface VariableRow {
   valueText: string;
   /** The resolved number for display: millimetres, or a ratio with no unit. */
   resolved: string;
+  /** The resolved number for sorting, or `null` when it does not resolve. */
+  sortValue: number | null;
   type: VariableRowType;
   /** The chain a measured variable reads, in traversal order; empty otherwise. */
   sources: EntityId[];
@@ -64,6 +66,7 @@ function measuredRow(document: PatternDocument, variable: Variable): VariableRow
     unit: measured.unit,
     valueText: total === null ? '—' : displayValue(total, measured.unit),
     resolved: total === null ? '—' : `${formatDimensionValue(total)} mm`,
+    sortValue: total,
     type: 'measured',
     sources: measured.sources,
     broken: live === null,
@@ -90,6 +93,7 @@ export function variableRows(document: PatternDocument): VariableRow[] {
         ? variable.value.expr
         : formatDimensionValue(resolveParam(document, variable.value)),
       resolved: resolvedText(document, variable),
+      sortValue: quantity === null ? null : quantity.value,
       type,
       sources: [],
       broken: quantity === null,

@@ -372,6 +372,8 @@ const props = withDefaults(
     activePieceId?: EntityId | null;
     /** True while the piece card's Move toggle arms the gesture. */
     moveMode?: boolean;
+    /** True while a measured variable's edges are being picked on the canvas. */
+    measureActive?: boolean;
     /** Edges a measured variable reads; painted above the normal geometry. */
     highlightedEntityIds?: EntityId[];
   }>(),
@@ -392,6 +394,7 @@ const props = withDefaults(
     readOnly: false,
     activePieceId: null,
     moveMode: false,
+    measureActive: false,
     highlightedEntityIds: () => [],
   },
 );
@@ -418,6 +421,7 @@ const emit = defineEmits<{
   'round-corner-pick': [id: EntityId];
   'set-corner-round-radius': [id: EntityId, radius: ParamInput];
   'move-piece': [dx: number, dy: number];
+  'measure-pick': [id: EntityId];
   'activate-piece': [id: EntityId];
   'cross-piece': [id: EntityId];
   'add-text': [anchor: DraftingEndpoint, leader?: DraftingEndpoint];
@@ -1424,7 +1428,10 @@ const visible = computed(() => visibleWorldRect(viewport.value, size.value));
 const xTicks = computed(() => ticksAlong(visible.value, 'x', gridStep.value));
 const yTicks = computed(() => ticksAlong(visible.value, 'y', gridStep.value));
 const cursorClass = computed(() =>
-  props.constraintActive || props.roundCornerActive || props.tool !== 'select'
+  props.constraintActive ||
+  props.roundCornerActive ||
+  props.measureActive ||
+  props.tool !== 'select'
     ? 'cursor-crosshair'
     : 'cursor-default',
 );
@@ -2599,6 +2606,9 @@ const MIDPOINT_TOOLS = new Set<EditorTool>([
   'add_3point_rectangle',
 ]);
 
+/** The edge kinds a measured variable may read. */
+const MEASURABLE_KINDS = new Set(['line', 'curve', 'arc', 'circle']);
+
 /** Whether a tool drafts new geometry inside the active piece. */
 const DRAFTING_TOOLS = new Set<EditorTool>([
   'add_point',
@@ -2691,6 +2701,11 @@ function onPointerDown(event: PointerEvent): void {
   }
 
   const hit = hitEntity(event);
+
+  if (props.measureActive) {
+    if (hit !== null && MEASURABLE_KINDS.has(hit.kind)) emit('measure-pick', hit.id);
+    return;
+  }
 
   if (
     hit !== null &&
