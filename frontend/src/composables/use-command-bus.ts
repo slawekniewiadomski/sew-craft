@@ -1,12 +1,9 @@
 import type { Command } from '@sewcraft/geometry';
 import { computed } from 'vue';
 
+import { localizeForSketch } from '@/composables/sketch-command-localization';
 import { useEditorStore } from '@/stores/editor';
 
-/**
- * The editor's command bus: the single entry point UI code uses to read the
- * pattern document and request mutations. UI code never touches the document.
- */
 export function useCommandBus() {
   const editor = useEditorStore();
 
@@ -16,11 +13,11 @@ export function useCommandBus() {
   const canRedo = computed(() => editor.canRedo);
 
   function dispatch(command: Command): void {
-    editor.dispatch(command);
+    editor.dispatch(localizeForSketch(editor, [command])[0]!);
   }
 
   function dispatchGroup(commands: Command[]): void {
-    editor.dispatchGroup(commands);
+    editor.dispatchGroup(localizeForSketch(editor, commands));
   }
 
   function undo(): void {

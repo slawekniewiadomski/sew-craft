@@ -12,14 +12,17 @@ const props = withDefaults(
     modelValue: TabRef | null;
     /** A read-only document disables creation and reordering. */
     readOnly?: boolean;
+    /** Whether the shared Sketch canvas is showing instead of a tab. */
+    sketch?: boolean;
   }>(),
-  { readOnly: false },
+  { readOnly: false, sketch: false },
 );
 
 const emit = defineEmits<{
   'update:modelValue': [tab: TabRef];
   'new-piece': [];
   'new-assembly': [];
+  'show-sketch': [];
   reorder: [tabs: TabRef[]];
 }>();
 
@@ -217,6 +220,23 @@ watch(
       aria-label="Pattern tabs"
       data-testid="tabs-list"
     >
+      <button
+        v-if="props.document.tabs.length > 0"
+        type="button"
+        role="tab"
+        class="flex shrink-0 items-center gap-1.5 border-t-2 px-3 text-[13px]"
+        :class="
+          props.sketch
+            ? 'border-t-primary bg-surface font-medium'
+            : 'border-t-transparent hover:bg-accent/50'
+        "
+        :aria-selected="props.sketch ? 'true' : 'false'"
+        data-testid="tab-sketch"
+        @click="emit('show-sketch')"
+      >
+        <span class="text-xs" aria-hidden="true">▦</span>
+        <span>Sketch</span>
+      </button>
       <button
         v-for="(tab, index) in props.document.tabs"
         :key="tabKey(tab)"

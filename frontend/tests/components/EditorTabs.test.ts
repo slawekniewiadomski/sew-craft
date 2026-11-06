@@ -38,7 +38,7 @@ function dragData() {
 describe('EditorTabs rendering', () => {
   it('renders one tab per object with colour dots, names and the active state', () => {
     const wrapper = mountTabs();
-    const tabs = wrapper.findAll('[role="tab"]');
+    const tabs = wrapper.findAll('[role="tab"]:not([data-testid="tab-sketch"])');
 
     expect(tabs).toHaveLength(3);
     expect(tabs[0]!.text()).toBe('Front');
@@ -52,12 +52,33 @@ describe('EditorTabs rendering', () => {
       'background-color: rgb(51, 102, 153)',
     );
     expect(wrapper.findAll('[data-testid="tab-assembly-glyph"]')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="tab-sketch"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="tab-sketch"]').attributes('aria-selected')).toBe('false');
+  });
+
+  it('shows the Sketch entry and emits when it is opened', async () => {
+    const wrapper = mountTabs();
+    const sketch = wrapper.find('[data-testid="tab-sketch"]');
+
+    expect(sketch.exists()).toBe(true);
+    expect(sketch.attributes('aria-selected')).toBe('false');
+
+    await sketch.trigger('click');
+    expect(wrapper.emitted('show-sketch')).toHaveLength(1);
+
+    await wrapper.setProps({ sketch: true });
+    expect(sketch.attributes('aria-selected')).toBe('true');
+    expect(
+      wrapper
+        .findAll('[role="tab"]:not([data-testid="tab-sketch"])')[0]!
+        .attributes('aria-selected'),
+    ).toBe('true');
   });
 
   it('renders an empty bar when there are no tabs', () => {
     const wrapper = mountTabs({ document: createEmptyDocument(), modelValue: null });
 
-    expect(wrapper.findAll('[role="tab"]')).toHaveLength(0);
+    expect(wrapper.findAll('[role="tab"]:not([data-testid="tab-sketch"])')).toHaveLength(0);
     expect(wrapper.find('[data-testid="editor-tabs"]').exists()).toBe(true);
   });
 });
@@ -114,7 +135,7 @@ describe('EditorTabs menu', () => {
 describe('EditorTabs keyboard', () => {
   it('activates with Enter and Space and navigates with arrows, Home and End', async () => {
     const wrapper = mountTabs();
-    const first = wrapper.findAll('[role="tab"]')[0]!;
+    const first = wrapper.findAll('[role="tab"]:not([data-testid="tab-sketch"])')[0]!;
 
     await first.trigger('keydown', { key: 'Enter' });
     await first.trigger('keydown', { key: ' ' });
@@ -135,7 +156,7 @@ describe('EditorTabs keyboard', () => {
 
   it('reorders with Alt+Shift+Arrow and refuses while read-only', async () => {
     const wrapper = mountTabs();
-    const first = wrapper.findAll('[role="tab"]')[0]!;
+    const first = wrapper.findAll('[role="tab"]:not([data-testid="tab-sketch"])')[0]!;
 
     await first.trigger('keydown', { key: 'ArrowRight', altKey: true, shiftKey: true });
     expect(wrapper.emitted('reorder')).toEqual([
@@ -150,7 +171,7 @@ describe('EditorTabs keyboard', () => {
 
     const readOnly = mountTabs({ readOnly: true });
     await readOnly
-      .findAll('[role="tab"]')[0]!
+      .findAll('[role="tab"]:not([data-testid="tab-sketch"])')[0]!
       .trigger('keydown', { key: 'ArrowRight', altKey: true, shiftKey: true });
     expect(readOnly.emitted('reorder')).toBeUndefined();
   });
@@ -160,8 +181,12 @@ describe('EditorTabs keyboard', () => {
     Element.prototype.scrollIntoView = scrollIntoView;
     const wrapper = mountTabs({ modelValue: null });
 
-    expect(wrapper.findAll('[role="tab"]')[0]!.attributes('tabindex')).toBe('0');
-    expect(wrapper.findAll('[role="tab"]')[1]!.attributes('tabindex')).toBe('-1');
+    expect(
+      wrapper.findAll('[role="tab"]:not([data-testid="tab-sketch"])')[0]!.attributes('tabindex'),
+    ).toBe('0');
+    expect(
+      wrapper.findAll('[role="tab"]:not([data-testid="tab-sketch"])')[1]!.attributes('tabindex'),
+    ).toBe('-1');
 
     await wrapper.setProps({ modelValue: { kind: 'assembly', id: 'a1' } });
     await wrapper.vm.$nextTick();
@@ -173,14 +198,14 @@ describe('EditorTabs keyboard', () => {
   it('ignores navigation when there are no tabs', async () => {
     const wrapper = mountTabs({ document: createEmptyDocument(), modelValue: null });
 
-    expect(wrapper.findAll('[role="tab"]')).toHaveLength(0);
+    expect(wrapper.findAll('[role="tab"]:not([data-testid="tab-sketch"])')).toHaveLength(0);
   });
 });
 
 describe('EditorTabs drag', () => {
   it('emits one reorder on a real move and nothing on a same-index drop', async () => {
     const wrapper = mountTabs();
-    const tabs = wrapper.findAll('[role="tab"]');
+    const tabs = wrapper.findAll('[role="tab"]:not([data-testid="tab-sketch"])');
 
     await tabs[0]!.trigger('dragstart', { dataTransfer: dragData() });
     await tabs[2]!.trigger('drop', { dataTransfer: dragData() });
@@ -206,7 +231,9 @@ describe('EditorTabs drag', () => {
     const wrapper = mountTabs({ readOnly: true });
     const event = new Event('dragstart', { bubbles: true, cancelable: true });
 
-    wrapper.findAll('[role="tab"]')[0]!.element.dispatchEvent(event);
+    wrapper
+      .findAll('[role="tab"]:not([data-testid="tab-sketch"])')[0]!
+      .element.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
   });
 });

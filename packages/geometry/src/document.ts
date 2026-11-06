@@ -1,6 +1,6 @@
 import { arcExtents, arcGeometry } from './arc.js';
 import { DEFAULT_ALLOWANCE_PRESET } from './defaults.js';
-import { isCut } from './roles.js';
+import { isCut, pieceEntities } from './roles.js';
 import {
   PATTERN_SCHEMA,
   type ArcEntity,
@@ -335,4 +335,118 @@ export function documentForAssembly(
   const referenced = new Set(target.instances.map((instance) => instance.piece));
   const filtered = documentForPieces(document, referenced);
   return { ...filtered, assemblies: [target] };
+}
+
+/** The gap the sketch canvas keeps between two placed pieces, in millimetres. */
+export const PIECE_PLACEMENT_GAP = 50;
+
+/** The width assumed for a piece that has no geometry yet, in millimetres. */
+export const FALLBACK_PIECE_WIDTH = 200;
+
+/** Where a piece sits in the shared sketch space; absent means the origin. */
+export function piecePlacement(document: PatternDocument, piece: EntityId): Vec2 {
+  return document.pieces.find((candidate) => candidate.id === piece)?.placement ?? { x: 0, y: 0 };
+}
+
+/** A piece's own bounds in its local coordinates, or `null` when it never drew. */
+export function pieceLocalBounds(document: PatternDocument, piece: EntityId): Bounds | null {
+  return bounds({ ...document, entities: pieceEntities(document, piece) });
+}
+
+/** A piece's bounds in the shared sketch space, or `null` when it never drew. */
+export function pieceWorldBounds(document: PatternDocument, piece: EntityId): Bounds | null {
+  const local = pieceLocalBounds(document, piece);
+  if (local === null) return null;
+  const offset = piecePlacement(document, piece);
+  return {
+    min: { x: local.min.x + offset.x, y: local.min.y + offset.y },
+    max: { x: local.max.x + offset.x, y: local.max.y + offset.y },
+  };
+}
+
+/**
+ * Where a new piece should sit so it lands to the right of everything already
+ * drawn, aligned with the top of the placed pieces. A pattern with no geometry
+ * starts at the origin.
+ */
+export function nextPiecePlacement(document: PatternDocument): Vec2 {
+  const placed = document.pieces
+    .map((piece) => pieceWorldBounds(document, piece.id))
+    .filter((box): box is Bounds => box !== null);
+  if (placed.length === 0) return { x: 0, y: 0 };
+  return {
+    x: Math.max(...placed.map((box) => box.max.x)) + PIECE_PLACEMENT_GAP,
+    y: Math.min(...placed.map((box) => box.min.y)),
+  };
+}
+
+/**
+ * Give every piece without a placement one, packed left to right after the
+ * pieces that already have a placement. Load-time migration only: it never
+ * rewrites geometry and never touches an existing placement, so it is
+ * deterministic for the same document.
+ */
+export function assignMissingPlacements(document: PatternDocument): PatternDocument {
+  if (document.pieces.every((piece) => piece.placement !== undefined)) return document;
+
+  const placed = document.pieces
+    .filter((piece) => piece.placement !== undefined)
+    .map((piece) => pieceWorldBounds(document, piece.id))
+    .filter((box): box is Bounds => box !== null);
+  let cursorX =
+    placed.length === 0 ? 0 : Math.max(...placed.map((box) => box.max.x)) + PIECE_PLACEMENT_GAP;
+  const y = placed.length === 0 ? 0 : Math.min(...placed.map((box) => box.min.y));
+
+  const pieces = document.pieces.map((piece) => {
+    if (piece.placement !== undefined) return piece;
+    const local = pieceLocalBounds(document, piece.id);
+    const width = local === null ? FALLBACK_PIECE_WIDTH : local.max.x - local.min.x;
+    const next = { ...piece, placement: { x: cursorX, y } };
+    cursorX += width + PIECE_PLACEMENT_GAP;
+    return next;
+  });
+  return { ...document, pieces };
+}
+
+/**
+ * The document the Sketch canvas shows: every piece, with each piece's points
+ * translated by its placement. Coordinates in the stored document stay
+ * piece-local; this is a read-only view, and writes are translated back before
+ * they become commands.
+ */
+export function documentForSketch(document: PatternDocument): PatternDocument {
+  const owner = new Map<EntityId, EntityId>();
+  for (const piece of document.pieces) {
+    for (const entity of pieceEntities(document, piece.id)) owner.set(entity.id, piece.id);
+    for (const edge of piece.edges) {
+      if (!owner.has(edge)) owner.set(edge, piece.id);
+    }
+  }
+
+  // Untagged points that a piece's entity references belong to that piece.
+  const byId = new Map(document.entities.map((entity) => [entity.id, entity]));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const entity of document.entities) {
+      const piece = owner.get(entity.id);
+      if (piece === undefined) continue;
+      for (const reference of entityReferenceIds(entity)) {
+        if (owner.has(reference) || byId.get(reference)?.kind !== 'point') continue;
+        owner.set(reference, piece);
+        changed = true;
+      }
+    }
+  }
+
+  const entities = document.entities.map((entity) => {
+    if (entity.kind !== 'point') return entity;
+    const piece = owner.get(entity.id);
+    if (piece === undefined) return entity;
+    const offset = piecePlacement(document, piece);
+    if (offset.x === 0 && offset.y === 0) return entity;
+    return { ...entity, x: entity.x + offset.x, y: entity.y + offset.y };
+  });
+
+  return { ...document, entities, assemblies: [] };
 }

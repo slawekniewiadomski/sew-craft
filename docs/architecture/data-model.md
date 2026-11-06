@@ -75,7 +75,7 @@ can be written when it changes.
 
 ```jsonc
 {
-  "schema": "sewcraft.pattern/0.7",
+  "schema": "sewcraft.pattern/0.8",
   "units": "mm",
   "entities": [
     // Every entity names its piece; role absent means cut.
@@ -166,7 +166,7 @@ built-in **10 mm seam** preset, and `normalizeDocument` fills the field on load
 allowance. A piece may override it with `defaults.allowance` (absent inherits,
 `null` means none). Changing or clearing either default never rewrites an existing
 piece's allowances. An invalid stored width or kind falls back to the built-in
-preset; the pattern schema string is `sewcraft.pattern/0.7`.
+preset; the pattern schema string is `sewcraft.pattern/0.8`.
 
 `cornerRounds` is optional, so documents written before the feature load
 unchanged. A round is a live feature: it stores the sharp corner, both line
@@ -176,7 +176,7 @@ anchors and the radius, while its derived entities (tangent points `r1:a`,
 are trimmed to the tangent points, and `p2` stays as a construction point.
 `center` is optional and additive — it points at a fixed construction point, is
 minted once on load for rounds written before feature points, and never joins a
-piece loop or the SVG export. The schema string is `sewcraft.pattern/0.7`.
+piece loop or the SVG export. The schema string is `sewcraft.pattern/0.8`.
 
 An `arc` entity is a true circular arc referencing three ordinary points: `start`
 and `end` bound it and `through` lies on it between them, fixing both the bulge
@@ -244,12 +244,21 @@ ignored when resolving and dropped when the loop changes.
 assembly fill. An empty string is not stored. `defaults.allowance` is the piece's
 own override; absent inherits the document default, `null` means none.
 
-The schema is `sewcraft.pattern/0.7`. `normalizeDocument` in
-`packages/geometry/src/migration.ts` reads 0.6, 0.5 and the 0.4 subset they
+`placement` is the piece's position in the shared sketch canvas: `x`/`y` in
+millimetres, written by `place_piece` and only read by the editor. Entity
+coordinates stay piece-local; the canvas adds the offset when it draws every piece
+together and subtracts it again before a coordinate becomes a command, so moving
+a piece never rewrites geometry and geometry never moves a piece. A new piece is
+placed to the right of the pieces that already drew.
+
+The schema is `sewcraft.pattern/0.8`. `normalizeDocument` in
+`packages/geometry/src/migration.ts` reads 0.7, 0.6, 0.5 and the 0.4 subset they
 supersede, and refuses every other schema (a stored 0.3 document included)
-through `UnsupportedPatternSchemaError`: there is no load-time migration. A 0.6
-document differs only by having no measured variables, so it needs no
-conversion. It also fills `defaults`, defaults a missing `assemblies` to
+through `UnsupportedPatternSchemaError`. A 0.7 document differs only by having no
+placements: it needs no coordinate change, and unplaced pieces are packed left to
+right once on load. A 0.6 document differs only by having no measured variables,
+so it needs no conversion. It also fills `defaults`, defaults a missing
+`assemblies` to
 `[]`, and normalises `tabs` — duplicate refs and refs to missing objects are
 dropped, and every piece and assembly missing from the order is appended in
 pieces-then-assemblies order. The normalisation is one-way and idempotent, and an
@@ -287,7 +296,7 @@ stores the line id so it follows the line's visible endpoints through a
 corner-round trim; the two-point form keeps its named points. A target may not be
 corner-round derived, already a midpoint target, or a source of another midpoint,
 and neither may a source be an existing target (no chains). The document stays
-`sewcraft.pattern/0.7`; only the constraint list gains an additive entry.
+`sewcraft.pattern/0.8`; only the constraint list gains an additive entry.
 
 A `derived_distance` constraint is a **cut dimension**. It addresses two anchors
 of one piece by `{ edge, at: 'start' | 'end' | 'edge', loop?: 'stitch' | 'cut' }`

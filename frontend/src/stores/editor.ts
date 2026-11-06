@@ -12,7 +12,7 @@ import {
   type TabRef,
 } from '@sewcraft/geometry';
 import { defineStore } from 'pinia';
-import { computed, ref, shallowRef } from 'vue';
+import { computed, ref, shallowRef, watch } from 'vue';
 
 import type { SaveOrigin } from '@/lib/autosave';
 import { reconcileTab, tabIndex } from '@/lib/tabs';
@@ -64,13 +64,33 @@ export const useEditorStore = defineStore('editor', () => {
   const readOnly = ref(false);
   /** The bottom bar's active tab; `null` in a document with no tabs. */
   const activeTab = ref<TabRef | null>(null);
+  /** Whether the Sketch canvas replaces the tab canvas; view state only. */
+  const sketchView = ref(false);
+  /** The piece new geometry goes to while the Sketch canvas is showing. */
+  const sketchTarget = ref<EntityId | null>(null);
 
   /**
-   * The piece every new entity belongs to. It is derived from the active tab,
-   * so switching to an assembly tab leaves no piece editable.
+   * The piece every new entity belongs to. The Sketch canvas names it with an
+   * explicit target; otherwise it is derived from the active tab, so switching
+   * to an assembly tab leaves no piece editable.
    */
-  const activePieceId = computed<EntityId | null>(() =>
-    activeTab.value?.kind === 'piece' ? activeTab.value.id : null,
+  const activePieceId = computed<EntityId | null>(() => {
+    if (sketchView.value) return sketchTarget.value;
+    return activeTab.value?.kind === 'piece' ? activeTab.value.id : null;
+  });
+
+  // A deleted target falls back to the first piece so drawing never loses its
+  // destination while the Sketch canvas is open.
+  watch(
+    document,
+    (next) => {
+      const pieces = next.pieces ?? [];
+      if (sketchTarget.value !== null && pieces.some((piece) => piece.id === sketchTarget.value)) {
+        return;
+      }
+      sketchTarget.value = pieces[0]?.id ?? null;
+    },
+    { flush: 'sync' },
   );
 
   const canUndo = computed(() => past.value.length > 0);
@@ -300,8 +320,26 @@ export const useEditorStore = defineStore('editor', () => {
     readOnly.value = value;
   }
 
+  /**
+   * Show the Sketch canvas. Opening from a piece tab continues that piece;
+   * otherwise the last target survives, and the document watcher above keeps it
+   * pointing at a piece that still exists.
+   */
+  function showSketch(): void {
+    sketchView.value = true;
+    if (activeTab.value?.kind === 'piece') sketchTarget.value = activeTab.value.id;
+  }
+
+  /** Set the sketch target; an unknown piece is refused. */
+  function setSketchTarget(id: EntityId): boolean {
+    if (!document.value.pieces.some((piece) => piece.id === id)) return false;
+    sketchTarget.value = id;
+    return true;
+  }
+
   /** Activate one tab; a ref that is not in the document clears the tab. */
   function setActiveTab(tab: TabRef | null): void {
+    sketchView.value = false;
     activeTab.value =
       tab !== null &&
       document.value.tabs.some(
@@ -313,6 +351,10 @@ export const useEditorStore = defineStore('editor', () => {
 
   return {
     document,
+    sketchView,
+    sketchTarget,
+    showSketch,
+    setSketchTarget,
     journal: past,
     future,
     canUndo,

@@ -14,7 +14,7 @@ const builtIn = { allowance: { width: 10, kind: 'seam' as const } };
 
 describe('normalizeDocument', () => {
   it('returns a current document untouched', () => {
-    const piece: Piece = { id: 'p', edges: ['a'], allowances: [] };
+    const piece: Piece = { id: 'p', edges: ['a'], allowances: [], placement: { x: 0, y: 0 } };
     const current = {
       ...createEmptyDocument(),
       pieces: [piece],
@@ -97,7 +97,7 @@ describe('normalizeDocument', () => {
 
     const migrated = normalizeDocument(current);
 
-    expect(migrated.schema).toBe('sewcraft.pattern/0.7');
+    expect(migrated.schema).toBe('sewcraft.pattern/0.8');
     expect(migrated.pieces).toEqual([]);
   });
 
@@ -155,6 +155,7 @@ describe('normalizeDocument', () => {
 describe('known pattern schemas', () => {
   it('lists the current schema and the subsets it still reads', () => {
     expect(KNOWN_PATTERN_SCHEMAS).toEqual([
+      'sewcraft.pattern/0.8',
       'sewcraft.pattern/0.7',
       'sewcraft.pattern/0.6',
       'sewcraft.pattern/0.5',
@@ -163,6 +164,7 @@ describe('known pattern schemas', () => {
   });
 
   it('accepts the schema this build understands and the older subsets', () => {
+    expect(isKnownPatternSchema('sewcraft.pattern/0.8')).toBe(true);
     expect(isKnownPatternSchema('sewcraft.pattern/0.7')).toBe(true);
     expect(isKnownPatternSchema('sewcraft.pattern/0.6')).toBe(true);
     expect(isKnownPatternSchema('sewcraft.pattern/0.5')).toBe(true);
@@ -173,7 +175,7 @@ describe('known pattern schemas', () => {
     expect(isKnownPatternSchema('sewcraft.pattern/0.1')).toBe(false);
     expect(isKnownPatternSchema('sewcraft.pattern/0.2')).toBe(false);
     expect(isKnownPatternSchema('sewcraft.pattern/0.3')).toBe(false);
-    expect(isKnownPatternSchema('sewcraft.pattern/0.8')).toBe(false);
+    expect(isKnownPatternSchema('sewcraft.pattern/0.9')).toBe(false);
     expect(isKnownPatternSchema('')).toBe(false);
   });
 });
@@ -192,7 +194,7 @@ describe('default allowance normalisation', () => {
 
     expect(migrated).not.toBe(current);
     expect(migrated.defaults).toEqual(builtIn);
-    expect(migrated.pieces).toEqual([piece]);
+    expect(migrated.pieces).toEqual([{ ...piece, placement: { x: 0, y: 0 } }]);
     expect(migrated.pieces[0]!.allowances).toEqual([{ edge: 'a', width: 15 }]);
   });
 

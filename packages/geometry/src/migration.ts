@@ -1,3 +1,4 @@
+import { assignMissingPlacements } from './document.js';
 import { normalizeDefaults } from './defaults.js';
 import { UnsupportedPatternSchemaError } from './errors.js';
 import { PATTERN_SCHEMA, type PatternDocument, type TabRef } from './types.js';
@@ -10,6 +11,9 @@ import { PATTERN_SCHEMA, type PatternDocument, type TabRef } from './types.js';
  */
 export const KNOWN_PATTERN_SCHEMAS: readonly string[] = [
   PATTERN_SCHEMA,
+  // 0.8 only added per-piece placement, so a 0.7 document is a strict subset:
+  // it loads with generated placements and no coordinate changes.
+  'sewcraft.pattern/0.7',
   // 0.7 only added measured variables (`kind: 'measurement'`), so a 0.6 document
   // is a strict subset and needs no conversion.
   'sewcraft.pattern/0.6',
@@ -114,8 +118,18 @@ export function normalizeDocument(
   const pieces = document.pieces ?? [];
   const assemblies = document.assemblies ?? [];
   const tabs = reconcileTabs({ pieces, assemblies }, document.tabs);
+  const base: PatternDocument = {
+    ...normalized,
+    schema: PATTERN_SCHEMA,
+    units: 'mm',
+    pieces,
+    assemblies,
+    tabs,
+  };
+  const placed = assignMissingPlacements(base);
 
   if (
+    placed === base &&
     normalized === document &&
     document.pieces !== undefined &&
     document.assemblies !== undefined &&
@@ -123,5 +137,5 @@ export function normalizeDocument(
   ) {
     return document as PatternDocument;
   }
-  return { ...normalized, schema: PATTERN_SCHEMA, pieces, assemblies, tabs };
+  return placed;
 }

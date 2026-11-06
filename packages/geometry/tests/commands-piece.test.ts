@@ -177,6 +177,7 @@ describe('create_piece', () => {
       defaults: { allowance: { width: 7, kind: 'single' } },
       edges: [],
       allowances: [],
+      placement: { x: 0, y: 0 },
     });
     expect(result.document.tabs).toEqual([{ kind: 'piece', id: 'piece-1' }]);
     expect(result.inverse).toEqual({
