@@ -17,6 +17,8 @@ export interface AssemblyDisplaySettings {
   folds: boolean;
   notches: boolean;
   labels: boolean;
+  /** Seam, finished and unmatched edge overlays. */
+  seams: boolean;
 }
 
 export interface ExportSettings {
@@ -49,6 +51,7 @@ export function defaultDisplaySettings(): DisplaySettings {
       folds: true,
       notches: true,
       labels: true,
+      seams: true,
     },
     export: { construction: false, stitch: true, fold: true },
   };
@@ -105,6 +108,8 @@ export function parseDisplaySettings(value: string | null | undefined): DisplayS
       folds: pickFlag(assembly, 'folds', defaults.assembly.folds),
       notches: pickFlag(assembly, 'notches', defaults.assembly.notches),
       labels: pickFlag(assembly, 'labels', defaults.assembly.labels),
+      // A payload written before seams existed keeps the overlay visible.
+      seams: pickFlag(assembly, 'seams', defaults.assembly.seams),
     },
     export: {
       construction: pickFlag(exported, 'construction', defaults.export.construction),

@@ -38,6 +38,7 @@ describe('RIBBON_ICONS', () => {
       'rotate',
       'round-corner',
       'select',
+      'sew',
       'split',
       'text',
       'text-leader',

@@ -37,10 +37,13 @@ const props = withDefaults(
     exportHint?: string;
     /** The one collapse control mirrors the sidebar it owns. */
     sidebarCollapsed?: boolean;
+    /** An action that stays pressed while its mode is armed, such as Sew. */
+    activeAction?: RibbonAction | null;
   }>(),
   {
     mode: 'piece',
     readOnly: false,
+    activeAction: null,
     canExport: true,
     exportHint: undefined,
     sidebarCollapsed: false,
@@ -69,11 +72,11 @@ function isActive(item: RibbonItem): boolean {
       item.items.some((member) => member.tool === props.activeTool)
     );
   }
-  return false;
+  return props.activeAction === item.action;
 }
 
 function variantFor(item: RibbonButtonItem): ButtonVariant {
-  if (item.kind === 'action') return 'outline';
+  if (item.kind === 'action') return isActive(item) ? 'default' : 'outline';
   return isActive(item) ? 'default' : 'ghost';
 }
 

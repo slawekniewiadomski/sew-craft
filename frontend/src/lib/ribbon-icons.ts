@@ -34,6 +34,7 @@ export type RibbonIconName =
   | 'delete'
   | 'fit'
   | 'download'
+  | 'sew'
   | 'mirror'
   | 'rotate'
   | 'variables'
@@ -117,6 +118,15 @@ const ACTION_ICONS: Record<ActionIconName, RibbonIcon> = {
   delete: { paths: ['M5 7 H19', 'M9 7 V20 H15 V7', 'M10 7 V4.4 H14 V7'] },
   fit: { paths: ['M6 3 H3 V6', 'M18 3 H21 V6', 'M3 18 V21 H6', 'M21 18 V21 H18'] },
   download: { paths: ['M12 3.2 V15.2', 'M7.2 10.4 L12 15.2 L16.8 10.4', 'M4 20.8 H20'] },
+  sew: {
+    paths: [
+      'M4 18 L19.6 5.2',
+      'M6.4 13.2 L9.2 15.6',
+      'M10.4 10.4 L13.2 12.8',
+      'M14.4 7.6 L17.2 10',
+    ],
+    dots: [{ cx: 20.4, cy: 4.6, r: 1.4 }],
+  },
   mirror: {
     paths: ['M12 3.2 V20.8', 'M8.8 6.4 L3.2 12 L8.8 17.6 Z', 'M15.2 6.4 L20.8 12 L15.2 17.6 Z'],
   },

@@ -17,6 +17,7 @@ function mountRibbon(
     canExport: boolean;
     exportHint: string;
     sidebarCollapsed: boolean;
+    activeAction: 'sew' | null;
   }> = {},
 ): VueWrapper {
   return mount(EditorRibbon, {
@@ -100,6 +101,15 @@ const RIBBON_TOOLTIPS = RIBBON_LABELS.filter(
 );
 
 describe('EditorRibbon', () => {
+  it('renders an action pressed only when it is the active action', () => {
+    const wrapper = mountRibbon({ mode: 'assembly', activeAction: 'sew' });
+
+    const sew = wrapper.find('[data-testid="sew"]');
+    expect(sew.attributes('aria-pressed')).toBe('true');
+    expect(sew.classes()).toContain('bg-primary');
+    expect(wrapper.find('[data-testid="add-instance"]').attributes('aria-pressed')).toBeUndefined();
+  });
+
   it('renders every control as an icon button with an accessible name', () => {
     const wrapper = mountRibbon();
 

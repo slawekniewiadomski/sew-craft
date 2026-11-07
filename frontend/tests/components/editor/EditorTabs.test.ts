@@ -237,3 +237,86 @@ describe('EditorTabs drag', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 });
+
+describe('EditorTabs seam errors', () => {
+  const rectangle = (piece: string, width: number, prefix: string) => ({
+    entities: [
+      { id: `${prefix}a`, kind: 'point' as const, x: 0, y: 0, piece, fixed: false },
+      { id: `${prefix}b`, kind: 'point' as const, x: width, y: 0, piece, fixed: false },
+      { id: `${prefix}c`, kind: 'point' as const, x: width, y: 100, piece, fixed: false },
+      { id: `${prefix}d`, kind: 'point' as const, x: 0, y: 100, piece, fixed: false },
+      { id: `${prefix}ab`, kind: 'line' as const, start: `${prefix}a`, end: `${prefix}b`, piece },
+      { id: `${prefix}bc`, kind: 'line' as const, start: `${prefix}b`, end: `${prefix}c`, piece },
+      { id: `${prefix}cd`, kind: 'line' as const, start: `${prefix}c`, end: `${prefix}d`, piece },
+      { id: `${prefix}da`, kind: 'line' as const, start: `${prefix}d`, end: `${prefix}a`, piece },
+    ],
+    piece: {
+      id: piece,
+      name: piece === 'p1' ? 'Front' : 'Back',
+      edges: [`${prefix}ab`, `${prefix}bc`, `${prefix}cd`, `${prefix}da`],
+      allowances: [],
+    },
+  });
+
+  const sewnDocument = (eased: boolean): PatternDocument => {
+    const front = rectangle('p1', 100, '');
+    const back = rectangle('p2', 106, 'b-');
+    const restFront = front.piece.edges.slice(1);
+    const restBack = back.piece.edges.slice(1);
+    return {
+      ...createEmptyDocument(),
+      entities: [...front.entities, ...back.entities],
+      pieces: [front.piece, back.piece],
+      assemblies: [
+        {
+          id: 'a1',
+          name: 'Shell',
+          instances: [
+            { id: 'i1', piece: 'p1', x: 0, y: 0 },
+            { id: 'i2', piece: 'p2', x: 200, y: 0 },
+          ],
+          seams: [
+            {
+              id: 's1',
+              eased,
+              sides: [
+                { instance: 'i1', edges: ['ab'] },
+                { instance: 'i2', edges: ['b-ab'] },
+              ],
+            },
+          ],
+          finishedEdges: [
+            ...restFront.map((edge) => ({ instance: 'i1', edge, kind: 'hem' as const })),
+            ...restBack.map((edge) => ({ instance: 'i2', edge, kind: 'hem' as const })),
+          ],
+        },
+      ],
+      tabs: [
+        { kind: 'piece', id: 'p1' },
+        { kind: 'assembly', id: 'a1' },
+      ],
+    };
+  };
+
+  it('shows a destructive pill with the error count on an assembly tab', () => {
+    const wrapper = mountTabs({ document: sewnDocument(false) });
+
+    const pill = wrapper.find('[data-testid="tab-seam-errors-a1"]');
+    expect(pill.exists()).toBe(true);
+    expect(pill.text()).toBe('1');
+    expect(pill.attributes('aria-label')).toBe('1 seam issues');
+    expect(pill.classes()).toContain('bg-destructive');
+  });
+
+  it('leaves the assembly tab bare when there are warnings only', () => {
+    const wrapper = mountTabs({ document: sewnDocument(true) });
+
+    expect(wrapper.find('[data-testid="tab-seam-errors-a1"]').exists()).toBe(false);
+  });
+
+  it('never puts a pill on a piece tab', () => {
+    const wrapper = mountTabs({ document: sewnDocument(false) });
+
+    expect(wrapper.find('[data-testid="tab-seam-errors-p1"]').exists()).toBe(false);
+  });
+});

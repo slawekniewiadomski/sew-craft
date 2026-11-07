@@ -215,7 +215,7 @@ describe('dimension state presentation', () => {
 
 describe('reference options', () => {
   const document: PatternDocument = {
-    schema: 'sewcraft.pattern/0.8',
+    schema: 'sewcraft.pattern/0.9',
     units: 'mm',
     entities: [
       { id: 'p1', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
@@ -328,7 +328,7 @@ describe('dimensionSegments', () => {
 
 describe('dimensionRows', () => {
   const document: PatternDocument = {
-    schema: 'sewcraft.pattern/0.8',
+    schema: 'sewcraft.pattern/0.9',
     units: 'mm',
     entities: [
       { id: 'p1', kind: 'point', x: 0, y: 0, construction: false, fixed: false },

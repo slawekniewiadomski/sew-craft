@@ -37,6 +37,7 @@ import type {
   DimensionState,
   DistanceConstraint,
   EntityId,
+  FinishKind,
   PatternDocument,
   Piece,
   TabRef,
@@ -67,6 +68,7 @@ import ProjectSettingsDialog from '@/components/dialogs/ProjectSettingsDialog.vu
 import { pruneAllowanceTargets } from '@/lib/allowance-edit';
 import RibbonIcon from '@/components/base/RibbonIcon.vue';
 import SaveConflictDialog from '@/components/dialogs/SaveConflictDialog.vue';
+import SeamPromptBar from '@/components/bars/SeamPromptBar.vue';
 import SketchToolbar from '@/components/bars/SketchToolbar.vue';
 import Pill from '@/components/sidebar/Pill.vue';
 import SidebarAction from '@/components/sidebar/SidebarAction.vue';
@@ -145,6 +147,17 @@ import { usePieceEditing } from '@/composables/use-piece-editing';
 import { useProjectSession } from '@/composables/use-project-session';
 import { useSketchCommands } from '@/composables/use-sketch-commands';
 import { useToolPrompts } from '@/composables/use-tool-prompts';
+import {
+  addSeamPick,
+  emptySeamDraft,
+  flipLastSide,
+  newSeamSide,
+  removeSeamPick,
+  seamDraftRuns,
+  seamDraftSides,
+  type SeamDraft,
+  type SeamEdgeOrder,
+} from '@/lib/seam-picks';
 import { useEditorStore } from '@/stores/editor';
 
 const props = defineProps<{ id: string }>();
@@ -258,8 +271,131 @@ const {
   dispatch,
 });
 
+/** Sew mode, its draft gesture, and the seam whose guides the canvas draws. */
+const seamActive = ref(false);
+const seamDraft = ref<SeamDraft>(emptySeamDraft());
+const seamEased = ref(false);
+const selectedSeamId = ref<EntityId | null>(null);
+
+/** The loop order each placed instance resolves against, for adjacency picks. */
+const seamEdgeOrder = computed<SeamEdgeOrder>(() => {
+  const map = new Map<EntityId, EntityId[]>();
+  const assembly = activeAssembly.value;
+  /* v8 ignore next -- Sew mode only exists inside an assembly tab */
+  if (assembly === null) return map;
+  for (const instance of assembly.instances) {
+    const piece = pattern.value.pieces.find((candidate) => candidate.id === instance.piece);
+    if (piece !== undefined) map.set(instance.id, [...piece.edges]);
+  }
+  return map;
+});
+
+function resetSeamGesture(): void {
+  seamDraft.value = emptySeamDraft();
+  seamEased.value = false;
+}
+
+function exitSew(): void {
+  seamActive.value = false;
+  resetSeamGesture();
+}
+
+function onSeamPick(instance: EntityId, edge: EntityId): void {
+  seamDraft.value = addSeamPick(seamDraft.value, { instance, edge }, seamEdgeOrder.value);
+}
+
+function onSeamNewSide(): void {
+  seamDraft.value = newSeamSide(seamDraft.value);
+}
+
+function onSeamFlip(): void {
+  seamDraft.value = flipLastSide(seamDraft.value);
+}
+
+function onSeamRemovePick(instance: EntityId, edge: EntityId): void {
+  seamDraft.value = removeSeamPick(seamDraft.value, { instance, edge });
+}
+
+function onSeamCommit(): void {
+  const assembly = activeAssembly.value;
+  /* v8 ignore next -- the prompt bar renders only inside an assembly tab */
+  if (assembly === null) return;
+  const sides = seamDraftRuns(seamDraft.value);
+  if (sides.length < 2) return;
+
+  const id = nextCommandId('seam');
+  const applied = run(() =>
+    dispatch({
+      id,
+      type: 'add_seam_match',
+      params: { assembly: assembly.id, sides, ...(seamEased.value ? { eased: true } : {}) },
+    }),
+  );
+  if (!applied) return;
+
+  selectedSeamId.value = id;
+  resetSeamGesture();
+}
+
+function onSelectSeam(seam: EntityId | null): void {
+  selectedSeamId.value = seam;
+}
+
+function onRemoveSeam(seam: EntityId): void {
+  const assembly = activeAssembly.value;
+  /* v8 ignore next -- the panel renders only inside an assembly tab */
+  if (assembly === null) return;
+  if (
+    run(() =>
+      dispatch({
+        id: nextCommandId('seam'),
+        type: 'remove_seam_match',
+        params: { assembly: assembly.id, seam },
+      }),
+    ) &&
+    selectedSeamId.value === seam
+  ) {
+    selectedSeamId.value = null;
+  }
+}
+
+function onToggleSeamEased(seam: EntityId, eased: boolean): void {
+  const assembly = activeAssembly.value;
+  /* v8 ignore next -- the panel renders only inside an assembly tab */
+  if (assembly === null) return;
+  run(() =>
+    dispatch({
+      id: nextCommandId('seam'),
+      type: 'update_seam_match',
+      params: { assembly: assembly.id, seam, eased },
+    }),
+  );
+}
+
+function onSetFinished(instance: EntityId, edge: EntityId, kind: FinishKind | null): void {
+  const assembly = activeAssembly.value;
+  /* v8 ignore next -- the panel renders only inside an assembly tab */
+  if (assembly === null) return;
+  run(() =>
+    dispatch({
+      id: nextCommandId('seam'),
+      type: 'set_edge_finished',
+      params: { assembly: assembly.id, instance, edge, kind },
+    }),
+  );
+}
+
+function onSelectSeamEdge(instance: EntityId): void {
+  selectedInstanceId.value = instance;
+  selectedSeamId.value = null;
+}
+
 /** The active tab is a view preference, persisted per pattern. */
-watch(activeTab, (tab) => writePersistedTab(window.localStorage, props.id, tab));
+watch(activeTab, (tab) => {
+  writePersistedTab(window.localStorage, props.id, tab);
+  if (seamActive.value) exitSew();
+  selectedSeamId.value = null;
+});
 /** True while a marquee owns the pointer, so Delete/Escape defer to the canvas. */
 const marqueeActive = ref(false);
 const fitToken = ref(0);
@@ -286,6 +422,7 @@ const ASSEMBLY_DISPLAY_ITEMS: CanvasDisplayItem[] = [
   { key: 'folds', label: 'Fold lines' },
   { key: 'notches', label: 'Notches' },
   { key: 'labels', label: 'Piece labels' },
+  { key: 'seams', label: 'Seams' },
 ];
 
 const displayItems = computed(() =>
@@ -938,6 +1075,15 @@ function onRibbonAction(action: RibbonAction): void {
     case 'add_instance':
       assemblyPickerOpen.value = !assemblyPickerOpen.value;
       break;
+    case 'sew':
+      if (seamActive.value) {
+        exitSew();
+      } else {
+        resetSeamGesture();
+        seamActive.value = true;
+        assemblyPickerOpen.value = false;
+      }
+      break;
     case 'mirror_instance':
       onTransformInstance('mirror');
       break;
@@ -1057,6 +1203,12 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
+  if (event.key === 'Escape' && seamActive.value) {
+    event.preventDefault();
+    exitSew();
+    return;
+  }
+
   if (event.key === 'Escape' && activeConstraint.value !== null) {
     event.preventDefault();
     exitConstraint();
@@ -1138,6 +1290,15 @@ watch(pattern, (next) => {
   ) {
     selectedInstanceId.value = null;
   }
+
+  if (
+    selectedSeamId.value !== null &&
+    !next.assemblies.some((assembly) =>
+      (assembly.seams ?? []).some((seam) => seam.id === selectedSeamId.value),
+    )
+  ) {
+    selectedSeamId.value = null;
+  }
 });
 
 onMounted(() => {
@@ -1193,6 +1354,7 @@ onBeforeUnmount(() => {
         :export-hint="exportHint"
         :read-only="editor.readOnly"
         :sidebar-collapsed="collapsed"
+        :active-action="seamActive ? 'sew' : null"
         @select-tool="selectTool"
         @select-constraint="selectConstraint"
         @action="onRibbonAction"
@@ -1232,6 +1394,21 @@ onBeforeUnmount(() => {
         @remove="onMeasuredEdgeToggle"
         @done="endMeasuredEdit"
         @cancel="cancelMeasuredEdit"
+      />
+
+      <SeamPromptBar
+        v-if="seamActive && activeAssembly"
+        :document="assemblyDocument"
+        :assembly="activeAssembly"
+        :draft="seamDraft"
+        :eased="seamEased"
+        :read-only="editor.readOnly"
+        @new-side="onSeamNewSide"
+        @flip="onSeamFlip"
+        @remove-pick="onSeamRemovePick"
+        @update:eased="seamEased = $event"
+        @commit="onSeamCommit"
+        @cancel="exitSew"
       />
 
       <p v-if="error" class="border-b px-3 py-1 text-sm text-destructive">{{ error }}</p>
@@ -1275,12 +1452,17 @@ onBeforeUnmount(() => {
             :show-folds="display.assembly.folds"
             :show-notches="display.assembly.notches"
             :show-labels="display.assembly.labels"
+            :show-seams="display.assembly.seams"
+            :sew-active="seamActive"
+            :draft-sides="seamDraftSides(seamDraft)"
+            :selected-seam-id="selectedSeamId"
             @select="selectInstance"
             @move="onMoveInstance"
             @nudge="onNudgeInstance"
             @remove="onRemoveInstance"
             @add-piece="onAddInstance"
             @close-picker="assemblyPickerOpen = false"
+            @pick-edge="onSeamPick"
           />
           <PatternCanvas
             v-else
@@ -1447,6 +1629,11 @@ onBeforeUnmount(() => {
               @set-default="onSetPieceDefault"
               @open-piece="openPieceTab"
               @remove-instance="onRemoveInstance"
+              @select-seam="onSelectSeam"
+              @remove-seam="onRemoveSeam"
+              @toggle-eased="onToggleSeamEased"
+              @set-finished="onSetFinished"
+              @select-edge="onSelectSeamEdge"
             />
           </template>
 

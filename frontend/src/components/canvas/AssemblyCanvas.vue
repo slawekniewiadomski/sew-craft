@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import {
   assemblyBounds,
+  instanceEdgeSegments,
   instanceLoops,
+  resolveSeamRun,
   roundToThousandth,
   type Assembly,
   type AssemblyInstance,
@@ -14,6 +16,7 @@ import {
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 import { Button } from '@/components/ui/button';
+import type { SeamDraftSide } from '@/lib/seam-picks';
 import { tabColor } from '@/lib/tabs';
 
 const props = withDefaults(
@@ -40,6 +43,14 @@ const props = withDefaults(
     showLabels?: boolean;
     /** Notch marks, which sit in the allowance and follow the instance transform. */
     showNotches?: boolean;
+    /** Seam, finished and unmatched edge overlays. */
+    showSeams?: boolean;
+    /** Sew mode: edge picking replaces instance dragging. */
+    sewActive?: boolean;
+    /** The sides picked so far, highlighted while the gesture runs. */
+    draftSides?: SeamDraftSide[];
+    /** The seam whose side midpoints are joined by guide arcs. */
+    selectedSeamId?: EntityId | null;
   }>(),
   {
     selectedInstanceId: null,
@@ -52,6 +63,10 @@ const props = withDefaults(
     showFolds: true,
     showLabels: true,
     showNotches: true,
+    showSeams: true,
+    sewActive: false,
+    draftSides: () => [],
+    selectedSeamId: null,
   },
 );
 
@@ -62,6 +77,8 @@ const emit = defineEmits<{
   remove: [instance: EntityId];
   'add-piece': [piece: EntityId];
   'close-picker': [];
+  'pick-edge': [instance: EntityId, edge: EntityId];
+  'hover-edge': [instance: EntityId | null, edge: EntityId | null];
 }>();
 
 const svg = ref<SVGSVGElement | null>(null);
@@ -130,14 +147,180 @@ const viewBox = computed(
   () => `${view.value.x} ${view.value.y} ${view.value.width} ${view.value.height}`,
 );
 
+/** A stroke width that keeps the edge hit target at a similar screen size. */
+const edgeHitWidth = computed(() => Math.max(view.value.width / 150, 0.6));
+
+/** Sew mode owns the pointer, so instance drags and nudges stay out of the way. */
+const interactionsDisabled = computed(() => props.readOnly || props.sewActive);
+
 function pieceOf(instance: { piece: EntityId }): Piece | undefined {
   return props.document.pieces.find((piece) => piece.id === instance.piece);
+}
+
+/** The stored edge id at one authored loop index; the segment list is aligned. */
+function edgeAt(instance: AssemblyInstance, index: number): EntityId {
+  return pieceOf(instance)!.edges[index]!;
 }
 
 /** The rendered loops of one instance, or `null` for a piece with no anchor. */
 function loopsFor(instance: AssemblyInstance) {
   const piece = pieceOf(instance);
   return piece === undefined ? null : instanceLoops(props.document, piece, instance);
+}
+
+/** One stitch polyline per authored loop edge, in assembly space, per instance. */
+const edgesByInstance = computed(() => {
+  const map = new Map<EntityId, Vec2[][]>();
+  /* v8 ignore next -- the canvas maps edges only while an assembly is open */
+  const instances = assembly.value?.instances ?? [];
+  for (const instance of instances) {
+    const piece = pieceOf(instance);
+    const segments =
+      piece === undefined ? null : instanceEdgeSegments(props.document, piece, instance);
+    if (segments !== null) map.set(instance.id, segments);
+  }
+  return map;
+});
+
+const pickedKeys = computed(() => {
+  const keys = new Set<string>();
+  for (const side of props.draftSides) {
+    for (const edge of side.edges) keys.add(`${side.instance}:${edge}`);
+  }
+  return keys;
+});
+
+const claims = computed(() => {
+  const sewn = new Set<string>();
+  const finished = new Set<string>();
+  for (const seam of assembly.value?.seams ?? []) {
+    for (const side of seam.sides) {
+      for (const edge of side.edges) sewn.add(`${side.instance}:${edge}`);
+    }
+  }
+  for (const edge of assembly.value?.finishedEdges ?? []) {
+    finished.add(`${edge.instance}:${edge.edge}`);
+  }
+  return { sewn, finished };
+});
+
+/** The overlay class for one edge: picked, sewn, finished or unmatched. */
+function edgeClass(instance: EntityId, edge: EntityId): string {
+  const key = `${instance}:${edge}`;
+  if (pickedKeys.value.has(key) || claims.value.sewn.has(key)) return 'stroke-primary';
+  if (claims.value.finished.has(key)) return 'stroke-muted-foreground';
+  return 'stroke-destructive';
+}
+
+/** Finished edges are dotted and unmatched ones dashed; sewn edges are solid. */
+function edgeDash(instance: EntityId, edge: EntityId): string | undefined {
+  const key = `${instance}:${edge}`;
+  if (pickedKeys.value.has(key) || claims.value.sewn.has(key)) return undefined;
+  return claims.value.finished.has(key) ? '1.4 1.4' : '3 1.6';
+}
+
+function openPath(points: readonly Vec2[]): string {
+  return points
+    .map(
+      (point, index) =>
+        `${index === 0 ? 'M' : 'L'} ${roundToThousandth(point.x)} ${roundToThousandth(point.y)}`,
+    )
+    .join(' ');
+}
+
+function lengthOf(points: readonly Vec2[]): number {
+  let total = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    total += Math.hypot(
+      points[index]!.x - points[index - 1]!.x,
+      points[index]!.y - points[index - 1]!.y,
+    );
+  }
+  return total;
+}
+
+/** The point halfway along an open polyline, by arc length. */
+function midpointOf(points: readonly Vec2[]): Vec2 {
+  const total = lengthOf(points);
+  if (total === 0) return points[0]!;
+
+  const half = total / 2;
+  const steps = points
+    .slice(1)
+    .map((point, index) => Math.hypot(point.x - points[index]!.x, point.y - points[index]!.y));
+  let walked = 0;
+  const index = steps.findIndex((step) => {
+    if (walked + step >= half) return true;
+    walked += step;
+    return false;
+  });
+
+  /* v8 ignore next -- a positive total always finds its halfway step */
+  const at = index < 0 ? steps.length - 1 : index;
+  const previous = points[at]!;
+  const point = points[at + 1]!;
+  const t = (half - walked) / steps[at]!;
+  return { x: previous.x + (point.x - previous.x) * t, y: previous.y + (point.y - previous.y) * t };
+}
+
+/** One dashed quadratic arc between two side midpoints. */
+function guidePath(a: Vec2, b: Vec2): string {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length = Math.hypot(dx, dy);
+  const bend = length === 0 ? 0 : length * 0.18;
+  const control =
+    length === 0
+      ? { x: a.x, y: a.y }
+      : { x: (a.x + b.x) / 2 - (dy / length) * bend, y: (a.y + b.y) / 2 + (dx / length) * bend };
+  return `M ${roundToThousandth(a.x)} ${roundToThousandth(a.y)} Q ${roundToThousandth(control.x)} ${roundToThousandth(control.y)} ${roundToThousandth(b.x)} ${roundToThousandth(b.y)}`;
+}
+
+/** Guide arcs from the first side's midpoint to every other side's midpoint. */
+const guidePaths = computed(() => {
+  const seam = assembly.value?.seams?.find((candidate) => candidate.id === props.selectedSeamId);
+  if (seam === undefined || assembly.value === null) return [];
+
+  const midpoints = seam.sides.flatMap((side) => {
+    const resolved = resolveSeamRun(props.document, assembly.value!, side);
+    return resolved === null ? [] : [midpointOf(resolved.points)];
+  });
+  if (midpoints.length < 2) return [];
+
+  const origin = midpoints[0]!;
+  return midpoints.slice(1).map((point) => guidePath(origin, point));
+});
+
+const hovered = ref<{
+  instance: EntityId;
+  edge: EntityId;
+  x: number;
+  y: number;
+  length: number;
+} | null>(null);
+
+/** Hovering a stitch edge in Sew mode shows its length beside the cursor. */
+function onEdgeMove(
+  instance: EntityId,
+  edge: EntityId,
+  points: readonly Vec2[],
+  event: PointerEvent,
+): void {
+  const world = pointerWorld(event);
+  if (world === null) return;
+  hovered.value = { instance, edge, x: world.x, y: world.y, length: lengthOf(points) };
+  emit('hover-edge', instance, edge);
+}
+
+function onEdgeLeave(): void {
+  if (hovered.value === null) return;
+  hovered.value = null;
+  emit('hover-edge', null, null);
+}
+
+function onEdgePick(instance: EntityId, edge: EntityId): void {
+  if (!props.sewActive || props.readOnly) return;
+  emit('pick-edge', instance, edge);
 }
 
 function pathOf(points: { x: number; y: number }[]): string {
@@ -289,7 +472,7 @@ function onPointerDown(
   event: PointerEvent,
 ): void {
   select(instance.id);
-  if (props.readOnly) return;
+  if (interactionsDisabled.value) return;
   drag.value = { id: instance.id, x: event.clientX, y: event.clientY, dx: 0, dy: 0 };
   (event.target as Element).setPointerCapture?.(event.pointerId);
 }
@@ -308,7 +491,7 @@ function onPointerMove(
 function onPointerUp(instance: { id: EntityId; x: number; y: number }): void {
   const current = drag.value;
   drag.value = null;
-  if (current === null || props.readOnly) return;
+  if (current === null || interactionsDisabled.value) return;
   if (current.dx === 0 && current.dy === 0) return;
   emit(
     'move',
@@ -319,7 +502,7 @@ function onPointerUp(instance: { id: EntityId; x: number; y: number }): void {
 }
 
 function onKeydown(instance: { id: EntityId }, event: KeyboardEvent): void {
-  if (props.readOnly) return;
+  if (interactionsDisabled.value) return;
   const step = event.shiftKey ? 10 : 1;
   if (event.key === 'ArrowLeft') {
     event.preventDefault();
@@ -443,6 +626,36 @@ watch(
               class="stroke-mark"
               data-testid="instance-notch"
             />
+            <g v-if="props.showSeams" data-testid="instance-seam-overlay">
+              <path
+                v-for="(points, index) in edgesByInstance.get(instance.id) ?? []"
+                :key="`seam-${index}`"
+                :d="openPath(points)"
+                fill="none"
+                :class="edgeClass(instance.id, edgeAt(instance, index))"
+                :stroke-dasharray="edgeDash(instance.id, edgeAt(instance, index))"
+                stroke-width="0.7"
+                stroke-linecap="round"
+                data-testid="instance-seam-edge"
+              />
+            </g>
+            <template v-if="props.sewActive">
+              <path
+                v-for="(points, index) in edgesByInstance.get(instance.id) ?? []"
+                :key="`hit-${index}`"
+                :d="openPath(points)"
+                fill="none"
+                stroke="transparent"
+                :stroke-width="edgeHitWidth"
+                stroke-linecap="round"
+                pointer-events="stroke"
+                class="cursor-crosshair"
+                :data-testid="`seam-hit-${instance.id}-${edgeAt(instance, index)}`"
+                @pointerdown.left.stop.prevent="onEdgePick(instance.id, edgeAt(instance, index))"
+                @pointermove.stop="onEdgeMove(instance.id, edgeAt(instance, index), points, $event)"
+                @pointerleave.stop="onEdgeLeave"
+              />
+            </template>
             <rect
               v-if="props.selectedInstanceId === instance.id"
               v-bind="selectionBox(instance)"
@@ -491,6 +704,27 @@ watch(
           {{ labelOf(instance) }}
         </text>
       </g>
+
+      <path
+        v-for="(guide, index) in guidePaths"
+        :key="`guide-${index}`"
+        :d="guide"
+        fill="none"
+        class="stroke-primary"
+        stroke-width="0.5"
+        stroke-dasharray="4 3"
+        data-testid="seam-guide"
+      />
+      <text
+        v-if="hovered"
+        :x="hovered.x + 4"
+        :y="hovered.y - 4"
+        class="fill-current text-[5px]"
+        pointer-events="none"
+        data-testid="seam-hover-length"
+      >
+        {{ roundToThousandth(hovered.length) }} mm
+      </text>
     </svg>
 
     <p
