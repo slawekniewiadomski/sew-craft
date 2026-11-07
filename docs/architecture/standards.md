@@ -48,8 +48,9 @@ This doc is the baseline for anything those do not cover.
 - Param names are `snake_case`. Reference params name the **role**, not the type:
   `start`, `end`, `point`, `edge` — not `start_id`. Constraint tuple params keep
   the solver's names (`a`, `b`, `c`, `point`, `value`).
-- Adding a command means updating all three in sync: `config/geometry.php`,
-  `docs/domain/command-spec.md`, `docs/domain/command-spec.json`.
+- Adding a command means editing `docs/domain/command-spec.json` (the runtime
+  reads it) and documenting it in `docs/domain/command-spec.md`; a Pest test
+  fails if the page is missing a command.
 
 ### TypeScript files & symbols (Reviewed)
 
@@ -270,14 +271,14 @@ Rules:
 
 ## Enforcement summary
 
-| Area                          | Tool / mechanism                            |
-| ----------------------------- | ------------------------------------------- |
-| TS types & strictness         | `tsc`, `vue-tsc` (`npm run typecheck`)      |
-| TS imports, unused, Vue rules | ESLint (`npm run lint`)                     |
-| Formatting (JS/TS/Vue/MD)     | Prettier (`npm run format`)                 |
-| PHP style                     | Pint (`vendor/bin/pint`)                    |
-| Commands schema               | `config/geometry.php` + `command-spec.json` |
-| Naming / structure (reviewed) | Code review against these standards         |
+| Area                          | Tool / mechanism                       |
+| ----------------------------- | -------------------------------------- |
+| TS types & strictness         | `tsc`, `vue-tsc` (`npm run typecheck`) |
+| TS imports, unused, Vue rules | ESLint (`npm run lint`)                |
+| Formatting (JS/TS/Vue/MD)     | Prettier (`npm run format`)            |
+| PHP style                     | Pint (`vendor/bin/pint`)               |
+| Commands schema               | `docs/domain/command-spec.json`        |
+| Naming / structure (reviewed) | Code review against these standards    |
 
 ## Changing these standards
 

@@ -36,7 +36,7 @@ Rationale is recorded in `docs/decisions/`.
 ```
 app/                      Laravel application (API only; no Blade SPA)
 routes/api.php            REST API routes
-config/geometry.php       Command spec exposed at GET /api/commands
+config/geometry.php       Reads the command spec for GET /api/commands
 database/migrations/      projects, patterns, pattern_versions, exports
 frontend/                 Vue 3 SPA (@sewcraft/frontend)
 frontend/tests/           Vitest suite, mirroring frontend/src/ path for path

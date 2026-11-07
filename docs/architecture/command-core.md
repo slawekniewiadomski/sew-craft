@@ -117,7 +117,7 @@ MCP server. See `specs/009-command-spec-api.md`.
 
 ## Source of truth
 
-The full command list and param shapes live in `config/geometry.php` and are
-documented in `docs/domain/command-spec.md` (+ machine-readable
-`docs/domain/command-spec.json`). **Keep them in sync** — the API exposes the
-config at `GET /api/commands`.
+The full command list and param shapes live in the machine-readable
+`docs/domain/command-spec.json`. `config/geometry.php` reads that file, so the
+API exposes the contract itself at `GET /api/commands`; the prose in
+`docs/domain/command-spec.md` explains it and is checked for command coverage.
