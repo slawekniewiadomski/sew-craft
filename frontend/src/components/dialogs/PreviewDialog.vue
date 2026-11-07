@@ -22,7 +22,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ close: [] }>();
 
-const inflatePercent = ref(60);
+const inflatePercent = ref(100);
 const wireframe = ref(false);
 const view = ref<PreviewView>({ ...DEFAULT_PREVIEW_VIEW });
 

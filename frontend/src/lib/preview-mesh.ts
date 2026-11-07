@@ -24,7 +24,7 @@ export interface PreviewProjection {
 }
 
 /** The opening camera: a three-quarter view of the front. */
-export const DEFAULT_PREVIEW_VIEW: PreviewView = { yaw: -Math.PI / 5, pitch: -Math.PI / 7 };
+export const DEFAULT_PREVIEW_VIEW: PreviewView = { yaw: -Math.PI / 4, pitch: -Math.PI / 3.2 };
 
 const PITCH_LIMIT = Math.PI / 2.4;
 const FALLBACK_COLOR = '#94a3b8';
@@ -76,12 +76,12 @@ function parseColor(color: string | null): [number, number, number] {
   ];
 }
 
-/** Apply a Lambert term to a panel colour; both sides are lit. */
+/** Apply a soft Lambert term to a visible outward face. */
 function shade(color: string | null, normal: Vec3 | null): string {
   const lambert =
     normal === null
-      ? 0.35
-      : 0.25 + 0.75 * Math.abs(normal.x * LIGHT.x + normal.y * LIGHT.y + normal.z * LIGHT.z);
+      ? 0.6
+      : 0.5 + 0.5 * Math.max(0, normal.x * LIGHT.x + normal.y * LIGHT.y + normal.z * LIGHT.z);
   const [r, g, b] = parseColor(color);
   const scale = (value: number): number => Math.max(0, Math.min(255, Math.round(value * lambert)));
   return `rgb(${scale(r)}, ${scale(g)}, ${scale(b)})`;
@@ -92,17 +92,20 @@ function polygonOf(
   triangle: PreviewTriangle,
   mesh: PreviewMesh,
   projected: readonly Vec3[],
-): PreviewPolygon {
+  view: PreviewView,
+): PreviewPolygon | null {
   const a = mesh.positions[triangle.a]!;
   const b = mesh.positions[triangle.b]!;
   const c = mesh.positions[triangle.c]!;
+  const normal = triangleNormal(a, b, c);
+  if (normal !== null && rotate(normal, view).z <= 0) return null;
   const pa = projected[triangle.a]!;
   const pb = projected[triangle.b]!;
   const pc = projected[triangle.c]!;
   const points = `${pa.x.toFixed(3)},${pa.y.toFixed(3)} ${pb.x.toFixed(3)},${pb.y.toFixed(3)} ${pc.x.toFixed(3)},${pc.y.toFixed(3)}`;
   return {
     points,
-    fill: shade(mesh.panels[triangle.panel]?.color ?? null, triangleNormal(a, b, c)),
+    fill: shade(mesh.panels[triangle.panel]?.color ?? null, normal),
     depth: (pa.z + pb.z + pc.z) / 3,
     panel: triangle.panel,
   };
@@ -116,7 +119,11 @@ export function projectMesh(mesh: PreviewMesh, view: PreviewView): PreviewProjec
   const clamped: PreviewView = { yaw: view.yaw, pitch: clampPreviewPitch(view.pitch) };
   const projected = mesh.positions.map((point) => rotate(point, clamped));
   const polygons = mesh.triangles
-    .map((triangle, index) => ({ index, polygon: polygonOf(triangle, mesh, projected) }))
+    .map((triangle, index) => ({
+      index,
+      polygon: polygonOf(triangle, mesh, projected, clamped),
+    }))
+    .filter((entry): entry is { index: number; polygon: PreviewPolygon } => entry.polygon !== null)
     .sort((a, b) => a.polygon.depth - b.polygon.depth || a.index - b.index)
     .map((entry) => entry.polygon);
 

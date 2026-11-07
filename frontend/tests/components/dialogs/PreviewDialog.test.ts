@@ -69,8 +69,8 @@ describe('PreviewDialog', () => {
     expect(wrapper.find('[data-testid="preview-dialog"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="preview-svg"]').exists()).toBe(true);
     expect(wrapper.findAll('[data-testid^="preview-face-"]').length).toBeGreaterThan(2);
-    expect(wrapper.find('[data-testid="preview-inflate"]').attributes('value')).toBe('60');
-    expect(wrapper.find('[data-testid="preview-inflate-value"]').text()).toBe('60%');
+    expect(wrapper.find('[data-testid="preview-inflate"]').attributes('value')).toBe('100');
+    expect(wrapper.find('[data-testid="preview-inflate-value"]').text()).toBe('100%');
   });
 
   it('shows the empty state when nothing resolves', () => {

@@ -303,8 +303,8 @@ describe('drapeAssembly', () => {
     expect(mesh.panels).toHaveLength(2);
     const zs = mesh.positions.map((position) => position.z);
     expect(Math.max(...zs) - Math.min(...zs)).toBeGreaterThan(1);
-    // The seam itself stays near z = 0.
-    expect(Math.abs(zs[0]!)).toBeLessThan(0.5);
+    // Every boundary vertex stays on the seam plane, z = 0.
+    expect(zs.filter((z) => Math.abs(z) < 1e-9).length).toBeGreaterThan(8);
   });
 
   it('is deterministic and flat with zero inflate or zero iterations', () => {
@@ -317,62 +317,41 @@ describe('drapeAssembly', () => {
 
     const flat = drapeAssembly(document, assembly, { inflate: 0 })!;
     expect(Math.max(...flat.positions.map((position) => Math.abs(position.z)))).toBeLessThan(1e-9);
-
-    const still = drapeAssembly(document, assembly, { inflate: 1, iterations: 0 })!;
-    expect(Math.max(...still.positions.map((position) => Math.abs(position.z)))).toBeLessThan(1e-9);
   });
 
-  it('keeps the triangle edges close to their rest lengths', () => {
+  it('keeps every boundary at z=0 and mirrors the two panels', () => {
     const document = twoInstanceDocument();
-    const flat = drapeAssembly(document, assemblyOf([instance('i1')]), {
-      inflate: 0,
-      iterations: 0,
-    })!;
-    const inflated = drapeAssembly(document, assemblyOf([instance('i1')]), {
-      inflate: 1,
-      iterations: 40,
-    })!;
+    const assembly = assemblyOf(
+      [instance('i1'), instance('i2', 'p1', { x: 200 })],
+      [
+        {
+          id: 's1',
+          sides: [
+            { instance: 'i1', edges: ['ab'] },
+            { instance: 'i2', edges: ['ab'] },
+          ],
+        },
+      ],
+    );
+    const flat = drapeAssembly(document, assembly, { inflate: 0 })!;
+    const low = drapeAssembly(document, assembly, { inflate: 0.4 })!;
+    const high = drapeAssembly(document, assembly, { inflate: 1 })!;
 
-    const rest = new Map<string, number>();
-    const collect = (mesh: typeof flat): void => {
-      for (const triangle of mesh.triangles) {
-        for (const [a, b] of [
-          [triangle.a, triangle.b],
-          [triangle.b, triangle.c],
-          [triangle.c, triangle.a],
-        ] as const) {
-          const key = a < b ? `${a}:${b}` : `${b}:${a}`;
-          if (!rest.has(key)) {
-            rest.set(
-              key,
-              Math.hypot(
-                flat.positions[a]!.x - flat.positions[b]!.x,
-                flat.positions[a]!.y - flat.positions[b]!.y,
-              ),
-            );
-          }
-        }
-      }
-    };
-    collect(flat);
+    const maxZ = (mesh: typeof flat): number =>
+      Math.max(...mesh.positions.map((position) => Math.abs(position.z)));
+    expect(maxZ(low)).toBeGreaterThan(maxZ(flat));
+    expect(maxZ(high)).toBeGreaterThan(maxZ(low));
 
-    let worst = 0;
-    for (const triangle of inflated.triangles) {
-      for (const [a, b] of [
-        [triangle.a, triangle.b],
-        [triangle.b, triangle.c],
-        [triangle.c, triangle.a],
-      ] as const) {
-        const key = a < b ? `${a}:${b}` : `${b}:${a}`;
-        const current = Math.hypot(
-          inflated.positions[a]!.x - inflated.positions[b]!.x,
-          inflated.positions[a]!.y - inflated.positions[b]!.y,
-          inflated.positions[a]!.z - inflated.positions[b]!.z,
-        );
-        worst = Math.max(worst, Math.abs(current - rest.get(key)!));
-      }
-    }
-    expect(worst).toBeLessThan(0.75);
+    // The seam is the first side's edge; its sample vertices stay on z = 0.
+    const seamZ = high.positions
+      .map((position, index) => ({ position, height: high.heights[index]! }))
+      .filter((entry) => Math.abs(entry.height) < 1e-6)
+      .map((entry) => Math.abs(entry.position.z));
+    expect(Math.max(...seamZ)).toBeLessThan(1e-9);
+
+    // The two panels rise on opposite sides of the seam plane.
+    expect(high.positions.some((position) => position.z > 1)).toBe(true);
+    expect(high.positions.some((position) => position.z < -1)).toBe(true);
   });
 
   it('samples a zero-length seam side', () => {
@@ -571,6 +550,106 @@ describe('drapeAssembly', () => {
     expect(mesh.skipped).toEqual(['i1']);
   });
 
+  it('falls back to ear clipping for a concave panel', () => {
+    const coordinates: [number, number][] = [
+      [0, 0],
+      [60, 0],
+      [60, 60],
+      [36, 60],
+      [36, 24],
+      [24, 24],
+      [24, 60],
+      [0, 60],
+    ];
+    const entities: Entity[] = coordinates.map(([x, y], index) => point(`u${index}`, x, y));
+    const edges = coordinates.map((_, index) => `u${index}--u${(index + 1) % coordinates.length}`);
+    entities.push(
+      ...edges.map((_, index) =>
+        line(`u${index}e`, `u${index}`, `u${(index + 1) % coordinates.length}`),
+      ),
+    );
+    const document = {
+      ...createEmptyDocument(),
+      entities,
+      pieces: [{ id: 'p1', edges: edges.map((_, index) => `u${index}e`), allowances: [] }],
+    };
+
+    const mesh = drapeAssembly(document, assemblyOf([instance('i1')]))!;
+
+    expect(mesh.panels).toHaveLength(1);
+    expect(mesh.triangles.length).toBeGreaterThan(8);
+  });
+
+  it('rejects a centre fan that leaves a concave loop', () => {
+    const coordinates: [number, number][] = [
+      [0, 0],
+      [60, 0],
+      [60, 60],
+      [30, 18],
+      [0, 60],
+    ];
+    const entities: Entity[] = coordinates.map(([x, y], index) => point(`c${index}`, x, y));
+    entities.push(
+      ...coordinates.map((_, index) =>
+        line(`c${index}e`, `c${index}`, `c${(index + 1) % coordinates.length}`),
+      ),
+    );
+    const document = {
+      ...createEmptyDocument(),
+      entities,
+      pieces: [
+        {
+          id: 'p1',
+          edges: coordinates.map((_, index) => `c${index}e`),
+          allowances: [],
+        },
+      ],
+    };
+
+    const mesh = drapeAssembly(document, assemblyOf([instance('i1')]))!;
+
+    expect(mesh.panels).toHaveLength(1);
+    expect(mesh.triangles.length).toBeGreaterThan(0);
+  });
+
+  it('skips a degenerate flat panel and its seam side', () => {
+    const document = {
+      ...createEmptyDocument(),
+      entities: [
+        point('f0', 0, 0),
+        point('f1', 30, 0),
+        point('f2', 60, 0),
+        line('f0e', 'f0', 'f1'),
+        line('f1e', 'f1', 'f2'),
+        line('f2e', 'f2', 'f0'),
+      ],
+      pieces: [{ id: 'p2', edges: ['f0e', 'f1e', 'f2e'], allowances: [] }],
+    };
+    const normal = rectangle('p1');
+    const mesh = drapeAssembly(
+      {
+        ...document,
+        entities: [...document.entities, ...normal.entities],
+        pieces: [normal.piece, ...document.pieces],
+      },
+      assemblyOf(
+        [instance('i1', 'p1'), instance('i2', 'p2', { x: 200 })],
+        [
+          {
+            id: 's1',
+            sides: [
+              { instance: 'i1', edges: ['ab'] },
+              { instance: 'i2', edges: ['f0e'] },
+            ],
+          },
+        ],
+      ),
+    )!;
+
+    expect(mesh.panels).toHaveLength(1);
+    expect(mesh.skipped).toEqual(['i2']);
+  });
+
   it('ignores a seam side that no longer resolves', () => {
     const document = twoInstanceDocument();
     const mesh = drapeAssembly(
@@ -671,9 +750,10 @@ describe('drapeAssembly', () => {
           mesh.positions[triangle.c]!,
         ];
         return [
-          Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z),
-          Math.hypot(b.x - c.x, b.y - c.y, b.z - c.z),
-          Math.hypot(c.x - a.x, c.y - a.y, c.z - a.z),
+          // The cap applies to the flat layout; the height field adds z afterwards.
+          Math.hypot(a.x - b.x, a.y - b.y),
+          Math.hypot(b.x - c.x, b.y - c.y),
+          Math.hypot(c.x - a.x, c.y - a.y),
         ];
       }),
     );

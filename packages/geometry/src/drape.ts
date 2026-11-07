@@ -22,11 +22,11 @@ export const PREVIEW_MAX_EDGE = 18;
 /** Above this many triangles the preview stops growing. */
 export const PREVIEW_TRIANGLE_LIMIT = 6000;
 
-/** Fixed solver iterations; the preview is deterministic. */
-export const PREVIEW_ITERATIONS = 60;
+/** A panel's height at full inflate, as a fraction of its half-size. */
+const PREVIEW_THICKNESS = 1.2;
 
-/** Inflation per iteration at the slider's maximum, in millimetres. */
-const PREVIEW_STEP = 0.35;
+/** The fraction of the boundary distance that forms the rounded edge. */
+const PREVIEW_EDGE = 1;
 
 /** Uniform subdivision levels, a hard stop before the triangle budget. */
 const MAX_SUBDIVISION_LEVELS = 5;
@@ -72,8 +72,6 @@ export interface PreviewMesh {
 export interface DrapeOptions {
   /** 0–1; the Inflate slider. Defaults to 0.6. */
   inflate?: number;
-  /** Defaults to PREVIEW_ITERATIONS; tests use fewer. */
-  iterations?: number;
 }
 
 /** A seam side prepared for sampling and welding. */
@@ -101,11 +99,20 @@ interface PanelBuild {
   triangles: Triangle[];
   /** Sampled seam vertices, keyed `seam:layer:sample`. */
   samples: Map<string, number>;
+  /** Local boundary edges that belong to a seam side. */
+  seamEdges: Set<string>;
+  /** Distance from each point to the panel's stitch boundary. */
+  heights: number[];
   simplified: boolean;
 }
 
 function distance(a: Vec2, b: Vec2): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+/** A stable undirected key for two vertex indices. */
+function edgeKey(a: number, b: number): string {
+  return a < b ? `${a}:${b}` : `${b}:${a}`;
 }
 
 /** The arc length of every loop vertex; the closing segment is included. */
@@ -264,14 +271,19 @@ export function triangulate(points: readonly Vec2[]): Triangle[] | null {
 interface Subdivision {
   points: Vec2[];
   triangles: Triangle[];
+  seamEdges: Set<string>;
   simplified: boolean;
 }
 
-/** Split every triangle into four at its edge midpoints, deduplicating shared edges. */
+/**
+ * Split every triangle into four at its edge midpoints, deduplicating shared
+ * edges. Seam edges are carried through the split.
+ */
 function subdivideOnce(
   points: Vec2[],
   triangles: Triangle[],
-): { points: Vec2[]; triangles: Triangle[] } {
+  seamEdges: ReadonlySet<string>,
+): { points: Vec2[]; triangles: Triangle[]; seamEdges: Set<string> } {
   const midpoints = new Map<string, number>();
   const next = [...points];
 
@@ -288,13 +300,23 @@ function subdivideOnce(
   };
 
   const result: Triangle[] = [];
+  const nextSeamEdges = new Set<string>();
   for (const [a, b, c] of triangles) {
     const ab = midpoint(a, b);
     const bc = midpoint(b, c);
     const ca = midpoint(c, a);
     result.push([a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca]);
+    for (const [from, to, middle] of [
+      [a, b, ab],
+      [b, c, bc],
+      [c, a, ca],
+    ] as const) {
+      if (!seamEdges.has(edgeKey(from, to))) continue;
+      nextSeamEdges.add(edgeKey(from, middle));
+      nextSeamEdges.add(edgeKey(middle, to));
+    }
   }
-  return { points: next, triangles: result };
+  return { points: next, triangles: result, seamEdges: nextSeamEdges };
 }
 
 /** The longest edge of a triangle. */
@@ -304,8 +326,13 @@ function longestEdge(points: readonly Vec2[], triangle: Triangle): number {
 }
 
 /** Subdivide until every edge is short enough, the level cap or the budget stops it. */
-function subdivide(points: Vec2[], triangles: Triangle[], budget: number): Subdivision {
-  let current = { points: [...points], triangles: [...triangles] };
+function subdivide(
+  points: Vec2[],
+  triangles: Triangle[],
+  seamEdges: ReadonlySet<string>,
+  budget: number,
+): Subdivision {
+  let current = { points: [...points], triangles: [...triangles], seamEdges: new Set(seamEdges) };
   let simplified = false;
 
   for (let level = 0; level < MAX_SUBDIVISION_LEVELS; level += 1) {
@@ -317,7 +344,7 @@ function subdivide(points: Vec2[], triangles: Triangle[], budget: number): Subdi
     if (current.triangles.length * 4 > budget) {
       return { ...current, simplified: true };
     }
-    current = subdivideOnce(current.points, current.triangles);
+    current = subdivideOnce(current.points, current.triangles, current.seamEdges);
   }
 
   simplified = current.triangles.some(
@@ -382,6 +409,62 @@ function locateSide(
   const previous = loop[(start - 1 + loop.length) % loop.length]!;
   const second = side.points[1]!;
   return { start, forward: distance(next, second) <= distance(previous, second) };
+}
+
+/** Whether a point is inside a simple polygon (ray casting). */
+function pointInPolygon(point: Vec2, loop: readonly Vec2[]): boolean {
+  let inside = false;
+  for (let index = 0; index < loop.length; index += 1) {
+    const a = loop[index]!;
+    const b = loop[(index + 1) % loop.length]!;
+    if (
+      a.y > point.y !== b.y > point.y &&
+      point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x
+    ) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/**
+ * A symmetric centre fan for a star-shaped boundary. The centroid becomes the
+ * mesh apex, so a height field over it forms a centred dome rather than a
+ * pyramid whose apex is a far corner. `null` when the fan would leave the loop.
+ */
+function centroidFan(
+  points: readonly Vec2[],
+  boundary: readonly number[],
+): { points: Vec2[]; triangles: Triangle[] } | null {
+  /* v8 ignore next -- a built panel boundary always has at least three points */
+  if (boundary.length < 3) return null;
+  const loop = boundary.map((index) => points[index]!);
+  const center = {
+    x: loop.reduce((sum, point) => sum + point.x, 0) / loop.length,
+    y: loop.reduce((sum, point) => sum + point.y, 0) / loop.length,
+  };
+  if (!pointInPolygon(center, loop)) return null;
+
+  const next = [...points, center];
+  const apex = points.length;
+  const ccw = signedArea(loop) > 0;
+  const triangles: Triangle[] = [];
+  let fanArea = 0;
+
+  for (let index = 0; index < boundary.length; index += 1) {
+    const following = (index + 1) % boundary.length;
+    triangles.push(
+      ccw
+        ? [apex, boundary[index]!, boundary[following]!]
+        : [apex, boundary[following]!, boundary[index]!],
+    );
+    fanArea += Math.abs(cross(loop[index]!, loop[following]!, center)) / 2;
+  }
+
+  const area = Math.abs(signedArea(loop));
+  /* v8 ignore next -- the point-outside check catches the practical non-star loops */
+  if (Math.abs(fanArea - area) > Math.max(1e-6, area * 1e-6)) return null;
+  return { points: next, triangles };
 }
 
 /** One boundary sample before it becomes a mesh vertex. */
@@ -482,10 +565,17 @@ function insertSamples(
   loop: readonly Vec2[],
   triangles: readonly Triangle[],
   samples: readonly LoopSample[],
-): { points: Vec2[]; triangles: Triangle[]; samples: Map<string, number> } {
+): {
+  points: Vec2[];
+  triangles: Triangle[];
+  samples: Map<string, number>;
+  seamEdges: Set<string>;
+  boundary: number[];
+} {
   const points = [...loop];
   const faces: Triangle[] = triangles.map((triangle) => [...triangle] as Triangle);
   const mapped = new Map<string, number>();
+  const seamEdges = new Set<string>();
 
   for (const sample of samples) {
     if (sample.vertex !== null) mapped.set(sample.key, sample.vertex);
@@ -498,6 +588,7 @@ function insertSamples(
     list.push(sample);
     bySegment.set(sample.segment, list);
   }
+  const segmentIndices = new Map<number, number[]>();
 
   for (const [segment, list] of bySegment) {
     const ordered = [...list].sort((a, b) => a.t - b.t);
@@ -516,11 +607,16 @@ function insertSamples(
       points.push(entry.point);
       for (const key of entry.keys) mapped.set(key, points.length - 1);
     }
+    segmentIndices.set(segment, indices);
 
     // The fan must follow the owning triangle's winding, which may run against
     // the loop; the samples are ordered along the loop, so reverse when needed.
     const alongLoop = owned.first === segment;
     const orderedIndices = alongLoop ? indices : [...indices].reverse();
+    const boundary = [segment, ...indices, (segment + 1) % loop.length];
+    for (let index = 1; index < boundary.length; index += 1) {
+      seamEdges.add(edgeKey(boundary[index - 1]!, boundary[index]!));
+    }
     faces.splice(owned.index, 1);
     let previous = owned.first;
     for (const index of orderedIndices) {
@@ -530,7 +626,14 @@ function insertSamples(
     faces.push([previous, owned.second, owned.opposite]);
   }
 
-  return { points, triangles: faces, samples: mapped };
+  const boundary: number[] = [];
+  for (let index = 0; index < loop.length; index += 1) {
+    boundary.push(index);
+    const inserted = segmentIndices.get(index);
+    if (inserted !== undefined) boundary.push(...inserted);
+  }
+
+  return { points, triangles: faces, samples: mapped, seamEdges, boundary };
 }
 
 /** The panel direction from the layer order: side 0 pushes one way, the rest the other. */
@@ -558,7 +661,9 @@ function buildPanel(
 
   const samples = collectSamples(loop, planned, instance);
   const inserted = insertSamples(loop, triangles, samples);
-  const subdivided = subdivide(inserted.points, inserted.triangles, budget);
+  const fan = centroidFan(inserted.points, inserted.boundary);
+  const base = fan ?? { points: inserted.points, triangles: inserted.triangles };
+  const subdivided = subdivide(base.points, base.triangles, inserted.seamEdges, budget);
   return {
     instance,
     piece,
@@ -566,6 +671,8 @@ function buildPanel(
     points: subdivided.points,
     triangles: subdivided.triangles,
     samples: inserted.samples,
+    seamEdges: subdivided.seamEdges,
+    heights: subdivided.points.map((point) => distanceToLoop(point, loop)),
     simplified: subdivided.simplified,
   };
 }
@@ -670,6 +777,32 @@ function alignPanels(panels: PanelBuild[], planned: readonly SeamPlan[]): void {
   }
 }
 
+/** The shortest distance from a point to a loop's boundary segments. */
+function distanceToLoop(point: Vec2, loop: readonly Vec2[]): number {
+  let best = Infinity;
+  for (let index = 0; index < loop.length; index += 1) {
+    const a = loop[index]!;
+    const b = loop[(index + 1) % loop.length]!;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const length = dx * dx + dy * dy;
+    const t =
+      length === 0
+        ? 0
+        : Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / length));
+    const x = a.x + dx * t;
+    const y = a.y + dy * t;
+    best = Math.min(best, Math.hypot(point.x - x, point.y - y));
+  }
+  return best;
+}
+
+/** A smoothstep from the boundary to the flat centre of a panel. */
+function roundedProfile(distance: number, radius: number): number {
+  const t = Math.min(1, Math.max(0, Math.abs(distance) / radius));
+  return t * t * (3 - 2 * t);
+}
+
 /* -------------------------------------------------------------------------- */
 /* Welding                                                                    */
 /* -------------------------------------------------------------------------- */
@@ -699,6 +832,10 @@ interface GlobalMesh {
   positions: Vec3[];
   triangles: PreviewTriangle[];
   panels: PreviewPanel[];
+  /** Global edges that belong to a seam side, used to pin the seam plane. */
+  seamEdges: Set<string>;
+  /** Signed distance from each welded vertex to its panel boundary. */
+  heights: number[];
   simplified: boolean;
   skipped: EntityId[];
 }
@@ -738,7 +875,28 @@ function weldPanels(
     }
   }
 
+  // The panels were rigidly aligned, so seam subdivision vertices on different
+  // panels can share the same point even when they are not sample vertices.
+  const seamPositions = new Map<string, number[]>();
+  for (const [panelIndex, panel] of panels.entries()) {
+    for (const key of panel.seamEdges) {
+      const [a, b] = key.split(':').map(Number) as [number, number];
+      for (const local of [a, b]) {
+        const point = panel.points[local]!;
+        const positionKey = `${Math.round(point.x * 1e4)}:${Math.round(point.y * 1e4)}`;
+        const bucket = seamPositions.get(positionKey);
+        const global = offsets[panelIndex]! + local;
+        if (bucket === undefined) seamPositions.set(positionKey, [global]);
+        else bucket.push(global);
+      }
+    }
+  }
+  for (const bucket of seamPositions.values()) {
+    for (const global of bucket.slice(1)) sets.union(bucket[0]!, global);
+  }
+
   const positions: Vec3[] = [];
+  const heights: number[] = [];
   const remap = new Map<number, number>();
   const globalOf = (panelIndex: number, local: number): number => {
     const index = offsets[panelIndex]! + local;
@@ -747,7 +905,9 @@ function weldPanels(
     if (existing !== undefined) return existing;
     const next = positions.length;
     const point = panels[panelIndex]!.points[local]!;
+    const panel = panels[panelIndex]!;
     positions.push({ x: point.x, y: point.y, z: 0 });
+    heights.push(panel.sign * panel.heights[local]!);
     remap.set(root, next);
     return next;
   };
@@ -760,12 +920,23 @@ function weldPanels(
       const gc = globalOf(panelIndex, c);
       /* v8 ignore next -- a hand-edited seam can collapse a triangle */
       if (ga === gb || gb === gc || gc === ga) continue;
-      triangles.push({ a: ga, b: gb, c: gc, panel: panelIndex });
+      // The signed height field puts the back panel on the other side; flip its
+      // winding so every triangle's normal points away from the shell interior.
+      const outward = panel.sign < 0;
+      triangles.push({ a: ga, b: outward ? gc : gb, c: outward ? gb : gc, panel: panelIndex });
     }
   }
 
   /* v8 ignore next -- a hand-edited panel can collapse every triangle */
   if (triangles.length === 0) return null;
+
+  const globalSeamEdges = new Set<string>();
+  for (const [panelIndex, panel] of panels.entries()) {
+    for (const key of panel.seamEdges) {
+      const [a, b] = key.split(':').map(Number) as [number, number];
+      globalSeamEdges.add(edgeKey(globalOf(panelIndex, a), globalOf(panelIndex, b)));
+    }
+  }
 
   return {
     positions,
@@ -775,173 +946,31 @@ function weldPanels(
       piece: panel.piece.id,
       color: panel.piece.color ?? null,
     })),
+    seamEdges: globalSeamEdges,
+    heights,
     simplified,
     skipped,
   };
 }
 
 /* -------------------------------------------------------------------------- */
-/* Inflate solver                                                             */
+/* Inflate                                                                    */
 /* -------------------------------------------------------------------------- */
 
-interface EdgeConstraint {
-  a: number;
-  b: number;
-  rest: number;
-}
+/**
+ * Raise each panel's interior on a rounded profile. Seam, finished and open
+ * boundaries stay at z = 0, so two mirrored panels meet on the seam plane and
+ * form a pouch; the interior of each panel is a smooth height field over its
+ * flat layout. No distances, bending or time step are needed.
+ */
+function inflateHeightField(mesh: GlobalMesh, inflate: number): void {
+  const maximum = Math.max(1, ...mesh.heights.map((height) => Math.abs(height)));
+  const radius = maximum * PREVIEW_EDGE;
 
-interface BendConstraint {
-  a: number;
-  b: number;
-  rest: number;
-}
-
-function edgeKey(a: number, b: number): string {
-  return a < b ? `${a}:${b}` : `${b}:${a}`;
-}
-
-/** The mesh's triangle edges with their rest lengths. */
-function edgeConstraints(mesh: GlobalMesh): EdgeConstraint[] {
-  const edges = new Map<string, EdgeConstraint>();
-  for (const triangle of mesh.triangles) {
-    for (const [a, b] of [
-      [triangle.a, triangle.b],
-      [triangle.b, triangle.c],
-      [triangle.c, triangle.a],
-    ] as const) {
-      const key = edgeKey(a, b);
-      if (edges.has(key)) continue;
-      edges.set(key, {
-        a,
-        b,
-        rest: distance3(mesh.positions[a]!, mesh.positions[b]!),
-      });
-    }
-  }
-  return [...edges.values()];
-}
-
-/** Opposite-vertex bend constraints for every interior edge. */
-function bendConstraints(mesh: GlobalMesh): BendConstraint[] {
-  const opposite = new Map<string, number[]>();
-  for (const triangle of mesh.triangles) {
-    for (const [a, b, c] of [
-      [triangle.a, triangle.b, triangle.c],
-      [triangle.b, triangle.c, triangle.a],
-      [triangle.c, triangle.a, triangle.b],
-    ] as const) {
-      const key = edgeKey(a, b);
-      const list = opposite.get(key);
-      if (list === undefined) opposite.set(key, [c]);
-      else list.push(c);
-    }
-  }
-
-  const bends: BendConstraint[] = [];
-  for (const list of opposite.values()) {
-    if (list.length < 2) continue;
-    bends.push({
-      a: list[0]!,
-      b: list[1]!,
-      rest: distance3(mesh.positions[list[0]!]!, mesh.positions[list[1]!]!),
-    });
-  }
-  return bends;
-}
-
-function distance3(a: Vec3, b: Vec3): number {
-  return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
-}
-
-function normalise(vector: Vec3): Vec3 | null {
-  const length = Math.hypot(vector.x, vector.y, vector.z);
-  return length <= EPSILON
-    ? null
-    : { x: vector.x / length, y: vector.y / length, z: vector.z / length };
-}
-
-/** Area-weighted normals per vertex, multiplied by the incident panel direction. */
-function vertexDirections(mesh: GlobalMesh, signs: readonly number[]): Vec3[] {
-  const directions = mesh.positions.map(() => ({ x: 0, y: 0, z: 0 }));
-  for (const triangle of mesh.triangles) {
-    const a = mesh.positions[triangle.a]!;
-    const b = mesh.positions[triangle.b]!;
-    const c = mesh.positions[triangle.c]!;
-    const ab = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
-    const ac = { x: c.x - a.x, y: c.y - a.y, z: c.z - a.z };
-    const normal = {
-      x: ab.y * ac.z - ab.z * ac.y,
-      y: ab.z * ac.x - ab.x * ac.z,
-      z: ab.x * ac.y - ab.y * ac.x,
-    };
-    const sign = signs[triangle.panel]!;
-    for (const index of [triangle.a, triangle.b, triangle.c]) {
-      const target = directions[index]!;
-      target.x += normal.x * sign;
-      target.y += normal.y * sign;
-      target.z += normal.z * sign;
-    }
-  }
-  return directions.map((direction) => normalise(direction) ?? { x: 0, y: 0, z: 0 });
-}
-
-/** Move the two ends of a distance constraint toward each other. */
-function projectDistance(
-  positions: Vec3[],
-  constraint: { a: number; b: number; rest: number },
-  factor: number,
-  anchored: number,
-): void {
-  const a = positions[constraint.a]!;
-  const b = positions[constraint.b]!;
-  const current = distance3(a, b);
-  /* v8 ignore next -- a rest length is positive and a solved edge cannot collapse */
-  if (current <= EPSILON) return;
-  const correction = ((current - constraint.rest) / current) * factor;
-  const aWeight = constraint.a === anchored ? 0 : 1;
-  const bWeight = constraint.b === anchored ? 0 : 1;
-  const total = aWeight + bWeight;
-  /* v8 ignore next -- both ends cannot be the one anchor */
-  if (total === 0) return;
-  const aShare = (aWeight / total) * correction;
-  const bShare = (bWeight / total) * correction;
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const dz = b.z - a.z;
-  a.x += dx * aShare;
-  a.y += dy * aShare;
-  a.z += dz * aShare;
-  b.x -= dx * bShare;
-  b.y -= dy * bShare;
-  b.z -= dz * bShare;
-}
-
-/** Run the inflate, distance, bending and anchor passes. */
-function solve(
-  mesh: GlobalMesh,
-  signs: readonly number[],
-  inflate: number,
-  iterations: number,
-): void {
-  const edges = edgeConstraints(mesh);
-  const bends = bendConstraints(mesh);
-  const anchored = 0;
-
-  for (let iteration = 0; iteration < iterations; iteration += 1) {
-    const directions = vertexDirections(mesh, signs);
-    for (const [index, position] of mesh.positions.entries()) {
-      if (index === anchored) continue;
-      const direction = directions[index]!;
-      const step = inflate * PREVIEW_STEP;
-      position.x += direction.x * step;
-      position.y += direction.y * step;
-      position.z += direction.z * step;
-    }
-
-    for (let pass = 0; pass < 3; pass += 1) {
-      for (const edge of edges) projectDistance(mesh.positions, edge, 1, anchored);
-    }
-    for (const bend of bends) projectDistance(mesh.positions, bend, 0.25, anchored);
+  for (const [index, position] of mesh.positions.entries()) {
+    const height = mesh.heights[index]!;
+    const profile = roundedProfile(Math.abs(height), radius);
+    position.z = (height < 0 ? -1 : 1) * inflate * maximum * PREVIEW_THICKNESS * profile;
   }
 }
 
@@ -1000,7 +1029,7 @@ function openBoundaries(mesh: GlobalMesh): number[][] {
 /**
  * Build a preview mesh for one assembly, or `null` when no panel resolves. The
  * result is a deterministic flat-shaded dummy: panels are welded along seams and
- * inflated by the solver.
+ * raised on a rounded height field.
  */
 export function drapeAssembly(
   document: PatternDocument,
@@ -1008,7 +1037,6 @@ export function drapeAssembly(
   options: DrapeOptions = {},
 ): PreviewMesh | null {
   const inflate = Math.min(1, Math.max(0, options.inflate ?? 0.6));
-  const iterations = Math.max(0, Math.floor(options.iterations ?? PREVIEW_ITERATIONS));
 
   const planned = planSeams(document, assembly);
   const signs = panelSigns(planned, assembly.instances.length);
@@ -1055,6 +1083,6 @@ export function drapeAssembly(
   /* v8 ignore next -- a hand-edited panel can collapse every triangle */
   if (welded === null) return null;
 
-  solve(welded, signs, inflate, iterations);
+  inflateHeightField(welded, inflate);
   return { ...welded, openBoundaries: openBoundaries(welded) };
 }

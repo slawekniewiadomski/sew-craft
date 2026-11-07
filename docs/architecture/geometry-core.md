@@ -313,8 +313,10 @@ interface PreviewMesh {
 The pipeline:
 
 1. **Panels.** Each instance contributes its stitch loop (`instanceLoops`).
-   Ear clipping triangulates it and conforming midpoint subdivision stops at
-   `PREVIEW_MAX_EDGE = 18` mm, the level cap or the triangle budget.
+   Ear clipping triangulates it; a centroid fan replaces that mesh when the
+   centroid is inside and the fan covers the loop, giving a symmetric apex.
+   Conforming midpoint subdivision stops at `PREVIEW_MAX_EDGE = 18` mm, the
+   level cap or the triangle budget.
 2. **Seam samples.** Each seam side is resampled at a common
    `PREVIEW_SAMPLE_SPACING = 4` mm along `resolveSeamRun`; the samples are
    inserted into the panel boundary by splitting the owning boundary triangle.
@@ -323,19 +325,20 @@ The pipeline:
 3. **Direction.** Seam `sides` order is layer order: side 0 inflates one way,
    every other side the other way. A panel accumulates the directions of its
    seams; ties stay outward.
-4. **Inflate.** A deterministic position-based loop runs
-   `PREVIEW_ITERATIONS = 60` times: move along the area-weighted vertex normal
-   by `inflate × 0.35` mm, project every triangle edge back to its rest length
-   (three passes), project interior-edge opposite-vertex distances at a soft
-   `0.25` factor, and pin one vertex. No gravity, collision or time step.
+4. **Inflate.** Each panel is raised on a height field over its flat layout:
+   the shortest distance to the panel boundary gives a smoothstep profile with
+   `PREVIEW_THICKNESS = 1.2` and `PREVIEW_EDGE = 1`. The boundary stays at
+   `z = 0`; the layer order decides the sign. No distances, bending, gravity or
+   time step.
 5. **Open boundaries.** Edges used by exactly one triangle form boundary loops.
    They stay open: finished edges are the object's openings.
 6. **Cost.** `PREVIEW_TRIANGLE_LIMIT = 6000`; a panel that would exceed its share
    stops subdividing, and `simplified` says so.
 
 The frontend's `frontend/src/lib/preview-mesh.ts` projects the mesh
-orthographically (yaw around Z, then pitch around X), sorts triangles back to
-front and shades each face with a fixed Lambert term. The dialog paints one SVG
+orthographically (yaw around Z, then pitch around X), culls faces pointing away
+from the camera, sorts the rest back to front and shades each with a soft
+Lambert term. The dialog paints one SVG
 `<polygon>` per triangle; wireframe keeps the outline and drops the fill. There is
 no WebGL context, camera or saved pose.
 

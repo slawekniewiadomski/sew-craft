@@ -26,9 +26,9 @@ Two decisions had to be made before a spec:
    drawn as flat-shaded `<polygon>` elements sorted back to front (painter’s
    algorithm). There is no WebGL context and no canvas library. The preview uses
    the app’s existing theme colours, so it matches light and dark themes.
-2. **The simulation is pure TypeScript in `@sewcraft/geometry`.** `drape.ts`
-   takes the document and an assembly and returns a mesh (positions, triangles,
-   boundary loops). The Vue layer only projects and paints it.
+2. **The shape model is pure TypeScript in `@sewcraft/geometry`.** `drape.ts`
+   takes the document and an assembly, builds a welded panel mesh and raises it
+   on a deterministic height field. The Vue layer only projects and paints it.
 3. **The preview is derived and read-only.** No command writes it, no document
    field stores it, and save/autosave/versioning/export never read it. The
    camera, inflate amount and wireframe toggle are ephemeral view state.
