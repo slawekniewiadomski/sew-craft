@@ -1,6 +1,6 @@
 # Split `EditorView` by domain
 
-Status: **in progress** — phases 1–3 landed (#133–#135), phase 4 follows.
+Status: **in progress** — phases 1–4 landed (#133–#136), phase 5 follows.
 Refs #132
 
 ## 📝 TLDR
@@ -56,9 +56,9 @@ ones assume the earlier boundaries exist.
    the measured chips.
 3. **Constraints & corner rounds** → `composables/use-tool-prompts.ts` (landed) (~200).
    Active constraint, picks, prompt/value derivations and the apply/exit paths.
-4. **Assembly instances** → `composables/use-assembly-editing.ts` (this PR) (~160).
+4. **Assembly instances** → `composables/use-assembly-editing.ts` (landed) (~160).
    Instance selection, nudge timer, move/add/remove/transform/update.
-5. **Sketch & drafting commands** → `composables/use-sketch-commands.ts` (~300).
+5. **Sketch & drafting commands** → `composables/use-sketch-commands.ts` (this PR) (~300).
    Point/line/arc/circle/rectangle/text/notch/centre-line/dimension commands.
 6. **Pieces & allowances** → `composables/use-piece-editing.ts` (~200).
    Piece update/default/allowance/corner-allowance/removal and role changes.

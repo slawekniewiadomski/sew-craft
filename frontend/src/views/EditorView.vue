@@ -15,8 +15,6 @@ import {
   getEntity,
   isConstruction,
   isDrivenDimension,
-  isLineAnchor,
-  measureDistanceDimension,
   measureLinearDimension,
   PATTERN_SCHEMA,
   documentForAssembly,
@@ -27,11 +25,9 @@ import {
   pieceCutLoop,
   seamForEdge,
   toSvgPiece,
-  usesCutEdgeAnchor,
   type ParamInput,
 } from '@sewcraft/geometry';
 import type {
-  AddConstraintParams,
   AllowanceKind,
   BandTarget,
   Assembly,
@@ -94,7 +90,6 @@ import { useSidebarLayout } from '@/composables/use-sidebar-layout';
 import { defaultAllowanceSummary, type AllowanceChoice } from '@/lib/allowance-defaults';
 import { parseAllowanceWidth } from '@/lib/allowance-width';
 import { formulaIssue, insertVariableToken, variableOptions, variableQuery } from '@/lib/formula';
-import { buildCircleCommands, type CircleEndpoint } from '@/lib/circle-tool';
 import { nextCommandId } from '@/lib/command-ids';
 import type { VariableValueInput } from '@/lib/variables';
 import {
@@ -108,13 +103,8 @@ import {
   formatDimensionValue,
   parseDimensionEdit,
   parseDimensionValue,
-  type DimensionPatch,
   type DimensionRow,
-  type DimensionPlacement,
-  type DimensionReferenceOption,
-  type CutDimensionPlacement,
 } from '@/lib/dimensions';
-import { buildArcCommands, type ArcEndpoint } from '@/lib/arc-tool';
 
 import { downloadSvgFile } from '@/lib/download';
 import { isEditableTarget } from '@/lib/dom';
@@ -127,17 +117,11 @@ import {
   type ExportSettings,
   type PieceDisplaySettings,
 } from '@/lib/display-settings';
-import type { DraftingEndpoint } from '@/lib/drafting';
 import type { RibbonAction } from '@/lib/editor-ribbon';
 import type { PanelId } from '@/lib/editor-panels';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 import { entityProperties } from '@/lib/entity-properties';
-import { buildLineCommands, type LineEndpoint } from '@/lib/line-tool';
-import { buildPointMidpointCommands } from '@/lib/point-midpoint';
-import { buildPointOnLineCommands } from '@/lib/point-on-line';
-import { buildSplitLineCommands } from '@/lib/split-line';
-import { buildRectangleCommands, type RectangleMode } from '@/lib/rectangle-tool';
-import { buildTextCommands, textContentError } from '@/lib/text-tool';
+import { textContentError } from '@/lib/text-tool';
 import {
   edgeLabel,
   canonicalCutAnchors,
@@ -164,6 +148,7 @@ import { assemblyTab, nextPieceColor, pieceTab, tabLabel, writePersistedTab } fr
 import { useAssemblyEditing } from '@/composables/use-assembly-editing';
 import { useMeasuredEdit } from '@/composables/use-measured-edit';
 import { useProjectSession } from '@/composables/use-project-session';
+import { useSketchCommands } from '@/composables/use-sketch-commands';
 import { useToolPrompts } from '@/composables/use-tool-prompts';
 import { useEditorStore } from '@/stores/editor';
 
@@ -1038,298 +1023,36 @@ function onRibbonAction(action: RibbonAction): void {
   }
 }
 
-function onMovePoint(id: EntityId, x: number, y: number): void {
-  run(() => dispatch({ id: nextCommandId('move'), type: 'move_point', params: { id, x, y } }));
-}
-
-function onAddPoint(x: number, y: number): void {
-  const piece = activePieceId.value;
-  run(() =>
-    dispatch({
-      id: nextCommandId('point'),
-      type: 'add_point',
-      /* v8 ignore next -- the canvas only adds points with an active piece */
-      params: { x, y, ...(piece === null ? {} : { piece }) },
-    }),
-  );
-}
-
-/**
- * One gesture: the point at the projection and its `point_on_line` constraint,
- * as a single journal entry. `null` means the line no longer resolves, so
- * nothing is dispatched.
- */
-function onAddPointOnLine(lineId: EntityId, x: number, y: number): void {
-  // The canvas hands us shared-space coordinates, so resolve them against the
-  // same document it draws; the bus translates the new point back afterwards.
-  const commands = buildPointOnLineCommands(
-    interactionDocument.value,
-    lineId,
-    { x, y },
-    nextCommandId,
-    /* v8 ignore next -- the canvas only exists inside a piece tab */
-    activePieceId.value ?? undefined,
-  );
-  if (commands === null) return;
-  run(() => dispatchGroup(commands));
-}
-
-/**
- * One gesture: split the line, creating the shared point first when the pointer
- * did not reuse an authored one. `null` means the line no longer resolves or the
- * projection is an endpoint, so nothing is dispatched.
- */
-function onSplitLine(lineId: EntityId, x: number, y: number): void {
-  const commands = buildSplitLineCommands(
-    interactionDocument.value,
-    lineId,
-    { x, y },
-    nextCommandId,
-  );
-  if (commands === null) return;
-  // The original id belongs to only one half now, so a stale selection would
-  // highlight the wrong edge; the user picks a half deliberately.
-  selectedEntityIds.value = [];
-  run(() => dispatchGroup(commands));
-}
-
-/**
- * One gesture: the point at the line's visible middle and its `midpoint`
- * relation, as a single journal entry. `null` means the line no longer resolves,
- * so nothing is dispatched.
- */
-function onAddPointMidpoint(lineId: EntityId): void {
-  const commands = buildPointMidpointCommands(
-    pattern.value,
-    lineId,
-    nextCommandId,
-    /* v8 ignore next -- the canvas only exists inside a piece tab */
-    activePieceId.value ?? undefined,
-  );
-  if (commands === null) return;
-  run(() => dispatchGroup(commands));
-}
-
-/** One gesture: new endpoints become points, then the line, as a single entry. */
-function onAddLine(start: LineEndpoint, end: LineEndpoint): void {
-  run(() =>
-    /* v8 ignore next -- the canvas only exists inside a piece tab */
-    dispatchGroup(buildLineCommands(start, end, nextCommandId, activePieceId.value ?? undefined)),
-  );
-}
-
-/** One gesture: new endpoints become points, then the arc, as a single entry. */
-function onAddArc(start: ArcEndpoint, end: ArcEndpoint, through: ArcEndpoint): void {
-  run(() =>
-    dispatchGroup(
-      /* v8 ignore next -- the canvas only exists inside a piece tab */
-      buildArcCommands(start, end, through, nextCommandId, activePieceId.value ?? undefined),
-    ),
-  );
-}
-
-/** One gesture: new endpoints become points, then the circle, as a single entry. */
-function onAddCircle(center: CircleEndpoint, rim: CircleEndpoint): void {
-  run(() =>
-    dispatchGroup(
-      /* v8 ignore next -- the canvas only exists inside a piece tab */
-      buildCircleCommands(center, rim, nextCommandId, activePieceId.value ?? undefined),
-    ),
-  );
-}
-
-/**
- * One gesture: new corners become points, then the four sides and their
- * constraints, as a single entry and a single undo.
- */
-function onAddRectangle(mode: RectangleMode, clicks: DraftingEndpoint[]): void {
-  run(() =>
-    dispatchGroup(
-      buildRectangleCommands(
-        pattern.value,
-        mode,
-        clicks,
-        nextCommandId,
-        /* v8 ignore next -- the canvas only exists inside a piece tab */
-        activePieceId.value ?? undefined,
-      ),
-    ),
-  );
-}
-
-function onAddText(anchor: DraftingEndpoint, leader?: DraftingEndpoint): void {
-  const pieceId = activePieceId.value;
-  /* v8 ignore start -- the canvas only exists inside a piece tab */
-  if (pieceId === null) {
-    error.value = 'Create or select a piece before placing annotation text.';
-    return;
-  }
-  /* v8 ignore stop */
-  run(() => dispatchGroup(buildTextCommands(anchor, pieceId, nextCommandId, leader)));
-}
-
-/** A notch's depth change from the piece card's mark row. */
-function onSetNotchDepth(id: EntityId, depth: number | null): void {
-  run(() =>
-    dispatch({ id: nextCommandId('notch-depth'), type: 'update_notch', params: { id, depth } }),
-  );
-}
-
-/** Delete a mark from the piece card, through the ordinary entity cascade. */
-function onDeleteMark(id: EntityId): void {
-  run(() => dispatch({ id: nextCommandId('delete-mark'), type: 'delete_entity', params: { id } }));
-}
-
-/** A notch on the edge the maker pointed at, placed in one command. */
-function onAddNotch(point: EntityId, edge: EntityId): void {
-  const pieceId = activePieceId.value;
-  /* v8 ignore start -- the canvas only exists inside a piece tab */
-  if (pieceId === null) return;
-  /* v8 ignore stop */
-  run(() =>
-    dispatch({
-      id: nextCommandId('notch'),
-      type: 'add_notch',
-      params: { piece: pieceId, edge, point },
-    }),
-  );
-}
-
-/** A centre line between the two snapped points of the gesture. */
-function onAddCentreLine(start: EntityId, end: EntityId): void {
-  const pieceId = activePieceId.value;
-  /* v8 ignore start -- the canvas only exists inside a piece tab */
-  if (pieceId === null) return;
-  /* v8 ignore stop */
-  run(() =>
-    dispatch({
-      id: nextCommandId('centre-line'),
-      type: 'add_centre_line',
-      params: { piece: pieceId, start, end },
-    }),
-  );
-}
-
-function onAddCurve(points: [EntityId, EntityId, EntityId, EntityId]): void {
-  run(() =>
-    dispatchGroup([
-      {
-        id: nextCommandId('curve'),
-        type: 'add_curve',
-        params: {
-          p0: points[0],
-          p1: points[1],
-          p2: points[2],
-          p3: points[3],
-          /* v8 ignore next -- the canvas only exists inside a piece tab */
-          ...(activePieceId.value === null ? {} : { piece: activePieceId.value }),
-        },
-      },
-    ]),
-  );
-}
-
-/**
- * Place a dimension as a driven distance constraint: it measures the span and
- * adds no equation. Reusing an existing distance between the same two points
- * avoids duplicates and keeps that dimension's driven/set state; the placement
- * then only updates its presentation.
- */
-function onAddDimension(placement: DimensionPlacement): void {
-  const orientation =
-    isLineAnchor(pattern.value, placement.a) || isLineAnchor(pattern.value, placement.b)
-      ? 'aligned'
-      : placement.orientation;
-  const existing = findDistanceConstraint(pattern.value, placement.a, placement.b);
-  if (existing !== undefined) {
-    run(() =>
-      dispatch({
-        id: nextCommandId('dimension'),
-        type: 'update_constraint',
-        params: { id: existing.id, orientation, offset: placement.offset },
-      }),
-    );
-    return;
-  }
-
-  const measured = measureDistanceDimension(pattern.value, {
-    id: placement.a,
-    type: 'distance',
-    a: placement.a,
-    b: placement.b,
-    orientation,
-  });
-  if (measured === null || measured <= 0) return;
-
-  run(() =>
-    dispatch({
-      id: nextCommandId('dimension'),
-      type: 'add_constraint',
-      params: {
-        type: 'distance',
-        entities: [placement.a, placement.b],
-        orientation,
-        offset: placement.offset,
-        /* v8 ignore next -- the canvas only exists inside a piece tab */
-        ...(activePieceId.value === null ? {} : { piece: activePieceId.value }),
-      },
-    }),
-  );
-}
-
-/** Place a read-only cut dimension, updating the existing one on the same span. */
-function onAddCutDimension(placement: CutDimensionPlacement): void {
-  // The canvas only starts a placement for a piece that exists in this document.
-  const piece = pattern.value.pieces.find((candidate) => candidate.id === placement.piece)!;
-
-  const [a, b] = canonicalCutAnchors(piece, placement.a, placement.b);
-  const orientation = usesCutEdgeAnchor({ a, b }) ? 'aligned' : placement.orientation;
-  const existing = findDerivedDimension(pattern.value, placement.piece, a, b);
-  if (existing !== undefined) {
-    run(() =>
-      dispatch({
-        id: nextCommandId('cut-dimension'),
-        type: 'update_constraint',
-        params: { id: existing.id, orientation, offset: placement.offset },
-      }),
-    );
-    return;
-  }
-
-  run(() =>
-    dispatch({
-      id: nextCommandId('cut-dimension'),
-      type: 'add_derived_dimension',
-      params: {
-        piece: placement.piece,
-        a,
-        b,
-        orientation,
-        offset: placement.offset,
-      },
-    }),
-  );
-}
-
-function onUpdateDimension(id: EntityId, patch: DimensionPatch): void {
-  run(() =>
-    dispatch({
-      id: nextCommandId('dimension'),
-      type: 'update_constraint',
-      params: { id, ...patch },
-    }),
-  );
-}
-
-function convert(id: string, construction: boolean): void {
-  run(() =>
-    dispatch({
-      id: nextCommandId('construction'),
-      type: 'set_construction',
-      params: { id, construction },
-    }),
-  );
-}
+const {
+  onMovePoint,
+  onAddPoint,
+  onAddPointOnLine,
+  onSplitLine,
+  onAddPointMidpoint,
+  onAddLine,
+  onAddArc,
+  onAddCircle,
+  onAddRectangle,
+  onAddText,
+  onSetNotchDepth,
+  onDeleteMark,
+  onAddNotch,
+  onAddCentreLine,
+  onAddCurve,
+  onAddDimension,
+  onAddCutDimension,
+  onUpdateDimension,
+  convert,
+} = useSketchCommands({
+  pattern: () => pattern.value,
+  interactionDocument,
+  activePieceId,
+  selectedEntityIds,
+  run,
+  dispatch,
+  dispatchGroup,
+  error,
+});
 
 /** Rename, re-quantify or clear fields on a piece. */
 function onUpdatePiece(
