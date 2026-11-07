@@ -51,6 +51,12 @@ import {
   applyUpdateText,
 } from './marks.js';
 import {
+  applyAddSeamMatch,
+  applyRemoveSeamMatch,
+  applySetEdgeFinished,
+  applyUpdateSeamMatch,
+} from './seams.js';
+import {
   applyCreatePiece,
   applyDeletePiece,
   applyPlacePiece,
@@ -198,6 +204,14 @@ export function applyCommand(document: PatternDocument, command: Command): Comma
       return applyUpdateInstance(document, command);
     case 'reorder_tabs':
       return applyReorderTabs(document, command);
+    case 'add_seam_match':
+      return applyAddSeamMatch(document, command);
+    case 'update_seam_match':
+      return applyUpdateSeamMatch(document, command);
+    case 'remove_seam_match':
+      return applyRemoveSeamMatch(document, command);
+    case 'set_edge_finished':
+      return applySetEdgeFinished(document, command);
     case 'solve':
       return noOp(document);
   }

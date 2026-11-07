@@ -15,7 +15,11 @@ import type { CommandApplication, CommandOf, CommandType } from './types.js';
 export const MAX_ASSEMBLY_NAME_LENGTH = 80;
 
 /** Find an assembly or explain which id is unknown. */
-function requireAssembly(document: PatternDocument, id: EntityId, type: CommandType): Assembly {
+export function requireAssembly(
+  document: PatternDocument,
+  id: EntityId,
+  type: CommandType,
+): Assembly {
   const assembly = document.assemblies.find((candidate) => candidate.id === id);
   if (assembly === undefined) {
     throw new CommandValidationError(type, `unknown assembly: ${id}`);
@@ -136,7 +140,7 @@ export function applyAddInstance(
   };
 }
 
-/** Remove one placed instance. */
+/** Remove one placed instance and every seam or finish that names it. */
 export function applyRemoveInstance(
   document: PatternDocument,
   command: CommandOf<'remove_instance'>,
@@ -146,23 +150,39 @@ export function applyRemoveInstance(
   const instance = assembly.instances.find((candidate) => candidate.id === instanceId);
   if (instance === undefined) return noOp(document);
 
+  const seams = (assembly.seams ?? []).filter(
+    (seam) => !seam.sides.some((side) => side.instance === instanceId),
+  );
+  const finishedEdges = (assembly.finishedEdges ?? []).filter(
+    (edge) => edge.instance !== instanceId,
+  );
+  const droppedSeam = seams.length !== (assembly.seams ?? []).length;
+  const droppedFinish = finishedEdges.length !== (assembly.finishedEdges ?? []).length;
+
   return {
     document: replaceAssembly(document, {
       ...assembly,
       instances: assembly.instances.filter((candidate) => candidate.id !== instanceId),
+      ...(assembly.seams === undefined ? {} : { seams }),
+      ...(assembly.finishedEdges === undefined ? {} : { finishedEdges }),
     }),
-    inverse: {
-      id: instance.id,
-      type: 'add_instance',
-      params: {
-        assembly: assemblyId,
-        piece: instance.piece,
-        x: instance.x,
-        y: instance.y,
-        ...(instance.rotation === undefined ? {} : { rotation: instance.rotation }),
-        ...(instance.mirrored === undefined ? {} : { mirrored: instance.mirrored }),
-      },
-    },
+    // Restoring a dropped seam or finish is not a single command; undo relies on
+    // the journal snapshot. Without a drop the existing instance inverse is exact.
+    inverse:
+      droppedSeam || droppedFinish
+        ? null
+        : {
+            id: instance.id,
+            type: 'add_instance',
+            params: {
+              assembly: assemblyId,
+              piece: instance.piece,
+              x: instance.x,
+              y: instance.y,
+              ...(instance.rotation === undefined ? {} : { rotation: instance.rotation }),
+              ...(instance.mirrored === undefined ? {} : { mirrored: instance.mirrored }),
+            },
+          },
   };
 }
 

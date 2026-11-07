@@ -331,12 +331,35 @@ export function applySplitLine(
       ? document.seams
       : [...document.seams, { ...seam, id: `${command.id}:seam`, edge: command.id }];
 
+  // Replace the split edge with its two halves in place in every assembly seam
+  // run. The original id stays the start→point half, which is the authored order.
+  const assemblies = document.assemblies.map((assembly) => {
+    if (assembly.seams === undefined) return assembly;
+    let changed = false;
+    const nextSeams = assembly.seams.map((candidate) => {
+      let seamChanged = false;
+      const sides = candidate.sides.map((side) => {
+        const index = side.edges.indexOf(lineId);
+        if (index < 0) return side;
+        seamChanged = true;
+        const edges = [...side.edges];
+        edges.splice(index + 1, 0, command.id);
+        return { ...side, edges };
+      });
+      if (!seamChanged) return candidate;
+      changed = true;
+      return { ...candidate, sides };
+    });
+    return changed ? { ...assembly, seams: nextSeams } : assembly;
+  });
+
   return {
     document: {
       ...document,
       entities,
       constraints,
       pieces,
+      assemblies,
       ...(nextRounds === undefined ? {} : { cornerRounds: nextRounds }),
       ...(variables === undefined ? {} : { variables }),
       ...(seams === undefined ? {} : { seams }),

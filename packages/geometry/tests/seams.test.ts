@@ -177,6 +177,30 @@ describe('pieceEdgeSegments', () => {
     expect(segments[1]![0]).not.toEqual({ x: 100, y: 0 });
   });
 
+  it('returns an arc edge in its authored direction', () => {
+    const document: PatternDocument = {
+      ...createEmptyDocument(),
+      entities: [
+        point('o', 0, 0, 'pie'),
+        point('a', 100, 0, 'pie'),
+        point('b', 0, 100, 'pie'),
+        point('through', 70, 70, 'pie'),
+        line('radius-a', 'o', 'a', 'pie'),
+        { id: 'rim', kind: 'arc', start: 'a', end: 'b', through: 'through', piece: 'pie' },
+        line('radius-b', 'b', 'o', 'pie'),
+      ],
+      pieces: [{ id: 'pie', edges: ['radius-a', 'rim', 'radius-b'], allowances: [] }],
+    };
+    const pie = document.pieces[0]!;
+
+    const segments = pieceEdgeSegments(document, pie)!;
+
+    expect(segments).toHaveLength(3);
+    expect(segments[1]![0]).toEqual({ x: 100, y: 0 });
+    expect(segments[1]!.at(-1)).toEqual({ x: 0, y: 100 });
+    expect(segments[1]!.length).toBeGreaterThan(2);
+  });
+
   it('returns null for a loop that does not resolve', () => {
     const broken: Piece = { id: 'p1', edges: ['p1-bottom', 'p1-top'], allowances: [] };
 

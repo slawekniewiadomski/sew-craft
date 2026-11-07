@@ -9,8 +9,10 @@ import type {
   DimensionOrientation,
   EntityId,
   EntityRole,
+  FinishKind,
   PatternDocument,
   PieceDefaults,
+  SeamRun,
   SeamSide,
   TabRef,
   TextAlignment,
@@ -259,6 +261,35 @@ export interface ReorderTabsParams {
   tabs: TabRef[];
 }
 
+export interface AddSeamMatchParams {
+  assembly: EntityId;
+  /** Two or more sides, in layer order. */
+  sides: SeamRun[];
+  /** A deliberate length difference; downgrades a mismatch to a warning. */
+  eased?: boolean;
+}
+
+export interface UpdateSeamMatchParams {
+  assembly: EntityId;
+  seam: EntityId;
+  eased?: boolean;
+  /** Replaces the whole side list when present. */
+  sides?: SeamRun[];
+}
+
+export interface RemoveSeamMatchParams {
+  assembly: EntityId;
+  seam: EntityId;
+}
+
+export interface SetEdgeFinishedParams {
+  assembly: EntityId;
+  instance: EntityId;
+  edge: EntityId;
+  /** `null` clears the mark. */
+  kind: FinishKind | null;
+}
+
 export interface AddTextParams {
   piece: EntityId;
   anchor: EntityId;
@@ -498,6 +529,25 @@ export type Command =
       issuedAt?: string;
     }
   | { id: EntityId; type: 'reorder_tabs'; params: ReorderTabsParams; issuedAt?: string }
+  | { id: EntityId; type: 'add_seam_match'; params: AddSeamMatchParams; issuedAt?: string }
+  | {
+      id: EntityId;
+      type: 'update_seam_match';
+      params: UpdateSeamMatchParams;
+      issuedAt?: string;
+    }
+  | {
+      id: EntityId;
+      type: 'remove_seam_match';
+      params: RemoveSeamMatchParams;
+      issuedAt?: string;
+    }
+  | {
+      id: EntityId;
+      type: 'set_edge_finished';
+      params: SetEdgeFinishedParams;
+      issuedAt?: string;
+    }
   | { id: EntityId; type: 'solve'; params: SolveParams; issuedAt?: string };
 
 export type CommandType = Command['type'];

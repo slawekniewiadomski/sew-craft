@@ -3,7 +3,7 @@
 it('exposes the command spec', function () {
     $this->getJson('/api/commands')
         ->assertOk()
-        ->assertJsonPath('version', '0.21.0')
+        ->assertJsonPath('version', '0.22.0')
         ->assertJsonStructure([
             'version',
             'commands' => [
@@ -158,6 +158,24 @@ it('exposes the assembly, instance and tab commands', function () {
         ->assertJsonPath('commands.update_instance.inverse', 'update_instance')
         ->assertJsonPath('commands.reorder_tabs.params.tabs', 'tab_ref[]')
         ->assertJsonPath('commands.reorder_tabs.inverse', 'reorder_tabs');
+});
+
+it('exposes the seam and finish commands', function () {
+    $this->getJson('/api/commands')
+        ->assertOk()
+        ->assertJsonPath('commands.add_seam_match.params.assembly', 'entity_id')
+        ->assertJsonPath('commands.add_seam_match.params.sides', 'seam_run[]')
+        ->assertJsonPath('commands.add_seam_match.params.eased', 'bool?')
+        ->assertJsonPath('commands.add_seam_match.inverse', 'remove_seam_match')
+        ->assertJsonPath('commands.update_seam_match.params.seam', 'entity_id')
+        ->assertJsonPath('commands.update_seam_match.params.sides', 'seam_run[]?')
+        ->assertJsonPath('commands.update_seam_match.inverse', 'update_seam_match')
+        ->assertJsonPath('commands.remove_seam_match.params.seam', 'entity_id')
+        ->assertJsonPath('commands.remove_seam_match.inverse', 'add_seam_match')
+        ->assertJsonPath('commands.set_edge_finished.params.instance', 'entity_id')
+        ->assertJsonPath('commands.set_edge_finished.params.edge', 'entity_id')
+        ->assertJsonPath('commands.set_edge_finished.params.kind', 'finish_kind|null')
+        ->assertJsonPath('commands.set_edge_finished.inverse', 'set_edge_finished');
 });
 
 it('retires move_piece', function () {

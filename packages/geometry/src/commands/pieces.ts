@@ -325,14 +325,32 @@ export function applyDeletePiece(
       entities,
       constraints,
       pieces: document.pieces.filter((candidate) => candidate.id !== id),
-      assemblies: document.assemblies.map((assembly) =>
-        assembly.instances.some((instance) => instance.piece === id)
-          ? {
-              ...assembly,
-              instances: assembly.instances.filter((instance) => instance.piece !== id),
-            }
-          : assembly,
-      ),
+      assemblies: document.assemblies.map((assembly) => {
+        const removedInstances = new Set(
+          assembly.instances
+            .filter((instance) => instance.piece === id)
+            .map((instance) => instance.id),
+        );
+        if (removedInstances.size === 0) return assembly;
+        return {
+          ...assembly,
+          instances: assembly.instances.filter((instance) => instance.piece !== id),
+          ...(assembly.seams === undefined
+            ? {}
+            : {
+                seams: assembly.seams.filter(
+                  (seam) => !seam.sides.some((side) => removedInstances.has(side.instance)),
+                ),
+              }),
+          ...(assembly.finishedEdges === undefined
+            ? {}
+            : {
+                finishedEdges: assembly.finishedEdges.filter(
+                  (edge) => !removedInstances.has(edge.instance),
+                ),
+              }),
+        };
+      }),
       tabs: withoutTab(document, { kind: 'piece', id }),
       ...(document.cornerRounds === undefined ? {} : { cornerRounds: rounds }),
       ...(document.seams === undefined
