@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BarShell from '@/components/bars/BarShell.vue';
 import { Button } from '@/components/ui/button';
 
 export interface MeasuredSourceChip {
@@ -22,10 +23,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div
-    class="flex flex-wrap items-center gap-2 border-b bg-background px-2 py-1"
-    data-testid="measured-edit-bar"
-  >
+  <BarShell data-testid="measured-edit-bar">
     <span class="text-sm">
       Editing <span class="font-medium">{{ props.name }}</span>
     </span>
@@ -69,5 +67,5 @@ const emit = defineEmits<{
       </Button>
       <Button size="sm" data-testid="measured-edit-done" @click="emit('done')">Done</Button>
     </span>
-  </div>
+  </BarShell>
 </template>

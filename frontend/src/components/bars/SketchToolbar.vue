@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { EntityId, Piece } from '@sewcraft/geometry';
 
+import BarShell from '@/components/bars/BarShell.vue';
 import { Button } from '@/components/ui/button';
 
 const props = withDefaults(
@@ -31,10 +32,7 @@ function onTargetChange(event: Event): void {
 </script>
 
 <template>
-  <div
-    class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-3 py-1.5 text-xs"
-    data-testid="sketch-toolbar"
-  >
+  <BarShell variant="dense" data-testid="sketch-toolbar">
     <span class="font-medium">Sketch</span>
     <label class="flex items-center gap-1.5">
       <span class="text-muted-foreground">Drawing into</span>
@@ -64,5 +62,5 @@ function onTargetChange(event: Event): void {
       Drag a piece to move it
     </span>
     <Button variant="ghost" size="sm" data-testid="sketch-fit" @click="emit('fit')">Fit all</Button>
-  </div>
+  </BarShell>
 </template>

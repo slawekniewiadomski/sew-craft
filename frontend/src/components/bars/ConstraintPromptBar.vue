@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import type { ConstraintType, ParamInput, PatternDocument } from '@sewcraft/geometry';
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 
+import PromptBar from '@/components/bars/PromptBar.vue';
 import { constraintValueSpec } from '@/lib/constraint-tools';
 import { formulaIssue, parseParamEdit } from '@/lib/formula';
-
-import { Button } from '@/components/ui/button';
 
 const props = defineProps<{
   type: ConstraintType;
@@ -26,18 +25,16 @@ const inputId = 'constraint-value-input';
 const raw = ref<string | number>('');
 /** Why the typed value cannot be applied, or `null` when it can. */
 const error = ref<string | null>(null);
-const input = ref<HTMLInputElement | null>(null);
 const spec = computed(() => constraintValueSpec(props.type));
+const formReady = computed(() => props.valueReady && spec.value !== null);
 const canApply = computed(() => String(raw.value).trim() !== '' && error.value === null);
 
 watch(
   () => props.valueReady,
-  async (ready) => {
+  (ready) => {
     if (!ready) return;
     raw.value = props.initialValue;
     error.value = null;
-    await nextTick();
-    input.value?.focus();
   },
   { immediate: true },
 );
@@ -70,49 +67,19 @@ function apply(): void {
 </script>
 
 <template>
-  <div
-    class="flex flex-wrap items-center gap-2 border-b bg-background px-2 py-1"
-    data-testid="constraint-prompt-bar"
-  >
-    <span class="text-sm" role="status" aria-live="polite" data-testid="constraint-prompt">
-      {{ prompt }}
-    </span>
-
-    <span v-if="rejection" class="text-sm text-destructive" data-testid="constraint-rejection">
-      {{ rejection }}
-    </span>
-
-    <form
-      v-if="valueReady && spec"
-      class="flex flex-wrap items-center gap-2"
-      @submit.prevent="apply"
-    >
-      <label :for="inputId" class="text-sm">{{ spec.label }}</label>
-      <input
-        :id="inputId"
-        ref="input"
-        v-model="raw"
-        :type="spec.acceptsFormula ? 'text' : 'number'"
-        step="any"
-        class="w-28 rounded-md border px-2 py-1 text-sm"
-        data-testid="constraint-value"
-        :aria-invalid="error !== null ? 'true' : undefined"
-        @input="error = null"
-      />
-      <p
-        v-if="error !== null"
-        class="text-sm text-destructive"
-        data-testid="constraint-value-error"
-      >
-        {{ error }}
-      </p>
-      <Button type="submit" size="sm" :disabled="!canApply" data-testid="constraint-apply">
-        Apply
-      </Button>
-    </form>
-
-    <Button variant="outline" size="sm" data-testid="constraint-cancel" @click="emit('cancel')">
-      Cancel
-    </Button>
-  </div>
+  <PromptBar
+    v-model="raw"
+    test-id-prefix="constraint"
+    :prompt="prompt"
+    :rejection="rejection"
+    :ready="formReady"
+    :label="spec?.label ?? ''"
+    :input-id="inputId"
+    :input-type="spec?.acceptsFormula ? 'text' : 'number'"
+    :error="error"
+    :can-apply="canApply"
+    @input="error = null"
+    @submit="apply"
+    @cancel="emit('cancel')"
+  />
 </template>
