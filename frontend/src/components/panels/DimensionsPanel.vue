@@ -3,6 +3,7 @@ import type { DistanceConstraint, EntityId, PatternDocument } from '@sewcraft/ge
 import { computed, ref } from 'vue';
 
 import DimensionReferencePicker from '@/components/base/DimensionReferencePicker.vue';
+import VariablePickerList from '@/components/base/VariablePickerList.vue';
 import Pill from '@/components/sidebar/Pill.vue';
 import SidebarAction from '@/components/sidebar/SidebarAction.vue';
 import SidebarButton from '@/components/sidebar/SidebarButton.vue';
@@ -243,26 +244,15 @@ function onOffsetEdit(id: EntityId, event: Event): void {
           @select="selectReference(dimension.id, $event)"
         />
 
-        <ul
+        <VariablePickerList
           v-if="variablePickerOpen('dimension', dimension.id) && variablePickerOptions.length > 0"
-          class="absolute top-full left-0 z-20 mt-1 max-h-40 w-56 overflow-auto rounded-sm border bg-background p-1 shadow-sm"
-          :data-testid="`dimension-variables-${dimension.id}`"
-        >
-          <li v-for="option in variablePickerOptions" :key="option.slug">
-            <button
-              type="button"
-              class="flex w-full items-baseline justify-between gap-2 rounded-sm px-1.5 py-1 text-left text-2xs hover:bg-muted"
-              :data-testid="`dimension-variable-${dimension.id}-${option.slug}`"
-              @mousedown.prevent="pickVariable('dimension', dimension.id, option.slug)"
-            >
-              <span class="truncate">
-                {{ option.name }}
-                <span class="font-mono text-muted-foreground">${{ option.slug }}</span>
-              </span>
-              <span class="shrink-0 text-muted-foreground">{{ option.resolved }}</span>
-            </button>
-          </li>
-        </ul>
+          class="top-full left-0"
+          :options="variablePickerOptions"
+          :label="`Variables for dimension ${dimension.id}`"
+          :list-test-id="`dimension-variables-${dimension.id}`"
+          :option-test-id-prefix="`dimension-variable-${dimension.id}`"
+          @pick="pickVariable('dimension', dimension.id, $event)"
+        />
       </div>
 
       <div v-if="!dimension.readOnly" class="flex flex-wrap items-center gap-1.5">

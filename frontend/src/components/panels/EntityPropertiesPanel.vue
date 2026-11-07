@@ -43,6 +43,7 @@ import {
 import { pieceById } from '@sewcraft/geometry';
 import { ribbonIcon, type RibbonIconName } from '@/lib/ribbon-icons';
 import DimensionReferencePicker from '@/components/base/DimensionReferencePicker.vue';
+import VariablePickerList from '@/components/base/VariablePickerList.vue';
 import {
   formulaIssue,
   insertVariableToken,
@@ -687,27 +688,15 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
             >
               Formula
             </Pill>
-            <ul
+            <VariablePickerList
               v-if="pickerOpen('round', round.id) && variablePickerOptions.length > 0"
-              :id="`entity-corner-radius-variables-${round.id}`"
-              class="absolute z-20 mt-1 max-h-40 w-56 overflow-auto rounded-sm border bg-background p-1 shadow-sm"
-              :data-testid="`entity-corner-radius-variables-${round.id}`"
-            >
-              <li v-for="option in variablePickerOptions" :key="option.slug">
-                <button
-                  type="button"
-                  class="flex w-full items-baseline justify-between gap-2 rounded-sm px-1.5 py-1 text-left text-2xs hover:bg-muted"
-                  :data-testid="`entity-corner-radius-variable-${round.id}-${option.slug}`"
-                  @mousedown.prevent="pickVariable('round', round.id, option.slug)"
-                >
-                  <span class="truncate">
-                    {{ option.name }}
-                    <span class="font-mono text-muted-foreground">${{ option.slug }}</span>
-                  </span>
-                  <span class="shrink-0 text-muted-foreground">{{ option.resolved }}</span>
-                </button>
-              </li>
-            </ul>
+              :list-id="`entity-corner-radius-variables-${round.id}`"
+              :options="variablePickerOptions"
+              :label="`Variables for corner radius ${round.id}`"
+              :list-test-id="`entity-corner-radius-variables-${round.id}`"
+              :option-test-id-prefix="`entity-corner-radius-variable-${round.id}`"
+              @pick="pickVariable('round', round.id, $event)"
+            />
           </label>
           <p
             v-if="radiusDrafts[round.id]?.issue"
@@ -790,26 +779,14 @@ function removeCutDimension(dimension: CutDimensionSummary): void {
             {{ dimensionDrafts[dimension.id]!.issue }}
           </p>
 
-          <ul
+          <VariablePickerList
             v-if="pickerOpen('dimension', dimension.id) && variablePickerOptions.length > 0"
-            class="absolute z-20 mt-1 max-h-40 w-56 overflow-auto rounded-sm border bg-background p-1 shadow-sm"
-            :data-testid="`entity-dimension-variables-${dimension.id}`"
-          >
-            <li v-for="option in variablePickerOptions" :key="option.slug">
-              <button
-                type="button"
-                class="flex w-full items-baseline justify-between gap-2 rounded-sm px-1.5 py-1 text-left text-2xs hover:bg-muted"
-                :data-testid="`entity-dimension-variable-${dimension.id}-${option.slug}`"
-                @mousedown.prevent="pickVariable('dimension', dimension.id, option.slug)"
-              >
-                <span class="truncate">
-                  {{ option.name }}
-                  <span class="font-mono text-muted-foreground">${{ option.slug }}</span>
-                </span>
-                <span class="shrink-0 text-muted-foreground">{{ option.resolved }}</span>
-              </button>
-            </li>
-          </ul>
+            :options="variablePickerOptions"
+            :label="`Variables for dimension ${dimension.id}`"
+            :list-test-id="`entity-dimension-variables-${dimension.id}`"
+            :option-test-id-prefix="`entity-dimension-variable-${dimension.id}`"
+            @pick="pickVariable('dimension', dimension.id, $event)"
+          />
 
           <div class="relative flex flex-wrap items-center gap-1.5">
             <SidebarButton

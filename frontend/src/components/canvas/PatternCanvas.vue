@@ -228,6 +228,7 @@ import {
   type RegionView,
 } from '@/lib/pattern-canvas-views';
 import DimensionReferencePicker from '@/components/base/DimensionReferencePicker.vue';
+import VariablePickerList from '@/components/base/VariablePickerList.vue';
 
 interface Hit {
   id: EntityId;
@@ -4729,59 +4730,35 @@ watch(
       @select="selectReference"
     />
 
-    <ul
+    <VariablePickerList
       v-if="
         dimensionEditor !== null &&
         variablePickerOpen('dimension', dimensionEditor.id) &&
         variablePickerOptions.length > 0
       "
-      class="absolute z-20 w-44 overflow-auto rounded-md border bg-background p-1 text-xs shadow-sm"
+      size="canvas"
       :style="{ left: `${dimensionEditor.x}px`, top: `${dimensionEditor.y + 18}px` }"
-      data-testid="dimension-variable-list"
-      :aria-label="`Variables for dimension ${dimensionEditor.id}`"
-    >
-      <li v-for="option in variablePickerOptions" :key="option.slug">
-        <button
-          type="button"
-          class="flex w-full items-baseline justify-between gap-2 rounded-sm px-1.5 py-1 text-left hover:bg-muted"
-          :data-testid="`dimension-variable-${option.slug}`"
-          @mousedown.prevent="pickVariable('dimension', dimensionEditor.id, option.slug)"
-        >
-          <span class="truncate">
-            {{ option.name }}
-            <span class="font-mono text-muted-foreground">${{ option.slug }}</span>
-          </span>
-          <span class="shrink-0 text-muted-foreground">{{ option.resolved }}</span>
-        </button>
-      </li>
-    </ul>
+      :options="variablePickerOptions"
+      :label="`Variables for dimension ${dimensionEditor.id}`"
+      list-test-id="dimension-variable-list"
+      option-test-id-prefix="dimension-variable"
+      @pick="pickVariable('dimension', dimensionEditor.id, $event)"
+    />
 
-    <ul
+    <VariablePickerList
       v-if="
         editingCornerRound !== null &&
         variablePickerOpen('corner-round', editingCornerRound.id) &&
         variablePickerOptions.length > 0
       "
-      id="corner-round-variable-list"
-      class="absolute z-20 w-44 overflow-auto rounded-md border bg-background p-1 text-xs shadow-sm"
+      list-id="corner-round-variable-list"
+      size="canvas"
       :style="{ left: `${editingCornerRound.x}px`, top: `${editingCornerRound.y + 18}px` }"
-      data-testid="corner-round-variable-list"
-      :aria-label="`Variables for corner round ${editingCornerRound.id}`"
-    >
-      <li v-for="option in variablePickerOptions" :key="option.slug">
-        <button
-          type="button"
-          class="flex w-full items-baseline justify-between gap-2 rounded-sm px-1.5 py-1 text-left hover:bg-muted"
-          :data-testid="`corner-round-variable-${option.slug}`"
-          @mousedown.prevent="pickVariable('corner-round', editingCornerRound.id, option.slug)"
-        >
-          <span class="truncate">
-            {{ option.name }}
-            <span class="font-mono text-muted-foreground">${{ option.slug }}</span>
-          </span>
-          <span class="shrink-0 text-muted-foreground">{{ option.resolved }}</span>
-        </button>
-      </li>
-    </ul>
+      :options="variablePickerOptions"
+      :label="`Variables for corner round ${editingCornerRound.id}`"
+      list-test-id="corner-round-variable-list"
+      option-test-id-prefix="corner-round-variable"
+      @pick="pickVariable('corner-round', editingCornerRound.id, $event)"
+    />
   </div>
 </template>
