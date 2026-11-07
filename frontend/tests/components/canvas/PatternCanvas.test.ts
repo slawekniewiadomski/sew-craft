@@ -3167,6 +3167,26 @@ describe('PatternCanvas', () => {
     expect(wrapper.emitted('set-corner-round-radius')).toEqual([['r1', { expr: '$seam' }]]);
   });
 
+  it('inserts a round radius variable picked with the mouse', async () => {
+    const wrapper = mountCanvas({
+      document: {
+        ...roundedSquare(),
+        variables: [{ slug: 'seam', name: 'Seam', unit: 'mm', value: 6 }],
+      },
+      selectedEntityIds: ['ab'],
+    });
+
+    await wrapper.find('[data-testid="corner-round-label-r1"]').trigger('dblclick');
+    await flushPromises();
+
+    const input = wrapper.find('[data-testid="corner-round-editor"]');
+    await input.setValue('$s');
+    await wrapper.find('[data-testid="corner-round-variable-seam"]').trigger('mousedown');
+
+    expect((input.element as HTMLInputElement).value).toBe('$seam');
+    expect(wrapper.find('[data-testid="corner-round-variable-list"]').exists()).toBe(false);
+  });
+
   it('opens a stored formula, keeps an unchanged radius and accepts a literal', async () => {
     const document: PatternDocument = {
       ...roundedSquare(),
