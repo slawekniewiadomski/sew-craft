@@ -76,6 +76,7 @@ describe('splitCandidate', () => {
       lineId: 'ab',
       pointId: null,
       position: { x: 30, y: 0 },
+      atCenter: false,
     });
   });
 
@@ -84,7 +85,41 @@ describe('splitCandidate', () => {
       lineId: 'ab',
       pointId: 'near',
       position: { x: 54, y: 0 },
+      atCenter: false,
     });
+  });
+
+  it('snaps to the line centre when no authored point is near it', () => {
+    const plain = doc([
+      pt('a', 0, 0, { piece: 'p1' }),
+      pt('b', 100, 0, { piece: 'p1' }),
+      ln('ab', 'a', 'b', { piece: 'p1' }),
+    ]);
+
+    expect(splitCandidate(plain, 'ab', { x: 48, y: 3 })).toEqual({
+      lineId: 'ab',
+      pointId: null,
+      position: { x: 50, y: 0 },
+      atCenter: true,
+    });
+  });
+
+  it('lets an authored point win over the centre when both are in range', () => {
+    expect(splitCandidate(baseDoc, 'ab', { x: 52, y: 0 })).toEqual({
+      lineId: 'ab',
+      pointId: 'near',
+      position: { x: 54, y: 0 },
+      atCenter: false,
+    });
+  });
+
+  it('keeps the projection when the centre is outside the tolerance', () => {
+    expect(splitCandidate(baseDoc, 'ab', { x: 43, y: 0 })).toMatchObject({
+      pointId: null,
+      position: { x: 43, y: 0 },
+      atCenter: false,
+    });
+    expect(splitCandidate(baseDoc, 'ab', { x: 52, y: 0 }, 1)).toMatchObject({ atCenter: false });
   });
 
   it('ignores a nearby point that is off the line', () => {
@@ -160,6 +195,7 @@ describe('splitCandidate', () => {
       lineId: 'ab',
       pointId: null,
       position: { x: 0.0015, y: 0 },
+      atCenter: false,
     });
   });
 
@@ -189,6 +225,14 @@ describe('buildSplitLineCommands', () => {
         type: 'add_point',
         params: { x: 30, y: 0, piece: 'p1' },
       },
+      { id: 'split-2', type: 'split_line', params: { line: 'ab', point: 'point-1' } },
+    ]);
+  });
+
+  it('creates the shared point at the exact centre when the projection snaps', () => {
+    const plain = doc([pt('a', 0, 0), pt('b', 100, 0), ln('ab', 'a', 'b')]);
+    expect(buildSplitLineCommands(plain, 'ab', { x: 52, y: 4 }, idGenerator())).toEqual([
+      { id: 'point-1', type: 'add_point', params: { x: 50, y: 0 } },
       { id: 'split-2', type: 'split_line', params: { line: 'ab', point: 'point-1' } },
     ]);
   });
