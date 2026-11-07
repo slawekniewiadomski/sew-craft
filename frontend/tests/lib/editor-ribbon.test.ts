@@ -229,6 +229,13 @@ describe('ASSEMBLY_RIBBON_GROUPS', () => {
     });
     expect(ASSEMBLY_RIBBON_GROUPS[0]!.items[2]).toEqual({
       kind: 'action',
+      id: 'preview',
+      label: 'Preview',
+      icon: 'preview',
+      action: 'preview',
+    });
+    expect(ASSEMBLY_RIBBON_GROUPS[0]!.items[3]).toEqual({
+      kind: 'action',
       id: 'add-instance',
       label: 'Add piece',
       icon: 'piece-add',

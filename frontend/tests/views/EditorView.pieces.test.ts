@@ -1441,6 +1441,44 @@ describe('EditorView sewing', () => {
     expect(wrapper.findComponent(AssemblyCanvas).props('selectedInstanceId')).not.toBeNull();
   });
 
+  it('opens and closes the 3D preview', async () => {
+    const { wrapper } = await mountSewing();
+
+    await wrapper.find('[data-testid="preview"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="preview-dialog"]').exists()).toBe(true);
+    expect(wrapper.findAll('[data-testid^="preview-face-"]').length).toBeGreaterThan(0);
+
+    await wrapper.find('[data-testid="preview-close"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="preview-dialog"]').exists()).toBe(false);
+  });
+
+  it('closes the preview when the tab changes', async () => {
+    const { wrapper } = await mountSewing();
+
+    await wrapper.find('[data-testid="preview"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="preview-dialog"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="tab-piece-p1"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="preview-dialog"]').exists()).toBe(false);
+  });
+
+  it('keeps the preview available in a read-only document', async () => {
+    const { wrapper, store } = await mountSewing();
+    store.readOnly = true;
+    await nextTick();
+
+    await wrapper.find('[data-testid="preview"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="preview-dialog"]').exists()).toBe(true);
+  });
+
   it('clears a selected seam when the document loses it', async () => {
     const document = sewingDoc([
       {

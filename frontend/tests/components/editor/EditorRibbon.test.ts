@@ -263,6 +263,17 @@ describe('EditorRibbon', () => {
     expect(wrapper.find('[data-testid="delete"]').attributes('disabled')).toBeDefined();
     expect(wrapper.find('[data-testid="fit"]').attributes('disabled')).toBeUndefined();
     expect(wrapper.find('[data-testid="download-svg"]').attributes('disabled')).toBeUndefined();
+
+    const assembly = mountRibbon({ mode: 'assembly', readOnly: true });
+    expect(assembly.find('[data-testid="preview"]').attributes('disabled')).toBeUndefined();
+  });
+
+  it('opens the preview from the assembly ribbon', async () => {
+    const wrapper = mountRibbon({ mode: 'assembly' });
+
+    await wrapper.find('[data-testid="preview"]').trigger('click');
+
+    expect(wrapper.emitted('action')).toEqual([['preview']]);
   });
 
   it('disables undo, redo and delete without history or a selection', () => {

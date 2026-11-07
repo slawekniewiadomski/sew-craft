@@ -31,6 +31,7 @@ describe('RIBBON_ICONS', () => {
       'piece-add',
       'point',
       'point_on_line',
+      'preview',
       'rectangle',
       'rectangle-aligned',
       'rectangle-center',

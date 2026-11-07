@@ -11,6 +11,7 @@ export type RibbonAction =
   | 'download_svg'
   | 'add_instance'
   | 'sew'
+  | 'preview'
   | 'mirror_instance'
   | 'rotate_instance';
 
@@ -215,6 +216,7 @@ export const ASSEMBLY_RIBBON_GROUPS: RibbonGroup[] = [
     items: [
       toolItem('select'),
       actionItem('sew', 'Sew', 'sew', 'sew'),
+      actionItem('preview', 'Preview', 'preview', 'preview'),
       actionItem('add-instance', 'Add piece', 'add_instance', 'piece-add'),
       actionItem('mirror-instance', 'Mirror', 'mirror_instance', 'mirror'),
       actionItem('rotate-instance', 'Rotate 90°', 'rotate_instance', 'rotate'),

@@ -53,6 +53,7 @@ import EditorInspector from '@/components/editor/EditorInspector.vue';
 import EditorOverlays from '@/components/editor/EditorOverlays.vue';
 import EditorStrips from '@/components/editor/EditorStrips.vue';
 import { pruneAllowanceTargets } from '@/lib/allowance-edit';
+import PreviewDialog from '@/components/dialogs/PreviewDialog.vue';
 import { useCommandBus } from '@/composables/use-command-bus';
 import { useReferencePicker } from '@/composables/use-reference-picker';
 import { useVariablePicker } from '@/composables/use-variable-picker';
@@ -246,6 +247,7 @@ const {
 watch(activeTab, (tab) => {
   writePersistedTab(window.localStorage, props.id, tab);
   if (seamActive.value) exitSew();
+  previewOpen.value = false;
   selectedSeamId.value = null;
 });
 /** True while a marquee owns the pointer, so Delete/Escape defer to the canvas. */
@@ -334,6 +336,7 @@ const {
 
 /** Sew mode, its draft gesture, and the seam whose guides the canvas draws. */
 const seamActive = ref(false);
+const previewOpen = ref(false);
 const seamDraft = ref<SeamDraft>(emptySeamDraft());
 const seamEased = ref(false);
 const selectedSeamId = ref<EntityId | null>(null);
@@ -1032,6 +1035,9 @@ function onRibbonAction(action: RibbonAction): void {
     case 'add_instance':
       assemblyPickerOpen.value = !assemblyPickerOpen.value;
       break;
+    case 'preview':
+      previewOpen.value = true;
+      break;
     case 'sew':
       if (seamActive.value) {
         exitSew();
@@ -1357,6 +1363,13 @@ onBeforeUnmount(() => {
         @seam-commit="onSeamCommit"
         @seam-cancel="exitSew"
         @fit="fit"
+      />
+
+      <PreviewDialog
+        v-if="previewOpen && activeAssembly"
+        :document="assemblyDocument"
+        :assembly="activeAssembly"
+        @close="previewOpen = false"
       />
 
       <div class="flex min-h-0 flex-1">

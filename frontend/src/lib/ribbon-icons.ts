@@ -35,6 +35,7 @@ export type RibbonIconName =
   | 'fit'
   | 'download'
   | 'sew'
+  | 'preview'
   | 'mirror'
   | 'rotate'
   | 'variables'
@@ -126,6 +127,13 @@ const ACTION_ICONS: Record<ActionIconName, RibbonIcon> = {
       'M14.4 7.6 L17.2 10',
     ],
     dots: [{ cx: 20.4, cy: 4.6, r: 1.4 }],
+  },
+  preview: {
+    paths: [
+      'M12 3.2 L20.4 8 V16 L12 20.8 L3.6 16 V8 Z',
+      'M3.6 8 L12 12.8 L20.4 8',
+      'M12 12.8 V20.8',
+    ],
   },
   mirror: {
     paths: ['M12 3.2 V20.8', 'M8.8 6.4 L3.2 12 L8.8 17.6 Z', 'M15.2 6.4 L20.8 12 L15.2 17.6 Z'],

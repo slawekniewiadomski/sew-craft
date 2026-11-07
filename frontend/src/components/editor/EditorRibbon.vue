@@ -85,7 +85,7 @@ function isDisabled(item: RibbonButtonItem): boolean {
     // Read-only keeps the view actions that do not mutate: fit, and export when
     // the active piece can still be written.
     if (item.kind !== 'action') return true;
-    if (item.action === 'fit') return false;
+    if (item.action === 'fit' || item.action === 'preview') return false;
     if (item.action === 'download_svg') return !props.canExport;
     return true;
   }
