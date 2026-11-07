@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import DialogActions from '@/components/base/DialogActions.vue';
+import DialogHeader from '@/components/base/DialogHeader.vue';
 import ModalDialog from '@/components/base/ModalDialog.vue';
 import { Button } from '@/components/ui/button';
 import { useDialogFocus } from '@/composables/use-dialog-focus';
@@ -35,14 +37,17 @@ const savedTime = computed(() => {
     :dismissible="false"
     @keydown="trapTab"
   >
-    <h2 id="save-conflict-title" class="text-sm font-semibold">Project changed elsewhere</h2>
-    <p id="save-conflict-body" class="text-[13px] text-muted-foreground">
+    <DialogHeader
+      title-id="save-conflict-title"
+      title="Project changed elsewhere"
+      description-id="save-conflict-body"
+    >
       <template v-if="savedTime === null">Another tab saved this project.</template>
       <template v-else>Another tab saved this project at {{ savedTime }}.</template>
       Reloading discards your unsaved edits.
-    </p>
+    </DialogHeader>
 
-    <div class="flex justify-end gap-2">
+    <DialogActions>
       <Button
         ref="overwriteButton"
         variant="outline"
@@ -55,6 +60,6 @@ const savedTime = computed(() => {
       <Button ref="reloadButton" size="sm" data-testid="conflict-reload" @click="emit('reload')">
         Reload
       </Button>
-    </div>
+    </DialogActions>
   </ModalDialog>
 </template>

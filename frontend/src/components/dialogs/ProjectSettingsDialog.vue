@@ -15,6 +15,8 @@ export interface ProjectSettingsDraft {
 import type { AllowanceKind } from '@sewcraft/geometry';
 import { computed, ref } from 'vue';
 
+import DialogActions from '@/components/base/DialogActions.vue';
+import DialogHeader from '@/components/base/DialogHeader.vue';
 import ModalDialog from '@/components/base/ModalDialog.vue';
 import { Button } from '@/components/ui/button';
 import { useDialogFocus } from '@/composables/use-dialog-focus';
@@ -124,7 +126,7 @@ function submit(): void {
     @cancel="emit('cancel')"
     @keydown="trapTab"
   >
-    <h2 id="project-settings-title" class="text-sm font-semibold">Project settings</h2>
+    <DialogHeader title-id="project-settings-title" title="Project settings" />
 
     <form class="space-y-3" @submit.prevent="submit">
       <div class="space-y-1">
@@ -215,7 +217,7 @@ function submit(): void {
         {{ props.error }}
       </p>
 
-      <div class="flex justify-end gap-2 border-t pt-3">
+      <DialogActions bordered>
         <Button
           ref="cancelButton"
           variant="outline"
@@ -229,7 +231,7 @@ function submit(): void {
         <Button type="submit" size="sm" :disabled="!canSave" data-testid="project-settings-save">
           {{ props.saving ? 'Saving…' : 'Save' }}
         </Button>
-      </div>
+      </DialogActions>
     </form>
   </ModalDialog>
 </template>

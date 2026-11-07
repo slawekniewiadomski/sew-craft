@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 
+import DialogActions from '@/components/base/DialogActions.vue';
+import DialogHeader from '@/components/base/DialogHeader.vue';
 import ModalDialog from '@/components/base/ModalDialog.vue';
 import { Button } from '@/components/ui/button';
 import { useDialogFocus } from '@/composables/use-dialog-focus';
@@ -36,10 +38,13 @@ function toggle(key: keyof ExportSettings, value: boolean): void {
     @cancel="emit('cancel')"
     @keydown="trapTab"
   >
-    <h2 id="export-dialog-title" class="text-sm font-semibold">Export SVG</h2>
-    <p id="export-dialog-body" class="text-[13px] text-muted-foreground">
+    <DialogHeader
+      title-id="export-dialog-title"
+      title="Export SVG"
+      description-id="export-dialog-body"
+    >
       {{ props.pieceLabel }} · millimetres
-    </p>
+    </DialogHeader>
 
     <div class="space-y-2">
       <label class="flex items-start gap-2 text-[13px]">
@@ -89,7 +94,7 @@ function toggle(key: keyof ExportSettings, value: boolean): void {
       </label>
     </div>
 
-    <div class="flex justify-end gap-2">
+    <DialogActions>
       <Button
         ref="cancelButton"
         variant="outline"
@@ -107,6 +112,6 @@ function toggle(key: keyof ExportSettings, value: boolean): void {
       >
         Download SVG
       </Button>
-    </div>
+    </DialogActions>
   </ModalDialog>
 </template>

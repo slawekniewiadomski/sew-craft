@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import DialogActions from '@/components/base/DialogActions.vue';
+import DialogHeader from '@/components/base/DialogHeader.vue';
 import ModalDialog from '@/components/base/ModalDialog.vue';
 import { Button } from '@/components/ui/button';
 import { useDialogFocus } from '@/composables/use-dialog-focus';
@@ -28,15 +30,16 @@ const { trapTab } = useDialogFocus(cancelButton, cancelButton, readOnlyButton);
     @cancel="emit('cancel')"
     @keydown="trapTab"
   >
-    <h2 id="upgrade-dialog-title" class="text-sm font-semibold" data-testid="upgrade-dialog-title">
-      Unsupported project format
-    </h2>
-
-    <p id="upgrade-dialog-body" class="text-[13px] text-muted-foreground">
+    <DialogHeader
+      title-id="upgrade-dialog-title"
+      title="Unsupported project format"
+      title-test-id="upgrade-dialog-title"
+      description-id="upgrade-dialog-body"
+    >
       This build reads <span class="font-mono">{{ editorSchema }}</span> only. The stored project
       was saved as <span class="font-mono">{{ savedSchema }}</span> and is never migrated or
       replaced silently. Open it read-only, or cancel and go back to Projects.
-    </p>
+    </DialogHeader>
     <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-2xs">
       <dt class="text-muted-foreground">saved</dt>
       <dd class="font-mono" data-testid="saved-schema">{{ savedSchema }}</dd>
@@ -44,7 +47,7 @@ const { trapTab } = useDialogFocus(cancelButton, cancelButton, readOnlyButton);
       <dd class="font-mono" data-testid="editor-schema">{{ editorSchema }}</dd>
     </dl>
 
-    <div class="flex flex-wrap justify-end gap-2">
+    <DialogActions>
       <Button
         ref="cancelButton"
         variant="outline"
@@ -63,6 +66,6 @@ const { trapTab } = useDialogFocus(cancelButton, cancelButton, readOnlyButton);
       >
         Open read-only
       </Button>
-    </div>
+    </DialogActions>
   </ModalDialog>
 </template>
