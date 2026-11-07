@@ -36,7 +36,6 @@ import type {
   BandTarget,
   Assembly,
   Command,
-  ConstraintType,
   DerivedDistanceConstraint,
   DimensionOrientation,
   DimensionState,
@@ -98,26 +97,6 @@ import { formulaIssue, insertVariableToken, variableOptions, variableQuery } fro
 import { buildCircleCommands, type CircleEndpoint } from '@/lib/circle-tool';
 import { nextCommandId } from '@/lib/command-ids';
 import type { VariableValueInput } from '@/lib/variables';
-import {
-  applyConstraintPick,
-  constraintInitialValue,
-  constraintPrompt,
-  constraintRejection,
-  constraintValueSpec,
-  prunePicks,
-  type ConstraintPick,
-} from '@/lib/constraint-tools';
-import { constraintLabel } from '@/lib/constraint-view';
-import {
-  applyCornerRoundPick,
-  cornerRoundPrompt,
-  cornerRoundRejection,
-  defaultCornerRadius,
-  emptyCornerRoundPicks,
-  formatCornerRadius,
-  maxCornerRadiusForLines,
-  type CornerRoundPicks,
-} from '@/lib/corner-round';
 import {
   DIMENSION_ORIENTATION_OPTIONS,
   anchorLabel,
@@ -184,6 +163,7 @@ import type { ProjectSettingsDraft } from '@/components/dialogs/ProjectSettingsD
 import { assemblyTab, nextPieceColor, pieceTab, tabLabel, writePersistedTab } from '@/lib/tabs';
 import { useMeasuredEdit } from '@/composables/use-measured-edit';
 import { useProjectSession } from '@/composables/use-project-session';
+import { useToolPrompts } from '@/composables/use-tool-prompts';
 import { useEditorStore } from '@/stores/editor';
 
 const props = defineProps<{ id: string }>();
@@ -335,13 +315,36 @@ function updateExportSettings(settings: ExportSettings): void {
 /** The export dialog is a deliberate step: the ribbon opens it, Download confirms. */
 const exportOpen = ref(false);
 
-const activeConstraint = ref<ConstraintType | null>(null);
-const constraintPicks = ref<ConstraintPick[]>([]);
-const pendingConstraint = ref<AddConstraintParams | null>(null);
-const constraintRejectionMessage = ref<string | null>(null);
-const cornerRoundPicks = ref<CornerRoundPicks>(emptyCornerRoundPicks());
-const cornerRoundRejectionMessage = ref<string | null>(null);
-const cornerRoundPreviewRadius = ref<number | null>(null);
+const {
+  activeConstraint,
+  constraintPicks,
+  constraintRejectionMessage,
+  cornerRoundPicks,
+  cornerRoundRejectionMessage,
+  cornerRoundPreviewRadius,
+  constraintPromptText,
+  constraintValueReady,
+  constraintInitial,
+  cornerRoundActive,
+  cornerRoundMax,
+  cornerRoundReady,
+  cornerRoundPromptText,
+  cornerRoundInitial,
+  exitConstraint,
+  exitCornerRound,
+  selectConstraint,
+  onConstraintPick,
+  applyConstraintValue,
+  onRoundCornerPick,
+  applyCornerRound,
+} = useToolPrompts({
+  pattern: () => pattern.value,
+  activeTool,
+  selectedEntityIds,
+  activePieceId,
+  run,
+  dispatch,
+});
 
 /**
  * Construction geometry is presentation only: hiding it filters what is drawn
@@ -530,34 +533,6 @@ const activeToolLabel = computed(
   () => EDITOR_TOOLS.find((tool) => tool.id === activeTool.value)!.label,
 );
 
-const constraintPromptText = computed(() =>
-  constraintPrompt(activeConstraint.value!, constraintPicks.value),
-);
-const constraintValueReady = computed(
-  () => activeConstraint.value !== null && pendingConstraint.value !== null,
-);
-const constraintInitial = computed(() =>
-  activeConstraint.value === null || pendingConstraint.value === null
-    ? ''
-    : constraintInitialValue(activeConstraint.value, constraintPicks.value, pattern.value),
-);
-
-const cornerRoundActive = computed(() => activeTool.value === 'round_corner');
-const cornerRoundMax = computed(() => {
-  const { first, second } = cornerRoundPicks.value;
-  if (first === null || second === null) return null;
-  return maxCornerRadiusForLines(pattern.value, first, second);
-});
-const cornerRoundReady = computed(
-  () => cornerRoundMax.value !== null && cornerRoundMax.value >= 0.001,
-);
-const cornerRoundPromptText = computed(() => cornerRoundPrompt(cornerRoundPicks.value));
-const cornerRoundInitial = computed(() =>
-  cornerRoundMax.value === null
-    ? ''
-    : formatCornerRadius(defaultCornerRadius(cornerRoundMax.value)),
-);
-
 /** Add a variable with a unique placeholder name; the panel renames it inline. */
 function onAddVariable(): void {
   const count = (pattern.value.variables ?? []).length + 1;
@@ -630,34 +605,6 @@ function selectTool(tool: EditorTool): void {
   exitConstraint();
   exitCornerRound();
   activeTool.value = activeTool.value === tool ? 'select' : tool;
-}
-
-function exitConstraint(): void {
-  activeConstraint.value = null;
-  constraintPicks.value = [];
-  pendingConstraint.value = null;
-  constraintRejectionMessage.value = null;
-}
-
-function exitCornerRound(): void {
-  cornerRoundPicks.value = emptyCornerRoundPicks();
-  cornerRoundRejectionMessage.value = null;
-  cornerRoundPreviewRadius.value = null;
-}
-
-function selectConstraint(type: ConstraintType): void {
-  if (activeConstraint.value === type) {
-    exitConstraint();
-    return;
-  }
-
-  exitCornerRound();
-  activeConstraint.value = type;
-  activeTool.value = 'select';
-  selectedEntityIds.value = [];
-  constraintPicks.value = [];
-  pendingConstraint.value = null;
-  constraintRejectionMessage.value = null;
 }
 
 function fit(): void {
@@ -1643,87 +1590,10 @@ function onRemovePiece(id: EntityId): void {
   }
 }
 
-function dispatchConstraint(params: AddConstraintParams): boolean {
-  return run(() =>
-    dispatch({
-      id: nextCommandId('constraint'),
-      type: 'add_constraint',
-      params: {
-        ...params,
-        /* v8 ignore next -- the canvas only exists inside a piece tab */
-        ...(activePieceId.value === null ? {} : { piece: activePieceId.value }),
-      },
-    }),
-  );
-}
-
-function onConstraintPick(pick: ConstraintPick): void {
-  const type = activeConstraint.value!;
-  if (pendingConstraint.value !== null) return;
-
-  const result = applyConstraintPick({ type, picks: constraintPicks.value }, pick, pattern.value);
-  if (result.status === 'rejected') {
-    constraintRejectionMessage.value = constraintRejection(result.reason);
-    return;
-  }
-
-  constraintRejectionMessage.value = null;
-  constraintPicks.value = result.picks;
-
-  if (result.status === 'picking') return;
-
-  if (constraintValueSpec(type) !== null) {
-    pendingConstraint.value = result.params;
-    return;
-  }
-
-  if (dispatchConstraint(result.params)) {
-    constraintPicks.value = [];
-  }
-}
-
-function applyConstraintValue(value: ParamInput): void {
-  const params = pendingConstraint.value!;
-
-  if (dispatchConstraint({ ...params, value })) {
-    pendingConstraint.value = null;
-    constraintPicks.value = [];
-    constraintRejectionMessage.value = null;
-  }
-}
-
 function removeConstraint(id: EntityId): void {
   run(() =>
     dispatch({ id: nextCommandId('constraint'), type: 'remove_constraint', params: { id } }),
   );
-}
-
-/** One line pick: fill a slot or reject the pair with a concrete reason. */
-function onRoundCornerPick(id: EntityId): void {
-  const result = applyCornerRoundPick(cornerRoundPicks.value, id, pattern.value);
-  if (result.status === 'rejected') {
-    cornerRoundRejectionMessage.value = cornerRoundRejection(result.reason);
-    return;
-  }
-
-  cornerRoundRejectionMessage.value = null;
-  cornerRoundPicks.value = result.picks;
-  if (result.status === 'picking') cornerRoundPreviewRadius.value = null;
-}
-
-/** Apply keeps the tool armed for the next corner, like the other tools. */
-function applyCornerRound(radius: ParamInput): void {
-  const { first, second } = cornerRoundPicks.value;
-  if (first === null || second === null) return;
-
-  const applied = run(() =>
-    dispatch({
-      id: nextCommandId('corner-round'),
-      type: 'add_corner_round',
-      params: { first, second, radius },
-    }),
-  );
-  if (applied) exitCornerRound();
 }
 
 function setCornerRoundRadius(id: EntityId, radius: ParamInput): void {
@@ -1880,27 +1750,6 @@ watch(pattern, (next) => {
   ) {
     selectedInstanceId.value = null;
   }
-
-  if (activeConstraint.value === null) return;
-
-  const pruned = prunePicks(constraintPicks.value, next);
-  if (pruned.length === constraintPicks.value.length) return;
-
-  constraintPicks.value = pruned;
-  pendingConstraint.value = null;
-  constraintRejectionMessage.value = null;
-});
-
-// A picked line can disappear through delete or undo while the tool is armed.
-watch(pattern, (next) => {
-  const picks = cornerRoundPicks.value;
-  if (picks.first === null && picks.second === null) return;
-
-  const exists = (id: EntityId | null): boolean =>
-    id === null || next.entities.some((entity) => entity.id === id);
-  if (exists(picks.first) && exists(picks.second)) return;
-
-  exitCornerRound();
 });
 
 onMounted(() => {
