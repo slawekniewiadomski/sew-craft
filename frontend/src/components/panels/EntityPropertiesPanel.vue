@@ -19,17 +19,16 @@ import SidebarSection from '@/components/sidebar/SidebarSection.vue';
 import { useReferencePicker } from '@/composables/use-reference-picker';
 import { useVariablePicker } from '@/composables/use-variable-picker';
 import SidebarSelect from '@/components/sidebar/SidebarSelect.vue';
-import { formatCornerRadius, parseCornerRadius } from '@/lib/corner-round';
 import type { EntityProperties } from '@/lib/entity-properties';
-import { formatDimensionValue, type DimensionPatch } from '@/lib/dimensions';
+import type { DimensionPatch } from '@/lib/dimensions';
 import { pieceById } from '@sewcraft/geometry';
 import { ribbonIcon, type RibbonIconName } from '@/lib/ribbon-icons';
 import DimensionReferencePicker from '@/components/base/DimensionReferencePicker.vue';
 import VariablePickerList from '@/components/base/VariablePickerList.vue';
-import {} from '@/lib/formula';
 import { defaultAllowanceSummary } from '@/lib/allowance-defaults';
 
 import EntityDimensionsSection from '@/components/panels/EntityDimensionsSection.vue';
+import EntityGeometrySection from '@/components/panels/EntityGeometrySection.vue';
 import PiecePanel from '@/components/panels/PiecePanel.vue';
 
 const props = defineProps<{
@@ -71,6 +70,14 @@ const emit = defineEmits<{
   'set-all-allowances': [piece: EntityId, value: { kind: AllowanceKind; width: number } | null];
   'remove-piece': [id: EntityId];
 }>();
+
+function forwardRole(id: EntityId, role: 'cut' | 'construction' | 'annotation'): void {
+  emit('set-role', id, role);
+}
+
+function forwardCircleRadius(id: EntityId, radius: number): void {
+  emit('set-circle-radius', id, radius);
+}
 
 function forwardDimensionUpdate(id: EntityId, patch: DimensionPatch): void {
   emit('update-dimension', id, patch);
@@ -116,44 +123,12 @@ const KIND_ICONS: Record<Entity['kind'], RibbonIconName> = {
   mark: 'notch',
 };
 
-const kindNoun = computed(() => KIND_NOUNS[props.entity.kind]);
-const kindIcon = computed(() => ribbonIcon(KIND_ICONS[props.entity.kind]));
-
-/**
- * The read-only derived arc values. Empty for every other kind and for an arc
- * whose points no longer define a circle, which is exactly when the panel shows
- * its invalid state instead.
- */
-const arcRows = computed(() => {
-  const arc = props.entity.arc;
-  if (arc === null) return [];
-
-  return [
-    { key: 'radius', label: 'Radius', value: `${formatDimensionValue(arc.radius)} mm` },
-    {
-      key: 'angle',
-      label: 'Included angle',
-      value: `${formatDimensionValue(arc.includedAngle)}°`,
-    },
-    { key: 'length', label: 'Arc length', value: `${formatDimensionValue(arc.length)} mm` },
-  ];
-});
-
 function kindLabel(kind: Entity['kind']): string {
   return KIND_LABELS[kind];
 }
 
-function lengthText(length: number | null): string {
-  return length === null ? '—' : `${formatDimensionValue(length)} mm`;
-}
-
-function onRoleChange(event: Event): void {
-  emit(
-    'set-role',
-    props.entity.id,
-    (event.target as HTMLSelectElement).value as 'cut' | 'construction' | 'annotation',
-  );
-}
+const kindNoun = computed(() => KIND_NOUNS[props.entity.kind]);
+const kindIcon = computed(() => ribbonIcon(KIND_ICONS[props.entity.kind]));
 
 function onTextContent(event: Event): void {
   emit('update-text', props.entity.id, { content: (event.target as HTMLInputElement).value });
@@ -181,16 +156,6 @@ function onTextNumber(field: 'rotation' | 'fontSize', event: Event): void {
  * without emitting a command; a valid one is forwarded for the editor to turn
  * into a rim move or a driving-dimension update.
  */
-function onCircleRadiusEdit(event: Event): void {
-  const input = event.target as HTMLInputElement;
-  const radius = parseCornerRadius(input.value);
-  if (radius === null || radius === props.entity.radius) {
-    input.value = props.entity.radius === null ? '' : formatCornerRadius(props.entity.radius);
-    return;
-  }
-
-  emit('set-circle-radius', props.entity.id, radius);
-}
 </script>
 
 <template>
@@ -217,115 +182,12 @@ function onCircleRadiusEdit(event: Event): void {
       Showing what acts on this {{ kindNoun }}. Select a point to see its constraints.
     </p>
 
-    <SidebarSection label="Geometry" heading-id="entity-geometry-heading">
-      <dl class="space-y-2">
-        <SidebarField label="Kind" data-testid="entity-kind">
-          {{ kindLabel(props.entity.kind) }}
-        </SidebarField>
-
-        <template v-if="props.entity.geometry.kind === 'point'">
-          <SidebarField label="X" data-testid="entity-x">
-            {{ formatDimensionValue(props.entity.geometry.x)
-            }}<span class="text-2xs text-muted-foreground"> mm</span>
-          </SidebarField>
-          <SidebarField label="Y" data-testid="entity-y">
-            {{ formatDimensionValue(props.entity.geometry.y)
-            }}<span class="text-2xs text-muted-foreground"> mm</span>
-          </SidebarField>
-          <SidebarField label="Fixed" data-testid="entity-fixed">
-            {{ props.entity.fixed ? 'Yes' : 'No' }}
-          </SidebarField>
-        </template>
-
-        <template v-else-if="props.entity.geometry.kind === 'line'">
-          <SidebarField label="Start" mono data-testid="entity-start">
-            {{ props.entity.geometry.start }}
-          </SidebarField>
-          <SidebarField label="End" mono data-testid="entity-end">
-            {{ props.entity.geometry.end }}
-          </SidebarField>
-          <SidebarField label="Length" data-testid="entity-length">
-            {{ lengthText(props.entity.length) }}
-          </SidebarField>
-        </template>
-
-        <template v-else-if="props.entity.geometry.kind === 'arc'">
-          <SidebarField label="Start" mono data-testid="entity-start">
-            {{ props.entity.geometry.start }}
-          </SidebarField>
-          <SidebarField label="End" mono data-testid="entity-end">
-            {{ props.entity.geometry.end }}
-          </SidebarField>
-          <SidebarField label="Through" mono data-testid="entity-through">
-            {{ props.entity.geometry.through }}
-          </SidebarField>
-          <SidebarField
-            v-for="row in arcRows"
-            :key="row.key"
-            :label="row.label"
-            :data-testid="`entity-arc-${row.key}`"
-          >
-            {{ row.value }}
-          </SidebarField>
-          <p
-            v-if="arcRows.length === 0"
-            class="text-2xs text-destructive"
-            data-testid="entity-arc-invalid"
-          >
-            Invalid: the three points are collinear.
-          </p>
-        </template>
-
-        <template v-else-if="props.entity.geometry.kind === 'curve'">
-          <SidebarField
-            v-for="point in ['p0', 'p1', 'p2', 'p3'] as const"
-            :key="point"
-            :label="point"
-            mono
-          >
-            {{ props.entity.geometry[point] }}
-          </SidebarField>
-        </template>
-
-        <template v-else-if="props.entity.geometry.kind === 'circle'">
-          <SidebarField label="Centre" mono data-testid="entity-circle-center">
-            {{ props.entity.geometry.center }}
-          </SidebarField>
-          <SidebarField label="Rim" mono data-testid="entity-circle-rim">
-            {{ props.entity.geometry.rim }}
-          </SidebarField>
-          <SidebarField label="Radius">
-            <span class="inline-flex items-center gap-1">
-              <SidebarInput
-                type="number"
-                min="0.001"
-                step="0.001"
-                class="w-24 tabular-nums"
-                :value="props.entity.radius === null ? '' : formatCornerRadius(props.entity.radius)"
-                :aria-label="`Radius for circle ${props.entity.id} (mm)`"
-                data-testid="entity-circle-radius"
-                @change="onCircleRadiusEdit"
-              />
-              <span class="text-2xs text-muted-foreground">mm</span>
-            </span>
-          </SidebarField>
-        </template>
-
-        <SidebarField v-if="props.entity.kind !== 'text'" label="Role">
-          <SidebarSelect
-            class="w-28"
-            :value="props.entity.role"
-            :aria-label="`Role for ${props.entity.id}`"
-            data-testid="entity-role"
-            @change="onRoleChange"
-          >
-            <option value="cut">Cut</option>
-            <option value="construction">Construction</option>
-            <option value="annotation">Annotation</option>
-          </SidebarSelect>
-        </SidebarField>
-      </dl>
-    </SidebarSection>
+    <EntityGeometrySection
+      :entity="entity"
+      :kind-label-text="kindLabel(entity.kind)"
+      @set-role="forwardRole"
+      @set-circle-radius="forwardCircleRadius"
+    />
 
     <SidebarSection
       v-if="props.entity.text"
