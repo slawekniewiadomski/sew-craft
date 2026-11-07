@@ -1,9 +1,16 @@
 import {
+  constraintOffset,
+  constraintOrientation,
+  derivedDimensionState,
+  derivedDimensionValue,
+  dimensionState,
   dimensionValue,
   formatMillimetres,
   isLineAnchor,
   referenceCandidates,
+  usesCutEdgeAnchor,
   type CutAnchor,
+  type DerivedDistanceConstraint,
   type DimensionLayout,
   type DimensionOrientation,
   type DimensionState,
@@ -328,4 +335,84 @@ export function dimensionSegments(layout: DimensionLayout): DimensionSegment[] {
   });
 
   return segments;
+}
+
+/**
+ * One dimension row in the sidebar: a driving distance dimension or a derived cut
+ * dimension, with every string a field or label needs already formatted. The
+ * canvas and both sidebar surfaces read the same rows, so a dimension reads the
+ * same wherever it is shown.
+ */
+export interface DimensionRow {
+  id: EntityId;
+  constraint: DistanceConstraint | DerivedDistanceConstraint;
+  kind: 'distance' | 'derived';
+  readOnly: boolean;
+  entities: string[];
+  value: string;
+  field: string;
+  state: DimensionState;
+  stateLabel: string;
+  sourceId: EntityId | null;
+  orientation: DimensionOrientation;
+  /** Edge- or line-anchored dimensions are always aligned; the axis control is hidden. */
+  orientationLocked: boolean;
+  offset: string;
+}
+
+/**
+ * Every dimension in the document, in document order: the driving distance
+ * constraints first, then the derived cut dimensions, both keeping their
+ * document position. Every other constraint is left to the constraints list.
+ */
+export function dimensionRows(document: PatternDocument): DimensionRow[] {
+  return document.constraints.flatMap<DimensionRow>((constraint): DimensionRow[] => {
+    if (constraint.type === 'derived_distance') {
+      const measured = derivedDimensionValue(document, constraint);
+      const state = derivedDimensionState(document, constraint);
+      return [
+        {
+          id: constraint.id,
+          constraint,
+          kind: 'derived',
+          readOnly: true,
+          entities: [
+            `${constraint.a.edge}:${constraint.a.at}`,
+            `${constraint.b.edge}:${constraint.b.at}`,
+          ],
+          value: measured === null ? '—' : formatDimensionValue(measured),
+          field: measured === null ? '' : formatDimensionValue(measured),
+          state,
+          stateLabel: dimensionStateLabel(state),
+          sourceId: null,
+          orientation: constraintOrientation(constraint),
+          orientationLocked: usesCutEdgeAnchor(constraint),
+          offset: formatDimensionValue(constraintOffset(constraint)),
+        },
+      ];
+    }
+
+    if (constraint.type !== 'distance') return [];
+    // Point deletion cascades to constraints, so a surviving dimension resolves.
+    const measured = dimensionValue(document, constraint);
+    const state = dimensionState(document, constraint);
+    return [
+      {
+        id: constraint.id,
+        constraint,
+        kind: 'distance',
+        readOnly: false,
+        entities: [anchorLabel(document, constraint.a), anchorLabel(document, constraint.b)],
+        value: formatDimensionValue(measured ?? 0),
+        field: formatDimensionField(constraint, measured, state),
+        state,
+        stateLabel: dimensionStateLabel(state),
+        sourceId: constraint.reference ?? null,
+        orientation: constraintOrientation(constraint),
+        orientationLocked:
+          isLineAnchor(document, constraint.a) || isLineAnchor(document, constraint.b),
+        offset: formatDimensionValue(constraintOffset(constraint)),
+      },
+    ];
+  });
 }
