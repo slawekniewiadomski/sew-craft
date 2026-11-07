@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import { RouterView, useRoute } from 'vue-router';
 
-import AppBrandNav from '@/components/AppBrandNav.vue';
+import AppBrandNav from '@/components/editor/AppBrandNav.vue';
 
 const route = useRoute();
 

@@ -3,10 +3,10 @@ import { flushPromises, type VueWrapper } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
-import PatternCanvas from '@/components/PatternCanvas.vue';
-import VariablesPanel from '@/components/VariablesPanel.vue';
-import SelectionSummary from '@/components/SelectionSummary.vue';
-import CornerRoundPromptBar from '@/components/CornerRoundPromptBar.vue';
+import PatternCanvas from '@/components/canvas/PatternCanvas.vue';
+import VariablesPanel from '@/components/panels/VariablesPanel.vue';
+import SelectionSummary from '@/components/editor/SelectionSummary.vue';
+import CornerRoundPromptBar from '@/components/bars/CornerRoundPromptBar.vue';
 import { useEditorStore } from '@/stores/editor';
 import {
   canvasDown,

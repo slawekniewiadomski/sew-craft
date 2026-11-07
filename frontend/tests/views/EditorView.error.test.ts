@@ -5,8 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { createMemoryHistory, createRouter } from 'vue-router';
 
-import EditorRibbon from '@/components/EditorRibbon.vue';
-import PatternCanvas from '@/components/PatternCanvas.vue';
+import EditorRibbon from '@/components/editor/EditorRibbon.vue';
+import PatternCanvas from '@/components/canvas/PatternCanvas.vue';
 
 // Force the command bus to throw so the view's error handling is exercised.
 const state = vi.hoisted(() => ({ thrown: new Error('command exploded') as unknown }));
