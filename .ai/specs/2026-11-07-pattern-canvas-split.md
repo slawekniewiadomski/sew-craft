@@ -1,7 +1,7 @@
 # Split `PatternCanvas` by gesture
 
-Status: **in progress** — phases 1–3 landed (#141, #142, #143).
-Refs #141, #142, #143
+Status: **in progress** — phases 1–4 landed (#141–#144).
+Refs #141, #142, #143, #144
 
 ## 📝 TLDR
 
@@ -52,8 +52,11 @@ behaviour. No command, API or document changes.
 3. **Corner-round editing** → `composables/use-corner-round-edit.ts` (landed;
    `PatternCanvas` 3,463 → 3,176 lines; #143). Handles, tangent drag, inline
    radius editor, previews.
-4. **Viewport, pointer and hit testing** → `composables/use-canvas-viewport.ts`.
-   Resize observer, pan/zoom, screen/world conversion, hit extraction.
+4. **Viewport, pointer and hit testing** → `composables/use-canvas-viewport.ts`
+   (landed; `PatternCanvas` 3,176 → 3,121 lines; #144). Resize observer,
+   wheel zoom, the grid/ruler derivations, screen conversion and hit extraction.
+   Pan stays with the canvas because it shares the pointer drag lifecycle with
+   the marquee and the other gestures.
 5. **SVG layers** → `components/canvas/CanvasGrid.vue`, `CanvasEntities.vue`,
    `CanvasDimensions.vue`, `CanvasAnnotations.vue`, `CanvasPreviews.vue`.
    Only once phases 1–4 have concentrated the data each layer needs.

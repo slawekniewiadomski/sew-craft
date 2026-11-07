@@ -2,7 +2,6 @@
 import {
   allPoints,
   type ArcEntity,
-  bounds,
   type CircleEntity,
   type CurveEntity,
   type CutAnchor,
@@ -112,19 +111,7 @@ import { notchTargetAt } from '@/lib/marks';
 import { splitCandidate, type SplitCandidate } from '@/lib/split-line';
 import { snapToGrid } from '@/lib/snap';
 import { DEFAULT_TEXT_CONTENT, leaderTargetIssue } from '@/lib/text-tool';
-import {
-  fitToBounds,
-  niceStep,
-  panBy,
-  screenToWorld,
-  ticksAlong,
-  viewportTransform,
-  visibleWorldRect,
-  worldToScreen,
-  zoomAt,
-  type Size,
-  type Viewport,
-} from '@/lib/viewport';
+import { panBy, screenToWorld, worldToScreen, type Viewport } from '@/lib/viewport';
 
 import {
   derivedDimensionDrawing,
@@ -137,6 +124,7 @@ import {
   type DimensionDrawingOptions,
   type DimensionLabelView,
 } from '@/lib/pattern-canvas-dimensions';
+import { useCanvasViewport, type CanvasHit as Hit } from '@/composables/use-canvas-viewport';
 import { useCornerRoundEdit } from '@/composables/use-corner-round-edit';
 import { useDimensionGesture } from '@/composables/use-dimension-gesture';
 import { useDraftingGestures } from '@/composables/use-drafting-gestures';
@@ -160,11 +148,6 @@ import {
 } from '@/lib/pattern-canvas-views';
 import DimensionReferencePicker from '@/components/base/DimensionReferencePicker.vue';
 import VariablePickerList from '@/components/base/VariablePickerList.vue';
-
-interface Hit {
-  id: EntityId;
-  kind: string;
-}
 
 /** A bare-canvas drag that may become a rectangular selection. */
 interface MarqueeState {
@@ -262,10 +245,25 @@ const emit = defineEmits<{
   'add-centre-line': [start: EntityId, end: EntityId];
 }>();
 
-const svg = ref<SVGSVGElement | null>(null);
-const viewport = ref<Viewport>({ x: -40, y: -40, scale: 1 });
-const size = ref<Size>({ width: 800, height: 600 });
-let resizeObserver: ResizeObserver | null = null;
+const {
+  svg,
+  viewport,
+  size,
+  gridStep,
+  gridPath,
+  transform,
+  xTicks,
+  yTicks,
+  updateSize,
+  screenPoint,
+  hitEntity,
+  onWheel,
+  fit,
+} = useCanvasViewport({
+  document: () => props.document,
+  canZoom: () => marqueeState.value === null,
+});
+
 const dragState = ref<{ id: EntityId; x: number; y: number; origin: Vec2 } | null>(null);
 /** A move gesture: its start in world space and the live translation. */
 const moveDrag = ref<{ start: Vec2; dx: number; dy: number } | null>(null);
@@ -641,12 +639,6 @@ const constraintLayer = computed<ConstraintMarker[]>(() => {
   });
 });
 
-const gridStep = computed(() => niceStep(viewport.value.scale));
-const gridPath = computed(() => `M ${gridStep.value} 0 L 0 0 0 ${gridStep.value}`);
-const transform = computed(() => viewportTransform(viewport.value));
-const visible = computed(() => visibleWorldRect(viewport.value, size.value));
-const xTicks = computed(() => ticksAlong(visible.value, 'x', gridStep.value));
-const yTicks = computed(() => ticksAlong(visible.value, 'y', gridStep.value));
 const cursorClass = computed(() =>
   props.constraintActive ||
   props.roundCornerActive ||
@@ -655,6 +647,7 @@ const cursorClass = computed(() =>
     ? 'cursor-crosshair'
     : 'cursor-default',
 );
+
 const pickedPointIds = computed(
   () =>
     new Set(props.constraintPicks.filter((pick) => pick.kind === 'point').map((pick) => pick.id)),
@@ -1082,29 +1075,6 @@ function lineWidth(id: EntityId): number {
     : 2;
 }
 
-function svgRect(): DOMRect {
-  return svg.value!.getBoundingClientRect();
-}
-
-function updateSize(): void {
-  const rect = svgRect();
-  size.value = { width: rect.width, height: rect.height };
-}
-
-function screenPoint(event: { clientX: number; clientY: number }): Vec2 {
-  const rect = svgRect();
-  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
-}
-
-function hitEntity(event: Event): Hit | null {
-  const element = (event.target as Element).closest('[data-entity-id]');
-  if (!element) return null;
-  return {
-    id: element.getAttribute('data-entity-id')!,
-    kind: element.getAttribute('data-kind')!,
-  };
-}
-
 function labelClass(label: DimensionLabelView): string {
   switch (label.state) {
     case 'referenced':
@@ -1480,13 +1450,6 @@ function onPointerUp(): void {
   removePointerListeners();
 }
 
-function onWheel(event: WheelEvent): void {
-  // The rectangle must not change scale under the pointer mid-gesture.
-  if (marqueeState.value !== null) return;
-  const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
-  viewport.value = zoomAt(viewport.value, screenPoint(event), factor);
-}
-
 function onKeyDown(event: KeyboardEvent): void {
   if (event.code === 'Space' && isEditableTarget(event.target)) return;
 
@@ -1638,38 +1601,20 @@ function removePointerListeners(): void {
   window.removeEventListener('pointercancel', onPointerCancel);
 }
 
-function fit(): void {
-  const documentBounds = bounds(props.document);
-  if (documentBounds) {
-    updateSize();
-    viewport.value = fitToBounds(documentBounds, size.value);
-  }
-}
-
 function onWindowBlur(): void {
   cancelPointerInteraction();
 }
 
 onMounted(() => {
-  updateSize();
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', onWindowBlur);
-  window.addEventListener('resize', updateSize);
-  if (typeof ResizeObserver !== 'undefined') {
-    resizeObserver = new ResizeObserver(updateSize);
-    resizeObserver.observe(svg.value!);
-  }
-  fit();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown);
   window.removeEventListener('keyup', onKeyUp);
   window.removeEventListener('blur', onWindowBlur);
-  window.removeEventListener('resize', updateSize);
-  resizeObserver?.disconnect();
-  resizeObserver = null;
   removePointerListeners();
 });
 
