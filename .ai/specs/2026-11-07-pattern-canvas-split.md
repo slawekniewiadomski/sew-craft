@@ -1,7 +1,7 @@
 # Split `PatternCanvas` by gesture
 
 Status: **in progress** — phase 1 lands with this spec.
-Refs #132
+Refs #141
 
 ## 📝 TLDR
 
