@@ -11,6 +11,9 @@ import { PATTERN_SCHEMA, type PatternDocument, type TabRef } from './types.js';
  */
 export const KNOWN_PATTERN_SCHEMAS: readonly string[] = [
   PATTERN_SCHEMA,
+  // 0.9 only added the optional assembly `seams` and `finishedEdges` arrays, so a
+  // 0.8 document is a strict subset: it loads with both arrays absent.
+  'sewcraft.pattern/0.8',
   // 0.8 only added per-piece placement, so a 0.7 document is a strict subset:
   // it loads with generated placements and no coordinate changes.
   'sewcraft.pattern/0.7',

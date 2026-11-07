@@ -97,8 +97,25 @@ describe('normalizeDocument', () => {
 
     const migrated = normalizeDocument(current);
 
-    expect(migrated.schema).toBe('sewcraft.pattern/0.8');
+    expect(migrated.schema).toBe('sewcraft.pattern/0.9');
     expect(migrated.pieces).toEqual([]);
+  });
+
+  it('loads a 0.8 document with assemblies and leaves both seam arrays absent', () => {
+    const legacy = {
+      ...createEmptyDocument(),
+      schema: 'sewcraft.pattern/0.8',
+      pieces: [{ id: 'p1', edges: [], allowances: [] }],
+      assemblies: [
+        { id: 'a1', name: 'Assembly 1', instances: [{ id: 'i1', piece: 'p1', x: 0, y: 0 }] },
+      ],
+    } as LegacyPatternDocument;
+
+    const migrated = normalizeDocument(legacy);
+
+    expect(migrated.schema).toBe('sewcraft.pattern/0.9');
+    expect(migrated.assemblies[0]!.seams).toBeUndefined();
+    expect(migrated.assemblies[0]!.finishedEdges).toBeUndefined();
   });
 
   it('refuses a 0.3 document instead of migrating it', () => {
@@ -155,6 +172,7 @@ describe('normalizeDocument', () => {
 describe('known pattern schemas', () => {
   it('lists the current schema and the subsets it still reads', () => {
     expect(KNOWN_PATTERN_SCHEMAS).toEqual([
+      'sewcraft.pattern/0.9',
       'sewcraft.pattern/0.8',
       'sewcraft.pattern/0.7',
       'sewcraft.pattern/0.6',
@@ -164,6 +182,7 @@ describe('known pattern schemas', () => {
   });
 
   it('accepts the schema this build understands and the older subsets', () => {
+    expect(isKnownPatternSchema('sewcraft.pattern/0.9')).toBe(true);
     expect(isKnownPatternSchema('sewcraft.pattern/0.8')).toBe(true);
     expect(isKnownPatternSchema('sewcraft.pattern/0.7')).toBe(true);
     expect(isKnownPatternSchema('sewcraft.pattern/0.6')).toBe(true);
@@ -175,7 +194,7 @@ describe('known pattern schemas', () => {
     expect(isKnownPatternSchema('sewcraft.pattern/0.1')).toBe(false);
     expect(isKnownPatternSchema('sewcraft.pattern/0.2')).toBe(false);
     expect(isKnownPatternSchema('sewcraft.pattern/0.3')).toBe(false);
-    expect(isKnownPatternSchema('sewcraft.pattern/0.9')).toBe(false);
+    expect(isKnownPatternSchema('sewcraft.pattern/1.0')).toBe(false);
     expect(isKnownPatternSchema('')).toBe(false);
   });
 });

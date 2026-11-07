@@ -64,7 +64,7 @@ export interface MeasuredVariable extends VariableBase {
  */
 export type Variable = ValueVariable | MeasuredVariable;
 
-export const PATTERN_SCHEMA = 'sewcraft.pattern/0.8';
+export const PATTERN_SCHEMA = 'sewcraft.pattern/0.9';
 
 export type PatternSchema = typeof PATTERN_SCHEMA;
 
@@ -421,12 +421,56 @@ export interface AssemblyInstance {
   mirrored?: boolean;
 }
 
+/** How a non-sewn loop edge is finished. */
+export const FINISH_KINDS = ['hem', 'binding', 'fold', 'opening'] as const;
+
+export type FinishKind = (typeof FINISH_KINDS)[number];
+
+/**
+ * One side of a seam: a run of loop edges on one placed instance. Named
+ * `SeamRun` rather than `SeamSide`, which already names an allowance's offset
+ * side.
+ */
+export interface SeamRun {
+  /** An instance of the seam's own assembly. */
+  instance: EntityId;
+  /**
+   * Consecutive ids from that piece's `edges`, in authored loop order. The last
+   * may join the first, so a run may wrap around the loop.
+   */
+  edges: EntityId[];
+  /**
+   * Whether this side is traversed against the run's authored order, so its last
+   * edge's end meets the seam's start. Absent means forward.
+   */
+  reversed?: boolean;
+}
+
+/** Two or more sides sewn together; `sides` is ordered by layer. */
+export interface SeamMatch {
+  id: EntityId;
+  sides: SeamRun[];
+  /** A deliberate length difference (ease); downgrades a length mismatch to a warning. */
+  eased?: boolean;
+}
+
+/** An edge that is deliberately not sewn to anything. */
+export interface FinishedEdge {
+  instance: EntityId;
+  edge: EntityId;
+  kind: FinishKind;
+}
+
 /** A named layout that places instances of the pattern's pieces. */
 export interface Assembly {
   id: EntityId;
   /** Required, trimmed, 1–80 characters; defaults to "Assembly N" on creation. */
   name: string;
   instances: AssemblyInstance[];
+  /** Optional; absent means no seams. */
+  seams?: SeamMatch[];
+  /** Optional; absent means no finished edges. */
+  finishedEdges?: FinishedEdge[];
 }
 
 /** One entry of the authoritative tab order; every piece and assembly appears once. */

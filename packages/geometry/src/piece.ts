@@ -154,6 +154,27 @@ function connects(a: Vec2, b: Vec2): boolean {
 }
 
 /**
+ * The stitch polyline of every loop edge, in authored `Piece.edges` order and
+ * each edge's authored start→end direction. Corner-round bridges are excluded:
+ * they are derived segments and belong to no edge. Returns `null` when the loop
+ * does not resolve, so a caller degrades instead of using a partial loop.
+ */
+export function pieceEdgeSegments(document: PatternDocument, piece: Piece): Vec2[][] | null {
+  const segments = orientedPolylines(document, piece);
+  if (segments === null) return null;
+
+  const polylines = new Array<Vec2[] | undefined>(piece.edges.length);
+  for (const segment of segments) {
+    if (segment.edgeIndex === null) continue;
+    // The walk may run an edge backwards; undo it to restore the stored direction.
+    polylines[segment.edgeIndex] = segment.reversed ? reverse(segment.points) : [...segment.points];
+  }
+
+  // `orientedPolylines` already checked that every stored edge has a segment.
+  return polylines as Vec2[][];
+}
+
+/**
  * Validate that a selection forms one closed chain a piece can own: at least
  * three distinct cut line/curve/arc edges, no circle or construction edge, no
  * edge already in another piece, and every consecutive pair meeting at a vertex
