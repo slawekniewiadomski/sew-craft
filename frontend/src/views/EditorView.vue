@@ -45,40 +45,13 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 
 import { projectsApi } from '@/api/projects';
-import AssemblyCanvas from '@/components/canvas/AssemblyCanvas.vue';
-import AssemblyPanel from '@/components/panels/AssemblyPanel.vue';
-import CanvasDisplayMenu from '@/components/editor/CanvasDisplayMenu.vue';
-import ConstraintPromptBar from '@/components/bars/ConstraintPromptBar.vue';
-import CornerRoundPromptBar from '@/components/bars/CornerRoundPromptBar.vue';
-import MeasuredEditBar from '@/components/bars/MeasuredEditBar.vue';
-import DimensionReferencePicker from '@/components/base/DimensionReferencePicker.vue';
-import EditorRibbon from '@/components/editor/EditorRibbon.vue';
-import EditorSidebar from '@/components/editor/EditorSidebar.vue';
 import EditorTabs from '@/components/editor/EditorTabs.vue';
 import EditorTopBar from '@/components/editor/EditorTopBar.vue';
-import EntityPropertiesPanel from '@/components/panels/EntityPropertiesPanel.vue';
-import ExportDialog from '@/components/dialogs/ExportDialog.vue';
-import ConstraintsPanel from '@/components/panels/ConstraintsPanel.vue';
-import DimensionsPanel from '@/components/panels/DimensionsPanel.vue';
-import OutlinePanel from '@/components/panels/OutlinePanel.vue';
-import PatternCanvas from '@/components/canvas/PatternCanvas.vue';
-import PiecePanel from '@/components/panels/PiecePanel.vue';
-import ProjectSettingsDialog from '@/components/dialogs/ProjectSettingsDialog.vue';
+import EditorCanvas from '@/components/editor/EditorCanvas.vue';
+import EditorInspector from '@/components/editor/EditorInspector.vue';
+import EditorOverlays from '@/components/editor/EditorOverlays.vue';
+import EditorStrips from '@/components/editor/EditorStrips.vue';
 import { pruneAllowanceTargets } from '@/lib/allowance-edit';
-import RibbonIcon from '@/components/base/RibbonIcon.vue';
-import SaveConflictDialog from '@/components/dialogs/SaveConflictDialog.vue';
-import SketchToolbar from '@/components/bars/SketchToolbar.vue';
-import Pill from '@/components/sidebar/Pill.vue';
-import SidebarAction from '@/components/sidebar/SidebarAction.vue';
-import SidebarButton from '@/components/sidebar/SidebarButton.vue';
-import SidebarEmpty from '@/components/sidebar/SidebarEmpty.vue';
-import SidebarInput from '@/components/sidebar/SidebarInput.vue';
-import SidebarSection from '@/components/sidebar/SidebarSection.vue';
-import SidebarSelect from '@/components/sidebar/SidebarSelect.vue';
-import SidebarStat from '@/components/sidebar/SidebarStat.vue';
-import SelectionSummary from '@/components/editor/SelectionSummary.vue';
-import VariablesPanel from '@/components/panels/VariablesPanel.vue';
-import UpgradeDocumentDialog from '@/components/dialogs/UpgradeDocumentDialog.vue';
 import { useCommandBus } from '@/composables/use-command-bus';
 import { useReferencePicker } from '@/composables/use-reference-picker';
 import { useVariablePicker } from '@/composables/use-variable-picker';
@@ -1178,7 +1151,7 @@ onBeforeUnmount(() => {
     </div>
 
     <template v-else>
-      <EditorRibbon
+      <EditorStrips
         :mode="isAssemblyTab ? 'assembly' : 'piece'"
         :active-tool="activeTool"
         :active-constraint="activeConstraint"
@@ -1193,306 +1166,177 @@ onBeforeUnmount(() => {
         :export-hint="exportHint"
         :read-only="editor.readOnly"
         :sidebar-collapsed="collapsed"
+        :pattern="pattern"
+        :constraint-prompt="constraintPromptText"
+        :constraint-rejection="constraintRejectionMessage"
+        :constraint-value-ready="constraintValueReady"
+        :constraint-initial="constraintInitial"
+        :corner-round-active="cornerRoundActive"
+        :corner-round-prompt="cornerRoundPromptText"
+        :corner-round-rejection="cornerRoundRejectionMessage"
+        :corner-round-ready="cornerRoundReady"
+        :corner-round-initial="cornerRoundInitial"
+        :corner-round-max="cornerRoundMax"
+        :editing-measured-name="editingMeasured?.name ?? null"
+        :measured-sources="editingMeasured ? measuredSourceChips(editingMeasured.sources) : []"
+        :measured-message="measuredEditMessage"
+        :error="error"
+        :selection-status="selectionStatus"
+        :is-sketch="isSketch"
+        :sketch-target="editor.sketchTarget"
+        :sketch-arrange="sketchArrange"
         @select-tool="selectTool"
         @select-constraint="selectConstraint"
         @action="onRibbonAction"
         @toggle-sidebar="toggleCollapsed"
-      />
-
-      <ConstraintPromptBar
-        v-if="activeConstraint"
-        :type="activeConstraint"
-        :prompt="constraintPromptText"
-        :rejection="constraintRejectionMessage"
-        :value-ready="constraintValueReady"
-        :initial-value="constraintInitial"
-        :document="pattern"
-        @apply="applyConstraintValue"
-        @cancel="exitConstraint"
-      />
-
-      <CornerRoundPromptBar
-        v-if="cornerRoundActive"
-        :prompt="cornerRoundPromptText"
-        :rejection="cornerRoundRejectionMessage"
-        :ready="cornerRoundReady"
-        :initial-value="cornerRoundInitial"
-        :max-radius="cornerRoundMax ?? 0"
-        :document="pattern"
-        @apply="applyCornerRound"
-        @cancel="exitCornerRound"
-        @preview="cornerRoundPreviewRadius = $event"
-      />
-
-      <MeasuredEditBar
-        v-if="editingMeasured"
-        :name="editingMeasured.name"
-        :sources="measuredSourceChips(editingMeasured.sources)"
-        :message="measuredEditMessage"
-        @remove="onMeasuredEdgeToggle"
-        @done="endMeasuredEdit"
-        @cancel="cancelMeasuredEdit"
-      />
-
-      <p v-if="error" class="border-b px-3 py-1 text-sm text-destructive">{{ error }}</p>
-
-      <p class="sr-only" aria-live="polite" data-testid="selection-status">
-        {{ selectionStatus }}
-      </p>
-
-      <SketchToolbar
-        v-if="isSketch"
-        :pieces="pattern.pieces"
-        :target="editor.sketchTarget"
-        :arrange="sketchArrange"
-        :read-only="editor.readOnly"
-        @update:target="onSketchTarget"
-        @update:arrange="sketchArrange = $event"
+        @apply-constraint="applyConstraintValue"
+        @cancel-constraint="exitConstraint"
+        @apply-corner="applyCornerRound"
+        @cancel-corner="exitCornerRound"
+        @preview-corner="cornerRoundPreviewRadius = $event"
+        @remove-measured="onMeasuredEdgeToggle"
+        @done-measured="endMeasuredEdit"
+        @cancel-measured="cancelMeasuredEdit"
+        @update:sketch-target="onSketchTarget"
+        @update:sketch-arrange="sketchArrange = $event"
         @fit="fit"
       />
 
       <div class="flex min-h-0 flex-1">
-        <div class="relative min-h-0 flex-1 p-2">
-          <p
-            v-if="pattern.tabs.length === 0"
-            class="flex h-full items-center justify-center text-sm text-muted-foreground"
-            data-testid="no-tabs-empty"
-          >
-            Create a piece to start
-          </p>
-          <AssemblyCanvas
-            v-else-if="isAssemblyTab && activeAssembly"
-            :document="assemblyDocument"
-            :assembly-id="activeAssembly.id"
-            :pieces="pattern.pieces"
-            :selected-instance-id="selectedInstanceId"
-            :picker-open="assemblyPickerOpen"
-            :fit-token="fitToken"
-            :read-only="editor.readOnly"
-            :show-cut-shapes="display.assembly.cutShapes"
-            :show-allowances="display.assembly.allowances"
-            :show-stitch="display.assembly.stitch"
-            :show-folds="display.assembly.folds"
-            :show-notches="display.assembly.notches"
-            :show-labels="display.assembly.labels"
-            @select="selectInstance"
-            @move="onMoveInstance"
-            @nudge="onNudgeInstance"
-            @remove="onRemoveInstance"
-            @add-piece="onAddInstance"
-            @close-picker="assemblyPickerOpen = false"
-          />
-          <PatternCanvas
-            v-else
-            :selected-entity-ids="selectedEntityIds"
-            v-model:selected-dimension-ids="selectedDimensionIds"
-            v-model:selected-allowance-targets="selectedAllowanceTargets"
-            :document="visibleDocument"
-            :tool="activeTool"
-            :fit-token="fitToken"
-            :show-allowances="display.piece.allowances"
-            :show-constraints="display.piece.constraints"
-            :show-dimensions="display.piece.dimensions"
-            :constraint-active="activeConstraint !== null"
-            :constraint-picks="constraintPicks"
-            :round-corner-active="cornerRoundActive"
-            :round-corner-picks="cornerRoundPicks"
-            :corner-round-preview-radius="cornerRoundPreviewRadius"
-            :read-only="editor.readOnly"
-            :active-piece-id="activePieceId"
-            :move-mode="isSketch && sketchArrange"
-            :measure-active="editingMeasured !== null"
-            @measure-pick="onMeasuredEdgeToggle"
-            :highlighted-entity-ids="measuredHighlightIds"
-            @update:selected-entity-ids="onSelectEntities"
-            @move-piece="onMovePiece"
-            @activate-piece="onSketchTarget"
-            @cross-piece="onSketchTarget"
-            @move-point="onMovePoint"
-            @add-text="onAddText"
-            @add-notch="onAddNotch"
-            @add-centre-line="onAddCentreLine"
-            @add-point="onAddPoint"
-            @add-point-on-line="onAddPointOnLine"
-            @add-point-midpoint="onAddPointMidpoint"
-            @split-line="onSplitLine"
-            @add-line="onAddLine"
-            @add-curve="onAddCurve"
-            @add-arc="onAddArc"
-            @add-circle="onAddCircle"
-            @add-rectangle="onAddRectangle"
-            @constraint-pick="onConstraintPick"
-            @round-corner-pick="onRoundCornerPick"
-            @set-corner-round-radius="setCornerRoundRadius"
-            @add-dimension="onAddDimension"
-            @add-cut-dimension="onAddCutDimension"
-            @update-dimension="onUpdateDimension"
-            @marquee-change="marqueeActive = $event"
-          />
-          <div v-if="pattern.tabs.length > 0" class="absolute bottom-3 right-3 z-20">
-            <CanvasDisplayMenu
-              :items="displayItems"
-              :values="displayValues"
-              @toggle="toggleDisplay"
-            />
-          </div>
-        </div>
+        <EditorCanvas
+          v-model:selected-entity-ids="selectedEntityIds"
+          v-model:selected-dimension-ids="selectedDimensionIds"
+          v-model:selected-allowance-targets="selectedAllowanceTargets"
+          :pattern="pattern"
+          :visible-document="visibleDocument"
+          :assembly-document="assemblyDocument"
+          :active-assembly="activeAssembly"
+          :is-assembly-tab="isAssemblyTab"
+          :is-sketch="isSketch"
+          :active-tool="activeTool"
+          :active-piece-id="activePieceId"
+          :read-only="editor.readOnly"
+          :selected-instance-id="selectedInstanceId"
+          :assembly-picker-open="assemblyPickerOpen"
+          :fit-token="fitToken"
+          :sketch-arrange="sketchArrange"
+          :display="display"
+          :display-items="displayItems"
+          :display-values="displayValues"
+          :active-constraint="activeConstraint"
+          :constraint-picks="constraintPicks"
+          :corner-round-active="cornerRoundActive"
+          :corner-round-picks="cornerRoundPicks"
+          :corner-round-preview-radius="cornerRoundPreviewRadius"
+          :measured-editing="editingMeasured !== null"
+          :measured-highlight-ids="measuredHighlightIds"
+          @toggle-display="toggleDisplay"
+          @select-instance="selectInstance"
+          @move-instance="onMoveInstance"
+          @nudge-instance="onNudgeInstance"
+          @remove-instance="onRemoveInstance"
+          @add-instance="onAddInstance"
+          @close-picker="assemblyPickerOpen = false"
+          @move-piece="onMovePiece"
+          @activate-piece="onSketchTarget"
+          @cross-piece="onSketchTarget"
+          @move-point="onMovePoint"
+          @add-text="onAddText"
+          @add-notch="onAddNotch"
+          @add-centre-line="onAddCentreLine"
+          @add-point="onAddPoint"
+          @add-point-on-line="onAddPointOnLine"
+          @add-point-midpoint="onAddPointMidpoint"
+          @split-line="onSplitLine"
+          @add-line="onAddLine"
+          @add-curve="onAddCurve"
+          @add-arc="onAddArc"
+          @add-circle="onAddCircle"
+          @add-rectangle="onAddRectangle"
+          @constraint-pick="onConstraintPick"
+          @round-corner-pick="onRoundCornerPick"
+          @set-corner-round-radius="setCornerRoundRadius"
+          @add-dimension="onAddDimension"
+          @add-cut-dimension="onAddCutDimension"
+          @update-dimension="onUpdateDimension"
+          @marquee-change="marqueeActive = $event"
+          @measure-pick="onMeasuredEdgeToggle"
+          @update:selected-entity-ids="onSelectEntities"
+        />
 
-        <EditorSidebar
+        <EditorInspector
           :width="width"
           :collapsed="collapsed"
-          :counts="panelCounts"
+          :panel-counts="panelCounts"
           :pattern-id="props.id"
           :mode="isAssemblyTab ? 'assembly' : 'piece'"
           :read-only="editor.readOnly"
+          :selected-dimension-ids="selectedDimensionIds"
+          :selected-entity-ids="selectedEntityIds"
+          :selected-entities="selectedEntities"
+          :delete-disabled="orphanCandidates.length > 0"
+          :delete-hint="orphanHint"
+          :measure-label="measureLabel"
+          :measure-disabled="measuredSelection.chain === null"
+          :measure-hint="measuredSelection.problem"
+          :selected-entity="selectedEntity ?? null"
+          :pattern="pattern"
+          :active-piece="activePiece"
+          :active-piece-summary="activePieceSummary"
+          :selected-allowance-targets="selectedAllowanceTargets"
+          :default-allowance="defaultAllowance"
+          :active-piece-marks="activePieceMarks"
+          :active-assembly="activeAssembly"
+          :selected-instance-id="selectedInstanceId"
+          :edges="edges"
+          :selected-ids="selectedIds"
+          :selected-dimension-id-set="selectedDimensionIdSet"
+          :highlighted-variable-slug="highlightedVariableSlug"
+          :editing-measured-slug="editingMeasuredSlug"
+          :measured-chain-available="measuredSelection.chain !== null"
+          :active-tool-label="activeToolLabel"
+          :journal-length="journal.length"
+          :cut-edge-count="cutEdgeCount"
+          :other-constraints="otherConstraints"
           @update:width="setWidth"
           @update:collapsed="collapsed = $event"
-        >
-          <template #properties>
-            <SelectionSummary
-              v-if="selectedDimensionIds.length > 0 || selectedEntityIds.length > 1"
-              :entities="selectedEntities"
-              :dimensions="selectedDimensionIds.length"
-              :delete-disabled="orphanCandidates.length > 0"
-              :delete-hint="orphanHint"
-              :measure-label="measureLabel"
-              :measure-disabled="measuredSelection.chain === null"
-              :measure-hint="measuredSelection.problem"
-              @delete="deleteSelected"
-              @measure="onMeasureSelection"
-            />
-
-            <EntityPropertiesPanel
-              v-else-if="selectedEntity"
-              :document="pattern"
-              :entity="selectedEntity"
-              @set-construction="convert"
-              @update-dimension="onUpdateDimension"
-              @remove-constraint="removeConstraint"
-              @set-corner-round-radius="setCornerRoundRadius"
-              @remove-corner-round="removeCornerRound"
-              @set-circle-radius="onSetCircleRadius"
-              @update-piece="onUpdatePiece"
-              @set-piece-default="onSetPieceDefault"
-              @set-piece-allowance="onSetPieceAllowance"
-              @set-all-allowances="onSetAllAllowances"
-              @set-piece-corner-allowance="onSetPieceCornerAllowance"
-              @apply-allowances="onApplyAllowances"
-              @remove-piece="onRemovePiece"
-              @set-role="onSetRole"
-              @update-text="onUpdateText"
-            />
-
-            <SidebarEmpty
-              v-else
-              icon="select"
-              message="Nothing selected"
-              hint="Select a point, line, curve, arc, circle or dimension on the canvas or in a drawer."
-              data-testid="properties-empty"
-            />
-          </template>
-
-          <template #stats>
-            <SidebarStat data-testid="workspace-summary">
-              <span data-testid="active-tool">{{ activeToolLabel }}</span>
-              <span aria-hidden="true">·</span>
-              <span>{{ journal.length }} command(s)</span>
-              <span aria-hidden="true">·</span>
-              <span>{{ cutEdgeCount }} cut edge(s)</span>
-            </SidebarStat>
-          </template>
-
-          <template #pieces>
-            <PiecePanel
-              v-if="activePiece && activePieceSummary"
-              :summary="activePieceSummary"
-              :piece="activePiece"
-              :document="pattern"
-              :selected-targets="selectedAllowanceTargets"
-              :default-allowance="defaultAllowance"
-              :inherited-default="defaultAllowance"
-              :label="activePiece.name ?? 'Piece'"
-              prefix="piece-drawer"
-              :marks="activePieceMarks"
-              @update-piece="onUpdatePiece"
-              @set-piece-default="onSetPieceDefault"
-              @set-piece-allowance="onSetPieceAllowance"
-              @set-all-allowances="onSetAllAllowances"
-              @set-piece-corner-allowance="onSetPieceCornerAllowance"
-              @apply-allowances="onApplyAllowances"
-              @remove-piece="onRemovePiece"
-              @set-cut-loop="setCutLoop"
-              @clear-cut-loop="clearCutLoop"
-              @delete-mark="onDeleteMark"
-              @set-notch-depth="onSetNotchDepth"
-            />
-            <SidebarEmpty
-              v-else
-              icon="piece"
-              message="No piece tab is active"
-              hint="Use the + menu to create a piece."
-              data-testid="pieces-empty"
-            />
-          </template>
-
-          <template #assembly>
-            <AssemblyPanel
-              :document="pattern"
-              :assembly="activeAssembly!"
-              :selected-instance-id="selectedInstanceId"
-              :read-only="editor.readOnly"
-              @update-assembly="onUpdateAssembly"
-              @update-instance="onUpdateInstance"
-              @update-piece="onUpdatePiece"
-              @set-default="onSetPieceDefault"
-              @open-piece="openPieceTab"
-              @remove-instance="onRemoveInstance"
-            />
-          </template>
-
-          <template #outline>
-            <OutlinePanel
-              :edges="edges"
-              :selected-ids="selectedIds"
-              @select="onOutlineSelect"
-              @convert="convert"
-            />
-          </template>
-
-          <template #dimensions>
-            <DimensionsPanel
-              :document="pattern"
-              :selected-ids="selectedDimensionIdSet"
-              @select="onDimensionSelect"
-              @update="onUpdateDimension"
-              @remove="removeConstraint"
-            />
-          </template>
-
-          <template #variables>
-            <VariablesPanel
-              :document="pattern"
-              :read-only="editor.readOnly"
-              @create="onAddVariable"
-              @rename="onRenameVariable"
-              @set-value="onSetVariableValue"
-              @set-unit="onSetVariableUnit"
-              @set-comment="onSetVariableComment"
-              @remove="onRemoveVariable"
-              :can-measure="measuredSelection.chain !== null"
-              :active-slug="highlightedVariableSlug"
-              :editing-slug="editingMeasuredSlug"
-              :compact="width < 420"
-              @create-measured="onMeasureSelection"
-              @highlight="onHighlightVariable"
-              @edit-measured="startMeasuredEdit"
-            />
-          </template>
-
-          <template #constraints>
-            <ConstraintsPanel :constraints="otherConstraints" @remove="removeConstraint" />
-          </template>
-        </EditorSidebar>
+          @delete-selected="deleteSelected"
+          @measure-selection="onMeasureSelection"
+          @convert="convert"
+          @update-dimension="onUpdateDimension"
+          @remove-constraint="removeConstraint"
+          @set-corner-round-radius="setCornerRoundRadius"
+          @remove-corner-round="removeCornerRound"
+          @set-circle-radius="onSetCircleRadius"
+          @update-piece="onUpdatePiece"
+          @set-piece-default="onSetPieceDefault"
+          @set-piece-allowance="onSetPieceAllowance"
+          @set-all-allowances="onSetAllAllowances"
+          @set-piece-corner-allowance="onSetPieceCornerAllowance"
+          @apply-allowances="onApplyAllowances"
+          @remove-piece="onRemovePiece"
+          @set-role="onSetRole"
+          @update-text="onUpdateText"
+          @set-cut-loop="setCutLoop"
+          @clear-cut-loop="clearCutLoop"
+          @delete-mark="onDeleteMark"
+          @set-notch-depth="onSetNotchDepth"
+          @update-assembly="onUpdateAssembly"
+          @update-instance="onUpdateInstance"
+          @open-piece="openPieceTab"
+          @remove-instance="onRemoveInstance"
+          @select-outline="onOutlineSelect"
+          @select-dimension="onDimensionSelect"
+          @create-variable="onAddVariable"
+          @rename-variable="onRenameVariable"
+          @set-variable-value="onSetVariableValue"
+          @set-variable-unit="onSetVariableUnit"
+          @set-variable-comment="onSetVariableComment"
+          @remove-variable="onRemoveVariable"
+          @create-measured="onMeasureSelection"
+          @highlight-variable="onHighlightVariable"
+          @edit-measured="startMeasuredEdit"
+        />
       </div>
 
       <EditorTabs
@@ -1507,39 +1351,29 @@ onBeforeUnmount(() => {
         @reorder="onReorderTabs"
       />
 
-      <ExportDialog
-        v-if="exportOpen && activePiece"
-        :piece-label="activePieceLabel"
-        :settings="display.export"
-        @update:settings="updateExportSettings"
-        @download="downloadSvg"
-        @cancel="exportOpen = false"
-      />
-
-      <SaveConflictDialog
-        v-if="conflict"
-        :saved-at="conflict.savedAt"
-        @reload="reloadFromConflict"
-        @overwrite="overwrite"
-      />
-
-      <ProjectSettingsDialog
-        v-if="settingsOpen && project"
+      <EditorOverlays
+        :export-open="exportOpen"
+        :active-piece="activePiece"
+        :active-piece-label="activePieceLabel"
+        :export-settings="display.export"
+        :conflict="conflict"
+        :settings-open="settingsOpen"
         :project="project"
-        :allowance="defaultAllowance"
+        :default-allowance="defaultAllowance"
         :read-only="editor.readOnly"
-        :saving="settingsSaving"
-        :error="settingsError"
-        @save="onSaveSettings"
-        @cancel="settingsOpen = false"
-      />
-
-      <UpgradeDocumentDialog
-        v-if="pendingUpgrade"
-        :saved-schema="pendingUpgrade.schema"
+        :settings-saving="settingsSaving"
+        :settings-error="settingsError"
+        :pending-upgrade="pendingUpgrade"
         :editor-schema="PATTERN_SCHEMA"
-        @readonly="openReadOnlyDocument"
-        @cancel="cancelUpgrade"
+        @update:export-settings="updateExportSettings"
+        @download="downloadSvg"
+        @close-export="exportOpen = false"
+        @reload-conflict="reloadFromConflict"
+        @overwrite="overwrite"
+        @save-settings="onSaveSettings"
+        @close-settings="settingsOpen = false"
+        @open-readonly="openReadOnlyDocument"
+        @cancel-upgrade="cancelUpgrade"
       />
     </template>
   </section>
