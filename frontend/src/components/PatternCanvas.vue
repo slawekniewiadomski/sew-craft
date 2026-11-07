@@ -198,30 +198,23 @@ import {
   type Viewport,
 } from '@/lib/viewport';
 
+import {
+  arcViews,
+  bandCutLoopOf,
+  bandPieceOf,
+  bandRegionsOf,
+  circleViews,
+  curveViews,
+  lineViews,
+  pieceViewsOf,
+  regionClass as regionClassFor,
+  regionViewsOf,
+  seamViews,
+  type LineView,
+  type PieceView,
+  type RegionView,
+} from '@/lib/pattern-canvas-views';
 import DimensionReferencePicker from './DimensionReferencePicker.vue';
-
-interface LineView {
-  line: LineEntity;
-  start: PointEntity;
-  end: PointEntity;
-}
-
-interface CurveView {
-  curve: CurveEntity;
-  d: string;
-}
-
-interface ArcView {
-  arc: ArcEntity;
-  d: string;
-}
-
-interface CircleView {
-  circle: CircleEntity;
-  cx: number;
-  cy: number;
-  r: number;
-}
 
 interface Hit {
   id: EntityId;
@@ -240,25 +233,6 @@ interface MarqueeState {
 
 /** Screen pixels the pointer must travel before a click becomes a marquee. */
 const MARQUEE_THRESHOLD = 4;
-
-interface SeamView {
-  edge: EntityId;
-  d: string;
-  selfIntersects: boolean;
-}
-
-/** A piece's derived loops, ready to draw. */
-interface PieceView {
-  id: EntityId;
-  edges: EntityId[];
-  cut: string;
-  stitch: string;
-  folds: string[];
-  /** Cut and stitch loops as one even-odd path, for the allowance band fill. */
-  band: string | null;
-  selfIntersects: boolean;
-  selected: boolean;
-}
 
 /** A fully resolved dimension, ready to render in world and screen space. */
 interface DimensionDrawing {
@@ -1069,170 +1043,50 @@ const marqueeDimensionCandidates = computed(() => {
   return new Set(dimensionsInRect(props.document, rect, rectMode(state.start.x, state.current.x)));
 });
 
-const lines = computed(() =>
-  props.document.entities
-    .filter((entity): entity is LineEntity => entity.kind === 'line')
-    .flatMap((line): LineView[] => {
-      const start = pointById.value.get(line.start);
-      const end = pointById.value.get(line.end);
-      if (!start || !end) return [];
-      return [{ line, start, end }];
-    }),
-);
+const lines = computed(() => lineViews(props.document, pointById.value));
 
-const curves = computed(() =>
-  props.document.entities
-    .filter((entity): entity is CurveEntity => entity.kind === 'curve')
-    .flatMap((curve): CurveView[] => {
-      const resolved = [curve.p0, curve.p1, curve.p2, curve.p3]
-        .map((id) => pointById.value.get(id))
-        .filter((point): point is PointEntity => point !== undefined);
-      if (resolved.length !== 4) return [];
-      const [p0, p1, p2, p3] = resolved;
-      return [{ curve, d: curvePath([p0!, p1!, p2!, p3!]) }];
-    }),
-);
+const curves = computed(() => curveViews(props.document, pointById.value));
 
-/**
- * Committed arcs, each drawn as one `A` command. An arc whose three points no
- * longer define a circle is skipped rather than thrown, so an arc invalidated by
- * a constraint solve simply disappears from the canvas.
- */
-const arcs = computed(() =>
-  props.document.entities
-    .filter((entity): entity is ArcEntity => entity.kind === 'arc')
-    .flatMap((arc): ArcView[] => {
-      const resolved = [arc.start, arc.end, arc.through]
-        .map((id) => pointById.value.get(id))
-        .filter((point): point is PointEntity => point !== undefined);
-      if (resolved.length !== 3) return [];
+const arcs = computed(() => arcViews(props.document, pointById.value));
 
-      const start = resolved[0]!;
-      const end = resolved[1]!;
-      const through = resolved[2]!;
-      const geometry = arcThroughPoints(start, end, through);
-      if (geometry === null) return [];
-
-      return [{ arc, d: svgArcCommand(geometry, start, end) }];
-    }),
-);
-
-/**
- * Committed circles whose centre and rim both resolve to points and whose radius
- * is renderable. A degenerate or dangling circle is skipped, exactly as the
- * export layer skips it. Reading the drag-aware `pointById` keeps the circle
- * following a live point drag.
- */
-const circles = computed(() =>
-  props.document.entities
-    .filter((entity): entity is CircleEntity => entity.kind === 'circle')
-    .flatMap((circle): CircleView[] => {
-      const center = pointById.value.get(circle.center);
-      const rim = pointById.value.get(circle.rim);
-      if (center === undefined || rim === undefined) return [];
-      const r = Math.hypot(rim.x - center.x, rim.y - center.y);
-      if (r < MIN_RADIUS) return [];
-      return [{ circle, cx: center.x, cy: center.y, r }];
-    }),
-);
+const circles = computed(() => circleViews(props.document, pointById.value));
 
 /**
  * Seam allowances are a render-only offset layer: hidden entirely when the
  * presentation toggle is off, and never part of the document the UI mutates.
  */
-const seams = computed<SeamView[]>(() => {
-  if (!props.showAllowances) return [];
-  return seamAllowancePaths(props.document).map((allowance) => ({
-    edge: allowance.edge,
-    d: polylinePath(allowance.path),
-    selfIntersects: allowance.selfIntersections.length > 0,
-  }));
-});
-
-/** A closed SVG path for a derived loop; every caller passes a resolved loop. */
-function closedLoopPath(points: readonly Vec2[]): string {
-  return `${polylinePath([...points])} Z`;
-}
-
-/** A region ready to draw, with its selection and hover state resolved. */
-interface RegionView {
-  key: string;
-  d: string;
-  target: BandTarget;
-  selected: boolean;
-  hovered: boolean;
-}
+const seams = computed(() => seamViews(props.document, props.showAllowances));
 
 /** The one piece the canvas shows: the active one, or the document's only piece. */
-const bandPiece = computed<Piece | null>(
-  () =>
-    props.document.pieces.find((piece) => piece.id === props.activePieceId) ??
-    props.document.pieces[0] ??
-    null,
-);
+const bandPiece = computed<Piece | null>(() => bandPieceOf(props.document, props.activePieceId));
 
 /** The allowance band parted into selectable regions. */
-const bandRegions = computed<BandRegion[]>(() =>
-  bandPiece.value === null ? [] : pieceBandRegions(props.document, bandPiece.value),
-);
+const bandRegions = computed<BandRegion[]>(() => bandRegionsOf(props.document, bandPiece.value));
 
 /** The piece's cut loop, for the hover that reveals the region boundaries. */
-const bandCutLoop = computed(() =>
-  bandPiece.value === null ? null : pieceCutLoop(props.document, bandPiece.value),
-);
+const bandCutLoop = computed(() => bandCutLoopOf(props.document, bandPiece.value));
 
-const regionViews = computed<RegionView[]>(() => {
-  if (!props.showAllowances) return [];
-  return bandRegions.value.map((region) => {
-    const key = bandTargetKey(region.target);
-    return {
-      key,
-      target: region.target,
-      d: closedLoopPath(region.polygon),
-      selected: props.selectedAllowanceTargets.some((target) => bandTargetKey(target) === key),
-      hovered: hoveredRegion.value !== null && bandTargetKey(hoveredRegion.value) === key,
-    };
-  });
-});
+const regionViews = computed<RegionView[]>(() =>
+  regionViewsOf(bandRegions.value, {
+    showAllowances: props.showAllowances,
+    selectedTargets: props.selectedAllowanceTargets,
+    hovered: hoveredRegion.value,
+    bandHovered: bandHovered.value,
+    keyOf: bandTargetKey,
+  }),
+);
 
 /** A region draws its boundary while the piece is hovered, and fills once picked. */
 function regionClass(region: RegionView): string {
-  if (region.selected) return 'fill-primary/30 stroke-primary';
-  if (region.hovered) return 'fill-primary/20 stroke-primary';
-  return bandHovered.value
-    ? 'fill-transparent stroke-primary/40'
-    : 'fill-transparent stroke-transparent';
+  return regionClassFor(region, bandHovered.value);
 }
 
-/**
- * Every piece's derived geometry. Loops are recomputed from the document on
- * each read; nothing here is stored or fed back into the document.
- */
+/** Every piece's derived geometry, ready to draw. */
 const pieceViews = computed<PieceView[]>(() =>
-  props.document.pieces.flatMap((piece: Piece): PieceView[] => {
-    const cut = pieceCutLoop(props.document, piece);
-    if (cut === null) return [];
-    const stitch = pieceLoop(props.document, piece)!;
-
-    const cutPath = closedLoopPath(cut.points);
-    const stitchPath = closedLoopPath(stitch.points);
-    return [
-      {
-        id: piece.id,
-        edges: piece.edges,
-        cut: cutPath,
-        stitch: stitchPath,
-        folds: pieceFoldLines(props.document, piece).map((fold) => closedLoopPath(fold)),
-        band:
-          props.showAllowances && cutPath !== '' && stitchPath !== ''
-            ? `${cutPath} ${stitchPath}`
-            : null,
-        selfIntersects: cut.selfIntersections.length > 0,
-        selected:
-          piece.id === props.selectedPieceId ||
-          piece.edges.some((edge) => props.selectedEntityIds.includes(edge)),
-      },
-    ];
+  pieceViewsOf(props.document, {
+    showAllowances: props.showAllowances,
+    selectedPieceId: props.selectedPieceId,
+    selectedEntityIds: props.selectedEntityIds,
   }),
 );
 
