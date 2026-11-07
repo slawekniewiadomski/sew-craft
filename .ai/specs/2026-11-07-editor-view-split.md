@@ -1,6 +1,6 @@
 # Split `EditorView` by domain
 
-Status: **in progress** — phase 1 landed with the spec (#133), phase 2 follows.
+Status: **in progress** — phases 1–2 landed (#133, #134), phase 3 follows.
 Refs #132
 
 ## 📝 TLDR
@@ -51,10 +51,10 @@ ones assume the earlier boundaries exist.
    `pendingUpgrade`, `conflict`, `dialogOpen`, `saveBarState`, the autosave
    scheduler, `loadProject`, `applySnapshot`, `persist`, `save`, conflict and
    upgrade actions, and the unload/visibility/route guards.
-2. **Measured variables & editing** → `composables/use-measured-edit.ts` (this PR)
+2. **Measured variables & editing** → `composables/use-measured-edit.ts` (landed)
    (~250 lines). Highlight, selection chain, start/end/cancel, edge toggling and
    the measured chips.
-3. **Constraints & corner rounds** → `composables/use-tool-prompts.ts` (~200).
+3. **Constraints & corner rounds** → `composables/use-tool-prompts.ts` (this PR) (~200).
    Active constraint, picks, prompt/value derivations and the apply/exit paths.
 4. **Assembly instances** → `composables/use-assembly-editing.ts` (~160).
    Instance selection, nudge timer, move/add/remove/transform/update.
