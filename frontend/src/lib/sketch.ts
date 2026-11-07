@@ -1,4 +1,21 @@
-import type { Command, Vec2 } from '@sewcraft/geometry';
+import {
+  piecePlacement,
+  type Command,
+  type EntityId,
+  type PatternDocument,
+  type Vec2,
+} from '@sewcraft/geometry';
+
+/**
+ * The editor state {@link localizeForSketch} reads: whether the Sketch canvas is
+ * showing, the piece it targets, and the document that piece lives in. Structural
+ * rather than the Pinia store type, so this module stays free of stores.
+ */
+export interface SketchLocalizationSource {
+  document: PatternDocument;
+  sketchView: boolean;
+  sketchTarget: EntityId | null;
+}
 
 /**
  * Commands whose params carry a position in the space the canvas is showing.
@@ -25,4 +42,16 @@ export function localizeCommand(command: Command, offset: Vec2): Command {
 export function localizeCommands(commands: Command[], offset: Vec2): Command[] {
   if (offset.x === 0 && offset.y === 0) return commands;
   return commands.map((command) => localizeCommand(command, offset));
+}
+
+/**
+ * Translate coordinate-bearing commands into the sketch target's local space.
+ * Outside the Sketch canvas, or with no target, commands pass through.
+ */
+export function localizeForSketch(
+  editor: SketchLocalizationSource,
+  commands: Command[],
+): Command[] {
+  if (!editor.sketchView || editor.sketchTarget === null) return commands;
+  return localizeCommands(commands, piecePlacement(editor.document, editor.sketchTarget));
 }
