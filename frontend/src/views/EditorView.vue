@@ -64,11 +64,7 @@ import OutlinePanel from '@/components/panels/OutlinePanel.vue';
 import PatternCanvas from '@/components/canvas/PatternCanvas.vue';
 import PiecePanel from '@/components/panels/PiecePanel.vue';
 import ProjectSettingsDialog from '@/components/dialogs/ProjectSettingsDialog.vue';
-import {
-  allowanceEditCommands,
-  pruneAllowanceTargets,
-  type BulkAllowanceEdit,
-} from '@/lib/allowance-edit';
+import { pruneAllowanceTargets } from '@/lib/allowance-edit';
 import RibbonIcon from '@/components/base/RibbonIcon.vue';
 import SaveConflictDialog from '@/components/dialogs/SaveConflictDialog.vue';
 import SketchToolbar from '@/components/bars/SketchToolbar.vue';
@@ -87,7 +83,7 @@ import { useCommandBus } from '@/composables/use-command-bus';
 import { useReferencePicker } from '@/composables/use-reference-picker';
 import { useVariablePicker } from '@/composables/use-variable-picker';
 import { useSidebarLayout } from '@/composables/use-sidebar-layout';
-import { defaultAllowanceSummary, type AllowanceChoice } from '@/lib/allowance-defaults';
+import { defaultAllowanceSummary } from '@/lib/allowance-defaults';
 import { parseAllowanceWidth } from '@/lib/allowance-width';
 import { formulaIssue, insertVariableToken, variableOptions, variableQuery } from '@/lib/formula';
 import { nextCommandId } from '@/lib/command-ids';
@@ -121,13 +117,11 @@ import type { RibbonAction } from '@/lib/editor-ribbon';
 import type { PanelId } from '@/lib/editor-panels';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 import { entityProperties } from '@/lib/entity-properties';
-import { textContentError } from '@/lib/text-tool';
 import {
   edgeLabel,
   canonicalCutAnchors,
   canEditEntity,
   findDerivedDimension,
-  pieceCreationFromSelection,
   pieceForEntity,
   pieceLabel,
   pieceMarkRows,
@@ -147,6 +141,7 @@ import type { ProjectSettingsDraft } from '@/components/dialogs/ProjectSettingsD
 import { assemblyTab, nextPieceColor, pieceTab, tabLabel, writePersistedTab } from '@/lib/tabs';
 import { useAssemblyEditing } from '@/composables/use-assembly-editing';
 import { useMeasuredEdit } from '@/composables/use-measured-edit';
+import { usePieceEditing } from '@/composables/use-piece-editing';
 import { useProjectSession } from '@/composables/use-project-session';
 import { useSketchCommands } from '@/composables/use-sketch-commands';
 import { useToolPrompts } from '@/composables/use-tool-prompts';
@@ -771,67 +766,37 @@ function openPieceTab(piece: EntityId): void {
   setActiveTab(pieceTab(piece));
 }
 
-/** Capture the selected closed chain as this piece's loop. */
-function setCutLoop(pieceId: EntityId): void {
-  const result = pieceCreationFromSelection(pattern.value, selectedEntityIds.value, pieceId);
-  if (!result.ok) {
-    error.value = result.message;
-    return;
-  }
-  if (
-    run(() =>
-      dispatch({
-        id: nextCommandId('loop'),
-        type: 'set_piece_loop',
-        params: { piece: pieceId, edges: result.edges, allowance: 'default' },
-      }),
-    )
-  ) {
-    setActiveTab(pieceTab(pieceId));
-  }
-}
-
-function clearCutLoop(pieceId: EntityId): void {
-  run(() =>
-    dispatch({
-      id: nextCommandId('loop'),
-      type: 'set_piece_loop',
-      params: { piece: pieceId, edges: [] },
-    }),
-  );
-}
+const {
+  applyDefaultAllowance,
+  onSetAllAllowances,
+  onSetRole,
+  onUpdateText,
+  setCutLoop,
+  clearCutLoop,
+  onUpdatePiece,
+  onSetPieceAllowance,
+  onSetPieceCornerAllowance,
+  onApplyAllowances,
+  onSetPieceDefault,
+  onRemovePiece,
+} = usePieceEditing({
+  pattern: () => pattern.value,
+  defaultAllowance,
+  activePiece,
+  selectedAllowanceTargets,
+  selectedEntityIds,
+  selectedInstanceId,
+  setActiveTab,
+  run,
+  dispatch,
+  dispatchGroup,
+  error,
+});
 
 /** Open the settings modal for the loaded project. */
 function openSettings(): void {
   settingsError.value = null;
   settingsOpen.value = true;
-}
-
-/** Apply one default allowance choice as a single undoable command. */
-function applyDefaultAllowance(choice: AllowanceChoice): void {
-  const current = defaultAllowance.value;
-  const kind = choice.kind;
-  if (kind === 'none') {
-    if (current.kind === 'none') return;
-    run(() =>
-      dispatch({
-        id: nextCommandId('default-allowance'),
-        type: 'set_default_allowance',
-        params: { remove: true },
-      }),
-    );
-    return;
-  }
-
-  const width = choice.width;
-  if (kind === current.kind && width === current.width) return;
-  run(() =>
-    dispatch({
-      id: nextCommandId('default-allowance'),
-      type: 'set_default_allowance',
-      params: { width, kind },
-    }),
-  );
 }
 
 /**
@@ -863,47 +828,6 @@ async function onSaveSettings(draft: ProjectSettingsDraft): Promise<void> {
   } finally {
     settingsSaving.value = false;
   }
-}
-
-/** Apply one allowance to every edge of a piece as a single journal entry. */
-function onSetAllAllowances(
-  pieceId: EntityId,
-  value: { kind: AllowanceKind; width: number } | null,
-): void {
-  const piece = pattern.value.pieces.find((candidate) => candidate.id === pieceId);
-  /* v8 ignore next -- the card emits only for a piece in the current document */
-  if (piece === undefined) return;
-
-  const commands: Command[] = piece.edges.map((edge) => ({
-    id: nextCommandId('allowance'),
-    type: 'set_piece_allowance',
-    params:
-      value === null
-        ? { piece: pieceId, edge, remove: true }
-        : { piece: pieceId, edge, width: value.width, kind: value.kind },
-  }));
-  run(() => dispatchGroup(commands));
-}
-
-function onSetRole(id: EntityId, role: 'cut' | 'construction' | 'annotation'): void {
-  run(() => dispatch({ id: nextCommandId('role'), type: 'set_role', params: { id, role } }));
-}
-
-function onUpdateText(id: EntityId, patch: Record<string, unknown>): void {
-  if (typeof patch.content === 'string') {
-    const issue = textContentError(patch.content);
-    if (issue !== null) {
-      error.value = issue;
-      return;
-    }
-  }
-  run(() =>
-    dispatch({
-      id: nextCommandId('text'),
-      type: 'update_text',
-      params: { id, ...patch } as { id: EntityId },
-    }),
-  );
 }
 
 /**
@@ -1053,130 +977,6 @@ const {
   dispatchGroup,
   error,
 });
-
-/** Rename, re-quantify or clear fields on a piece. */
-function onUpdatePiece(
-  id: EntityId,
-  patch: {
-    name?: string | null;
-    quantity?: number | null;
-    notes?: string | null;
-    fabric?: string | null;
-    color?: string | null;
-  },
-): void {
-  run(() =>
-    dispatch({
-      id: nextCommandId('piece'),
-      type: 'update_piece',
-      params: { id, ...patch },
-    }),
-  );
-}
-
-/** Set or remove one edge's allowance; `null` removes the strip. */
-function onSetPieceAllowance(
-  piece: EntityId,
-  edge: EntityId,
-  value: { kind: AllowanceKind; width: number } | null,
-): void {
-  run(() =>
-    dispatch({
-      id: nextCommandId('allowance'),
-      type: 'set_piece_allowance',
-      params:
-        value === null
-          ? { piece, edge, remove: true }
-          : { piece, edge, width: value.width, kind: value.kind },
-    }),
-  );
-}
-
-/** Set or remove one rounded corner's own cut width. */
-function onSetPieceCornerAllowance(
-  piece: EntityId,
-  round: EntityId,
-  value: { cutWidth: number } | null,
-): void {
-  if (value === null) {
-    run(() =>
-      dispatch({
-        id: nextCommandId('corner-allowance'),
-        type: 'set_piece_corner_allowance',
-        params: { piece, round, remove: true },
-      }),
-    );
-    return;
-  }
-
-  run(() =>
-    dispatch({
-      id: nextCommandId('corner-allowance'),
-      type: 'set_piece_corner_allowance',
-      params: { piece, round, cutWidth: value.cutWidth },
-    }),
-  );
-}
-
-/** One command per selected region, dispatched as one undo step. */
-function onApplyAllowances(edit: BulkAllowanceEdit): void {
-  const piece = activePiece.value;
-  /* v8 ignore next -- the card emits only for the active piece */
-  if (piece === null) return;
-
-  const commands = allowanceEditCommands(
-    pattern.value,
-    piece,
-    selectedAllowanceTargets.value,
-    edit,
-    nextCommandId,
-  );
-  if (commands.length === 0) return;
-  run(() => dispatchGroup(commands));
-}
-
-/** Set, clear or inherit a piece's allowance default. */
-function onSetPieceDefault(
-  piece: EntityId,
-  value:
-    | { mode: 'inherit' }
-    | { mode: 'none' }
-    | { mode: 'preset'; width: ParamInput; kind: AllowanceKind },
-): void {
-  run(() =>
-    dispatch({
-      id: nextCommandId('piece-default'),
-      type: 'set_piece_default_allowance',
-      params: { piece, ...value },
-    }),
-  );
-}
-
-/** The deletion warning for a placed piece: how often and where it is placed. */
-function placedPieceWarning(piece: Piece): string | null {
-  const placements = pattern.value.assemblies.flatMap((assembly) =>
-    assembly.instances.filter((instance) => instance.piece === piece.id),
-  );
-  if (placements.length === 0) return null;
-  const assemblies = pattern.value.assemblies.filter((assembly) =>
-    assembly.instances.some((instance) => instance.piece === piece.id),
-  ).length;
-  const name = piece.name?.trim() || `Piece ${piece.id}`;
-  return `${name} is placed ${placements.length} time${
-    placements.length === 1 ? '' : 's'
-  } in ${assemblies} assembl${assemblies === 1 ? 'y' : 'ies'}. Remove it and its instances?`;
-}
-
-function onRemovePiece(id: EntityId): void {
-  const piece = pieceById(pattern.value, id);
-  /* v8 ignore next -- the card renders only for an existing piece */
-  const warning = piece === undefined ? null : placedPieceWarning(piece);
-  if (warning !== null && !window.confirm(warning)) return;
-  if (run(() => dispatch({ id: nextCommandId('piece'), type: 'delete_piece', params: { id } }))) {
-    selectedEntityIds.value = [];
-    selectedInstanceId.value = null;
-  }
-}
 
 function removeConstraint(id: EntityId): void {
   run(() =>
