@@ -15,6 +15,7 @@ export interface ProjectSettingsDraft {
 import type { AllowanceKind } from '@sewcraft/geometry';
 import { computed, ref } from 'vue';
 
+import ModalDialog from '@/components/ModalDialog.vue';
 import { Button } from '@/components/ui/button';
 import { useDialogFocus } from '@/composables/use-dialog-focus';
 import { parseAllowanceWidth } from '@/lib/allowance-width';
@@ -103,15 +104,6 @@ function onKindChange(event: Event): void {
   }
 }
 
-function onKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    if (!props.saving) emit('cancel');
-    return;
-  }
-  trapTab(event);
-}
-
 function submit(): void {
   if (!canSave.value) return;
   emit('save', {
@@ -123,129 +115,121 @@ function submit(): void {
 </script>
 
 <template>
-  <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+  <ModalDialog
+    labelled-by="project-settings-title"
     data-testid="project-settings-dialog"
-    @keydown="onKeydown"
-    @click.self="!props.saving && emit('cancel')"
+    size="md"
+    density="loose"
+    :dismissible="!props.saving"
+    @cancel="emit('cancel')"
+    @keydown="trapTab"
   >
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="project-settings-title"
-      class="w-full max-w-md space-y-4 rounded-md border bg-background p-4 shadow-lg"
-    >
-      <h2 id="project-settings-title" class="text-sm font-semibold">Project settings</h2>
+    <h2 id="project-settings-title" class="text-sm font-semibold">Project settings</h2>
 
-      <form class="space-y-3" @submit.prevent="submit">
-        <div class="space-y-1">
-          <label for="project-settings-name" class="text-2xs text-muted-foreground">Name</label>
-          <input
-            id="project-settings-name"
-            ref="nameInput"
-            v-model="name"
-            type="text"
-            maxlength="255"
-            autocomplete="off"
-            :disabled="props.saving"
-            :aria-invalid="nameError !== null"
-            aria-describedby="project-settings-name-error"
-            data-testid="project-settings-name"
-            class="h-8 w-full rounded-sm border px-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-          <p
-            v-if="nameError"
-            id="project-settings-name-error"
-            class="text-2xs text-destructive"
-            data-testid="project-settings-name-error"
-          >
-            {{ nameError }}
-          </p>
-        </div>
-
-        <div class="space-y-1">
-          <label for="project-settings-description" class="text-2xs text-muted-foreground">
-            Description
-          </label>
-          <textarea
-            id="project-settings-description"
-            v-model="description"
-            rows="3"
-            :disabled="props.saving"
-            data-testid="project-settings-description"
-            class="w-full resize-y rounded-sm border px-2 py-1.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </div>
-
-        <fieldset v-if="hasAllowance" class="space-y-1 border-t pt-3">
-          <legend class="text-2xs text-muted-foreground">Default seam allowance</legend>
-          <div class="flex flex-wrap items-center gap-1.5">
-            <select
-              :value="kind"
-              :disabled="props.readOnly || props.saving"
-              aria-label="Default allowance kind"
-              data-testid="project-settings-allowance-kind"
-              class="h-7 rounded-sm border px-1.5 text-xs"
-              @change="onKindChange"
-            >
-              <option value="none">None</option>
-              <option value="seam">Seam</option>
-              <option value="single">Single fold</option>
-              <option value="double">Double fold</option>
-            </select>
-            <input
-              :value="width"
-              type="number"
-              min="0.1"
-              step="0.1"
-              :disabled="kind === 'none' || props.readOnly || props.saving"
-              :aria-invalid="widthError !== null"
-              aria-label="Default allowance width"
-              data-testid="project-settings-allowance-width"
-              class="h-7 w-20 rounded-sm border px-2 text-xs tabular-nums"
-              @input="onWidthInput"
-            />
-            <span class="text-2xs text-muted-foreground">mm</span>
-          </div>
-          <p class="text-2xs leading-snug text-muted-foreground">
-            Copied onto new pieces that inherit it. Existing pieces are unchanged.
-          </p>
-          <p v-if="props.readOnly" class="text-2xs text-muted-foreground">
-            The default is locked while the document is read-only.
-          </p>
-          <p
-            v-if="widthError"
-            class="text-2xs text-destructive"
-            data-testid="project-settings-width-error"
-          >
-            {{ widthError }}
-          </p>
-        </fieldset>
-
+    <form class="space-y-3" @submit.prevent="submit">
+      <div class="space-y-1">
+        <label for="project-settings-name" class="text-2xs text-muted-foreground">Name</label>
+        <input
+          id="project-settings-name"
+          ref="nameInput"
+          v-model="name"
+          type="text"
+          maxlength="255"
+          autocomplete="off"
+          :disabled="props.saving"
+          :aria-invalid="nameError !== null"
+          aria-describedby="project-settings-name-error"
+          data-testid="project-settings-name"
+          class="h-8 w-full rounded-sm border px-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
         <p
-          v-if="props.error"
+          v-if="nameError"
+          id="project-settings-name-error"
           class="text-2xs text-destructive"
-          data-testid="project-settings-error"
+          data-testid="project-settings-name-error"
         >
-          {{ props.error }}
+          {{ nameError }}
         </p>
+      </div>
 
-        <div class="flex justify-end gap-2 border-t pt-3">
-          <Button
-            ref="cancelButton"
-            variant="outline"
-            size="sm"
-            :disabled="props.saving"
-            data-testid="project-settings-cancel"
-            @click="emit('cancel')"
+      <div class="space-y-1">
+        <label for="project-settings-description" class="text-2xs text-muted-foreground">
+          Description
+        </label>
+        <textarea
+          id="project-settings-description"
+          v-model="description"
+          rows="3"
+          :disabled="props.saving"
+          data-testid="project-settings-description"
+          class="w-full resize-y rounded-sm border px-2 py-1.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+      </div>
+
+      <fieldset v-if="hasAllowance" class="space-y-1 border-t pt-3">
+        <legend class="text-2xs text-muted-foreground">Default seam allowance</legend>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <select
+            :value="kind"
+            :disabled="props.readOnly || props.saving"
+            aria-label="Default allowance kind"
+            data-testid="project-settings-allowance-kind"
+            class="h-7 rounded-sm border px-1.5 text-xs"
+            @change="onKindChange"
           >
-            Cancel
-          </Button>
-          <Button type="submit" size="sm" :disabled="!canSave" data-testid="project-settings-save">
-            {{ props.saving ? 'Saving…' : 'Save' }}
-          </Button>
+            <option value="none">None</option>
+            <option value="seam">Seam</option>
+            <option value="single">Single fold</option>
+            <option value="double">Double fold</option>
+          </select>
+          <input
+            :value="width"
+            type="number"
+            min="0.1"
+            step="0.1"
+            :disabled="kind === 'none' || props.readOnly || props.saving"
+            :aria-invalid="widthError !== null"
+            aria-label="Default allowance width"
+            data-testid="project-settings-allowance-width"
+            class="h-7 w-20 rounded-sm border px-2 text-xs tabular-nums"
+            @input="onWidthInput"
+          />
+          <span class="text-2xs text-muted-foreground">mm</span>
         </div>
-      </form>
-    </div>
-  </div>
+        <p class="text-2xs leading-snug text-muted-foreground">
+          Copied onto new pieces that inherit it. Existing pieces are unchanged.
+        </p>
+        <p v-if="props.readOnly" class="text-2xs text-muted-foreground">
+          The default is locked while the document is read-only.
+        </p>
+        <p
+          v-if="widthError"
+          class="text-2xs text-destructive"
+          data-testid="project-settings-width-error"
+        >
+          {{ widthError }}
+        </p>
+      </fieldset>
+
+      <p v-if="props.error" class="text-2xs text-destructive" data-testid="project-settings-error">
+        {{ props.error }}
+      </p>
+
+      <div class="flex justify-end gap-2 border-t pt-3">
+        <Button
+          ref="cancelButton"
+          variant="outline"
+          size="sm"
+          :disabled="props.saving"
+          data-testid="project-settings-cancel"
+          @click="emit('cancel')"
+        >
+          Cancel
+        </Button>
+        <Button type="submit" size="sm" :disabled="!canSave" data-testid="project-settings-save">
+          {{ props.saving ? 'Saving…' : 'Save' }}
+        </Button>
+      </div>
+    </form>
+  </ModalDialog>
 </template>

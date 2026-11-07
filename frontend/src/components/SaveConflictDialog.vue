@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalDialog from '@/components/ModalDialog.vue';
 import { Button } from '@/components/ui/button';
 import { useDialogFocus } from '@/composables/use-dialog-focus';
 import { computed, ref } from 'vue';
@@ -27,39 +28,33 @@ const savedTime = computed(() => {
 </script>
 
 <template>
-  <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+  <ModalDialog
+    labelled-by="save-conflict-title"
+    described-by="save-conflict-body"
     data-testid="conflict-dialog"
+    :dismissible="false"
     @keydown="trapTab"
   >
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="save-conflict-title"
-      aria-describedby="save-conflict-body"
-      class="w-full max-w-sm space-y-3 rounded-md border bg-background p-4 shadow-lg"
-    >
-      <h2 id="save-conflict-title" class="text-sm font-semibold">Project changed elsewhere</h2>
-      <p id="save-conflict-body" class="text-[13px] text-muted-foreground">
-        <template v-if="savedTime === null">Another tab saved this project.</template>
-        <template v-else>Another tab saved this project at {{ savedTime }}.</template>
-        Reloading discards your unsaved edits.
-      </p>
+    <h2 id="save-conflict-title" class="text-sm font-semibold">Project changed elsewhere</h2>
+    <p id="save-conflict-body" class="text-[13px] text-muted-foreground">
+      <template v-if="savedTime === null">Another tab saved this project.</template>
+      <template v-else>Another tab saved this project at {{ savedTime }}.</template>
+      Reloading discards your unsaved edits.
+    </p>
 
-      <div class="flex justify-end gap-2">
-        <Button
-          ref="overwriteButton"
-          variant="outline"
-          size="sm"
-          data-testid="conflict-overwrite"
-          @click="emit('overwrite')"
-        >
-          Overwrite
-        </Button>
-        <Button ref="reloadButton" size="sm" data-testid="conflict-reload" @click="emit('reload')">
-          Reload
-        </Button>
-      </div>
+    <div class="flex justify-end gap-2">
+      <Button
+        ref="overwriteButton"
+        variant="outline"
+        size="sm"
+        data-testid="conflict-overwrite"
+        @click="emit('overwrite')"
+      >
+        Overwrite
+      </Button>
+      <Button ref="reloadButton" size="sm" data-testid="conflict-reload" @click="emit('reload')">
+        Reload
+      </Button>
     </div>
-  </div>
+  </ModalDialog>
 </template>
