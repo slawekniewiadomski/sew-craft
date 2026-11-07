@@ -4,8 +4,6 @@ import {
   arcThroughPoints,
   type ArcEntity,
   bounds,
-  constraintOffset,
-  constraintOrientation,
   cornerRoundGeometry,
   cornerRounds,
   cornerRoundsForEntity,
@@ -13,19 +11,11 @@ import {
   type CornerRound,
   type CurveEntity,
   type CutAnchor,
-  cutAnchorIssue,
-  type CutAnchorIssueReason,
-  DEFAULT_DIMENSION_OFFSET,
   type DerivedDistanceConstraint,
-  type DimensionOrientation,
   derivedDimensionGeometry,
   derivedDimensionState,
   derivedDimensionValue,
   dimensionGeometry,
-  dimensionOffsetForPointer,
-  dimensionOffsetFromSpan,
-  distanceAnchorIssue,
-  type DistanceAnchorReason,
   type DimensionLayout,
   dimensionState,
   dimensionValue,
@@ -34,8 +24,6 @@ import {
   type DistanceConstraint,
   entitiesInRect,
   type EntityId,
-  inferDimensionOrientation,
-  inferOrientationFromSpan,
   getEntity,
   isAnnotation,
   isConstruction,
@@ -62,7 +50,6 @@ import {
   type PointEntity,
   projectPointOnLine,
   type Rect,
-  resolveCutSpan,
   resolveParam,
   type TextLayout,
   type TextEntity,
@@ -73,7 +60,6 @@ import {
   pieceBandRegions,
   seamAllowancePaths,
   svgArcCommand,
-  usesCutEdgeAnchor,
   type BandRegion,
   type BandTarget,
   type Vec2,
@@ -124,21 +110,7 @@ import {
   type DimensionSegment,
   type CutDimensionPlacement,
 } from '@/lib/dimensions';
-import {
-  cutAnchorPreviewPosition,
-  cutEdgeCandidateFor,
-  cutGhostFor,
-  cutLoopCandidateFor,
-  cutPointCandidateFor,
-  dimensionCandidateFor,
-  dimensionGhostFor,
-  dimensionPickFor,
-  pickPreviewPosition,
-  pickPreviewTick,
-  type CutPick,
-  type DimensionPick,
-  type FeedbackHit,
-} from '@/lib/dimension-feedback';
+
 import { isEditableTarget } from '@/lib/dom';
 import {
   endpointMissing,
@@ -152,13 +124,10 @@ import {
 import type { EditorTool } from '@/lib/editor-tools';
 import {
   anchorForEdge,
-  anchorForPoint,
   canEditEntity,
   edgeEndpoints,
   nearestLoopHandle,
   pieceForEntity,
-  pieceOwningEdge,
-  piecesAtPoint,
 } from '@/lib/pieces';
 import {
   newRectangleCorners,
@@ -209,6 +178,7 @@ import {
   type DimensionDrawingOptions,
   type DimensionLabelView,
 } from '@/lib/pattern-canvas-dimensions';
+import { useDimensionGesture } from '@/composables/use-dimension-gesture';
 import { useReferencePicker } from '@/composables/use-reference-picker';
 import { useVariablePicker } from '@/composables/use-variable-picker';
 import {
@@ -383,41 +353,64 @@ const textPointer = ref<Vec2 | null>(null);
 const centreStart = ref<EntityId | null>(null);
 const spaceHeld = ref(false);
 
-/** Anchors picked for a dimension that has not yet been placed. */
-const dimensionPending = ref<DimensionPick[]>([]);
-/** Why the last dimension pick was rejected; cleared by a valid pick. */
-const dimensionHint = ref<string | null>(null);
-/** The dimension being placed; its orientation/offset follow the pointer. */
-const dimensionPlacement = ref<DimensionPlacement | null>(null);
-/** The first corner picked for a cut dimension, with its owning piece. */
-const cutDimensionPending = ref<CutPick | null>(null);
-/** The cut dimension being placed; it always measures the piece's cut loop. */
-const cutDimensionPlacement = ref<CutDimensionPlacement | null>(null);
-/** Why the last cut-dimension pick was rejected; cleared by a valid pick. */
-const cutDimensionHint = ref<string | null>(null);
-/** The entity under the pointer while a dimension tool is armed. */
-const hoveredPick = ref<FeedbackHit | null>(null);
-/** The derived loop corner nearest the pointer while the cut tool is armed. */
-const hoveredLoopHandle = ref<LoopHandle | null>(null);
-/** The pointer in world space, for the ghost's unsnapped end. */
-const pointerWorld = ref<Vec2 | null>(null);
-/** Live drag of an existing dimension line, in world space. */
-const dimensionDrag = ref<{
-  id: EntityId;
-  a: EntityId;
-  b: EntityId;
-  orientation: DimensionOrientation;
-  startOffset: number;
-  offset: number;
-} | null>(null);
-/** Live drag of a cut dimension; its span comes from the piece's cut loop. */
-const derivedDrag = ref<{
-  id: EntityId;
-  orientation: DimensionOrientation;
-  startOffset: number;
-  offset: number;
-  span: { a: Vec2; b: Vec2 };
-} | null>(null);
+const {
+  dimensionPending,
+  dimensionPlacement,
+  cutDimensionPlacement,
+  dimensionDrag,
+  derivedDrag,
+  cutDimensionHintText,
+  dimensionHintText,
+  dimensionToolArmed,
+  dimensionFirstPick,
+  dimensionSecondPick,
+  dimensionCandidate,
+  cutPointCandidate,
+  cutEdgeCandidate,
+  dimensionGhost,
+  cutDimensionGhost,
+  dimensionFirstPickPointIds,
+  dimensionFirstPickLineIds,
+  dimensionPickPointIds,
+  dimensionPickLineIds,
+  dimensionCandidatePointIds,
+  dimensionCandidateLineIds,
+  cutCandidatePointIds,
+  cutEdgeCandidateIds,
+  cutCandidateKeys,
+  dimensionFirstPickPoint,
+  dimensionFirstPickTick,
+  dimensionSecondPickPoint,
+  dimensionSecondPickTick,
+  dimensionCandidatePoint,
+  cutFirstPickPosition,
+  cutSecondPickPosition,
+  dragEnabled: dimensionDragEnabled,
+  beginDrag: onDimensionPointerDown,
+  updateHover: updateDimensionHover,
+  clearHover: clearDimensionHover,
+  onPick: onDimensionPick,
+  updatePlacements: updateDimensionPlacements,
+  onDragMove: onDimensionDragMove,
+  commitDrag: commitDimensionDrag,
+  cancelDrag: cancelDimensionDrag,
+  clearOnEscape: clearDimensionOnEscape,
+  resetOnToolChange: resetDimensionOnToolChange,
+  pruneOnDocumentChange: pruneDimensionOnDocumentChange,
+} = useDimensionGesture({
+  document: () => props.document,
+  tool: () => props.tool,
+  readOnly: () => props.readOnly,
+  constraintActive: () => props.constraintActive,
+  selectedDimensionIds: () => props.selectedDimensionIds,
+  viewport: () => viewport.value,
+  beginPointerTracking: addPointerListeners,
+  onAddDimension: (placement) => emit('add-dimension', placement),
+  onAddCutDimension: (placement) => emit('add-cut-dimension', placement),
+  onUpdateDimension: (id, patch) => emit('update-dimension', id, patch),
+  onSelectDimensions: (ids) => emit('update:selectedDimensionIds', ids),
+  onSelectEntities: (ids) => emit('update:selectedEntityIds', ids),
+});
 /** The inline value editor, keyed to the dimension being edited. */
 const editingDimension = ref<{ id: EntityId; value: string } | null>(null);
 const dimensionInput = ref<HTMLInputElement | null>(null);
@@ -573,209 +566,6 @@ const cutEdgeHandles = computed<LineView[]>(() => {
     }
   }
   return lines.value.filter((entry) => ids.has(entry.line.id));
-});
-
-/** The cut tool's status message: a rejection, a next-pick prompt, or the idle cue. */
-const cutDimensionHintText = computed<string | null>(() => {
-  if (cutDimensionHint.value !== null) return cutDimensionHint.value;
-  if (props.tool !== 'cut_dimension' || cutDimensionPlacement.value !== null) return null;
-  if (cutDimensionPending.value !== null) return 'Pick the second anchor on the same piece.';
-  return 'Pick a seamline or cut corner, or a straight edge, of one piece.';
-});
-
-/** The Dimension tool's status message: a rejection, or the next pick prompt. */
-const dimensionHintText = computed<string | null>(() => {
-  if (dimensionHint.value !== null) return dimensionHint.value;
-  if (dimensionPlacement.value !== null) return null;
-  if (dimensionPending.value.length > 0) return 'Pick the second anchor.';
-  return props.tool === 'dimension' ? 'Pick a point or a line.' : null;
-});
-
-/** Whether a dimension tool owns the pointer feedback. */
-const dimensionToolArmed = computed(
-  () => props.tool === 'dimension' || props.tool === 'cut_dimension',
-);
-
-/** The first anchor of the gesture, pending or already being placed. */
-const dimensionFirstPick = computed<DimensionPick | null>(() => {
-  const pendingPick = dimensionPending.value[0];
-  if (pendingPick !== undefined) return pendingPick;
-  const placement = dimensionPlacement.value;
-  return placement === null
-    ? null
-    : dimensionPickFor(props.document, { id: placement.a, kind: '' });
-});
-
-/** The second anchor of a dimension already being placed. */
-const dimensionSecondPick = computed<DimensionPick | null>(() => {
-  const placement = dimensionPlacement.value;
-  return placement === null
-    ? null
-    : dimensionPickFor(props.document, { id: placement.b, kind: '' });
-});
-
-/** The eligible anchor under the pointer, validated against a pending first pick. */
-const dimensionCandidate = computed<DimensionPick | null>(() => {
-  if (props.tool !== 'dimension' || props.readOnly || dimensionPlacement.value !== null)
-    return null;
-  return dimensionCandidateFor(props.document, hoveredPick.value, dimensionFirstPick.value);
-});
-
-/** The cut corner under the pointer, same-piece only after the first corner. */
-const cutPointCandidate = computed(() => {
-  if (props.tool !== 'cut_dimension' || props.readOnly || cutDimensionPlacement.value !== null) {
-    return null;
-  }
-  const loopHandle = hoveredLoopHandle.value;
-  if (loopHandle !== null) {
-    return cutLoopCandidateFor(props.document, loopHandle, cutDimensionPending.value);
-  }
-  return cutPointCandidateFor(props.document, hoveredPick.value, cutDimensionPending.value);
-});
-
-/** A whole piece edge under the pointer; it skips the ghost stage. */
-const cutEdgeCandidate = computed(() => {
-  if (
-    props.tool !== 'cut_dimension' ||
-    props.readOnly ||
-    cutDimensionPending.value !== null ||
-    cutDimensionPlacement.value !== null ||
-    hoveredLoopHandle.value !== null
-  ) {
-    return null;
-  }
-  return cutEdgeCandidateFor(props.document, hoveredPick.value);
-});
-
-/** The dashed guide from the first Dimension pick, snapped when a candidate is valid. */
-const dimensionGhost = computed(() => {
-  if (props.tool !== 'dimension' || props.readOnly || dimensionPlacement.value !== null)
-    return null;
-  return dimensionGhostFor(
-    props.document,
-    dimensionPending.value[0] ?? null,
-    dimensionCandidate.value,
-    pointerWorld.value,
-  );
-});
-
-/** The dashed guide from the first cut corner to the pointer or a same-piece corner. */
-const cutDimensionGhost = computed(() => {
-  if (props.tool !== 'cut_dimension' || props.readOnly || cutDimensionPlacement.value !== null) {
-    return null;
-  }
-  return cutGhostFor(
-    props.document,
-    cutDimensionPending.value,
-    cutPointCandidate.value,
-    pointerWorld.value,
-  );
-});
-
-function idSet(id: EntityId | null): Set<EntityId> {
-  return new Set(id === null ? [] : [id]);
-}
-
-const dimensionFirstPickPointIds = computed(() => {
-  const pick = dimensionFirstPick.value;
-  return idSet(pick !== null && pick.kind === 'point' ? pick.id : null);
-});
-
-const dimensionFirstPickLineIds = computed(() => {
-  const pick = dimensionFirstPick.value;
-  return idSet(pick !== null && pick.kind === 'line' ? pick.id : null);
-});
-
-const dimensionSecondPickPointIds = computed(() => {
-  const pick = dimensionSecondPick.value;
-  return idSet(pick !== null && pick.kind === 'point' ? pick.id : null);
-});
-
-const dimensionSecondPickLineIds = computed(() => {
-  const pick = dimensionSecondPick.value;
-  return idSet(pick !== null && pick.kind === 'line' ? pick.id : null);
-});
-
-const dimensionPickPointIds = computed(() => {
-  const ids = new Set(dimensionFirstPickPointIds.value);
-  for (const id of dimensionSecondPickPointIds.value) ids.add(id);
-  return ids;
-});
-
-const dimensionPickLineIds = computed(() => {
-  const ids = new Set(dimensionFirstPickLineIds.value);
-  for (const id of dimensionSecondPickLineIds.value) ids.add(id);
-  return ids;
-});
-
-const dimensionCandidatePointIds = computed(() => {
-  const pick = dimensionCandidate.value;
-  return idSet(pick !== null && pick.kind === 'point' ? pick.id : null);
-});
-
-const dimensionCandidateLineIds = computed(() => {
-  const pick = dimensionCandidate.value;
-  return idSet(pick !== null && pick.kind === 'line' ? pick.id : null);
-});
-
-const cutCandidatePointIds = computed(() => idSet(cutPointCandidate.value?.pointId ?? null));
-const cutEdgeCandidateIds = computed(() => idSet(cutEdgeCandidate.value?.edge ?? null));
-const cutCandidateKeys = computed(() => {
-  const key = cutPointCandidate.value?.key;
-  return new Set(key === undefined ? [] : [key]);
-});
-
-const dimensionFirstPickPoint = computed<Vec2 | null>(() => {
-  const pick = dimensionFirstPick.value;
-  return pick !== null && pick.kind === 'point' ? pickPreviewPosition(props.document, pick) : null;
-});
-
-const dimensionFirstPickTick = computed(() => {
-  const pick = dimensionFirstPick.value;
-  return pick !== null && pick.kind === 'line' ? pickPreviewTick(props.document, pick) : null;
-});
-
-const dimensionSecondPickPoint = computed<Vec2 | null>(() => {
-  const pick = dimensionSecondPick.value;
-  return pick !== null && pick.kind === 'point' ? pickPreviewPosition(props.document, pick) : null;
-});
-
-const dimensionSecondPickTick = computed(() => {
-  const pick = dimensionSecondPick.value;
-  return pick !== null && pick.kind === 'line' ? pickPreviewTick(props.document, pick) : null;
-});
-
-const dimensionCandidatePoint = computed<Vec2 | null>(() => {
-  const pick = dimensionCandidate.value;
-  return pick !== null && pick.kind === 'point' ? pickPreviewPosition(props.document, pick) : null;
-});
-
-const cutPlacementPiece = computed<Piece | null>(() => {
-  const placement = cutDimensionPlacement.value;
-  // The document watcher clears a placement whose piece disappears.
-  return placement === null
-    ? null
-    : props.document.pieces.find((piece) => piece.id === placement.piece)!;
-});
-
-const cutFirstPickPosition = computed<Vec2 | null>(() => {
-  const pendingPick = cutDimensionPending.value;
-  if (pendingPick !== null) {
-    return cutAnchorPreviewPosition(props.document, pendingPick.piece, pendingPick.anchor);
-  }
-  const placement = cutDimensionPlacement.value;
-  const piece = cutPlacementPiece.value;
-  return placement === null || piece === null
-    ? null
-    : cutAnchorPreviewPosition(props.document, piece, placement.a);
-});
-
-const cutSecondPickPosition = computed<Vec2 | null>(() => {
-  const placement = cutDimensionPlacement.value;
-  const piece = cutPlacementPiece.value;
-  return placement === null || piece === null
-    ? null
-    : cutAnchorPreviewPosition(props.document, piece, placement.b);
 });
 
 const roundPickedLineIds = computed(() => {
@@ -1247,13 +1037,6 @@ const distanceConstraints = computed(() =>
   ),
 );
 
-/** Committed dimensions can be dragged only with the tools that own a placed line. */
-const dimensionDragEnabled = computed(
-  () =>
-    !props.constraintActive &&
-    (props.tool === 'select' || props.tool === 'dimension' || props.tool === 'cut_dimension'),
-);
-
 /** The document, selection and drag every dimension drawing reads. */
 const dimensionDrawingOptions = computed<DimensionDrawingOptions>(() => ({
   document: props.document,
@@ -1697,308 +1480,6 @@ function snappedPoint(world: Vec2): Vec2 {
   return snapPoint(world, candidates);
 }
 
-/**
- * Dimension placement: every dimension picks two anchors, each a point or a
- * whole straight line; the next click after the second pick drops the line.
- */
-function onDimensionPointer(hit: Hit | null): void {
-  if (dimensionPlacement.value !== null) {
-    commitDimensionPlacement();
-    return;
-  }
-
-  if (hit === null) {
-    dimensionPending.value = [];
-    dimensionHint.value = null;
-    return;
-  }
-
-  if (hit.kind !== 'point' && hit.kind !== 'line') {
-    dimensionHint.value = 'Pick a point or a straight line.';
-    return;
-  }
-
-  const pick: DimensionPick = { id: hit.id, kind: hit.kind };
-  const pending = dimensionPending.value;
-  if (pending.length === 0) {
-    dimensionPending.value = [pick];
-    dimensionHint.value = null;
-    return;
-  }
-
-  // Clicking the same anchor twice is a no-op, not a zero-length dimension.
-  if (pending[0]!.id === pick.id) return;
-
-  const issue = distanceAnchorIssue(props.document, pending[0]!.id, pick.id);
-  if (issue.reason !== null) {
-    dimensionHint.value = DIMENSION_ANCHOR_HINTS[issue.reason];
-    return;
-  }
-
-  dimensionPending.value = [];
-  dimensionHint.value = null;
-  startDimensionPlacement(pending[0]!.id, pick.id);
-}
-
-/** The canvas hint for each shared pick-time anchor rejection. */
-const DIMENSION_ANCHOR_HINTS: Record<DistanceAnchorReason, string> = {
-  missing: 'Pick a point or a straight line.',
-  'not-a-line': 'Pick a point or a straight line.',
-  'not-parallel': 'Pick two parallel lines — use Angle for a corner.',
-  'point-on-line': 'The point lies on the line.',
-  coincident: 'The lines are coincident.',
-  'zero-length': 'Pick a point or a straight line.',
-};
-
-function startDimensionPlacement(a: EntityId, b: EntityId): void {
-  dimensionPlacement.value = {
-    a,
-    b,
-    orientation: 'aligned',
-    offset: DEFAULT_DIMENSION_OFFSET,
-  };
-}
-
-function commitDimensionPlacement(): void {
-  const placement = dimensionPlacement.value!;
-  dimensionPlacement.value = null;
-  emit('add-dimension', placement);
-}
-
-function startCutDimensionPlacement(piece: EntityId, a: CutAnchor, b: CutAnchor): void {
-  cutDimensionPlacement.value = {
-    piece,
-    a,
-    b,
-    orientation: 'aligned',
-    offset: DEFAULT_DIMENSION_OFFSET,
-  };
-}
-
-function commitCutDimensionPlacement(): void {
-  const placement = cutDimensionPlacement.value!;
-  cutDimensionPlacement.value = null;
-  cutDimensionHint.value = null;
-  emit('add-cut-dimension', placement);
-}
-
-/** Drop the cut tool's pending pick, placement and message. */
-function clearCutDimensionGesture(): void {
-  cutDimensionPending.value = null;
-  cutDimensionPlacement.value = null;
-  cutDimensionHint.value = null;
-}
-
-/**
- * The cut tool's pick rules: two anchors of one piece, where each anchor is a
- * piece corner (seamline or cut) or a whole straight edge. A derived loop corner
- * picked near the pointer wins over the entity under it, so a corner with an
- * allowance offers both its stitch and its cut anchor. A rejected pick leaves a
- * hint instead of emitting a command; the shared `cutAnchorIssue` decides.
- */
-function onCutDimensionPointer(hit: Hit | null, loopHandle: LoopHandle | null): void {
-  if (cutDimensionPlacement.value !== null) {
-    commitCutDimensionPlacement();
-    return;
-  }
-
-  const pending = cutDimensionPending.value;
-
-  if (hit === null && loopHandle === null) {
-    cutDimensionPending.value = null;
-    cutDimensionHint.value = null;
-    return;
-  }
-
-  const candidate =
-    loopHandle === null
-      ? cutAnchorCandidate(hit!, pending?.piece ?? null)
-      : { piece: loopHandle.piece, anchor: loopHandle.anchor };
-
-  if (candidate === null) {
-    cutDimensionPending.value = null;
-    cutDimensionHint.value =
-      hit !== null && (hit.kind === 'curve' || hit.kind === 'arc')
-        ? 'Pick a straight edge.'
-        : 'Pick a seamline or cut corner, or a straight edge, of a piece.';
-    return;
-  }
-
-  if (pending === null) {
-    cutDimensionHint.value = null;
-    cutDimensionPending.value = candidate;
-    return;
-  }
-
-  const issue = cutAnchorIssue(props.document, pending.piece, pending.anchor, candidate.anchor);
-  if (issue.reason !== null) {
-    if (CUT_ANCHOR_CLEARS_PENDING[issue.reason]) cutDimensionPending.value = null;
-    cutDimensionHint.value = CUT_ANCHOR_HINTS[issue.reason];
-    return;
-  }
-
-  cutDimensionPending.value = null;
-  cutDimensionHint.value = null;
-  startCutDimensionPlacement(pending.piece.id, pending.anchor, candidate.anchor);
-}
-
-/** The hint shown for each shared cut-anchor rejection. */
-const CUT_ANCHOR_HINTS: Record<CutAnchorIssueReason, string> = {
-  missing: 'Pick a seamline or cut corner, or a straight edge, of a piece.',
-  'not-straight': 'Pick a straight edge.',
-  'different-piece': 'Both anchors must belong to the same piece.',
-  'same-anchor': 'The anchors must be different.',
-  'not-parallel': 'Pick two parallel edges.',
-  'zero-span': 'The anchors must be different.',
-};
-
-/** Whether a rejection resets the first pick instead of keeping it pending. */
-const CUT_ANCHOR_CLEARS_PENDING: Record<CutAnchorIssueReason, boolean> = {
-  missing: true,
-  'not-straight': true,
-  'different-piece': true,
-  'same-anchor': false,
-  'not-parallel': false,
-  'zero-span': false,
-};
-
-/**
- * The cut anchor a pointer hit addresses: a corner or a whole straight edge of
- * a piece. A corner shared by several pieces prefers the pending piece.
- */
-function cutAnchorCandidate(
-  hit: Hit,
-  pendingPiece: Piece | null,
-): { piece: Piece; anchor: CutAnchor } | null {
-  if (hit.kind === 'point') {
-    const pieces = piecesAtPoint(props.document, hit.id);
-    const preferred =
-      pendingPiece === null
-        ? undefined
-        : pieces.find((candidate) => candidate.id === pendingPiece.id);
-    const piece = preferred ?? pieces[0];
-    if (piece === undefined) return null;
-    return { piece, anchor: anchorForPoint(props.document, piece, hit.id)! };
-  }
-
-  if (hit.kind !== 'line') return null;
-  const piece = pieceOwningEdge(props.document, hit.id);
-  const anchor = piece === null ? null : anchorForEdge(props.document, piece, hit.id);
-  return piece === null || anchor === null ? null : { piece, anchor };
-}
-
-/** Follow the pointer while placing a cut dimension, over the piece's cut span. */
-function updateCutDimensionPlacement(screen: Vec2): void {
-  const placement = cutDimensionPlacement.value!;
-  const constraint = {
-    id: placement.piece,
-    type: 'derived_distance' as const,
-    piece: placement.piece,
-    a: placement.a,
-    b: placement.b,
-  };
-  const span = resolveCutSpan(props.document, constraint);
-  if (span === null) return;
-
-  const world = screenToWorld(viewport.value, screen);
-  // An edge anchor has no single axis definition, so its dimension is aligned.
-  const orientation = usesCutEdgeAnchor(constraint)
-    ? 'aligned'
-    : inferOrientationFromSpan(span, world);
-  cutDimensionPlacement.value = {
-    ...placement,
-    orientation,
-    offset: dimensionOffsetFromSpan(span, orientation, world),
-  };
-}
-
-/** Follow the pointer while placing, choosing the axis and offset live. */
-function updateDimensionPlacement(screen: Vec2): void {
-  const placement = dimensionPlacement.value!;
-
-  const world = screenToWorld(viewport.value, screen);
-  const orientation = inferDimensionOrientation(props.document, placement.a, placement.b, world);
-  dimensionPlacement.value = {
-    ...placement,
-    orientation,
-    offset: dimensionOffsetForPointer(props.document, placement.a, placement.b, orientation, world),
-  };
-}
-
-/**
- * Selection comes first: with the Select tool a press selects, adds or
- * subtracts the dimension; only a plain press then starts the existing drag.
- * The Dimension and Cut dimension tools keep their drag-only behaviour.
- */
-function onDimensionPointerDown(
-  constraint: DistanceConstraint | DerivedDistanceConstraint,
-  event: PointerEvent,
-): void {
-  if (props.readOnly) return;
-
-  if (props.tool === 'select') {
-    const mode = selectionModeFrom(event);
-    if (mode === 'replace') {
-      emit('update:selectedDimensionIds', [constraint.id]);
-    } else {
-      emit(
-        'update:selectedDimensionIds',
-        mode === 'add'
-          ? toggleSelection(props.selectedDimensionIds, constraint.id)
-          : applySelection(props.selectedDimensionIds, [constraint.id], 'subtract'),
-      );
-      // A modified press selects only; it never starts a drag.
-      event.stopPropagation();
-      event.preventDefault();
-      emit('update:selectedEntityIds', []);
-      return;
-    }
-    // Clicks are exclusive: a dimension click clears the entity selection.
-    emit('update:selectedEntityIds', []);
-  }
-
-  if (constraint.type === 'distance') {
-    beginDimensionDrag(constraint, event);
-  } else {
-    beginDerivedDimensionDrag(constraint, event);
-  }
-}
-
-function beginDimensionDrag(constraint: DistanceConstraint, event: PointerEvent): void {
-  event.stopPropagation();
-  event.preventDefault();
-  const offset = constraintOffset(constraint);
-  dimensionDrag.value = {
-    id: constraint.id,
-    a: constraint.a,
-    b: constraint.b,
-    orientation: constraintOrientation(constraint),
-    startOffset: offset,
-    offset,
-  };
-  addPointerListeners();
-}
-
-/** Start dragging a cut dimension line; its span comes from the cut loop. */
-function beginDerivedDimensionDrag(
-  constraint: DerivedDistanceConstraint,
-  event: PointerEvent,
-): void {
-  event.stopPropagation();
-  event.preventDefault();
-  // The drag strip only renders for a drawing whose span already resolved.
-  const span = resolveCutSpan(props.document, constraint)!;
-  const offset = constraintOffset(constraint);
-  derivedDrag.value = {
-    id: constraint.id,
-    orientation: constraintOrientation(constraint),
-    startOffset: offset,
-    offset,
-    span,
-  };
-  addPointerListeners();
-}
-
 function labelClass(label: DimensionLabelView): string {
   switch (label.state) {
     case 'referenced':
@@ -2422,10 +1903,8 @@ function onPointerDown(event: PointerEvent): void {
       onArcPointer(hit, screen);
       break;
     case 'dimension':
-      onDimensionPointer(hit);
-      break;
     case 'cut_dimension':
-      onCutDimensionPointer(hit, pickLoopHandle(screen));
+      onDimensionPick(hit, props.tool === 'cut_dimension' ? pickLoopHandle(screen) : null);
       break;
     case 'add_text':
       emit(
@@ -2476,28 +1955,8 @@ function onPointerMove(event: PointerEvent): void {
     }
   } else if (marqueeState.value) {
     updateMarquee(screen);
-  } else if (dimensionDrag.value) {
-    const drag = dimensionDrag.value;
-    dimensionDrag.value = {
-      ...drag,
-      offset: dimensionOffsetForPointer(
-        props.document,
-        drag.a,
-        drag.b,
-        drag.orientation,
-        screenToWorld(viewport.value, screen),
-      ),
-    };
-  } else if (derivedDrag.value) {
-    const drag = derivedDrag.value;
-    derivedDrag.value = {
-      ...drag,
-      offset: dimensionOffsetFromSpan(
-        drag.span,
-        drag.orientation,
-        screenToWorld(viewport.value, screen),
-      ),
-    };
+  } else if (onDimensionDragMove(screen)) {
+    // The dimension drag consumed the move.
   } else if (panState.value) {
     const dx = screen.x - panState.value.start.x;
     const dy = screen.y - panState.value.start.y;
@@ -2524,19 +1983,15 @@ function onCanvasPointerMove(event: PointerEvent): void {
     bandHovered.value = false;
   }
 
-  if (dimensionToolArmed.value && !props.readOnly) {
-    hoveredPick.value = hitEntity(event);
-    hoveredLoopHandle.value = props.tool === 'cut_dimension' ? pickLoopHandle(screen) : null;
-    pointerWorld.value = screenToWorld(viewport.value, screen);
+  if (dimensionToolArmed.value) {
+    updateDimensionHover(
+      hitEntity(event),
+      props.tool === 'cut_dimension' ? pickLoopHandle(screen) : null,
+      screenToWorld(viewport.value, screen),
+    );
   }
 
-  if (dimensionPlacement.value !== null && dimensionDrag.value === null) {
-    updateDimensionPlacement(screen);
-  }
-
-  if (cutDimensionPlacement.value !== null) {
-    updateCutDimensionPlacement(screen);
-  }
+  updateDimensionPlacements(screen);
 
   if (props.tool === 'add_line' && lineStart.value !== null) {
     linePreview.value = snappedPoint(screenToWorld(viewport.value, screen));
@@ -2594,11 +2049,9 @@ function onCanvasPointerMove(event: PointerEvent): void {
 
 /** The pointer left the canvas: end the hover and ghost, keep a pending pick. */
 function onCanvasPointerLeave(): void {
-  hoveredPick.value = null;
-  hoveredLoopHandle.value = null;
+  clearDimensionHover();
   hoveredRegion.value = null;
   bandHovered.value = false;
-  pointerWorld.value = null;
   pointOnLineHover.value = null;
   splitLineHover.value = null;
   midpointHover.value = null;
@@ -2608,8 +2061,7 @@ function onCanvasPointerLeave(): void {
 /** Drop every in-flight pointer interaction without emitting a command. */
 function cancelPointerInteraction(): void {
   cancelMarquee();
-  dimensionDrag.value = null;
-  derivedDrag.value = null;
+  cancelDimensionDrag();
   dragState.value = null;
   moveDrag.value = null;
   panState.value = null;
@@ -2648,21 +2100,7 @@ function onPointerUp(): void {
     return;
   }
 
-  if (dimensionDrag.value) {
-    const { id, offset, startOffset } = dimensionDrag.value;
-    dimensionDrag.value = null;
-    if (offset !== startOffset) {
-      emit('update-dimension', id, { offset });
-    }
-  }
-
-  if (derivedDrag.value) {
-    const { id, offset, startOffset } = derivedDrag.value;
-    derivedDrag.value = null;
-    if (offset !== startOffset) {
-      emit('update-dimension', id, { offset });
-    }
-  }
+  commitDimensionDrag();
 
   if (dragState.value) {
     const { id, x, y, origin } = dragState.value;
@@ -2723,27 +2161,8 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
-  if (
-    event.key === 'Escape' &&
-    (dimensionPending.value.length > 0 ||
-      dimensionPlacement.value !== null ||
-      dimensionHint.value !== null)
-  ) {
+  if (event.key === 'Escape' && clearDimensionOnEscape()) {
     event.preventDefault();
-    dimensionPending.value = [];
-    dimensionPlacement.value = null;
-    dimensionHint.value = null;
-    return;
-  }
-
-  if (
-    event.key === 'Escape' &&
-    (cutDimensionPending.value !== null ||
-      cutDimensionPlacement.value !== null ||
-      cutDimensionHint.value !== null)
-  ) {
-    event.preventDefault();
-    clearCutDimensionGesture();
     return;
   }
 
@@ -3216,16 +2635,9 @@ watch(
     textAnchor.value = null;
     textPointer.value = null;
     centreStart.value = null;
-    dimensionPending.value = [];
-    dimensionPlacement.value = null;
-    dimensionHint.value = null;
-    hoveredPick.value = null;
-    hoveredLoopHandle.value = null;
-    pointerWorld.value = null;
-    clearCutDimensionGesture();
+    resetDimensionOnToolChange();
     editingDimension.value = null;
     cancelPointerInteraction();
-    dimensionDrag.value = null;
     hoveredRoundId.value = null;
     editingCornerRound.value = null;
     pointOnLineHover.value = null;
@@ -3282,11 +2694,7 @@ watch(
       clearRectangleGesture();
     }
 
-    const cutPiece = cutDimensionPending.value?.piece.id ?? cutDimensionPlacement.value?.piece;
-    if (cutPiece !== undefined && !props.document.pieces.some((piece) => piece.id === cutPiece)) {
-      clearCutDimensionGesture();
-      cutDimensionHint.value = 'Piece no longer exists';
-    }
+    pruneDimensionOnDocumentChange();
   },
 );
 

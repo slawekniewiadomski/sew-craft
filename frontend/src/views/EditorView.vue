@@ -102,7 +102,6 @@ import {
   pieceSummaries,
   pieceTitleLine,
 } from '@/lib/pieces';
-import { ribbonIcon, type RibbonIconName } from '@/lib/ribbon-icons';
 import {
   applySelection,
   orphanedEdges,
@@ -408,20 +407,6 @@ const panelCounts = computed<Partial<Record<PanelId, number>>>(() => ({
   constraints: otherConstraints.value.length,
   variables: (pattern.value.variables ?? []).length,
 }));
-
-const EDGE_KIND_LABELS: Record<'line' | 'curve' | 'arc' | 'circle', string> = {
-  line: 'Line',
-  curve: 'Curve',
-  arc: 'Arc',
-  circle: 'Circle',
-};
-
-const EDGE_KIND_ICONS: Record<'line' | 'curve' | 'arc' | 'circle', RibbonIconName> = {
-  line: 'line',
-  curve: 'curve',
-  arc: 'arc',
-  circle: 'circle',
-};
 
 /** The selected entities in selection order, for the multi-selection summary. */
 const selectedEntities = computed(() =>
