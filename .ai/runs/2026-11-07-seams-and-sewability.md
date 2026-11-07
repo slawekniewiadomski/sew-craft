@@ -22,7 +22,7 @@ it, and the contract files are synced in the same phase as the commands.
 
 ## Scope
 
-- Geometry: `SeamSide`/`SeamMatch`/`FinishedEdge` types, `seams.ts` resolution and
+- Geometry: `SeamRun`/`SeamMatch`/`FinishedEdge` types, `seams.ts` resolution and
   report, per-edge accessors in `piece.ts` and `assembly.ts`.
 - Commands: `add_seam_match`, `update_seam_match`, `remove_seam_match`,
   `set_edge_finished`, cascades in `remove_instance`/`delete_piece`/
@@ -78,77 +78,78 @@ it, and the contract files are synced in the same phase as the commands.
 
 ### Phase 0: Baseline and branch
 
-- [ ] 0.1 Record the baseline: geometry and frontend suite file/test counts, the
+- [x] 0.1 Record the baseline: geometry and frontend suite file/test counts, the
       Pest gate result, and the current versions (schema `0.8`, spec `0.21.0`) in
-      the PR body
-- [ ] 0.2 Branch `feat/seams-and-sewability` from `develop`; land the spec,
-      prototype, screenshots and this plan as the first commit
+      the PR body — geometry 36 files/1155 tests, frontend 103/1600, Pest 59
+      tests/351 assertions at 100 % after the contract bump
+- [x] 0.2 Branch `feat/seams-and-sewability` from `develop`; land the spec,
+      prototype, screenshots and this plan as the first commit — 1aaf13f
 
-### Phase 1: Model and per-edge geometry
+### Phase 1: Model and per-edge geometry (landed in 147e2b3)
 
-- [ ] 1.1 `types.ts`: `SeamSide`, `SeamMatch`, `FINISH_KINDS`/`FinishKind`,
+- [x] 1.1 `types.ts`: `SeamRun`, `SeamMatch`, `FINISH_KINDS`/`FinishKind`,
       `FinishedEdge`, optional `Assembly.seams`/`finishedEdges`,
       `PATTERN_SCHEMA` → `sewcraft.pattern/0.9`; export the new names from
       `index.ts`
-- [ ] 1.2 `migration.ts`: add `sewcraft.pattern/0.8` to `KNOWN_PATTERN_SCHEMAS`
+- [x] 1.2 `migration.ts`: add `sewcraft.pattern/0.8` to `KNOWN_PATTERN_SCHEMAS`
       with the additive comment; fixture test that a 0.8 document with assemblies
       loads with the schema stamped and both arrays absent
-- [ ] 1.3 `piece.ts`: `pieceEdgeSegments(document, piece)` returning one stitch
+- [x] 1.3 `piece.ts`: `pieceEdgeSegments(document, piece)` returning one stitch
       polyline per `Piece.edges` entry in authored order, corner-round bridges
       excluded, `null` when `pieceLoop` fails; build on the existing walk rather
       than duplicating offset math
-- [ ] 1.4 `assembly.ts`: `instanceEdgeSegments(document, piece, instance)`
+- [x] 1.4 `assembly.ts`: `instanceEdgeSegments(document, piece, instance)`
       mapping those polylines through `instancePlacement` and `placePoint`;
       `null` propagation
-- [ ] 1.5 Gate: `npm test -w @sewcraft/geometry`, 100 % on the touched modules;
+- [x] 1.5 Gate: `npm test -w @sewcraft/geometry`, 100 % on the touched modules;
       cases for a straight edge, an arc, a walk-reversed edge, a rounded-corner
       bridge, a mirrored and a rotated instance, and a broken loop
 
-### Phase 2: Resolution and report
+### Phase 2: Resolution and report (landed in 147e2b3)
 
-- [ ] 2.1 `seams.ts`: `resolveSeamSide` returning `{ instance, points, reversed,
+- [x] 2.1 `seams.ts`: `resolveSeamRun` returning `{ instance, points, reversed,
       length }` in assembly space; the polyline follows the stitch loop across
       the run, including any corner-round bridge between consecutive edges
-- [ ] 2.2 `validateSeam` / `validateSeamSide`: assembly exists, 2+ sides, every
+- [x] 2.2 `validateSeam` / `validateSeamRun`: assembly exists, 2+ sides, every
       instance belongs to it, every edge belongs to the instance's piece loop,
       consecutive runs with at most one wrap, no repeated edge, no edge already
       sewn or finished (ignoring the seam being updated)
-- [ ] 2.3 `sewabilityReport` coverage pass: `unmatched_edge`, `edge_used_twice`,
+- [x] 2.3 `sewabilityReport` coverage pass: `unmatched_edge`, `edge_used_twice`,
       `missing_reference` (unknown instance/piece/edge and an unresolvable loop),
       `edgeCount`/`seamCount`/`finishedCount`
-- [ ] 2.4 `sewabilityReport` comparison pass: `length_mismatch` with the eased
+- [x] 2.4 `sewabilityReport` comparison pass: `length_mismatch` with the eased
       downgrade, `allowance_mismatch` from the cut-distance extremes,
       `folded_edge_sewn`; errors before warnings, stable document order
-- [ ] 2.5 Gate: `seams.test.ts` covers one case per kind, exactly-at-tolerance and
+- [x] 2.5 Gate: `seams.test.ts` covers one case per kind, exactly-at-tolerance and
       one-past, the eased downgrade, a run across a rounded corner (bridge in the
       length), an empty assembly and a hand-edited duplicate; 100 % on `seams.ts`
 
-### Phase 3: Commands and contract
+### Phase 3: Commands and contract (landed in f7530bc)
 
-- [ ] 3.1 `commands/seams.ts`: `add_seam_match` with the shared validator,
+- [x] 3.1 `commands/seams.ts`: `add_seam_match` with the shared validator,
       duplicate-id no-op and `remove_seam_match` inverse
-- [ ] 3.2 `update_seam_match`: `eased` and/or full `sides`, previous values as
+- [x] 3.2 `update_seam_match`: `eased` and/or full `sides`, previous values as
       the inverse, at least one field required
-- [ ] 3.3 `remove_seam_match`: unknown seam is a no-op, the inverse recreates the
+- [x] 3.3 `remove_seam_match`: unknown seam is a no-op, the inverse recreates the
       record exactly
-- [ ] 3.4 `set_edge_finished`: `kind` or `null`, validation against seams,
+- [x] 3.4 `set_edge_finished`: `kind` or `null`, validation against seams,
       inverse restores the previous kind or clears it
-- [ ] 3.5 Plumbing: `commands/types.ts` params and union, `commands/index.ts`
+- [x] 3.5 Plumbing: `commands/types.ts` params and union, `commands/index.ts`
       dispatch, package exports; test that a dispatch exists for every command
-- [ ] 3.6 Cascades: `remove_instance` drops whole seams and finished edges
+- [x] 3.6 Cascades: `remove_instance` drops whole seams and finished edges
       (`inverse: null` only when it dropped something), `delete_piece` and
       `delete_assembly` take theirs along; tests with two instances of one piece
       and two assemblies
-- [ ] 3.7 `split_line` repair: replace the split edge with `[lineId, command.id]`
+- [x] 3.7 `split_line` repair: replace the split edge with `[lineId, command.id]`
       in place in every assembly seam run, leaving legacy `document.seams` and
       finished edges alone; test a run of two, a side starting at the split edge,
       and a double split
-- [ ] 3.8 Contract sync: `command-spec.json` (`$id`, `schema`, `spec_version`
+- [x] 3.8 Contract sync: `command-spec.json` (`$id`, `schema`, `spec_version`
       `0.22.0`, four commands with params and inverses), `command-spec.md`
       (`## Commands (v0.22)`, four `###` sections, shared validation rules,
       migration paragraph), `CommandSpecTest.php` assertions; confirm
       `config/geometry.php` needs no edit
-- [ ] 3.9 Gate: geometry suite green, 100 % on `commands/seams.ts` and the touched
+- [x] 3.9 Gate: geometry suite green, 100 % on `commands/seams.ts` and the touched
       commands, the Pest `--coverage --min=100` gate and Pint pass
 
 ### Phase 4: Canvas and the sewing gesture

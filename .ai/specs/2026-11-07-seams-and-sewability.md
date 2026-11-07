@@ -82,7 +82,7 @@ drafting mistakes that make a garment unsewable before anything is cut.
 ### Shape
 
 - **Model.** `Assembly` gains optional `seams: SeamMatch[]` and
-  `finishedEdges: FinishedEdge[]`. `SeamMatch` holds 2+ `SeamSide`s (instance,
+  `finishedEdges: FinishedEdge[]`. `SeamMatch` holds 2+ `SeamRun`s (instance,
   run of edges, direction) and an `eased` flag. A `FinishedEdge` names an
   instance, an edge and one of four kinds. Both arrays are optional and absent
   means empty, so a `0.8` document needs no conversion.
@@ -121,7 +121,7 @@ flowchart LR
 The takeaway: the stored seam is a tiny reference record; everything visible is
 derived on read, so an edited piece can never leave a stale seam drawing.
 
-- `packages/geometry/src/types.ts` — `SeamMatch`, `SeamSide`, `FinishedEdge`,
+- `packages/geometry/src/types.ts` — `SeamMatch`, `SeamRun`, `FinishedEdge`,
   `FinishKind`, the two optional `Assembly` arrays, `PATTERN_SCHEMA = 0.9`.
 - `packages/geometry/src/piece.ts` — new `pieceEdgeSegments(document, piece)`,
   returning the stitch polyline of every loop edge **in authored `Piece.edges`
@@ -131,8 +131,8 @@ derived on read, so an edited piece can never leave a stale seam drawing.
   `instanceEdgeSegments(document, piece, instance)` mapping those polylines
   through `placePoint`; the same function the canvas uses to hit-test an edge.
 - `packages/geometry/src/seams.ts` — `SEAM_LENGTH_TOLERANCE`,
-  `resolveSeamSide` (assembly-space polyline and length), `validateSeamSide`,
-  `seamRecordIssue`, `sewabilityReport`. Pure; no Vue, DOM or network.
+  `resolveSeamRun` (assembly-space polyline and length), `validateSeamRun`,
+  `validateSeam`, `sewabilityReport`. Pure; no Vue, DOM or network.
 - `packages/geometry/src/commands/assemblies.ts` — the four seam commands and the
   cascades in `remove_instance`/`delete_piece`/`delete_assembly`.
 - `packages/geometry/src/commands/entities.ts` — `applySplitLine` re-points seam
@@ -160,8 +160,11 @@ through `PatternPersistence`, autosave and versioning untouched.
 ## 📝 Data Model
 
 ```ts
-/** One side of a seam: a run of loop edges on one placed instance. */
-export interface SeamSide {
+/**
+ * One side of a seam: a run of loop edges on one placed instance. Named `SeamRun`
+ * rather than `SeamSide`, which already means an allowance's left/right offset.
+ */
+export interface SeamRun {
   /** An instance of the seam's own assembly. */
   instance: EntityId;
   /**
@@ -179,7 +182,7 @@ export interface SeamSide {
 /** Two or more sides sewn together; `sides` is ordered by layer. */
 export interface SeamMatch {
   id: EntityId;
-  sides: SeamSide[];
+  sides: SeamRun[];
   /** A deliberate length difference (ease); turns `length_mismatch` into a warning. */
   eased?: boolean;
 }
@@ -225,7 +228,7 @@ stored, not editable and not per-seam (D7); `eased` is the per-seam escape.
 
 **Conventions that the contract depends on:**
 
-- An edge id in a `SeamSide` addresses the edge's **stitch** polyline, never its
+- An edge id in a `SeamRun` addresses the edge's **stitch** polyline, never its
   cut line. Allowance width is irrelevant to how long a seam is, which is why a
   change of allowance never invalidates a seam.
 - Order inside `edges` is `Piece.edges` order, not the derived walk order; the
@@ -243,17 +246,18 @@ stored, not editable and not per-seam (D7); `eased` is the per-seam escape.
   The bridge belongs to no edge, but it is part of the seam: it counts in the
   length and it exists in the vertex correspondence. A run that spans a rounded
   corner without its bridge would measure short and would leave a gap in 3D.
-- **The seam start is side 0's run start** in authored order. Every other side is
-  traversed from its own run start, or from its run end when `reversed`. This is
-  the correspondence a future preview welds by, and it is the reason `reversed`
-  is stored now rather than derived later.
+- **The seam start is the first edge's outer end** — the end of the run's first
+  edge that is not shared with the next edge (or, for a one-edge run, its
+  authored start). Every other side is traversed from its own run start, or from
+  its run end when `reversed`. This is the correspondence a future preview welds
+  by, and it is the reason `reversed` is stored now rather than derived later.
 
 ## 📝 API Contracts
 
 ### Seam resolution (read-only, pure)
 
 ```ts
-export interface ResolvedSeamSide {
+export interface ResolvedSeamRun {
   instance: EntityId;
   /** Assembly-space stitch polyline, bridges included, in run order. */
   points: Vec2[];
@@ -262,14 +266,14 @@ export interface ResolvedSeamSide {
   length: number;
 }
 
-export function resolveSeamSide(
+export function resolveSeamRun(
   document: PatternDocument,
   assembly: Assembly,
-  side: SeamSide,
-): ResolvedSeamSide | null;
+  side: SeamRun,
+): ResolvedSeamRun | null;
 ```
 
-`resolveSeamSide` is the seam's geometric contract for both consumers: the check
+`resolveSeamRun` is the seam's geometric contract for both consumers: the check
 measures `length`, and a future preview samples `points` to weld the sides. It
 returns `null` for any unresolvable reference, never throws.
 
@@ -528,7 +532,7 @@ Phase 3 is the verdict.
 
 ### Phase 1 — Model, rules and commands
 
-1. **Schema and types.** Add `SeamSide`, `SeamMatch`, `FinishKind`,
+1. **Schema and types.** Add `SeamRun`, `SeamMatch`, `FinishKind`,
    `FinishedEdge`, the optional `Assembly` arrays and `PATTERN_SCHEMA = 0.9`;
    keep `0.8` in `KNOWN_PATTERN_SCHEMAS` with a comment explaining the additive
    step. Unit-test a `0.8` document loading with both arrays absent.
@@ -538,7 +542,7 @@ Phase 3 is the verdict.
    corner (bridge absent, neighbouring edges whole), a mirrored instance and an
    unresolvable loop returning `null`.
 3. **Seam resolution.** Create `seams.ts` with `SEAM_LENGTH_TOLERANCE`,
-   `sidePolyline`, `sideLength`, `validateSeamSide` and `seamRecordIssue`. Test
+   `resolveSeamRun`, `validateSeamRun` and `validateSeam`. Test
    adjacency with a wrap, a non-consecutive run, a repeated edge, an unknown
    edge, an unknown instance and a side in another assembly.
 4. **The report.** Implement `sewabilityReport` with the six issue kinds and
