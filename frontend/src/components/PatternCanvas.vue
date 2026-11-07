@@ -209,6 +209,8 @@ import {
   type DimensionDrawingOptions,
   type DimensionLabelView,
 } from '@/lib/pattern-canvas-dimensions';
+import { useReferencePicker } from '@/composables/use-reference-picker';
+import { useVariablePicker } from '@/composables/use-variable-picker';
 import {
   arcViews,
   bandCutLoopOf,
@@ -1383,22 +1385,8 @@ const dimensionEditor = computed(() => {
   };
 });
 
-/** The `#` picker's transient state; `null` while the field is not linking. */
-const dimensionPicker = ref<{ text: string; activeIndex: number } | null>(null);
-
-/** The `$` picker's transient state; `null` while no token is being typed. */
-const variablePicker = ref<{ query: string; activeIndex: number } | null>(null);
-
-/** The variables the open `$` picker offers for the text being typed. */
-const variablePickerOptions = computed(() => {
-  const query = variablePicker.value!.query.toLowerCase();
-  return variableOptions(props.document).filter(
-    (option) => option.slug.includes(query) || option.name.toLowerCase().includes(query),
-  );
-});
-
 /** Insert a picked variable token into whichever inline editor is open. */
-function applyVariableToken(slug: string, target: 'dimension' | 'corner-round'): void {
+function applyVariableToken(target: 'dimension' | 'corner-round', slug: string): void {
   if (target === 'dimension') {
     const editing = editingDimension.value!;
     editingDimension.value = { id: editing.id, value: insertVariableToken(editing.value, slug) };
@@ -1408,68 +1396,37 @@ function applyVariableToken(slug: string, target: 'dimension' | 'corner-round'):
   editingCornerRound.value = { ...editing, value: insertVariableToken(editing.value, slug) };
 }
 
-/** Arrow keys move the `$` picker, Enter inserts the token, Escape closes it. */
-function onVariablePickerKeydown(
-  event: KeyboardEvent,
-  target: 'dimension' | 'corner-round',
-): boolean {
-  const picker = variablePicker.value;
-  if (picker === null) return false;
-  const count = variablePickerOptions.value.length;
+/** The `$` picker both inline editors share. */
+const {
+  options: variablePickerOptions,
+  isOpen: variablePickerOpen,
+  pick: pickVariable,
+  open: openVariablePicker,
+  close: closeVariablePicker,
+  onKeydown: onVariablePickerKeydown,
+} = useVariablePicker<'dimension' | 'corner-round'>(
+  () => props.document,
+  (target, _id, slug) => applyVariableToken(target, slug),
+);
 
-  if (event.key === 'ArrowDown' && count > 0) {
-    variablePicker.value = { query: picker.query, activeIndex: (picker.activeIndex + 1) % count };
-    return true;
-  }
-  if (event.key === 'ArrowUp' && count > 0) {
-    variablePicker.value = {
-      query: picker.query,
-      activeIndex: (picker.activeIndex - 1 + count) % count,
-    };
-    return true;
-  }
-  if (event.key === 'Escape') {
-    variablePicker.value = null;
-    return true;
-  }
-  if (event.key === 'Enter' && count > 0) {
-    const option = variablePickerOptions.value[Math.min(picker.activeIndex, count - 1)]!;
-    applyVariableToken(option.slug, target);
-    variablePicker.value = null;
-    return true;
-  }
-  return false;
-}
-
-/** Insert a picked variable token and keep the editor open. */
-function selectVariable(slug: string, target: 'dimension' | 'corner-round'): void {
-  applyVariableToken(slug, target);
-  variablePicker.value = null;
-}
-
-/** The dimension the inline editor is editing, used to resolve link targets. */
-const editingConstraint = computed<DistanceConstraint>(() => {
-  const editing = editingDimension.value!;
-  return distanceConstraints.value.find((constraint) => constraint.id === editing.id)!;
-});
-
-/** Every row the open picker offers for the edited dimension. */
-const dimensionPickerOptions = computed<DimensionReferenceOption[]>(() => {
-  const constraint = editingConstraint.value;
-  return filterReferenceOptions(
-    referenceOptions(props.document, constraint),
-    dimensionPicker.value!.text,
-  );
-});
-
-/** The row Enter would pick, or `null` when the list is empty. */
-const activePickerOption = computed<DimensionReferenceOption | null>(() => {
-  const picker = dimensionPicker.value;
-  if (picker === null || dimensionPickerOptions.value.length === 0) return null;
-  return dimensionPickerOptions.value[
-    Math.min(picker.activeIndex, dimensionPickerOptions.value.length - 1)
-  ]!;
-});
+/** The `#` picker the dimension editor opens while a `#` token is typed. */
+const {
+  picker: dimensionPicker,
+  options: dimensionPickerOptions,
+  activeOption: activePickerOption,
+  activeIndex: pickerActiveIndex,
+  optionsFor,
+  close: closeReferencePicker,
+  onInput: onReferenceInput,
+  onKeydown: onReferenceKeydown,
+  select: linkReference,
+} = useReferencePicker(
+  () => props.document,
+  (id, referenceId) => {
+    editingDimension.value = null;
+    emit('update-dimension', id, { reference: referenceId });
+  },
+);
 
 /** The `aria-activedescendant` target while the picker is open. */
 const pickerActiveDescendant = computed<string | undefined>(() =>
@@ -1478,28 +1435,9 @@ const pickerActiveDescendant = computed<string | undefined>(() =>
     : `dimension-reference-list-${activePickerOption.value.id}`,
 );
 
-/** The row the picker highlights, clamped to the filtered list. */
-const pickerActiveIndex = computed<number>(() =>
-  activePickerOption.value === null
-    ? -1
-    : dimensionPickerOptions.value.findIndex(
-        (option) => option.id === activePickerOption.value!.id,
-      ),
-);
-
-function optionsFor(id: EntityId): DimensionReferenceOption[] {
-  const constraint = distanceConstraints.value.find((entry) => entry.id === id)!;
-  return referenceOptions(props.document, constraint);
-}
-
-function movePicker(step: number): void {
-  const picker = dimensionPicker.value!;
-  const count = dimensionPickerOptions.value.length;
-  if (count === 0) return;
-  dimensionPicker.value = {
-    text: picker.text,
-    activeIndex: (picker.activeIndex + step + count) % count,
-  };
+/** Pick a row from the list: link the edited dimension and close the field. */
+function selectReference(reference: EntityId): void {
+  linkReference(editingDimension.value!.id, reference);
 }
 
 function xTickPosition(value: number): number {
@@ -2088,7 +2026,7 @@ async function beginDimensionEdit(constraint: DistanceConstraint): Promise<void>
     id: constraint.id,
     value: formatDimensionField(constraint, value, state),
   };
-  dimensionPicker.value = null;
+  closeReferencePicker();
   await nextTick();
   dimensionInput.value!.focus();
   dimensionInput.value!.select();
@@ -2098,43 +2036,20 @@ function onDimensionEditInput(event: Event): void {
   const editing = editingDimension.value!;
   const value = (event.target as HTMLInputElement).value;
   editingDimension.value = { id: editing.id, value };
-  dimensionPicker.value = isReferenceEditText(value)
-    ? { text: referenceSearchText(value), activeIndex: 0 }
-    : null;
-  const query = variableQuery(value);
-  variablePicker.value =
-    query === null || variableQueryIsComplete(props.document, query)
-      ? null
-      : { query, activeIndex: 0 };
+  onReferenceInput(editing.id, event);
+  openVariablePicker('dimension', editing.id, variableQuery(value));
 }
 
 /** Arrow keys move the picker, Enter links or commits, Escape closes or cancels. */
 function onDimensionEditorKeydown(event: KeyboardEvent): void {
-  if (onVariablePickerKeydown(event, 'dimension')) {
+  const editing = editingDimension.value!;
+  if (onVariablePickerKeydown('dimension', editing.id, event)) {
     event.preventDefault();
     return;
   }
-  if (dimensionPicker.value !== null) {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      movePicker(1);
-      return;
-    }
-    if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      movePicker(-1);
-      return;
-    }
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      dimensionPicker.value = null;
-      return;
-    }
-    if (event.key === 'Enter' && activePickerOption.value !== null) {
-      event.preventDefault();
-      selectReference(activePickerOption.value.id);
-      return;
-    }
+  if (onReferenceKeydown(editing.id, event)) {
+    event.preventDefault();
+    return;
   }
 
   if (event.key === 'Enter') {
@@ -2146,14 +2061,6 @@ function onDimensionEditorKeydown(event: KeyboardEvent): void {
     event.preventDefault();
     cancelDimensionEdit();
   }
-}
-
-/** Pick a row: link the edited dimension and close the field. */
-function selectReference(id: EntityId): void {
-  const editing = editingDimension.value!;
-  editingDimension.value = null;
-  dimensionPicker.value = null;
-  emit('update-dimension', editing.id, { reference: id });
 }
 
 /** A formula is applicable only when it resolves; a typo stays editable. */
@@ -2172,15 +2079,15 @@ function applyDimensionEdit(): void {
   if (patch === null) return;
 
   editingDimension.value = null;
-  dimensionPicker.value = null;
+  closeReferencePicker();
   emit('update-dimension', editing.id, patch);
 }
 
 /** Blur: commit an applicable edit and discard an invalid or unresolved one. */
 function finishDimensionEdit(): void {
   const editing = editingDimension.value;
-  dimensionPicker.value = null;
-  variablePicker.value = null;
+  closeReferencePicker();
+  closeVariablePicker();
   if (editing === null) return;
 
   const edit = parseDimensionEdit(editing.value);
@@ -2194,8 +2101,8 @@ function finishDimensionEdit(): void {
 
 function cancelDimensionEdit(): void {
   editingDimension.value = null;
-  dimensionPicker.value = null;
-  variablePicker.value = null;
+  closeReferencePicker();
+  closeVariablePicker();
 }
 
 /** Show a round's handles while its line or arc is hovered. */
@@ -2241,7 +2148,7 @@ async function openCornerRoundEditor(round: CornerRound, x: number, y: number): 
     x,
     y,
   };
-  variablePicker.value = null;
+  closeVariablePicker();
   await nextTick();
   cornerRoundInput.value!.focus();
   cornerRoundInput.value!.select();
@@ -2262,16 +2169,12 @@ function onCornerRoundEditInput(event: Event): void {
   const editing = editingCornerRound.value!;
   const value = (event.target as HTMLInputElement).value;
   editingCornerRound.value = { ...editing, value };
-  const query = variableQuery(value);
-  variablePicker.value =
-    query === null || variableQueryIsComplete(props.document, query)
-      ? null
-      : { query, activeIndex: 0 };
+  openVariablePicker('corner-round', editing.id, variableQuery(value));
 }
 
 /** Arrow keys drive the `$` picker; Enter commits, Escape cancels. */
 function onCornerRoundEditorKeydown(event: KeyboardEvent): void {
-  if (onVariablePickerKeydown(event, 'corner-round')) {
+  if (onVariablePickerKeydown('corner-round', editingCornerRound.value!.id, event)) {
     event.preventDefault();
     return;
   }
@@ -2293,7 +2196,7 @@ function applyCornerRoundEdit(): void {
   if (field.kind === 'invalid') return;
 
   editingCornerRound.value = null;
-  variablePicker.value = null;
+  closeVariablePicker();
   if (!sameCornerRadiusParam(editing.startParam, field.param)) {
     emit('set-corner-round-radius', editing.id, field.param);
   }
@@ -2307,7 +2210,7 @@ function finishCornerRoundEdit(): void {
   const editing = editingCornerRound.value;
   const field = parseCornerRadiusField(props.document, editing.value);
   editingCornerRound.value = null;
-  variablePicker.value = null;
+  closeVariablePicker();
   if (field.kind === 'param' && !sameCornerRadiusParam(editing.startParam, field.param)) {
     emit('set-corner-round-radius', editing.id, field.param);
   }
@@ -2315,7 +2218,7 @@ function finishCornerRoundEdit(): void {
 
 function cancelCornerRoundEdit(): void {
   editingCornerRound.value = null;
-  variablePicker.value = null;
+  closeVariablePicker();
 }
 
 /** Tools that show the midpoint magnet and can create a midpoint endpoint. */
@@ -4803,8 +4706,14 @@ watch(
       :aria-label="`Corner round ${editingCornerRound.id} radius in millimetres`"
       role="combobox"
       aria-autocomplete="list"
-      :aria-expanded="variablePicker !== null"
-      :aria-controls="variablePicker === null ? undefined : 'corner-round-variable-list'"
+      :aria-expanded="
+        editingCornerRound !== null && variablePickerOpen('corner-round', editingCornerRound.id)
+      "
+      :aria-controls="
+        editingCornerRound !== null && variablePickerOpen('corner-round', editingCornerRound.id)
+          ? 'corner-round-variable-list'
+          : undefined
+      "
       @input="onCornerRoundEditInput"
       @keydown="onCornerRoundEditorKeydown"
       @blur="finishCornerRoundEdit"
@@ -4821,7 +4730,11 @@ watch(
     />
 
     <ul
-      v-if="variablePicker !== null && dimensionEditor !== null && variablePickerOptions.length > 0"
+      v-if="
+        dimensionEditor !== null &&
+        variablePickerOpen('dimension', dimensionEditor.id) &&
+        variablePickerOptions.length > 0
+      "
       class="absolute z-20 w-44 overflow-auto rounded-md border bg-background p-1 text-xs shadow-sm"
       :style="{ left: `${dimensionEditor.x}px`, top: `${dimensionEditor.y + 18}px` }"
       data-testid="dimension-variable-list"
@@ -4832,7 +4745,7 @@ watch(
           type="button"
           class="flex w-full items-baseline justify-between gap-2 rounded-sm px-1.5 py-1 text-left hover:bg-muted"
           :data-testid="`dimension-variable-${option.slug}`"
-          @mousedown.prevent="selectVariable(option.slug, 'dimension')"
+          @mousedown.prevent="pickVariable('dimension', dimensionEditor.id, option.slug)"
         >
           <span class="truncate">
             {{ option.name }}
@@ -4845,7 +4758,9 @@ watch(
 
     <ul
       v-if="
-        variablePicker !== null && editingCornerRound !== null && variablePickerOptions.length > 0
+        editingCornerRound !== null &&
+        variablePickerOpen('corner-round', editingCornerRound.id) &&
+        variablePickerOptions.length > 0
       "
       id="corner-round-variable-list"
       class="absolute z-20 w-44 overflow-auto rounded-md border bg-background p-1 text-xs shadow-sm"
@@ -4858,7 +4773,7 @@ watch(
           type="button"
           class="flex w-full items-baseline justify-between gap-2 rounded-sm px-1.5 py-1 text-left hover:bg-muted"
           :data-testid="`corner-round-variable-${option.slug}`"
-          @mousedown.prevent="selectVariable(option.slug, 'corner-round')"
+          @mousedown.prevent="pickVariable('corner-round', editingCornerRound.id, option.slug)"
         >
           <span class="truncate">
             {{ option.name }}
