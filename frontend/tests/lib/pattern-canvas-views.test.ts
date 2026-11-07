@@ -1,5 +1,7 @@
 import {
+  bandTargetKey,
   createEmptyDocument,
+  type BandTarget,
   type EntityId,
   type LineEntity,
   type PatternDocument,
@@ -211,7 +213,7 @@ describe('regionViewsOf', () => {
       ],
     }) as never;
 
-  const keyOf = (target: never) => (target as { edge: string }).edge;
+  const keyOf = bandTargetKey;
 
   it('draws nothing while allowances are hidden', () => {
     expect(
@@ -228,15 +230,15 @@ describe('regionViewsOf', () => {
   it('resolves selection and hover by target key', () => {
     const views = regionViewsOf([region('l1'), region('l2')], {
       showAllowances: true,
-      selectedTargets: [{ kind: 'edge', edge: 'l1' }] as never,
-      hovered: { kind: 'edge', edge: 'l2' } as never,
+      selectedTargets: [{ kind: 'edge', edge: 'l1' }] as BandTarget[],
+      hovered: { kind: 'edge', edge: 'l2' } as BandTarget,
       bandHovered: true,
       keyOf,
     });
 
     expect(views.map((view) => [view.key, view.selected, view.hovered])).toEqual([
-      ['l1', true, false],
-      ['l2', false, true],
+      ['edge:l1', true, false],
+      ['edge:l2', false, true],
     ]);
   });
 });
