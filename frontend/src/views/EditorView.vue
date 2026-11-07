@@ -15,9 +15,6 @@ import {
   getEntity,
   isConstruction,
   isDrivenDimension,
-  isMeasuredVariable,
-  measurementChain,
-  measurementChainMessage,
   isLineAnchor,
   measureDistanceDimension,
   measureLinearDimension,
@@ -185,6 +182,7 @@ import {
 } from '@/lib/selection';
 import type { ProjectSettingsDraft } from '@/components/dialogs/ProjectSettingsDialog.vue';
 import { assemblyTab, nextPieceColor, pieceTab, tabLabel, writePersistedTab } from '@/lib/tabs';
+import { useMeasuredEdit } from '@/composables/use-measured-edit';
 import { useProjectSession } from '@/composables/use-project-session';
 import { useEditorStore } from '@/stores/editor';
 
@@ -460,192 +458,35 @@ const selectedEntities = computed(() =>
   }),
 );
 
-/** The selected edges, in selection order: the only kinds a measurement reads. */
-const measuredSourceIds = computed(() =>
-  selectedEntities.value
-    .filter(
-      (entity) =>
-        entity.kind === 'line' ||
-        entity.kind === 'curve' ||
-        entity.kind === 'arc' ||
-        entity.kind === 'circle',
-    )
-    .map((entity) => entity.id),
-);
-
-/** The ordered chain the current selection forms, or why it does not form one. */
-const measuredSelection = computed<{ chain: EntityId[] | null; problem?: string }>(() => {
-  const ids = measuredSourceIds.value;
-  if (ids.length === 0) {
-    return { chain: null, problem: 'Select one or more connected edges first.' };
-  }
-  const result = measurementChain(pattern.value.entities, ids);
-  return result.problem === undefined
-    ? { chain: result.chain }
-    : { chain: null, problem: measurementChainMessage(result.problem) };
+const {
+  measuredSelection,
+  highlightedVariableSlug,
+  measuredHighlightIds,
+  editingMeasuredSlug,
+  editingMeasured,
+  measuredEditMessage,
+  measuredSourceChips,
+  measureLabel,
+  onHighlightVariable,
+  endMeasuredEdit,
+  startMeasuredEdit,
+  onMeasuredEdgeToggle,
+  cancelMeasuredEdit,
+  onMeasureSelection,
+} = useMeasuredEdit({
+  pattern: () => pattern.value,
+  editor,
+  selectedEntities,
+  selectedEntityIds,
+  activeTool,
+  isSketch,
+  activeTab,
+  setActiveTab,
+  fit,
+  run,
+  dispatch,
+  error,
 });
-
-/** The measured variable whose sources the canvas is showing, if any. */
-const highlightedVariableSlug = ref<string | null>(null);
-const highlightedVariable = computed(
-  () =>
-    documentVariables.value.find((variable) => variable.slug === highlightedVariableSlug.value) ??
-    null,
-);
-const measuredHighlightIds = computed(() => {
-  const variable = highlightedVariable.value;
-  return variable !== null && isMeasuredVariable(variable) ? variable.sources : [];
-});
-
-/** Every variable in the document; the field is optional on a legacy document. */
-const documentVariables = computed(() => pattern.value.variables ?? []);
-
-/** The measured variable whose edges the canvas is picking, if any. */
-const editingMeasuredSlug = ref<string | null>(null);
-const editingMeasured = computed(
-  () =>
-    documentVariables.value
-      .filter(isMeasuredVariable)
-      .find((variable) => variable.slug === editingMeasuredSlug.value) ?? null,
-);
-const measuredEditStart = ref<EntityId[] | null>(null);
-const measuredEditMessage = ref<string | null>(null);
-/** The chips the edit bar shows for one chain, in traversal order. */
-function measuredSourceChips(sources: readonly EntityId[]): { id: EntityId; label: string }[] {
-  return sources.map((id, index) => ({ id, label: `Edge ${index + 1}` }));
-}
-
-/** The row a Selection action would re-pick, when a measured row is highlighted. */
-const measureTarget = computed(() =>
-  highlightedVariable.value !== null && isMeasuredVariable(highlightedVariable.value)
-    ? highlightedVariable.value
-    : null,
-);
-
-/** Label for the Selection action: create, or re-pick the highlighted chain. */
-const measureLabel = computed(() =>
-  measureTarget.value === null
-    ? 'Add as measured variable'
-    : `Update sources for ${measureTarget.value.name}`,
-);
-
-function onHighlightVariable(slug: string | null): void {
-  highlightedVariableSlug.value = slug;
-}
-
-/** Stop picking edges; the row keeps its last applied sources. */
-function endMeasuredEdit(): void {
-  editingMeasuredSlug.value = null;
-  measuredEditStart.value = null;
-  measuredEditMessage.value = null;
-  highlightedVariableSlug.value = null;
-}
-
-/** Focus the piece that owns a measured chain before its edges are picked. */
-function focusMeasuredPiece(sources: readonly EntityId[]): void {
-  const piece = sources
-    .map((id) => pieceForEntity(pattern.value, id)?.id)
-    .find((id): id is EntityId => id !== undefined);
-  if (piece === undefined) return;
-
-  if (isSketch.value) {
-    editor.setSketchTarget(piece);
-    return;
-  }
-  if (activeTab.value?.kind === 'piece' && activeTab.value.id === piece) return;
-  setActiveTab(pieceTab(piece));
-}
-
-/** Turn the canvas into an edge picker for one measured variable. */
-function startMeasuredEdit(slug: string): void {
-  if (editor.readOnly) return;
-  const variable = documentVariables.value.find((candidate) => candidate.slug === slug);
-  if (variable === undefined || !isMeasuredVariable(variable)) return;
-
-  focusMeasuredPiece(variable.sources);
-  editingMeasuredSlug.value = slug;
-  measuredEditStart.value = [...variable.sources];
-  measuredEditMessage.value = null;
-  highlightedVariableSlug.value = slug;
-  selectedEntityIds.value = [];
-  activeTool.value = 'select';
-  fit();
-}
-
-/**
- * Toggle one edge of the chain being edited and apply it live. A gap, a
- * duplicate, a foreign kind or an empty chain is refused with a message and
- * leaves the stored chain untouched.
- */
-function onMeasuredEdgeToggle(id: EntityId): void {
-  const variable = editingMeasured.value;
-  if (variable === null) return;
-
-  const next = variable.sources.includes(id)
-    ? variable.sources.filter((source) => source !== id)
-    : [...variable.sources, id];
-  const result = measurementChain(pattern.value.entities, next);
-  if (result.problem !== undefined) {
-    measuredEditMessage.value =
-      next.length === 0
-        ? 'Keep at least one edge in the measurement.'
-        : measurementChainMessage(result.problem);
-    return;
-  }
-
-  run(() =>
-    dispatch({
-      id: nextCommandId('variable'),
-      type: 'update_variable',
-      params: { slug: variable.slug, sources: result.chain },
-    }),
-  );
-  measuredEditMessage.value = error.value;
-}
-
-/** Revert every live edge change made since the editor opened, then close it. */
-function cancelMeasuredEdit(): void {
-  const variable = editingMeasured.value;
-  const start = measuredEditStart.value;
-  if (
-    variable !== null &&
-    start !== null &&
-    (variable.sources.length !== start.length ||
-      variable.sources.some((source, index) => source !== start[index]))
-  ) {
-    run(() =>
-      dispatch({
-        id: nextCommandId('variable'),
-        type: 'update_variable',
-        params: { slug: variable.slug, sources: start },
-      }),
-    );
-  }
-  endMeasuredEdit();
-}
-
-/** Create a measured variable from the selection, or re-pick a highlighted one. */
-function onMeasureSelection(): void {
-  const chain = measuredSelection.value.chain;
-  if (chain === null) return;
-  const target = measureTarget.value;
-  const count = (pattern.value.variables ?? []).length + 1;
-  run(() =>
-    dispatch(
-      target === null
-        ? {
-            id: nextCommandId('variable'),
-            type: 'set_variable',
-            params: { name: `Measured ${count}`, kind: 'measurement', sources: chain },
-          }
-        : {
-            id: nextCommandId('variable'),
-            type: 'update_variable',
-            params: { slug: target.slug, sources: chain },
-          },
-    ),
-  );
-}
 
 /** Edges a bulk Delete would orphan; a non-empty list disables the action. */
 const orphanCandidates = computed(() => orphanedEdges(pattern.value, selectedEntityIds.value));
@@ -2014,14 +1855,6 @@ watch(pattern, (next) => {
     activePieceId.value,
     selectedAllowanceTargets.value,
   );
-});
-
-watch(pattern, (next) => {
-  if (editingMeasuredSlug.value === null) return;
-  const stillMeasured = (next.variables ?? []).some(
-    (variable) => variable.slug === editingMeasuredSlug.value && isMeasuredVariable(variable),
-  );
-  if (!stillMeasured) endMeasuredEdit();
 });
 
 watch(pattern, (next) => {

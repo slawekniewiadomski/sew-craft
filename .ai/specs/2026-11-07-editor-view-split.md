@@ -1,6 +1,6 @@
 # Split `EditorView` by domain
 
-Status: **in progress** — phase 1 lands on the same PR that carries the spec.
+Status: **in progress** — phase 1 landed with the spec (#133), phase 2 follows.
 Refs #132
 
 ## 📝 TLDR
@@ -46,12 +46,12 @@ behaviour, command, API or schema changes.
 Each phase is one commit and one reviewable unit. Phases run in order; later
 ones assume the earlier boundaries exist.
 
-1. **Project session & persistence** → `composables/use-project-session.ts`
+1. **Project session & persistence** → `composables/use-project-session.ts` (landed)
    (~290 lines). `loadState`, `loadError`, `project`, settings open/saving/error,
    `pendingUpgrade`, `conflict`, `dialogOpen`, `saveBarState`, the autosave
    scheduler, `loadProject`, `applySnapshot`, `persist`, `save`, conflict and
    upgrade actions, and the unload/visibility/route guards.
-2. **Measured variables & editing** → `composables/use-measured-edit.ts`
+2. **Measured variables & editing** → `composables/use-measured-edit.ts` (this PR)
    (~250 lines). Highlight, selection chain, start/end/cancel, edge toggling and
    the measured chips.
 3. **Constraints & corner rounds** → `composables/use-tool-prompts.ts` (~200).
