@@ -15,7 +15,7 @@ const document: PatternDocument = {
   constraints: [
     { id: 'A', type: 'distance', a: 'p1', b: 'p2', value: 120, orientation: 'horizontal' },
     { id: 'B', type: 'distance', a: 'p3', b: 'p4', value: 80 },
-    { id: 'h', type: 'horizontal', entities: ['p1', 'p2'] },
+    { id: 'h', type: 'horizontal', a: 'p1', b: 'p2' },
   ],
   pieces: [],
   assemblies: [],
