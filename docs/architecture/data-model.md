@@ -296,7 +296,8 @@ instance, ordered by layer; `reversed` is the side's direction relative to the
 authored run. A finished edge marks one instance edge with a `hem`, `binding`,
 `fold` or `opening` kind. Seams are recorded against the stitch loop, so an
 allowance edit never invalidates them, and they are advisory: no save, autosave,
-version or export path reads them.
+version or export path reads them. The 3D preview is derived from these arrays
+and the stitch loops at view time; it stores no camera, mesh or inflate value.
 
 The whole set of placement rules is in `docs/architecture/geometry-core.md`.
 

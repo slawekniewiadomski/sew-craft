@@ -290,6 +290,55 @@ severity-ordered issue list:
 are exported constants, not stored per seam. An empty assembly is vacuously
 sewable. Errors are listed before warnings, and each group keeps document order.
 
+## 3D preview (`drape.ts`)
+
+The preview turns an assembly's stitch loops and seam record into one welded,
+inflated mesh. It is derived and read-only: no command writes it, no document
+field stores it, and save, autosave, versioning and export never read it. ADR-0011
+chooses SVG projection over WebGL.
+
+`drapeAssembly(document, assembly, options)` returns a `PreviewMesh | null`:
+
+```ts
+interface PreviewMesh {
+  positions: Vec3[]; // assembly millimetres, z is the inflation axis
+  triangles: { a: number; b: number; c: number; panel: number }[];
+  panels: { instance: EntityId; piece: EntityId; color: string | null }[];
+  openBoundaries: number[][];
+  simplified: boolean;
+  skipped: EntityId[];
+}
+```
+
+The pipeline:
+
+1. **Panels.** Each instance contributes its stitch loop (`instanceLoops`).
+   Ear clipping triangulates it and conforming midpoint subdivision stops at
+   `PREVIEW_MAX_EDGE = 18` mm, the level cap or the triangle budget.
+2. **Seam samples.** Each seam side is resampled at a common
+   `PREVIEW_SAMPLE_SPACING = 4` mm along `resolveSeamRun`; the samples are
+   inserted into the panel boundary by splitting the owning boundary triangle.
+   The k-th sample of every side of a seam shares a weld group, so the seam is
+   closed topologically.
+3. **Direction.** Seam `sides` order is layer order: side 0 inflates one way,
+   every other side the other way. A panel accumulates the directions of its
+   seams; ties stay outward.
+4. **Inflate.** A deterministic position-based loop runs
+   `PREVIEW_ITERATIONS = 60` times: move along the area-weighted vertex normal
+   by `inflate × 0.35` mm, project every triangle edge back to its rest length
+   (three passes), project interior-edge opposite-vertex distances at a soft
+   `0.25` factor, and pin one vertex. No gravity, collision or time step.
+5. **Open boundaries.** Edges used by exactly one triangle form boundary loops.
+   They stay open: finished edges are the object's openings.
+6. **Cost.** `PREVIEW_TRIANGLE_LIMIT = 6000`; a panel that would exceed its share
+   stops subdividing, and `simplified` says so.
+
+The frontend's `frontend/src/lib/preview-mesh.ts` projects the mesh
+orthographically (yaw around Z, then pitch around X), sorts triangles back to
+front and shades each face with a fixed Lambert term. The dialog paints one SVG
+`<polygon>` per triangle; wireframe keeps the outline and drops the fill. There is
+no WebGL context, camera or saved pose.
+
 ## Later entities (specced, not built)
 
 - `dart` — first-class construction element.
