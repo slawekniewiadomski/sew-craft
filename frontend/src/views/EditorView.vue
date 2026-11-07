@@ -66,6 +66,9 @@ import EditorTabs from '@/components/EditorTabs.vue';
 import EditorTopBar from '@/components/EditorTopBar.vue';
 import EntityPropertiesPanel from '@/components/EntityPropertiesPanel.vue';
 import ExportDialog from '@/components/ExportDialog.vue';
+import ConstraintsPanel from '@/components/ConstraintsPanel.vue';
+import DimensionsPanel from '@/components/DimensionsPanel.vue';
+import OutlinePanel from '@/components/OutlinePanel.vue';
 import PatternCanvas from '@/components/PatternCanvas.vue';
 import PiecePanel from '@/components/PiecePanel.vue';
 import ProjectSettingsDialog from '@/components/ProjectSettingsDialog.vue';
@@ -173,7 +176,13 @@ import {
   pieceTitleLine,
 } from '@/lib/pieces';
 import { ribbonIcon, type RibbonIconName } from '@/lib/ribbon-icons';
-import { applySelection, orphanedEdges, selectionModeFrom, toggleSelection } from '@/lib/selection';
+import {
+  applySelection,
+  orphanedEdges,
+  selectionModeFrom,
+  toggleSelection,
+  type SelectionMode,
+} from '@/lib/selection';
 import type { ProjectSettingsDraft } from '@/components/ProjectSettingsDialog.vue';
 import {
   assemblyTab,
@@ -658,55 +667,6 @@ const selectionStatus = computed(() => {
 
 /** Every dimension row the drawer lists, in document order. */
 const dimensions = computed<DimensionRow[]>(() => dimensionRows(pattern.value));
-
-/** A drawer value being typed that does not resolve yet. */
-const dimensionDrafts = ref<Record<EntityId, { text: string; issue: string }>>({});
-
-/** The drawer's `#` reference picker. */
-const {
-  picker: dimensionPicker,
-  options: dimensionPickerOptions,
-  activeOption: activeDimensionPickerOption,
-  activeIndex: activeDimensionPickerIndex,
-  optionsFor: pickerOptionsFor,
-  close: referencePickerClose,
-  open: openDimensionPicker,
-  onInput: onReferenceInput,
-  onKeydown: onReferenceKeydown,
-  select: selectDimensionReference,
-} = useReferencePicker(
-  () => pattern.value,
-  (id, referenceId) => onUpdateDimension(id, { reference: referenceId }),
-);
-
-/** The drawer's `$` variable picker; it inserts into the draft the field keeps. */
-const {
-  options: variablePickerOptions,
-  isOpen: variablePickerOpen,
-  pick: pickDimensionVariable,
-  open: openVariablePicker,
-  onKeydown: onVariablePickerKeydown,
-} = useVariablePicker(
-  () => pattern.value,
-  (_field, id, slug) => {
-    // The picker opens from a drawer input, which always leaves a draft.
-    const draft = dimensionDrafts.value[id]!;
-    dimensionDrafts.value[id] = { text: insertVariableToken(draft.text, slug), issue: '' };
-  },
-);
-
-function onDimensionInput(id: EntityId, event: Event): void {
-  const value = (event.target as HTMLInputElement).value;
-  dimensionDrafts.value[id] = { text: value, issue: '' };
-  onReferenceInput(id, event);
-  openVariablePicker('dimension', id, variableQuery(value));
-}
-
-/** The `$` picker gets the key first, then the `#` picker. */
-function onDimensionKeydown(id: EntityId, event: KeyboardEvent): void {
-  if (onVariablePickerKeydown('dimension', id, event)) return;
-  onReferenceKeydown(id, event);
-}
 
 const otherConstraints = computed(() =>
   pattern.value.constraints.filter(
@@ -1301,8 +1261,7 @@ function onUpdateText(id: EntityId, patch: Record<string, unknown>): void {
  * Select one Outline row's entity with the canvas' modifier rules: plain click
  * replaces, Ctrl/Cmd toggles, Ctrl/Cmd+Shift (or Alt) subtracts.
  */
-function onOutlineSelect(id: EntityId, event: MouseEvent): void {
-  const mode = selectionModeFrom(event);
+function onOutlineSelect(id: EntityId, mode: SelectionMode): void {
   // A drawer click is exclusive like a canvas click: the marquee is the only
   // gesture that may leave both kinds selected.
   selectedDimensionIds.value = [];
@@ -1321,8 +1280,7 @@ function onOutlineSelect(id: EntityId, event: MouseEvent): void {
  * rules as the canvas: plain click replaces, Ctrl/Cmd toggles, Ctrl/Cmd+Shift
  * (or Alt) subtracts.
  */
-function onDimensionSelect(id: EntityId, event: MouseEvent | KeyboardEvent): void {
-  const mode = selectionModeFrom(event);
+function onDimensionSelect(id: EntityId, mode: SelectionMode): void {
   // A drawer click is exclusive like a canvas click, whatever the modifier.
   selectedEntityIds.value = [];
   if (mode === 'replace') {
@@ -1697,82 +1655,6 @@ function onUpdateDimension(id: EntityId, patch: DimensionPatch): void {
       params: { id, ...patch },
     }),
   );
-}
-
-/** Drop a drawer draft once its text has been applied. */
-function clearDimensionDraft(id: EntityId): void {
-  const next = { ...dimensionDrafts.value };
-  delete next[id];
-  dimensionDrafts.value = next;
-}
-
-function onDimensionValueEdit(id: EntityId, event: Event): void {
-  const input = event.target as HTMLInputElement;
-  const dimension = dimensions.value.find((entry) => entry.id === id)!;
-  if (dimension.readOnly) {
-    input.value = dimension.field;
-    return;
-  }
-
-  const edit = parseDimensionEdit(input.value);
-  if (edit.kind === 'invalid') {
-    clearDimensionDraft(id);
-    input.value = dimension.field;
-    return;
-  }
-
-  if (edit.kind === 'formula') {
-    // Derived dimensions are read-only and returned above, so this is a distance.
-    const stored = (dimension.constraint as DistanceConstraint).value;
-    if (stored !== undefined && typeof stored === 'object' && stored.expr === edit.expr) {
-      clearDimensionDraft(id);
-      input.value = dimension.field;
-      return;
-    }
-    const issue = formulaIssue(pattern.value, edit.expr);
-    if (issue !== null) {
-      dimensionDrafts.value[id] = { text: input.value, issue };
-      return;
-    }
-    clearDimensionDraft(id);
-    referencePickerClose();
-    onUpdateDimension(id, { value: { expr: edit.expr } });
-    return;
-  }
-
-  const unchangedSet =
-    edit.kind === 'set' &&
-    dimension.constraint.type === 'distance' &&
-    dimension.state === 'set' &&
-    dimension.constraint.value === edit.value;
-  const unchangedDriven = edit.kind === 'driven' && dimension.state === 'driven';
-  if (unchangedSet || unchangedDriven) {
-    clearDimensionDraft(id);
-    input.value = dimension.field;
-    return;
-  }
-
-  const patch = dimensionPatchForEdit(edit, pickerOptionsFor(id));
-  if (patch === null) {
-    clearDimensionDraft(id);
-    input.value = dimension.field;
-    return;
-  }
-
-  clearDimensionDraft(id);
-  referencePickerClose();
-  onUpdateDimension(id, patch);
-}
-
-function onDimensionOrientationEdit(id: EntityId, event: Event): void {
-  const orientation = (event.target as HTMLSelectElement).value as DimensionOrientation;
-  onUpdateDimension(id, { orientation });
-}
-
-function onDimensionOffsetEdit(id: EntityId, event: Event): void {
-  const offset = parseDimensionValue((event.target as HTMLInputElement).value);
-  if (offset === null) return;
-  onUpdateDimension(id, { offset });
 }
 
 function convert(id: string, construction: boolean): void {
@@ -2768,288 +2650,21 @@ onBeforeUnmount(() => {
           </template>
 
           <template #outline>
-            <ul v-if="edges.length > 0" class="space-y-1" aria-label="Edges">
-              <li
-                v-for="edge in edges"
-                :key="edge.id"
-                class="flex items-center gap-1 rounded-sm border-l-2 border-transparent"
-                :class="selectedIds.has(edge.id) ? 'border-primary bg-primary/10' : ''"
-                :data-testid="`outline-row-${edge.id}`"
-              >
-                <button
-                  type="button"
-                  class="flex w-full min-w-0 flex-1 flex-col gap-0.5 rounded-sm px-1.5 py-1.5 text-left hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                  :aria-label="`Select entity ${edge.id}`"
-                  :aria-current="selectedIds.has(edge.id) ? 'true' : undefined"
-                  :data-testid="`outline-select-${edge.id}`"
-                  @click="onOutlineSelect(edge.id, $event)"
-                >
-                  <span class="flex w-full min-w-0 items-center gap-1.5">
-                    <RibbonIcon
-                      :icon="ribbonIcon(EDGE_KIND_ICONS[edge.kind])"
-                      :size="12"
-                      class="shrink-0 text-muted-foreground"
-                    />
-                    <span class="shrink-0 text-[13px] font-medium">
-                      {{ EDGE_KIND_LABELS[edge.kind] }}
-                    </span>
-                    <span class="truncate font-mono text-2xs text-muted-foreground">
-                      {{ edge.label }}
-                    </span>
-
-                    <Pill
-                      v-if="edge.seamWidth !== null"
-                      tone="accent"
-                      class="ml-auto shrink-0"
-                      :data-testid="`seam-label-${edge.id}`"
-                    >
-                      Allowance {{ edge.seamWidth }} mm
-                    </Pill>
-                  </span>
-
-                  <span
-                    v-if="edge.seamWidth === null"
-                    class="flex w-full min-w-0 items-center gap-1.5"
-                    :data-testid="`edge-piece-${edge.id}`"
-                  >
-                    <template v-if="edge.pieceId !== null">
-                      <span class="truncate text-2xs text-muted-foreground">
-                        In piece {{ edge.pieceId }}
-                      </span>
-                      <Pill
-                        v-if="edge.allowanceKind !== null"
-                        tone="accent"
-                        class="ml-auto shrink-0"
-                      >
-                        {{ edge.allowanceKind }} {{ edge.allowanceWidth }} mm
-                      </Pill>
-                    </template>
-                    <Pill
-                      v-else
-                      tone="neutral"
-                      class="border-dashed"
-                      :data-testid="`seam-empty-${edge.id}`"
-                    >
-                      No allowance
-                    </Pill>
-                  </span>
-                </button>
-
-                <SidebarAction
-                  icon="line"
-                  :label="edge.construction ? 'Make cut edge' : 'Make construction'"
-                  :data-testid="`outline-construction-${edge.id}`"
-                  @click="convert(edge.id, !edge.construction)"
-                />
-              </li>
-            </ul>
-            <SidebarEmpty
-              v-else
-              icon="line"
-              message="No edges yet."
-              hint="Draw a line, curve, arc or circle to see it here."
+            <OutlinePanel
+              :edges="edges"
+              :selected-ids="selectedIds"
+              @select="onOutlineSelect"
+              @convert="convert"
             />
           </template>
 
           <template #dimensions>
-            <ul v-if="dimensions.length > 0" class="space-y-2" aria-label="Dimensions">
-              <li
-                v-for="dimension in dimensions"
-                :key="dimension.id"
-                class="space-y-2 rounded-sm p-1.5"
-                :class="selectedDimensionIdSet.has(dimension.id) ? 'bg-primary/10' : ''"
-                :data-testid="`dimension-${dimension.id}`"
-              >
-                <div class="flex items-center justify-between gap-2">
-                  <div
-                    role="button"
-                    tabindex="0"
-                    class="flex min-w-0 flex-1 items-baseline gap-1 rounded-sm text-left"
-                    :aria-current="selectedDimensionIdSet.has(dimension.id) ? 'true' : undefined"
-                    :data-testid="`select-dimension-${dimension.id}`"
-                    @click="onDimensionSelect(dimension.id, $event)"
-                    @keydown.enter.prevent="onDimensionSelect(dimension.id, $event)"
-                    @keydown.space.prevent="onDimensionSelect(dimension.id, $event)"
-                  >
-                    <span class="font-mono text-2xs text-muted-foreground">{{ dimension.id }}</span>
-                    <span class="truncate text-2xs text-muted-foreground">
-                      ({{ dimension.entities.join(', ') }})
-                    </span>
-                  </div>
-                  <SidebarAction
-                    icon="delete"
-                    :label="`Remove dimension ${dimension.id}`"
-                    :data-testid="`remove-dimension-${dimension.id}`"
-                    @click="removeConstraint(dimension.id)"
-                  />
-                </div>
-
-                <div class="relative flex flex-wrap items-center gap-1.5">
-                  <SidebarInput
-                    inputmode="decimal"
-                    class="w-28 font-medium tabular-nums"
-                    :class="dimension.readOnly ? 'bg-muted' : ''"
-                    :value="dimensionDrafts[dimension.id]?.text ?? dimension.field"
-                    :readonly="dimension.readOnly"
-                    :aria-label="`Value for ${dimension.id} (${dimension.stateLabel.toLowerCase()})`"
-                    :data-testid="`dimension-value-${dimension.id}`"
-                    role="combobox"
-                    aria-autocomplete="list"
-                    :aria-expanded="dimensionPicker?.id === dimension.id"
-                    :aria-controls="
-                      dimensionPicker?.id === dimension.id
-                        ? `dimension-drawer-reference-list-${dimension.id}`
-                        : undefined
-                    "
-                    :aria-activedescendant="
-                      dimensionPicker?.id === dimension.id && activeDimensionPickerOption !== null
-                        ? `dimension-drawer-reference-list-${dimension.id}-${activeDimensionPickerOption.id}`
-                        : undefined
-                    "
-                    @input="onDimensionInput(dimension.id, $event)"
-                    @keydown="onDimensionKeydown(dimension.id, $event)"
-                    @change="onDimensionValueEdit(dimension.id, $event)"
-                  />
-                  <span class="text-2xs text-muted-foreground">mm</span>
-                  <Pill
-                    :tone="dimensionTone(dimension.state)"
-                    :data-dimension-state="dimension.state"
-                    :data-testid="`dimension-state-${dimension.id}`"
-                  >
-                    {{ dimension.stateLabel }}
-                  </Pill>
-
-                  <DimensionReferencePicker
-                    v-if="dimensionPicker?.id === dimension.id"
-                    :list-id="`dimension-drawer-reference-list-${dimension.id}`"
-                    class="top-full left-0 mt-1"
-                    :options="dimensionPickerOptions"
-                    :active-index="activeDimensionPickerIndex"
-                    @select="selectDimensionReference(dimension.id, $event)"
-                  />
-
-                  <ul
-                    v-if="
-                      variablePickerOpen('dimension', dimension.id) &&
-                      variablePickerOptions.length > 0
-                    "
-                    class="absolute top-full left-0 z-20 mt-1 max-h-40 w-56 overflow-auto rounded-sm border bg-background p-1 shadow-sm"
-                    :data-testid="`dimension-variables-${dimension.id}`"
-                  >
-                    <li v-for="option in variablePickerOptions" :key="option.slug">
-                      <button
-                        type="button"
-                        class="flex w-full items-baseline justify-between gap-2 rounded-sm px-1.5 py-1 text-left text-2xs hover:bg-muted"
-                        :data-testid="`dimension-variable-${dimension.id}-${option.slug}`"
-                        @mousedown.prevent="
-                          pickDimensionVariable('dimension', dimension.id, option.slug)
-                        "
-                      >
-                        <span class="truncate">
-                          {{ option.name }}
-                          <span class="font-mono text-muted-foreground">${{ option.slug }}</span>
-                        </span>
-                        <span class="shrink-0 text-muted-foreground">{{ option.resolved }}</span>
-                      </button>
-                    </li>
-                  </ul>
-                </div>
-
-                <div v-if="!dimension.readOnly" class="flex flex-wrap items-center gap-1.5">
-                  <SidebarButton
-                    :data-testid="`dimension-reference-${dimension.id}`"
-                    @click="openDimensionPicker(dimension.id)"
-                  >
-                    {{ dimension.state === 'broken' ? 'Re-link' : 'Reference' }}
-                  </SidebarButton>
-                </div>
-
-                <div class="flex flex-wrap items-center gap-1.5">
-                  <span
-                    v-if="dimension.orientationLocked"
-                    class="inline-flex h-7 items-center rounded-sm border px-1.5 text-2xs"
-                    :data-testid="`dimension-orientation-locked-${dimension.id}`"
-                  >
-                    Aligned
-                  </span>
-                  <SidebarSelect
-                    v-else
-                    :value="dimension.orientation"
-                    :aria-label="`Orientation for ${dimension.id}`"
-                    :data-testid="`dimension-orientation-${dimension.id}`"
-                    @change="onDimensionOrientationEdit(dimension.id, $event)"
-                  >
-                    <option
-                      v-for="option in DIMENSION_ORIENTATION_OPTIONS"
-                      :key="option.value"
-                      :value="option.value"
-                    >
-                      {{ option.label }}
-                    </option>
-                  </SidebarSelect>
-                  <SidebarInput
-                    type="number"
-                    step="1"
-                    class="w-24 tabular-nums"
-                    :value="dimension.offset"
-                    :aria-label="`Offset for ${dimension.id}`"
-                    :data-testid="`dimension-offset-${dimension.id}`"
-                    @change="onDimensionOffsetEdit(dimension.id, $event)"
-                  />
-                  <span class="text-2xs text-muted-foreground">offset (mm)</span>
-                </div>
-
-                <p
-                  v-if="dimension.readOnly"
-                  class="text-2xs leading-snug text-muted-foreground"
-                  :data-testid="`dimension-readonly-${dimension.id}`"
-                >
-                  Cut dimension — read-only; it follows the stitch dimension and the allowance
-                  widths.
-                </p>
-                <p
-                  v-else-if="dimension.state === 'referenced'"
-                  class="text-2xs leading-snug text-muted-foreground"
-                  :data-testid="`dimension-source-${dimension.id}`"
-                >
-                  Source: <span class="font-mono">{{ dimension.sourceId }}</span>
-                </p>
-                <p
-                  v-if="dimensionDrafts[dimension.id]?.issue"
-                  class="text-2xs leading-snug text-destructive"
-                  :data-testid="`dimension-issue-${dimension.id}`"
-                >
-                  {{ dimensionDrafts[dimension.id]!.issue }}
-                </p>
-                <p
-                  v-else-if="dimension.state === 'broken'"
-                  class="text-2xs leading-snug text-destructive"
-                  :data-testid="`dimension-broken-${dimension.id}`"
-                >
-                  <template v-if="dimension.sourceId !== null">
-                    Source {{ dimension.sourceId }} is missing. Type a value or press # to re-link.
-                  </template>
-                  <template v-else>
-                    A variable it uses is missing, so it keeps its last value. Type a value or fix
-                    the formula.
-                  </template>
-                </p>
-
-                <div v-if="dimension.sourceId !== null" class="flex flex-wrap items-center gap-1.5">
-                  <SidebarButton
-                    :data-testid="`dimension-unlink-${dimension.id}`"
-                    @click="onUpdateDimension(dimension.id, { reference: null })"
-                  >
-                    Remove reference
-                  </SidebarButton>
-                </div>
-              </li>
-            </ul>
-            <SidebarEmpty
-              v-else
-              icon="dimension"
-              message="No dimensions yet."
-              hint="Pick the dimension tool in the ribbon, then two points on the canvas."
+            <DimensionsPanel
+              :document="pattern"
+              :selected-ids="selectedDimensionIdSet"
+              @select="onDimensionSelect"
+              @update="onUpdateDimension"
+              @remove="removeConstraint"
             />
           </template>
 
@@ -3074,39 +2689,7 @@ onBeforeUnmount(() => {
           </template>
 
           <template #constraints>
-            <ul v-if="otherConstraints.length > 0" class="space-y-3" aria-label="Constraints">
-              <li
-                v-for="constraint in otherConstraints"
-                :key="constraint.id"
-                class="flex items-start justify-between gap-2"
-              >
-                <div class="min-w-0 flex-1">
-                  <div class="flex min-w-0 items-baseline gap-1.5">
-                    <span class="shrink-0 text-[13px] font-medium">
-                      {{ constraintLabel(constraint) }}
-                    </span>
-                    <span class="truncate font-mono text-2xs text-muted-foreground">
-                      {{ constraint.id }}
-                    </span>
-                  </div>
-                  <p class="truncate text-2xs text-muted-foreground">
-                    ({{ constraintEntityIds(constraint).join(', ') }})
-                  </p>
-                </div>
-                <SidebarAction
-                  icon="delete"
-                  :label="`Remove constraint ${constraint.id}`"
-                  :data-testid="`remove-constraint-${constraint.id}`"
-                  @click="removeConstraint(constraint.id)"
-                />
-              </li>
-            </ul>
-            <SidebarEmpty
-              v-else
-              icon="constraints"
-              message="No constraints yet."
-              hint="Select two points and pick a constraint in the ribbon."
-            />
+            <ConstraintsPanel :constraints="otherConstraints" @remove="removeConstraint" />
           </template>
         </EditorSidebar>
       </div>
