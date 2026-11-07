@@ -2,6 +2,7 @@
 import {
   assemblyBounds,
   instanceLoops,
+  roundToThousandth,
   type Assembly,
   type AssemblyInstance,
   type EntityId,
@@ -142,16 +143,12 @@ function loopsFor(instance: AssemblyInstance) {
 function pathOf(points: { x: number; y: number }[]): string {
   /* v8 ignore next -- callers only pass a resolved loop or fold */
   if (points.length === 0) return '';
-  return `${points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${round(point.x)} ${round(point.y)}`).join(' ')} Z`;
-}
-
-function round(value: number): number {
-  return Math.round(value * 1000) / 1000;
+  return `${points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${roundToThousandth(point.x)} ${roundToThousandth(point.y)}`).join(' ')} Z`;
 }
 
 /** The open V a notch draws: foot → tip → foot. */
 function notchPath(notch: NotchGeometry): string {
-  return `M ${round(notch.feet[0].x)} ${round(notch.feet[0].y)} L ${round(notch.tip.x)} ${round(notch.tip.y)} L ${round(notch.feet[1].x)} ${round(notch.feet[1].y)}`;
+  return `M ${roundToThousandth(notch.feet[0].x)} ${roundToThousandth(notch.feet[0].y)} L ${roundToThousandth(notch.tip.x)} ${roundToThousandth(notch.tip.y)} L ${roundToThousandth(notch.feet[1].x)} ${roundToThousandth(notch.feet[1].y)}`;
 }
 
 function fillOf(instance: { piece: EntityId }): string {
@@ -313,7 +310,12 @@ function onPointerUp(instance: { id: EntityId; x: number; y: number }): void {
   drag.value = null;
   if (current === null || props.readOnly) return;
   if (current.dx === 0 && current.dy === 0) return;
-  emit('move', instance.id, round(instance.x + current.dx), round(instance.y + current.dy));
+  emit(
+    'move',
+    instance.id,
+    roundToThousandth(instance.x + current.dx),
+    roundToThousandth(instance.y + current.dy),
+  );
 }
 
 function onKeydown(instance: { id: EntityId }, event: KeyboardEvent): void {
@@ -343,7 +345,7 @@ function onKeydown(instance: { id: EntityId }, event: KeyboardEvent): void {
 function previewOffset(instance: { id: EntityId }): string {
   const current = drag.value;
   if (current === null || current.id !== instance.id) return '';
-  return `translate(${round(current.dx)} ${round(current.dy)})`;
+  return `translate(${roundToThousandth(current.dx)} ${roundToThousandth(current.dy)})`;
 }
 
 /** Fit on mount, tab change or the Fit action — never on a document edit. */

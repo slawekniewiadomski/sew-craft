@@ -40,7 +40,7 @@ export function buildPointOnLineCommands(
     {
       id: pointId,
       type: 'add_point',
-      params: { x: projected.x, y: projected.y, ...(piece === undefined ? {} : { piece }) },
+      params: { x: projected.x, y: projected.y, piece },
     },
     {
       id: nextId('constraint'),
@@ -52,7 +52,7 @@ export function buildPointOnLineCommands(
           lineEndpointAnchor(document, lineId, line.start),
           lineEndpointAnchor(document, lineId, line.end),
         ],
-        ...(piece === undefined ? {} : { piece }),
+        piece,
       },
     },
   ];

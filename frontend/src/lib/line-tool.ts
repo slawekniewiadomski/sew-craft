@@ -35,7 +35,7 @@ export function buildLineCommands(
   commands.push({
     id: nextId('line'),
     type: 'add_line',
-    params: { start: startId, end: endId, ...(piece === undefined ? {} : { piece }) },
+    params: { start: startId, end: endId, piece },
   });
 
   return commands;
