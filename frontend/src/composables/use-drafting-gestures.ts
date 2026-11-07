@@ -233,9 +233,9 @@ export function useDraftingGestures({
   );
   /** The dashed preview radius: pending centre to the snapped pointer. */
   const circlePreviewRadius = computed<number>(() => {
-    const center = pendingCircleCenter.value!;
-    const rim = circlePreview.value!;
-    return Math.hypot(rim.x - center.x, rim.y - center.y);
+    const center = pendingCircleCenter.value;
+    const rim = circlePreview.value;
+    return center === null || rim === null ? 0 : Math.hypot(rim.x - center.x, rim.y - center.y);
   });
   /** The rectangle mode the active tool draws, or `null` for every other tool. */
   const rectangleMode = computed<RectangleMode | null>(() => {

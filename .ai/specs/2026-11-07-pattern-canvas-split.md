@@ -1,7 +1,7 @@
 # Split `PatternCanvas` by gesture
 
-Status: **in progress** — phases 1–4 landed (#141–#144).
-Refs #141, #142, #143, #144
+Status: **implemented** — all five phases landed (#141–#145).
+Refs #141, #142, #143, #144, #145
 
 ## 📝 TLDR
 
@@ -57,9 +57,14 @@ behaviour. No command, API or document changes.
    wheel zoom, the grid/ruler derivations, screen conversion and hit extraction.
    Pan stays with the canvas because it shares the pointer drag lifecycle with
    the marquee and the other gestures.
-5. **SVG layers** → `components/canvas/CanvasGrid.vue`, `CanvasEntities.vue`,
-   `CanvasDimensions.vue`, `CanvasAnnotations.vue`, `CanvasPreviews.vue`.
-   Only once phases 1–4 have concentrated the data each layer needs.
+5. **SVG layers** → `components/canvas/CanvasPreviews.vue`, `CanvasRuler.vue`,
+   `CanvasMarquee.vue` (landed; `PatternCanvas` 3,121 → 2,842 lines; #145).
+   These are the self-contained layers: the tool previews, the screen-space
+   ruler and the selection marquee. The entity, annotation, dimension,
+   corner-round and constraint layers stay in the canvas because they carry the
+   canvas's own hit-testing and drag handlers; wrapping them would trade a
+   readable 1,150-line scene for a prop-heavy pass-through with the same
+   coupling. That remainder is the natural next spec if those layers grow.
 
 ### Phase 1 contract
 

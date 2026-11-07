@@ -146,6 +146,9 @@ import {
   type PieceView,
   type RegionView,
 } from '@/lib/pattern-canvas-views';
+import CanvasMarquee from '@/components/canvas/CanvasMarquee.vue';
+import CanvasPreviews from '@/components/canvas/CanvasPreviews.vue';
+import CanvasRuler from '@/components/canvas/CanvasRuler.vue';
 import DimensionReferencePicker from '@/components/base/DimensionReferencePicker.vue';
 import VariablePickerList from '@/components/base/VariablePickerList.vue';
 
@@ -2093,262 +2096,30 @@ watch(
           </template>
         </g>
 
-        <g
-          v-if="roundPreview"
-          class="pointer-events-none"
-          data-testid="corner-round-preview"
-          aria-hidden="true"
-        >
-          <line
-            v-for="(entry, index) in roundPreview.lines"
-            :key="entry.id"
-            :x1="entry.from.x"
-            :y1="entry.from.y"
-            :x2="entry.to.x"
-            :y2="entry.to.y"
-            class="stroke-primary"
-            stroke-width="1.5"
-            stroke-dasharray="4 3"
-            vector-effect="non-scaling-stroke"
-            :data-testid="`corner-round-preview-line-${index}`"
-          />
-          <path
-            :d="roundPreview.arc"
-            fill="none"
-            class="stroke-primary"
-            stroke-width="1.5"
-            stroke-dasharray="4 3"
-            vector-effect="non-scaling-stroke"
-            data-testid="corner-round-preview-arc"
-          />
-          <circle
-            v-for="(tangent, index) in roundPreview.tangents"
-            :key="`preview-${index}`"
-            :cx="tangent.x"
-            :cy="tangent.y"
-            r="2.5"
-            class="fill-primary"
-          />
-        </g>
-
-        <g
-          v-if="tangentPreview"
-          class="pointer-events-none"
-          data-testid="corner-round-drag-preview"
-          aria-hidden="true"
-        >
-          <path
-            :d="tangentPreview.arc"
-            fill="none"
-            class="stroke-primary"
-            stroke-width="1.5"
-            stroke-dasharray="4 3"
-            vector-effect="non-scaling-stroke"
-          />
-          <circle
-            v-for="(tangent, index) in tangentPreview.tangents"
-            :key="`drag-${index}`"
-            :cx="tangent.x"
-            :cy="tangent.y"
-            r="2.5"
-            class="fill-primary"
-          />
-        </g>
-
-        <g v-if="pointOnLineHover !== null" class="pointer-events-none" aria-hidden="true">
-          <circle
-            :cx="pointOnLineHover.point.x"
-            :cy="pointOnLineHover.point.y"
-            r="4"
-            class="fill-primary stroke-primary-foreground"
-            stroke-width="1"
-            data-testid="point-on-line-ghost"
-          />
-        </g>
-
-        <g
-          v-if="splitLineHover !== null"
-          class="pointer-events-none"
-          aria-hidden="true"
-          data-testid="split-line-ghost"
-        >
-          <path
-            v-if="splitLineHover.atCenter"
-            :d="`M ${splitLineHover.position.x} ${splitLineHover.position.y - 4} L ${
-              splitLineHover.position.x + 4
-            } ${splitLineHover.position.y} L ${splitLineHover.position.x} ${
-              splitLineHover.position.y + 4
-            } L ${splitLineHover.position.x - 4} ${splitLineHover.position.y} Z`"
-            class="fill-primary stroke-primary-foreground"
-            stroke-width="1"
-            data-testid="split-line-center"
-          />
-          <circle
-            v-else
-            :cx="splitLineHover.position.x"
-            :cy="splitLineHover.position.y"
-            :r="splitLineHover.pointId === null ? 4 : 5"
-            class="fill-primary stroke-primary-foreground"
-            stroke-width="1"
-          />
-        </g>
-
-        <g
-          v-if="midpointHover !== null"
-          class="pointer-events-none"
-          aria-hidden="true"
-          data-testid="midpoint-marker"
-        >
-          <path
-            :d="`M ${midpointHover.x} ${midpointHover.y - 5 / viewport.scale} L ${
-              midpointHover.x + 5 / viewport.scale
-            } ${midpointHover.y} L ${midpointHover.x} ${
-              midpointHover.y + 5 / viewport.scale
-            } L ${midpointHover.x - 5 / viewport.scale} ${midpointHover.y} Z`"
-            class="fill-primary stroke-primary-foreground"
-            stroke-width="1"
-            vector-effect="non-scaling-stroke"
-          />
-        </g>
-
-        <g v-if="pendingLineStart !== null" class="pointer-events-none" aria-hidden="true">
-          <line
-            v-if="linePreview !== null"
-            :x1="pendingLineStart.x"
-            :y1="pendingLineStart.y"
-            :x2="linePreview.x"
-            :y2="linePreview.y"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-dasharray="4 4"
-            vector-effect="non-scaling-stroke"
-            class="text-muted-foreground"
-            data-testid="line-preview"
-          />
-          <circle
-            v-if="lineStart?.kind === 'new'"
-            :cx="pendingLineStart.x"
-            :cy="pendingLineStart.y"
-            r="4"
-            class="fill-accent stroke-accent-foreground"
-            stroke-width="1"
-            data-testid="line-pending-point"
-          />
-        </g>
-
-        <g v-if="arcStartPosition !== null" class="pointer-events-none" aria-hidden="true">
-          <line
-            v-if="arcChord !== null"
-            :x1="arcChord.start.x"
-            :y1="arcChord.start.y"
-            :x2="arcChord.end.x"
-            :y2="arcChord.end.y"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-dasharray="4 4"
-            vector-effect="non-scaling-stroke"
-            class="text-muted-foreground"
-            data-testid="arc-chord"
-          />
-          <path
-            v-if="arcPreview !== null"
-            :d="arcPreview.d"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-dasharray="4 4"
-            vector-effect="non-scaling-stroke"
-            class="text-muted-foreground"
-            data-testid="arc-preview"
-          />
-          <circle
-            v-if="arcPendingStart !== null"
-            :cx="arcPendingStart.x"
-            :cy="arcPendingStart.y"
-            r="4"
-            class="fill-accent stroke-accent-foreground"
-            stroke-width="1"
-            data-testid="arc-pending-start"
-          />
-          <circle
-            v-if="arcPendingEnd !== null"
-            :cx="arcPendingEnd.x"
-            :cy="arcPendingEnd.y"
-            r="4"
-            class="fill-accent stroke-accent-foreground"
-            stroke-width="1"
-            data-testid="arc-pending-end"
-          />
-        </g>
-
-        <g v-if="pendingCircleCenter !== null" class="pointer-events-none" aria-hidden="true">
-          <circle
-            v-if="circlePreview !== null"
-            :cx="pendingCircleCenter.x"
-            :cy="pendingCircleCenter.y"
-            :r="circlePreviewRadius"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-dasharray="4 4"
-            vector-effect="non-scaling-stroke"
-            class="text-muted-foreground"
-            data-testid="circle-preview"
-          />
-          <circle
-            v-if="circleCenter?.kind === 'new'"
-            :cx="pendingCircleCenter.x"
-            :cy="pendingCircleCenter.y"
-            r="4"
-            class="fill-accent stroke-accent-foreground"
-            stroke-width="1"
-            data-testid="circle-pending-center"
-          />
-        </g>
-
-        <g
-          v-if="props.roundCornerActive"
-          class="pointer-events-none"
-          aria-hidden="true"
-          data-testid="roundable-corner-layer"
-        >
-          <circle
-            v-for="corner in roundableCornerPoints"
-            :key="`roundable-${corner.id}`"
-            :cx="corner.x"
-            :cy="corner.y"
-            r="2"
-            class="roundable-corner fill-primary/60"
-            data-testid="roundable-corner"
-            :data-roundable-corner="corner.id"
-          />
-        </g>
-
-        <g v-if="rectanglePreview !== null" class="pointer-events-none" aria-hidden="true">
-          <path
-            :d="rectanglePreview.path"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-dasharray="4 4"
-            vector-effect="non-scaling-stroke"
-            class="text-muted-foreground"
-            :data-testid="rectanglePreview.testId"
-          />
-        </g>
-
-        <g v-if="rectanglePendingCorners.length > 0" class="pointer-events-none" aria-hidden="true">
-          <circle
-            v-for="(corner, index) in rectanglePendingCorners"
-            :key="`rectangle-corner-${index}`"
-            :cx="corner.x"
-            :cy="corner.y"
-            r="4"
-            class="fill-accent stroke-accent-foreground"
-            stroke-width="1"
-            :data-testid="`rectangle-pending-corner-${index}`"
-          />
-        </g>
+        <CanvasPreviews
+          :round-preview="roundPreview"
+          :tangent-preview="tangentPreview"
+          :point-on-line-hover="pointOnLineHover"
+          :split-line-hover="splitLineHover"
+          :midpoint-hover="midpointHover"
+          :pending-line-start="pendingLineStart"
+          :line-preview="linePreview"
+          :line-start="lineStart"
+          :arc-start-position="arcStartPosition"
+          :arc-chord="arcChord"
+          :arc-preview="arcPreview"
+          :arc-pending-start="arcPendingStart"
+          :arc-pending-end="arcPendingEnd"
+          :pending-circle-center="pendingCircleCenter"
+          :circle-preview="circlePreview"
+          :circle-preview-radius="circlePreviewRadius"
+          :circle-center="circleCenter"
+          :round-corner-active="props.roundCornerActive"
+          :roundable-corner-points="roundableCornerPoints"
+          :rectangle-preview="rectanglePreview"
+          :rectangle-pending-corners="rectanglePendingCorners"
+          :viewport-scale="viewport.scale"
+        />
 
         <g data-testid="corner-round-feature-layer" aria-hidden="true">
           <circle
@@ -2884,65 +2655,15 @@ watch(
         </g>
       </g>
 
-      <g class="pointer-events-none">
-        <rect
-          x="0"
-          y="0"
-          :width="size.width"
-          height="16"
-          class="fill-background/90"
-          data-testid="ruler-x"
-        />
-        <rect
-          x="0"
-          y="0"
-          width="16"
-          :height="size.height"
-          class="fill-background/90"
-          data-testid="ruler-y"
-        />
+      <CanvasRuler
+        :size="size"
+        :x-ticks="xTicks"
+        :y-ticks="yTicks"
+        :x-tick-position="xTickPosition"
+        :y-tick-position="yTickPosition"
+      />
 
-        <g v-for="tick in xTicks" :key="`x-${tick}`">
-          <line
-            :x1="xTickPosition(tick)"
-            :x2="xTickPosition(tick)"
-            y1="12"
-            y2="16"
-            class="stroke-border"
-            vector-effect="non-scaling-stroke"
-          />
-          <text :x="xTickPosition(tick) + 3" y="11" class="fill-muted-foreground text-[8px]">
-            {{ tick }}
-          </text>
-        </g>
-
-        <g v-for="tick in yTicks" :key="`y-${tick}`">
-          <line
-            x1="12"
-            x2="16"
-            :y1="yTickPosition(tick)"
-            :y2="yTickPosition(tick)"
-            class="stroke-border"
-            vector-effect="non-scaling-stroke"
-          />
-        </g>
-      </g>
-
-      <g v-if="marqueeRect !== null" class="pointer-events-none" data-testid="selection-marquee">
-        <rect
-          :x="marqueeRect.x"
-          :y="marqueeRect.y"
-          :width="marqueeRect.width"
-          :height="marqueeRect.height"
-          fill="currentColor"
-          fill-opacity="0.1"
-          stroke="currentColor"
-          stroke-width="1"
-          stroke-dasharray="4 4"
-          vector-effect="non-scaling-stroke"
-          class="text-primary"
-        />
-      </g>
+      <CanvasMarquee :rect="marqueeRect" />
     </svg>
 
     <div
