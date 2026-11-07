@@ -25,7 +25,7 @@ describe('UpgradeDocumentDialog', () => {
     expect(document.activeElement).toBe(wrapper.find('[data-testid="upgrade-cancel"]').element);
   });
 
-  it('traps Tab across the two actions and leaves other keys alone', async () => {
+  it('traps Tab across the two actions and cancels on Escape', async () => {
     const wrapper = mount(UpgradeDocumentDialog, { props, attachTo: document.body });
     const overlay = wrapper.find('[data-testid="upgrade-dialog"]');
     const cancel = wrapper.find('[data-testid="upgrade-cancel"]').element;
@@ -39,9 +39,10 @@ describe('UpgradeDocumentDialog', () => {
     await overlay.trigger('keydown', { key: 'Tab' });
     expect(document.activeElement).toBe(cancel);
 
-    const other = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
-    overlay.element.dispatchEvent(other);
-    expect(other.defaultPrevented).toBe(false);
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+    overlay.element.dispatchEvent(escape);
+    expect(escape.defaultPrevented).toBe(true);
+    expect(wrapper.emitted('cancel')).toHaveLength(1);
   });
 
   it('restores the focus that was active before it opened', () => {
