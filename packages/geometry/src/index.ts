@@ -22,5 +22,5 @@ export * from './assembly.js';
 export * from './migration.js';
 export * from './selection.js';
 export * from './solver.js';
-export * from './commands.js';
+export * from './commands/index.js';
 export * from './export.js';
