@@ -199,6 +199,17 @@ import {
 } from '@/lib/viewport';
 
 import {
+  derivedDimensionDrawing,
+  derivedDimensionLabelViews,
+  dimensionDrawing,
+  dimensionLabelViews,
+  type DerivedDimensionDrawing,
+  type DerivedDimensionLabelView,
+  type DimensionDrawing,
+  type DimensionDrawingOptions,
+  type DimensionLabelView,
+} from '@/lib/pattern-canvas-dimensions';
+import {
   arcViews,
   bandCutLoopOf,
   bandPieceOf,
@@ -233,77 +244,6 @@ interface MarqueeState {
 
 /** Screen pixels the pointer must travel before a click becomes a marquee. */
 const MARQUEE_THRESHOLD = 4;
-
-/** A fully resolved dimension, ready to render in world and screen space. */
-interface DimensionDrawing {
-  id: EntityId;
-  constraint: DistanceConstraint;
-  layout: DimensionLayout;
-  segments: DimensionSegment[];
-  /** Label text: `120`, `(120)` or `[120]`, by state. */
-  value: string;
-  /** The effective number without decoration, for accessible names. */
-  measured: string;
-  state: Exclude<DimensionState, 'derived'>;
-  /** The linked source, when the dimension records one. */
-  sourceId?: EntityId;
-  /** The label's full accessible name, including the state and source. */
-  accessibleName: string;
-  preview: boolean;
-  selected: boolean;
-  draggable: boolean;
-  editable: boolean;
-  dragging: boolean;
-}
-
-/** A dimension value positioned and oriented in screen space. */
-interface DimensionLabelView {
-  id: EntityId;
-  constraint: DistanceConstraint;
-  value: string;
-  measured: string;
-  state: Exclude<DimensionState, 'derived'>;
-  sourceId?: EntityId;
-  accessibleName: string;
-  width: number;
-  x: number;
-  y: number;
-  angle: number;
-  preview: boolean;
-  selected: boolean;
-  draggable: boolean;
-  editable: boolean;
-}
-
-/** A read-only cut dimension, resolved from a piece's cut loop. */
-interface DerivedDimensionDrawing {
-  id: EntityId;
-  constraint: DerivedDistanceConstraint;
-  layout: DimensionLayout;
-  segments: DimensionSegment[];
-  value: string;
-  state: Extract<DimensionState, 'derived' | 'broken'>;
-  accessibleName: string;
-  preview: boolean;
-  selected: boolean;
-  draggable: boolean;
-  dragging: boolean;
-}
-
-/** A cut dimension label positioned and oriented in screen space. */
-interface DerivedDimensionLabelView {
-  id: EntityId;
-  value: string;
-  state: Extract<DimensionState, 'derived' | 'broken'>;
-  accessibleName: string;
-  width: number;
-  x: number;
-  y: number;
-  angle: number;
-  preview: boolean;
-  selected: boolean;
-  draggable: boolean;
-}
 
 /** A tangent handle of a selected round, positioned in screen space. */
 interface CornerRoundHandleView {
@@ -1311,35 +1251,17 @@ const dimensionDragEnabled = computed(
     (props.tool === 'select' || props.tool === 'dimension' || props.tool === 'cut_dimension'),
 );
 
+/** The document, selection and drag every dimension drawing reads. */
+const dimensionDrawingOptions = computed<DimensionDrawingOptions>(() => ({
+  document: props.document,
+  selectedIds: selectedDimensionIds.value,
+  drag: dimensionDrag.value,
+  dragEnabled: dimensionDragEnabled.value,
+  constraintActive: props.constraintActive,
+}));
+
 function drawingFor(constraint: DistanceConstraint, preview: boolean): DimensionDrawing | null {
-  const drag = dimensionDrag.value;
-  const placed =
-    drag !== null && drag.id === constraint.id
-      ? { ...constraint, offset: drag.offset }
-      : constraint;
-  const layout = dimensionGeometry(props.document, placed);
-  if (layout === null) return null;
-
-  // `layout` resolves the same points, so the effective value is always present.
-  const value = dimensionValue(props.document, placed)!;
-  const state = dimensionState(props.document, placed) as Exclude<DimensionState, 'derived'>;
-
-  return {
-    id: constraint.id,
-    constraint,
-    layout,
-    segments: dimensionSegments(layout),
-    value: formatDimensionLabel(value, state),
-    measured: formatDimensionValue(value),
-    state,
-    ...(constraint.reference === undefined ? {} : { sourceId: constraint.reference }),
-    accessibleName: dimensionAccessibleName(value, state, constraint.reference),
-    preview,
-    selected: !preview && selectedDimensionIds.value.has(constraint.id),
-    draggable: !preview && dimensionDragEnabled.value,
-    editable: !preview && !props.constraintActive,
-    dragging: drag !== null && drag.id === constraint.id,
-  };
+  return dimensionDrawing(constraint, preview, dimensionDrawingOptions.value);
 }
 
 /** The dimension currently being placed, or `null` when no placement is active. */
@@ -1386,26 +1308,7 @@ const dimensionDrawings = computed<DimensionDrawing[]>(() => {
 });
 
 const dimensionLabels = computed<DimensionLabelView[]>(() =>
-  dimensionDrawings.value.map((drawing) => {
-    const screen = worldToScreen(viewport.value, drawing.layout.label.position);
-    return {
-      id: drawing.id,
-      constraint: drawing.constraint,
-      value: drawing.value,
-      measured: drawing.measured,
-      state: drawing.state,
-      ...(drawing.sourceId === undefined ? {} : { sourceId: drawing.sourceId }),
-      accessibleName: drawing.accessibleName,
-      width: dimensionLabelWidth(drawing.value),
-      x: screen.x,
-      y: screen.y,
-      angle: drawing.layout.label.angleDegrees,
-      preview: drawing.preview,
-      selected: drawing.selected,
-      draggable: drawing.draggable,
-      editable: drawing.editable,
-    };
-  }),
+  dimensionLabelViews(dimensionDrawings.value, (point) => worldToScreen(viewport.value, point)),
 );
 
 /** Cut dimensions are read-only derived measurements of a piece's cut loop. */
@@ -1434,31 +1337,10 @@ function derivedDrawingFor(
   constraint: DerivedDistanceConstraint,
   preview: boolean,
 ): DerivedDimensionDrawing | null {
-  const drag = derivedDrag.value;
-  const placed =
-    !preview && drag !== null && drag.id === constraint.id
-      ? { ...constraint, offset: drag.offset }
-      : constraint;
-  const layout = derivedDimensionGeometry(props.document, placed);
-  if (layout === null) return null;
-
-  // A resolved layout always has a resolved span, so the measurement exists.
-  const value = derivedDimensionValue(props.document, constraint)!;
-  const state = derivedDimensionState(props.document, constraint);
-
-  return {
-    id: constraint.id,
-    constraint,
-    layout,
-    segments: dimensionSegments(layout),
-    value: formatDimensionLabel(value, state),
-    state,
-    accessibleName: dimensionAccessibleName(value, state),
-    preview,
-    selected: !preview && selectedDimensionIds.value.has(constraint.id),
-    draggable: !preview && dimensionDragEnabled.value,
-    dragging: !preview && drag !== null && drag.id === constraint.id,
-  };
+  return derivedDimensionDrawing(constraint, preview, {
+    ...dimensionDrawingOptions.value,
+    drag: derivedDrag.value,
+  });
 }
 
 const derivedDimensionDrawings = computed<DerivedDimensionDrawing[]>(() => {
@@ -1477,22 +1359,9 @@ const derivedDimensionDrawings = computed<DerivedDimensionDrawing[]>(() => {
 });
 
 const derivedDimensionLabels = computed<DerivedDimensionLabelView[]>(() =>
-  derivedDimensionDrawings.value.map((drawing) => {
-    const screen = worldToScreen(viewport.value, drawing.layout.label.position);
-    return {
-      id: drawing.id,
-      value: drawing.value,
-      state: drawing.state,
-      accessibleName: drawing.accessibleName,
-      width: dimensionLabelWidth(drawing.value),
-      x: screen.x,
-      y: screen.y,
-      angle: drawing.layout.label.angleDegrees,
-      preview: drawing.preview,
-      selected: drawing.selected,
-      draggable: drawing.draggable,
-    };
-  }),
+  derivedDimensionLabelViews(derivedDimensionDrawings.value, (point) =>
+    worldToScreen(viewport.value, point),
+  ),
 );
 
 /** The cut dimension behind a label, which only renders when it resolves. */
