@@ -12,7 +12,7 @@ test('exposes the command spec', async ({ request }) => {
 
   expect(response.ok()).toBe(true);
   const body = (await response.json()) as { version: string; commands: Record<string, unknown> };
-  expect(body.version).toBe('0.1.0');
+  expect(body.version).toBe('0.22.0');
   expect(Object.keys(body.commands)).toContain('add_point');
 });
 

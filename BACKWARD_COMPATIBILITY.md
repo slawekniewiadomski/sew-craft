@@ -10,6 +10,19 @@ or the geometry package depend on.
 
 ## Development-stage exemptions
 
+### 2026-11-07 — pattern schema 0.9 (seam matches and finished edges)
+
+Additive to the model: `Assembly` gains optional `seams` and `finishedEdges`, the
+command spec gains `add_seam_match`, `update_seam_match`, `remove_seam_match` and
+`set_edge_finished` at 0.22.0, and `split_line` repairs a seam run in place. The
+schema string moves to `sewcraft.pattern/0.9`. A 0.8 document loads here with both
+arrays absent and no conversion. A build that only knows 0.8 refuses a 0.9
+document through the unsupported-format path instead of half-reading it, so keep
+the seams on rollback or unsew them deliberately; a 0.8 document with no seams is
+unaffected. The sewability report is advisory and never blocks save, autosave,
+versioning or export. Details: `.ai/specs/2026-11-07-seams-and-sewability.md` and
+`docs/domain/command-spec.md` (Migration from spec 0.21.0).
+
 ### 2026-11-06 — pattern schema 0.8 (per-piece placement)
 
 Additive to the model: `Piece` gains optional `placement`, the command spec gains

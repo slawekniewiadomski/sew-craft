@@ -152,7 +152,7 @@ it, and the contract files are synced in the same phase as the commands.
 - [x] 3.9 Gate: geometry suite green, 100 % on `commands/seams.ts` and the touched
       commands, the Pest `--coverage --min=100` gate and Pint pass
 
-### Phase 4: Canvas and the sewing gesture
+### Phase 4: Canvas and the sewing gesture (landed in 841e250)
 
 - [ ] 4.1 `display-settings.ts`: `assembly.seams` default `true`, per-field parse
       fallback for stored payloads written before it existed; tests
@@ -178,7 +178,7 @@ it, and the contract files are synced in the same phase as the commands.
 - [ ] 4.8 Gate: `npm run test:coverage` 100 %, `npm run lint`, `npm run
       typecheck`, `npm run format:check`
 
-### Phase 5: Check surface
+### Phase 5: Check surface (landed in 841e250)
 
 - [ ] 5.1 `AssemblyPanel.vue` Check section: verdict, issue rows with
       click-to-select, footer with tolerance and totals, empty state, and the
@@ -196,18 +196,18 @@ it, and the contract files are synced in the same phase as the commands.
 - [ ] 5.6 Gate: frontend coverage 100 %, full unit suites, lint, typecheck,
       format:check
 
-### Phase 6: Docs, evidence and delivery
+### Phase 6: Docs, evidence and delivery (docs and evidence landed; PR pending)
 
-- [ ] 6.1 Docs: `geometry-core.md` (seam resolution and report contract),
+- [x] 6.1 Docs: `geometry-core.md` (seam resolution and report contract),
       `data-model.md` (the two assembly arrays), `glossary.md` (seam match,
       finished edge, sewability check), `BACKWARD_COMPATIBILITY.md` (additive 0.9,
       older builds refuse it)
-- [ ] 6.2 Integration: `integration/tests/seams.spec.ts` saving and reloading a
+- [x] 6.2 Integration: `integration/tests/seams.spec.ts` saving and reloading a
       0.9 geometry with seams and finished edges through the real API, plus a UI
       pass that sews two edges and reads the verdict
-- [ ] 6.3 Browser evidence: the sewing and check states at 1440 px and a narrow
+- [x] 6.3 Browser evidence: the sewing and check states at 1440 px and a narrow
       width, screenshots attached to the PR
-- [ ] 6.4 Full gate: `npm run format`, `typecheck`, `lint`, `format:check`,
+- [x] 6.4 Full gate: `npm run format`, `typecheck`, `lint`, `format:check`,
       `test:coverage`, `build`, the Pest `--coverage --min=100` command, Pint;
       tick the spec's acceptance boxes and set its status to implemented
 - [ ] 6.5 Ready PR referencing the spec, with the plan's boxes ticked and the

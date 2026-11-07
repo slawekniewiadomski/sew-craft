@@ -1,7 +1,9 @@
 # Seam matching and the sewability check
 
-Status: **proposed** — decisions Q1–Q3 were taken with the maintainer on
-2026-11-07; there are no open questions. Design only: nothing here is built yet.
+Status: **implemented** — decisions Q1–Q3 were taken with the maintainer on
+2026-11-07; there are no open questions. Built on `feat/seams-and-sewability`;
+the ordered steps and their commits are in
+`.ai/runs/2026-11-07-seams-and-sewability.md`.
 
 Builds on: `2026-10-25-piece-tabs-and-assemblies.md` (assemblies, instances and
 placement math), `2026-10-22-pieces-and-allowance.md` and
@@ -600,28 +602,28 @@ Phase 3 is the verdict.
 
 ## ✅ Acceptance criteria
 
-- [ ] A seam record pairs two or more runs of consecutive loop edges on placed
+- [x] A seam record pairs two or more runs of consecutive loop edges on placed
       instances, in layer order, and is stored on the assembly.
-- [ ] A finished edge records an instance, an edge and one of `hem`, `binding`,
+- [x] A finished edge records an instance, an edge and one of `hem`, `binding`,
       `fold` or `opening`, is created from its `unmatched_edge` row, and can be
       re-kinded or cleared in the Finished section.
-- [ ] Every edge is expected to be either sewn exactly once or marked finished;
+- [x] Every edge is expected to be either sewn exactly once or marked finished;
       anything else is reported as an issue the panel can show and the canvas can
       highlight.
-- [ ] A seam whose sides differ by more than 5 mm is an error unless it is
+- [x] A seam whose sides differ by more than 5 mm is an error unless it is
       marked eased, in which case it is a warning carrying the delta.
-- [ ] A seam with differing cut allowances, or a sewn double-fold edge, is a
+- [x] A seam with differing cut allowances, or a sewn double-fold edge, is a
       warning; "sewable" means no errors.
-- [ ] The check is advisory: saving, autosave, versioning and export behave
+- [x] The check is advisory: saving, autosave, versioning and export behave
       exactly as before.
-- [ ] The assembly tab shows the seam tool, the overlays, the guide arc and the
+- [x] The assembly tab shows the seam tool, the overlays, the guide arc and the
       Check, Seams and Finished sections; the tab carries an error-count pill.
-- [ ] Removing an instance removes its seams whole; `split_line` repairs seam
+- [x] Removing an instance removes its seams whole; `split_line` repairs seam
       runs in place; every cascade is undoable through the journal snapshot.
-- [ ] `sewcraft.pattern/0.9` is current, `0.8` still loads with no data
+- [x] `sewcraft.pattern/0.9` is current, `0.8` still loads with no data
       conversion, and the command spec is in sync at `0.22.0` across all three
       files.
-- [ ] `npm run format`, `typecheck`, `lint`, `format:check`, `test:coverage`,
+- [x] `npm run format`, `typecheck`, `lint`, `format:check`, `test:coverage`,
       `build` and the backend command-spec test pass, with statements, branches,
       functions and lines at 100 %.
 
