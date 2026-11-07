@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import PatternCanvas from '@/components/PatternCanvas.vue';
+import VariablesPanel from '@/components/VariablesPanel.vue';
 import SelectionSummary from '@/components/SelectionSummary.vue';
 import CornerRoundPromptBar from '@/components/CornerRoundPromptBar.vue';
 import { useEditorStore } from '@/stores/editor';
@@ -1669,6 +1670,7 @@ describe('EditorView variables panel', () => {
     const { wrapper, store } = await mountLoaded(documentWithVariable());
     await openPanel(wrapper, 'variables');
 
+    await wrapper.find('[data-testid="variables-add"]').trigger('click');
     await wrapper.find('[data-testid="add-variable"]').trigger('click');
     await nextTick();
     expect(store.document.variables).toHaveLength(2);
@@ -1683,6 +1685,7 @@ describe('EditorView variables panel', () => {
       value: { expr: '$bust/10', lastKnown: 88 },
     });
 
+    await wrapper.find(`[data-testid="variable-note-${added.slug}"]`).trigger('click');
     await wrapper.find(`[data-testid="variable-comment-${added.slug}"]`).setValue('design ease');
     expect(store.document.variables![1]!.comment).toBe('design ease');
 
@@ -1698,6 +1701,7 @@ describe('EditorView variables panel', () => {
     await openPanel(wrapper, 'variables');
     expect(wrapper.text()).toContain('No variables yet.');
 
+    await wrapper.find('[data-testid="variables-add"]').trigger('click');
     await wrapper.find('[data-testid="add-variable"]').trigger('click');
     await nextTick();
     expect(store.document.variables?.[0]?.name).toBe('Variable 1');
@@ -1782,6 +1786,7 @@ describe('EditorView variables panel', () => {
     canvas.vm.$emit('update:selectedEntityIds', ['ab', 'bc']);
     await nextTick();
 
+    await wrapper.find('[data-testid="variables-add"]').trigger('click');
     const action = wrapper.find('[data-testid="add-measured-variable"]');
     expect(action.attributes('disabled')).toBeUndefined();
     await action.trigger('click');
@@ -1795,8 +1800,8 @@ describe('EditorView variables panel', () => {
       lastKnown: 200,
     });
     const slug = measured.slug;
-    expect(wrapper.find(`[data-testid="variable-value-${slug}"]`).text()).toBe('200');
-    expect(wrapper.find(`[data-testid="variable-type-${slug}"]`).text()).toBe('Measured · 2');
+    expect(wrapper.find(`[data-testid="variable-value-${slug}"]`).text()).toContain('200');
+    expect(wrapper.find(`[data-testid="variable-type-${slug}"]`).text()).toBe('Meas 2');
 
     await wrapper.find(`[data-testid="variable-highlight-${slug}"]`).trigger('click');
     await nextTick();
@@ -1826,12 +1831,273 @@ describe('EditorView variables panel', () => {
     });
   });
 
+  it('edits a measured chain live and can revert it', async () => {
+    const document: PatternDocument = {
+      ...lineDoc,
+      variables: [
+        {
+          slug: 'neck',
+          name: 'Neckline',
+          unit: 'mm',
+          kind: 'measurement',
+          sources: ['ab'],
+          lastKnown: 100,
+        },
+      ],
+    };
+    const { wrapper, store } = await mountLoaded(document);
+    await openPanel(wrapper, 'variables');
+    const canvas = wrapper.findComponent(PatternCanvas);
+
+    await wrapper.find('[data-testid="variable-edit-neck"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="measured-edit-bar"]').exists()).toBe(true);
+    expect(canvas.props('measureActive')).toBe(true);
+    expect(canvas.props('highlightedEntityIds')).toEqual(['ab']);
+
+    canvas.vm.$emit('measure-pick', 'bc');
+    await nextTick();
+    expect(store.document.variables![0]).toMatchObject({ sources: ['ab', 'bc'] });
+    expect(wrapper.find('[data-testid="measured-edit-hint"]').text()).toContain('2 edges');
+
+    // An empty chain and a disconnected edge are both refused.
+    canvas.vm.$emit('measure-pick', 'ab');
+    await nextTick();
+    expect(store.document.variables![0]).toMatchObject({ sources: ['bc'] });
+
+    canvas.vm.$emit('measure-pick', 'bc');
+    await nextTick();
+    expect(wrapper.find('[data-testid="measured-edit-message"]').text()).toContain(
+      'at least one edge',
+    );
+    expect(store.document.variables![0]).toMatchObject({ sources: ['bc'] });
+
+    canvas.vm.$emit('measure-pick', 'da');
+    await nextTick();
+    expect(wrapper.find('[data-testid="measured-edit-message"]').text()).toContain('endpoint');
+    expect(store.document.variables![0]).toMatchObject({ sources: ['bc'] });
+
+    canvas.vm.$emit('measure-pick', 'cd');
+    await nextTick();
+    expect(store.document.variables![0]).toMatchObject({ sources: ['bc', 'cd'] });
+
+    await wrapper.find('[data-testid="measured-edit-cancel"]').trigger('click');
+    await nextTick();
+    expect(store.document.variables![0]).toMatchObject({ sources: ['ab'] });
+    expect(wrapper.find('[data-testid="measured-edit-bar"]').exists()).toBe(false);
+    expect(canvas.props('measureActive')).toBe(false);
+
+    await wrapper.find('[data-testid="variable-edit-neck"]').trigger('click');
+    await nextTick();
+    canvas.vm.$emit('measure-pick', 'bc');
+    await nextTick();
+    expect(store.document.variables![0]).toMatchObject({ sources: ['ab', 'bc'] });
+
+    await wrapper.find('[data-testid="measured-edit-cancel"]').trigger('click');
+    await nextTick();
+    expect(store.document.variables![0]).toMatchObject({ sources: ['ab'] });
+    expect(wrapper.find('[data-testid="measured-edit-bar"]').exists()).toBe(false);
+    expect(canvas.props('measureActive')).toBe(false);
+
+    await wrapper.find('[data-testid="variable-edit-neck"]').trigger('click');
+    await nextTick();
+    await wrapper.find('[data-testid="measured-edit-done"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="measured-edit-bar"]').exists()).toBe(false);
+    expect(store.document.variables![0]).toMatchObject({ sources: ['ab'] });
+  });
+
+  it('ends the measured edit when its variable is removed', async () => {
+    const document: PatternDocument = {
+      ...lineDoc,
+      variables: [
+        { slug: 'bust', name: 'Bust', unit: 'cm', value: 88 },
+        { slug: 'neck', name: 'Neckline', unit: 'mm', kind: 'measurement', sources: ['ab'] },
+      ],
+    };
+    const { wrapper, store } = await mountLoaded(document);
+    await openPanel(wrapper, 'variables');
+
+    await wrapper.find('[data-testid="variable-edit-neck"]').trigger('click');
+    await nextTick();
+    store.dispatch({ id: 'drop', type: 'remove_variable', params: { slug: 'neck' } });
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="measured-edit-bar"]').exists()).toBe(false);
+    expect(wrapper.findComponent(PatternCanvas).props('measureActive')).toBe(false);
+  });
+
+  it('focuses the measured chain in the sketch canvas and from another piece tab', async () => {
+    const twoPiece: PatternDocument = {
+      ...createEmptyDocument(),
+      entities: [
+        { id: 'a', kind: 'point', x: 0, y: 0, piece: 'p1', fixed: false },
+        { id: 'b', kind: 'point', x: 100, y: 0, piece: 'p1', fixed: false },
+        { id: 'ab', kind: 'line', start: 'a', end: 'b', piece: 'p1' },
+        { id: 'f', kind: 'point', x: 0, y: 0, piece: 'p2', fixed: false },
+        { id: 'g', kind: 'point', x: 80, y: 0, piece: 'p2', fixed: false },
+        { id: 'fg', kind: 'line', start: 'f', end: 'g', piece: 'p2' },
+      ],
+      pieces: [
+        { id: 'p1', name: 'Front', edges: [], allowances: [], placement: { x: 0, y: 0 } },
+        { id: 'p2', name: 'Sleeve', edges: [], allowances: [], placement: { x: 300, y: 0 } },
+      ],
+      tabs: [
+        { kind: 'piece', id: 'p1' },
+        { kind: 'piece', id: 'p2' },
+      ],
+      variables: [
+        { slug: 'neck', name: 'Neckline', unit: 'mm', kind: 'measurement', sources: ['ab'] },
+      ],
+    };
+    const { wrapper, store } = await mountLoaded(twoPiece);
+    await openPanel(wrapper, 'variables');
+
+    await wrapper.find('[data-testid="tab-sketch"]').trigger('click');
+    await nextTick();
+    store.setSketchTarget('p2');
+    await nextTick();
+
+    await wrapper.find('[data-testid="variable-edit-neck"]').trigger('click');
+    await nextTick();
+    expect(store.sketchView).toBe(true);
+    expect(store.sketchTarget).toBe('p1');
+
+    await wrapper.find('[data-testid="measured-edit-done"]').trigger('click');
+    await wrapper.find('[data-testid="tab-piece-p2"]').trigger('click');
+    await flushPromises();
+
+    await wrapper.find('[data-testid="variable-edit-neck"]').trigger('click');
+    await nextTick();
+    expect(store.activeTab).toEqual({ kind: 'piece', id: 'p1' });
+    expect(wrapper.find('[data-testid="measured-edit-bar"]').exists()).toBe(true);
+  });
+
+  it('guards the measured editor at its component boundaries', async () => {
+    const document: PatternDocument = {
+      ...lineDoc,
+      variables: [
+        {
+          slug: 'neck',
+          name: 'Neckline',
+          unit: 'mm',
+          kind: 'measurement',
+          sources: ['gone'],
+          lastKnown: 42,
+        },
+        { slug: 'bust', name: 'Bust', unit: 'cm', value: 88 },
+      ],
+    };
+    const { wrapper, store } = await mountLoaded(document);
+    await openPanel(wrapper, 'variables');
+    const panel = wrapper.findComponent(VariablesPanel);
+    const canvas = wrapper.findComponent(PatternCanvas);
+
+    panel.vm.$emit('edit-measured', 'bust');
+    panel.vm.$emit('edit-measured', 'missing');
+    await nextTick();
+    expect(wrapper.find('[data-testid="measured-edit-bar"]').exists()).toBe(false);
+
+    // A stray canvas pick outside the mode changes nothing.
+    canvas.vm.$emit('measure-pick', 'ab');
+    await nextTick();
+    expect(store.document.variables![0]).toMatchObject({ sources: ['gone'] });
+
+    panel.vm.$emit('edit-measured', 'neck');
+    await nextTick();
+    expect(wrapper.find('[data-testid="measured-edit-bar"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="measured-edit-chips"]').text()).toContain('Edge 1');
+
+    // A tool switch leaves the picker.
+    await wrapper.find('[data-testid="tool-add_point"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="measured-edit-bar"]').exists()).toBe(false);
+  });
+
+  it('ends the measured edit when a document without variables is loaded', async () => {
+    const document: PatternDocument = {
+      ...lineDoc,
+      variables: [
+        { slug: 'neck', name: 'Neckline', unit: 'mm', kind: 'measurement', sources: ['ab'] },
+      ],
+    };
+    const { wrapper, store } = await mountLoaded(document);
+    await openPanel(wrapper, 'variables');
+
+    await wrapper.find('[data-testid="variable-edit-neck"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="measured-edit-bar"]').exists()).toBe(true);
+
+    store.load(createEmptyDocument());
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="measured-edit-bar"]').exists()).toBe(false);
+  });
+
+  it('ignores an edit request on a document with no variables', async () => {
+    const { wrapper } = await mountLoaded(createEmptyDocument());
+    await openPanel(wrapper, 'variables');
+
+    wrapper.findComponent(VariablesPanel).vm.$emit('edit-measured', 'neck');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="measured-edit-bar"]').exists()).toBe(false);
+  });
+
+  it('refuses to start the measured editor on a read-only document', async () => {
+    const document: PatternDocument = {
+      ...lineDoc,
+      variables: [
+        { slug: 'neck', name: 'Neckline', unit: 'mm', kind: 'measurement', sources: ['ab'] },
+      ],
+    };
+    const { wrapper, store } = await mountLoaded(document);
+    await openPanel(wrapper, 'variables');
+    store.setReadOnly(true);
+
+    wrapper.findComponent(VariablesPanel).vm.$emit('edit-measured', 'neck');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="measured-edit-bar"]').exists()).toBe(false);
+  });
+
+  it('reverts a same-length chain swap and closes without a change', async () => {
+    const document: PatternDocument = {
+      ...lineDoc,
+      variables: [
+        { slug: 'neck', name: 'Neckline', unit: 'mm', kind: 'measurement', sources: ['ab'] },
+      ],
+    };
+    const { wrapper, store } = await mountLoaded(document);
+    await openPanel(wrapper, 'variables');
+    const canvas = wrapper.findComponent(PatternCanvas);
+
+    await wrapper.find('[data-testid="variable-edit-neck"]').trigger('click');
+    await nextTick();
+    canvas.vm.$emit('measure-pick', 'bc');
+    await nextTick();
+    canvas.vm.$emit('measure-pick', 'ab');
+    await nextTick();
+    expect(store.document.variables![0]).toMatchObject({ sources: ['bc'] });
+
+    await wrapper.find('[data-testid="measured-edit-cancel"]').trigger('click');
+    await nextTick();
+    expect(store.document.variables![0]).toMatchObject({ sources: ['ab'] });
+
+    await wrapper.find('[data-testid="variable-edit-neck"]').trigger('click');
+    await nextTick();
+    await wrapper.find('[data-testid="measured-edit-cancel"]').trigger('click');
+    await nextTick();
+    expect(store.document.variables![0]).toMatchObject({ sources: ['ab'] });
+  });
+
   it('refuses the measured action for a selection that is not a connected chain', async () => {
     const { wrapper, store } = await mountLoaded(lineDoc);
     await openPanel(wrapper, 'variables');
 
     wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedEntityIds', ['ab', 'cd']);
     await nextTick();
+    await wrapper.find('[data-testid="variables-add"]').trigger('click');
     expect(
       wrapper.find('[data-testid="add-measured-variable"]').attributes('disabled'),
     ).toBeDefined();

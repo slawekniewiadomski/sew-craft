@@ -161,6 +161,7 @@ function mountCanvas(
     constraintActive: boolean;
     constraintPicks: ConstraintPick[];
     roundCornerActive: boolean;
+    measureActive: boolean;
     roundCornerPicks: CornerRoundPicks;
     cornerRoundPreviewRadius: number | null;
     readOnly: boolean;
@@ -979,6 +980,27 @@ describe('PatternCanvas', () => {
     expect(wrapper.find('[data-testid="point-on-line-hint"]').exists()).toBe(false);
     down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, at.x, at.y);
     expect(wrapper.emitted('add-point-on-line')).toBeUndefined();
+  });
+
+  it('picks measurable edges while a measurement is being edited', () => {
+    const wrapper = mountCanvas({ measureActive: true });
+    const at = screenAt({ x: 50, y: 20 });
+
+    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, at.x, at.y);
+    expect(wrapper.emitted('measure-pick')?.[0]).toEqual(['ab']);
+
+    down(wrapper.find('[data-kind="point"][data-entity-id="a"]').element, at.x, at.y);
+    expect(wrapper.emitted('measure-pick')).toHaveLength(1);
+  });
+
+  it('keeps the measurement pick ahead of an armed tool', () => {
+    const wrapper = mountCanvas({ measureActive: true, tool: 'add_line' });
+    const at = screenAt({ x: 50, y: 20 });
+
+    down(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, at.x, at.y);
+
+    expect(wrapper.emitted('measure-pick')?.[0]).toEqual(['ab']);
+    expect(wrapper.emitted('add-line')).toBeUndefined();
   });
 
   it('shows the split hint while the Split tool is armed', () => {
