@@ -18,6 +18,8 @@ import SidebarEmpty from '@/components/sidebar/SidebarEmpty.vue';
 import SidebarField from '@/components/sidebar/SidebarField.vue';
 import SidebarInput from '@/components/sidebar/SidebarInput.vue';
 import SidebarSection from '@/components/sidebar/SidebarSection.vue';
+import { useReferencePicker } from '@/composables/use-reference-picker';
+import { useVariablePicker } from '@/composables/use-variable-picker';
 import SidebarSelect from '@/components/sidebar/SidebarSelect.vue';
 import { formatCornerRadius, parseCornerRadius } from '@/lib/corner-round';
 import type {
@@ -32,13 +34,9 @@ import {
   dimensionPatchForEdit,
   dimensionStateLabel,
   dimensionTone,
-  filterReferenceOptions,
   formatDimensionField,
   formatDimensionValue,
-  isReferenceEditText,
   parseDimensionEdit,
-  referenceOptions,
-  referenceSearchText,
   type DimensionPatch,
   type DimensionReferenceOption,
 } from '@/lib/dimensions';
@@ -103,9 +101,6 @@ const storedPiece = computed(() =>
   props.entity.piece === null ? null : (pieceById(props.document, props.entity.piece.id) ?? null),
 );
 
-/** The `#` picker open in the inspector, if any. */
-const picker = ref<{ id: EntityId; text: string; activeIndex: number } | null>(null);
-
 /** A typed value that has not been committed because it does not resolve yet. */
 interface FieldDraft {
   text: string;
@@ -121,28 +116,6 @@ const radiusDrafts = ref<Record<EntityId, FieldDraft>>({});
 /** The value fields the `$` picker can serve. */
 type VariableField = 'dimension' | 'round';
 
-/** The `$` picker open in the inspector, if any. */
-const variablePicker = ref<{ field: VariableField; id: EntityId; activeIndex: number } | null>(
-  null,
-);
-
-/** The partial token being typed, which filters the `$` picker. */
-const variableQueryText = ref('');
-
-/** The variables the open `$` picker offers, filtered by what was typed. */
-const variablePickerOptions = computed(() => {
-  const query = variableQueryText.value.toLowerCase();
-  return variableOptions(props.document).filter(
-    (option) => option.slug.includes(query) || option.name.toLowerCase().includes(query),
-  );
-});
-
-/** Whether the `$` picker is open for one field. */
-function pickerOpen(field: VariableField, id: EntityId): boolean {
-  const current = variablePicker.value;
-  return current !== null && current.field === field && current.id === id;
-}
-
 /** One field's uncommitted draft, or `undefined` when it shows its stored value. */
 function draftOf(field: VariableField, id: EntityId): FieldDraft | undefined {
   return field === 'dimension' ? dimensionDrafts.value[id] : radiusDrafts.value[id];
@@ -153,70 +126,59 @@ function writeDraft(field: VariableField, id: EntityId, draft: FieldDraft): void
   else radiusDrafts.value[id] = draft;
 }
 
-/** Insert the chosen variable token into the field's draft and close the picker. */
-function pickVariable(field: VariableField, id: EntityId, slug: string): void {
-  // The picker opens from an input event, so the field always has a draft.
-  const draft = draftOf(field, id)!;
-  writeDraft(field, id, { text: insertVariableToken(draft.text, slug), issue: '' });
-  variablePicker.value = null;
-}
+/** The inspector's `#` reference picker. */
+const {
+  picker,
+  options: pickerOptions,
+  activeOption: activePickerOption,
+  activeIndex: activePickerIndex,
+  optionsFor,
+  open: openPicker,
+  close: closePicker,
+  onInput: onPickerInput,
+  onKeydown: onPickerKeydown,
+  select: linkDimension,
+} = useReferencePicker(
+  () => props.document,
+  (id, reference) => emit('update-dimension', id, { reference }),
+);
 
-/** Arrow keys move the `$` picker, Enter inserts, Escape closes it. */
-function onVariablePickerKeydown(field: VariableField, id: EntityId, event: KeyboardEvent): void {
-  const current = variablePicker.value;
-  if (current === null || current.field !== field || current.id !== id) return;
-  const count = variablePickerOptions.value.length;
-  if (event.key === 'ArrowDown' && count > 0) {
-    event.preventDefault();
-    variablePicker.value = { ...current, activeIndex: (current.activeIndex + 1) % count };
-    return;
-  }
-  if (event.key === 'ArrowUp' && count > 0) {
-    event.preventDefault();
-    variablePicker.value = { ...current, activeIndex: (current.activeIndex - 1 + count) % count };
-    return;
-  }
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    variablePicker.value = null;
-    return;
-  }
-  if (event.key === 'Enter' && count > 0) {
-    event.preventDefault();
-    const option = variablePickerOptions.value[Math.min(current.activeIndex, count - 1)]!;
-    pickVariable(field, id, option.slug);
-  }
-}
+/** The inspector's `$` variable picker; it inserts into the draft the field keeps. */
+const {
+  options: variablePickerOptions,
+  isOpen: pickerOpen,
+  pick: pickVariable,
+  open: openVariablePicker,
+  close: closeVariablePicker,
+  onKeydown: onVariablePickerKeydown,
+} = useVariablePicker<VariableField>(
+  () => props.document,
+  (field, id, slug) => {
+    // The picker opens from an input event, so the field always has a draft.
+    const draft = draftOf(field, id)!;
+    writeDraft(field, id, { text: insertVariableToken(draft.text, slug), issue: '' });
+  },
+);
 
 /** Run the `$` picker first, then the `#` reference picker. */
 function onDimensionKeydown(dimension: DimensionSummary, event: KeyboardEvent): void {
-  onVariablePickerKeydown('dimension', dimension.id, event);
-  if (!event.defaultPrevented) onPickerKeydown(dimension.id, event);
+  if (onVariablePickerKeydown('dimension', dimension.id, event)) return;
+  onPickerKeydown(dimension.id, event);
 }
 
 /** Keep the typed text in a draft and open the `$` picker for a partial token. */
 function onDimensionInput(dimension: DimensionSummary, event: Event): void {
   const input = event.target as HTMLInputElement;
-  const query = variableQuery(input.value);
   dimensionDrafts.value[dimension.id] = { text: input.value, issue: '' };
-  variableQueryText.value = query ?? '';
-  variablePicker.value =
-    query === null || variableQueryIsComplete(props.document, query)
-      ? null
-      : { field: 'dimension', id: dimension.id, activeIndex: 0 };
+  openVariablePicker('dimension', dimension.id, variableQuery(input.value));
   onPickerInput(dimension.id, event);
 }
 
 /** The same `$` picker for a corner round's radius field. */
 function onCornerRadiusInput(round: CornerRoundSummary, event: Event): void {
   const input = event.target as HTMLInputElement;
-  const query = variableQuery(input.value);
   radiusDrafts.value[round.id] = { text: input.value, issue: '' };
-  variableQueryText.value = query ?? '';
-  variablePicker.value =
-    query === null || variableQueryIsComplete(props.document, query)
-      ? null
-      : { field: 'round', id: round.id, activeIndex: 0 };
+  openVariablePicker('round', round.id, variableQuery(input.value));
 }
 
 function onCornerRadiusKeydown(round: CornerRoundSummary, event: KeyboardEvent): void {
@@ -226,92 +188,6 @@ function onCornerRadiusKeydown(round: CornerRoundSummary, event: KeyboardEvent):
 function distanceConstraint(id: EntityId): DistanceConstraint | null {
   const constraint = props.document.constraints.find((entry) => entry.id === id);
   return constraint !== undefined && constraint.type === 'distance' ? constraint : null;
-}
-
-/** Filtered rows for the open inspector picker. */
-const pickerOptions = computed<DimensionReferenceOption[]>(() => {
-  const current = picker.value!;
-  const constraint = distanceConstraint(current.id);
-  return constraint === null
-    ? []
-    : filterReferenceOptions(referenceOptions(props.document, constraint), current.text);
-});
-
-/** The row Enter would pick, or `null` for an empty list. */
-const activePickerOption = computed<DimensionReferenceOption | null>(() => {
-  const current = picker.value;
-  if (current === null || pickerOptions.value.length === 0) return null;
-  return pickerOptions.value[Math.min(current.activeIndex, pickerOptions.value.length - 1)]!;
-});
-
-/** The highlighted row, clamped to the filtered list. */
-const activePickerIndex = computed<number>(() =>
-  activePickerOption.value === null
-    ? -1
-    : pickerOptions.value.findIndex((option) => option.id === activePickerOption.value!.id),
-);
-
-function optionsFor(id: EntityId): DimensionReferenceOption[] {
-  const constraint = distanceConstraint(id);
-  return constraint === null ? [] : referenceOptions(props.document, constraint);
-}
-
-function openPicker(id: EntityId, text = ''): void {
-  picker.value = { id, text, activeIndex: 0 };
-}
-
-function closePicker(): void {
-  picker.value = null;
-}
-
-function movePicker(step: number): void {
-  const current = picker.value!;
-  const count = pickerOptions.value.length;
-  if (count === 0) return;
-  picker.value = {
-    id: current.id,
-    text: current.text,
-    activeIndex: (current.activeIndex + step + count) % count,
-  };
-}
-
-function onPickerInput(id: EntityId, event: Event): void {
-  const value = (event.target as HTMLInputElement).value;
-  if (isReferenceEditText(value)) {
-    openPicker(id, referenceSearchText(value));
-  } else if (picker.value?.id === id) {
-    closePicker();
-  }
-}
-
-function onPickerKeydown(id: EntityId, event: KeyboardEvent): void {
-  const current = picker.value;
-  if (current === null || current.id !== id) return;
-
-  if (event.key === 'ArrowDown') {
-    event.preventDefault();
-    movePicker(1);
-    return;
-  }
-  if (event.key === 'ArrowUp') {
-    event.preventDefault();
-    movePicker(-1);
-    return;
-  }
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    closePicker();
-    return;
-  }
-  if (event.key === 'Enter' && activePickerOption.value !== null) {
-    event.preventDefault();
-    linkDimension(id, activePickerOption.value.id);
-  }
-}
-
-function linkDimension(id: EntityId, reference: EntityId): void {
-  closePicker();
-  emit('update-dimension', id, { reference });
 }
 
 const KIND_LABELS: Record<Entity['kind'], string> = {
@@ -456,7 +332,7 @@ function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
     }
     clearDraft(dimensionDrafts, dimension.id);
     closePicker();
-    variablePicker.value = null;
+    closeVariablePicker();
     emit('update-dimension', dimension.id, { value: { expr: edit.expr } });
     return;
   }
@@ -483,7 +359,7 @@ function onDimensionValueEdit(dimension: DimensionSummary, event: Event): void {
 
   clearDraft(dimensionDrafts, dimension.id);
   closePicker();
-  variablePicker.value = null;
+  closeVariablePicker();
   emit('update-dimension', dimension.id, patch);
 }
 
@@ -503,7 +379,7 @@ function onCornerRadiusEdit(round: CornerRoundSummary, event: Event): void {
       return;
     }
     clearDraft(radiusDrafts, round.id);
-    variablePicker.value = null;
+    closeVariablePicker();
     emit('set-corner-round-radius', round.id, { expr: edit.expr });
     return;
   }
@@ -516,7 +392,7 @@ function onCornerRadiusEdit(round: CornerRoundSummary, event: Event): void {
   }
 
   clearDraft(radiusDrafts, round.id);
-  variablePicker.value = null;
+  closeVariablePicker();
   emit('set-corner-round-radius', round.id, radius);
 }
 

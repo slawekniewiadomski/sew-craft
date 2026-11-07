@@ -7,6 +7,7 @@ import {
   dimensionAccessibleName,
   dimensionLabelWidth,
   dimensionPatchForEdit,
+  dimensionRows,
   dimensionSegments,
   dimensionStateLabel,
   dimensionTone,
@@ -322,5 +323,46 @@ describe('dimensionSegments', () => {
       y2: 11.5,
       main: false,
     });
+  });
+});
+
+describe('dimensionRows', () => {
+  const document: PatternDocument = {
+    schema: 'sewcraft.pattern/0.8',
+    units: 'mm',
+    entities: [
+      { id: 'p1', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
+      { id: 'p2', kind: 'point', x: 120, y: 0, construction: false, fixed: false },
+    ],
+    constraints: [
+      { id: 'A', type: 'distance', a: 'p1', b: 'p2', value: 120, orientation: 'horizontal' },
+      { id: 'h', type: 'horizontal', a: 'p1', b: 'p2' },
+    ],
+    pieces: [],
+    assemblies: [],
+    tabs: [],
+    seams: [],
+  };
+
+  it('lists the driving dimensions and skips every other constraint', () => {
+    const rows = dimensionRows(document);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: 'A',
+      kind: 'distance',
+      readOnly: false,
+      value: '120',
+      field: '120',
+      state: 'set',
+      stateLabel: 'Set',
+      orientation: 'horizontal',
+      offset: '20',
+    });
+    expect(rows[0]!.entities).toEqual(['p1', 'p2']);
+  });
+
+  it('returns no rows for a document with no dimensions', () => {
+    expect(dimensionRows({ ...document, constraints: [] })).toEqual([]);
   });
 });

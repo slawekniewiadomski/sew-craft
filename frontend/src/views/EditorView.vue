@@ -89,6 +89,8 @@ import SelectionSummary from '@/components/SelectionSummary.vue';
 import VariablesPanel from '@/components/VariablesPanel.vue';
 import UpgradeDocumentDialog from '@/components/UpgradeDocumentDialog.vue';
 import { useCommandBus } from '@/composables/use-command-bus';
+import { useReferencePicker } from '@/composables/use-reference-picker';
+import { useVariablePicker } from '@/composables/use-variable-picker';
 import { useSidebarLayout } from '@/composables/use-sidebar-layout';
 import { defaultAllowanceSummary, type AllowanceChoice } from '@/lib/allowance-defaults';
 import { parseAllowanceWidth } from '@/lib/allowance-width';
@@ -120,17 +122,15 @@ import {
   DIMENSION_ORIENTATION_OPTIONS,
   anchorLabel,
   dimensionPatchForEdit,
+  dimensionRows,
   dimensionStateLabel,
   dimensionTone,
-  filterReferenceOptions,
   formatDimensionField,
   formatDimensionValue,
-  isReferenceEditText,
   parseDimensionEdit,
   parseDimensionValue,
-  referenceOptions,
-  referenceSearchText,
   type DimensionPatch,
+  type DimensionRow,
   type DimensionPlacement,
   type DimensionReferenceOption,
   type CutDimensionPlacement,
@@ -656,242 +656,56 @@ const selectionStatus = computed(() => {
   return entities === 1 ? '1 entity selected' : `${entities} entities selected`;
 });
 
-/**
- * Distance constraints are the driving dimensions; the sidebar edits their
- * value and measurement axis, while the canvas renders them. Derived cut
- * dimensions share the list but keep their value read-only. Every other
- * constraint stays in the generic constraints list.
- */
-interface DimensionRow {
-  id: EntityId;
-  constraint: DistanceConstraint | DerivedDistanceConstraint;
-  kind: 'distance' | 'derived';
-  readOnly: boolean;
-  entities: string[];
-  value: string;
-  field: string;
-  state: DimensionState;
-  stateLabel: string;
-  sourceId: EntityId | null;
-  orientation: DimensionOrientation;
-  /** Edge- or line-anchored dimensions are always aligned; the axis control is hidden. */
-  orientationLocked: boolean;
-  offset: string;
-}
-
-const dimensions = computed<DimensionRow[]>(() =>
-  pattern.value.constraints.flatMap<DimensionRow>((constraint): DimensionRow[] => {
-    if (constraint.type === 'derived_distance') {
-      const measured = derivedDimensionValue(pattern.value, constraint);
-      const state = derivedDimensionState(pattern.value, constraint);
-      return [
-        {
-          id: constraint.id,
-          constraint,
-          kind: 'derived',
-          readOnly: true,
-          entities: [
-            `${constraint.a.edge}:${constraint.a.at}`,
-            `${constraint.b.edge}:${constraint.b.at}`,
-          ],
-          value: measured === null ? '—' : formatDimensionValue(measured),
-          field: measured === null ? '' : formatDimensionValue(measured),
-          state,
-          stateLabel: dimensionStateLabel(state),
-          sourceId: null,
-          orientation: constraintOrientation(constraint),
-          orientationLocked: usesCutEdgeAnchor(constraint),
-          offset: formatDimensionValue(constraintOffset(constraint)),
-        },
-      ];
-    }
-
-    if (constraint.type !== 'distance') return [];
-    // Point deletion cascades to constraints, so a surviving dimension resolves.
-    const measured = dimensionValue(pattern.value, constraint);
-    const state = dimensionState(pattern.value, constraint);
-    return [
-      {
-        id: constraint.id,
-        constraint,
-        kind: 'distance',
-        readOnly: false,
-        entities: [
-          anchorLabel(pattern.value, constraint.a),
-          anchorLabel(pattern.value, constraint.b),
-        ],
-        value: formatDimensionValue(measured ?? 0),
-        field: formatDimensionField(constraint, measured, state),
-        state,
-        stateLabel: dimensionStateLabel(state),
-        sourceId: constraint.reference ?? null,
-        orientation: constraintOrientation(constraint),
-        orientationLocked:
-          isLineAnchor(pattern.value, constraint.a) || isLineAnchor(pattern.value, constraint.b),
-        offset: formatDimensionValue(constraintOffset(constraint)),
-      },
-    ];
-  }),
-);
-
-/** The `#` picker open in the Dimensions drawer, if any. */
-const dimensionPicker = ref<{ id: EntityId; text: string; activeIndex: number } | null>(null);
+/** Every dimension row the drawer lists, in document order. */
+const dimensions = computed<DimensionRow[]>(() => dimensionRows(pattern.value));
 
 /** A drawer value being typed that does not resolve yet. */
 const dimensionDrafts = ref<Record<EntityId, { text: string; issue: string }>>({});
 
-/** The `$` picker open in the drawer, if any. */
-const variablePicker = ref<{ id: EntityId; activeIndex: number } | null>(null);
-
-/** The partial token being typed, which filters the drawer's `$` picker. */
-const variableQueryText = ref('');
-
-/** The variables the drawer's `$` picker offers. */
-const variablePickerOptions = computed(() => {
-  const query = variableQueryText.value.toLowerCase();
-  return variableOptions(pattern.value).filter(
-    (option) => option.slug.includes(query) || option.name.toLowerCase().includes(query),
-  );
-});
-
-/** Insert a variable token into the drawer draft. */
-function selectDimensionVariable(id: EntityId, slug: string): void {
-  // The picker opens from a drawer input, which always leaves a draft.
-  const draft = dimensionDrafts.value[id]!;
-  dimensionDrafts.value[id] = { text: insertVariableToken(draft.text, slug), issue: '' };
-  variablePicker.value = null;
-}
-
-/** Insert the token the drawer's `$` picker highlights. */
-function pickDimensionVariable(id: EntityId): void {
-  // Enter is handled only while the list has a row to pick.
-  const option = variablePickerOptions.value[variablePicker.value!.activeIndex]!;
-  selectDimensionVariable(id, option.slug);
-}
-
-/** Arrow keys move the drawer's `$` picker, Enter inserts, Escape closes it. */
-function onVariablePickerKeydown(id: EntityId, event: KeyboardEvent): boolean {
-  const picker = variablePicker.value;
-  if (picker === null || picker.id !== id) return false;
-  const count = variablePickerOptions.value.length;
-
-  if (event.key === 'ArrowDown' && count > 0) {
-    variablePicker.value = { id, activeIndex: (picker.activeIndex + 1) % count };
-    return true;
-  }
-  if (event.key === 'ArrowUp' && count > 0) {
-    variablePicker.value = { id, activeIndex: (picker.activeIndex - 1 + count) % count };
-    return true;
-  }
-  if (event.key === 'Escape') {
-    variablePicker.value = null;
-    return true;
-  }
-  if (event.key === 'Enter' && count > 0) {
-    pickDimensionVariable(id);
-    return true;
-  }
-  return false;
-}
-
-/** Filtered rows for the open drawer picker. */
-const dimensionPickerOptions = computed<DimensionReferenceOption[]>(() => {
-  const picker = dimensionPicker.value!;
-  const constraint = pattern.value.constraints.find(
-    (entry): entry is DistanceConstraint => entry.id === picker.id && entry.type === 'distance',
-  )!;
-  return filterReferenceOptions(referenceOptions(pattern.value, constraint), picker.text);
-});
-
-/** The row Enter would pick in the drawer, or `null` for an empty list. */
-const activeDimensionPickerOption = computed<DimensionReferenceOption | null>(() => {
-  const picker = dimensionPicker.value;
-  if (picker === null || dimensionPickerOptions.value.length === 0) return null;
-  return dimensionPickerOptions.value[
-    Math.min(picker.activeIndex, dimensionPickerOptions.value.length - 1)
-  ]!;
-});
-
-/** The drawer picker's highlighted row, clamped to its filtered list. */
-const activeDimensionPickerIndex = computed<number>(() =>
-  activeDimensionPickerOption.value === null
-    ? -1
-    : dimensionPickerOptions.value.findIndex(
-        (option) => option.id === activeDimensionPickerOption.value!.id,
-      ),
+/** The drawer's `#` reference picker. */
+const {
+  picker: dimensionPicker,
+  options: dimensionPickerOptions,
+  activeOption: activeDimensionPickerOption,
+  activeIndex: activeDimensionPickerIndex,
+  optionsFor: pickerOptionsFor,
+  close: referencePickerClose,
+  open: openDimensionPicker,
+  onInput: onReferenceInput,
+  onKeydown: onReferenceKeydown,
+  select: selectDimensionReference,
+} = useReferencePicker(
+  () => pattern.value,
+  (id, referenceId) => onUpdateDimension(id, { reference: referenceId }),
 );
 
-function pickerOptionsFor(id: EntityId): DimensionReferenceOption[] {
-  const constraint = pattern.value.constraints.find(
-    (entry): entry is DistanceConstraint => entry.id === id && entry.type === 'distance',
-  )!;
-  return referenceOptions(pattern.value, constraint);
-}
-
-function openDimensionPicker(id: EntityId, text = ''): void {
-  dimensionPicker.value = { id, text, activeIndex: 0 };
-}
-
-function closeDimensionPicker(): void {
-  dimensionPicker.value = null;
-}
-
-function moveDimensionPicker(step: number): void {
-  const picker = dimensionPicker.value!;
-  const count = dimensionPickerOptions.value.length;
-  if (count === 0) return;
-  dimensionPicker.value = {
-    text: picker.text,
-    activeIndex: (picker.activeIndex + step + count) % count,
-    id: picker.id,
-  };
-}
+/** The drawer's `$` variable picker; it inserts into the draft the field keeps. */
+const {
+  options: variablePickerOptions,
+  isOpen: variablePickerOpen,
+  pick: pickDimensionVariable,
+  open: openVariablePicker,
+  onKeydown: onVariablePickerKeydown,
+} = useVariablePicker(
+  () => pattern.value,
+  (_field, id, slug) => {
+    // The picker opens from a drawer input, which always leaves a draft.
+    const draft = dimensionDrafts.value[id]!;
+    dimensionDrafts.value[id] = { text: insertVariableToken(draft.text, slug), issue: '' };
+  },
+);
 
 function onDimensionInput(id: EntityId, event: Event): void {
   const value = (event.target as HTMLInputElement).value;
   dimensionDrafts.value[id] = { text: value, issue: '' };
-  if (isReferenceEditText(value)) {
-    openDimensionPicker(id, referenceSearchText(value));
-  } else if (dimensionPicker.value?.id === id) {
-    closeDimensionPicker();
-  }
-  const query = variableQuery(value);
-  variableQueryText.value = query ?? '';
-  variablePicker.value = query === null ? null : { id, activeIndex: 0 };
+  onReferenceInput(id, event);
+  openVariablePicker('dimension', id, variableQuery(value));
 }
 
-function selectDimensionReference(id: EntityId, reference: EntityId): void {
-  closeDimensionPicker();
-  onUpdateDimension(id, { reference });
-}
-
+/** The `$` picker gets the key first, then the `#` picker. */
 function onDimensionKeydown(id: EntityId, event: KeyboardEvent): void {
-  if (onVariablePickerKeydown(id, event)) {
-    event.preventDefault();
-    return;
-  }
-  const picker = dimensionPicker.value;
-  if (picker === null || picker.id !== id) return;
-
-  if (event.key === 'ArrowDown') {
-    event.preventDefault();
-    moveDimensionPicker(1);
-    return;
-  }
-  if (event.key === 'ArrowUp') {
-    event.preventDefault();
-    moveDimensionPicker(-1);
-    return;
-  }
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    closeDimensionPicker();
-    return;
-  }
-  if (event.key === 'Enter' && activeDimensionPickerOption.value !== null) {
-    event.preventDefault();
-    selectDimensionReference(id, activeDimensionPickerOption.value.id);
-  }
+  if (onVariablePickerKeydown('dimension', id, event)) return;
+  onReferenceKeydown(id, event);
 }
 
 const otherConstraints = computed(() =>
@@ -1921,7 +1735,7 @@ function onDimensionValueEdit(id: EntityId, event: Event): void {
       return;
     }
     clearDimensionDraft(id);
-    closeDimensionPicker();
+    referencePickerClose();
     onUpdateDimension(id, { value: { expr: edit.expr } });
     return;
   }
@@ -1946,7 +1760,7 @@ function onDimensionValueEdit(id: EntityId, event: Event): void {
   }
 
   clearDimensionDraft(id);
-  closeDimensionPicker();
+  referencePickerClose();
   onUpdateDimension(id, patch);
 }
 
@@ -3115,7 +2929,10 @@ onBeforeUnmount(() => {
                   />
 
                   <ul
-                    v-if="variablePicker?.id === dimension.id && variablePickerOptions.length > 0"
+                    v-if="
+                      variablePickerOpen('dimension', dimension.id) &&
+                      variablePickerOptions.length > 0
+                    "
                     class="absolute top-full left-0 z-20 mt-1 max-h-40 w-56 overflow-auto rounded-sm border bg-background p-1 shadow-sm"
                     :data-testid="`dimension-variables-${dimension.id}`"
                   >
@@ -3124,7 +2941,9 @@ onBeforeUnmount(() => {
                         type="button"
                         class="flex w-full items-baseline justify-between gap-2 rounded-sm px-1.5 py-1 text-left text-2xs hover:bg-muted"
                         :data-testid="`dimension-variable-${dimension.id}-${option.slug}`"
-                        @mousedown.prevent="selectDimensionVariable(dimension.id, option.slug)"
+                        @mousedown.prevent="
+                          pickDimensionVariable('dimension', dimension.id, option.slug)
+                        "
                       >
                         <span class="truncate">
                           {{ option.name }}
