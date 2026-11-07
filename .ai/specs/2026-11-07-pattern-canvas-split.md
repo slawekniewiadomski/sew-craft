@@ -1,7 +1,7 @@
 # Split `PatternCanvas` by gesture
 
-Status: **in progress** — phases 1–2 landed (#141, #142).
-Refs #141, #142
+Status: **in progress** — phases 1–3 landed (#141, #142, #143).
+Refs #141, #142, #143
 
 ## 📝 TLDR
 
@@ -49,8 +49,9 @@ behaviour. No command, API or document changes.
 2. **Drafting gestures** → `composables/use-drafting-gestures.ts` (landed;
    `PatternCanvas` 4,172 → 3,463 lines; #142). Line, arc, circle, rectangle, text
    leader, point, point-on-line, split and midpoint.
-3. **Corner-round editing** → `composables/use-corner-round-edit.ts`. Handles,
-   tangent drag, inline radius editor, previews.
+3. **Corner-round editing** → `composables/use-corner-round-edit.ts` (landed;
+   `PatternCanvas` 3,463 → 3,176 lines; #143). Handles, tangent drag, inline
+   radius editor, previews.
 4. **Viewport, pointer and hit testing** → `composables/use-canvas-viewport.ts`.
    Resize observer, pan/zoom, screen/world conversion, hit extraction.
 5. **SVG layers** → `components/canvas/CanvasGrid.vue`, `CanvasEntities.vue`,
