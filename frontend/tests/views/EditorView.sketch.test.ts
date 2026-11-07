@@ -3,8 +3,8 @@ import { flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 
-import PatternCanvas from '@/components/PatternCanvas.vue';
-import SketchToolbar from '@/components/SketchToolbar.vue';
+import PatternCanvas from '@/components/canvas/PatternCanvas.vue';
+import SketchToolbar from '@/components/bars/SketchToolbar.vue';
 import { mountLoaded } from './support/editor-harness';
 
 vi.mock('@/lib/download', async () => (await import('./support/editor-mocks')).downloadMock());

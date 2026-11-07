@@ -3,8 +3,8 @@ import { onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 
 import { Button } from '@/components/ui/button';
-import ProjectSettingsDialog from '@/components/ProjectSettingsDialog.vue';
-import type { ProjectSettingsDraft } from '@/components/ProjectSettingsDialog.vue';
+import ProjectSettingsDialog from '@/components/dialogs/ProjectSettingsDialog.vue';
+import type { ProjectSettingsDraft } from '@/components/dialogs/ProjectSettingsDialog.vue';
 import { useProjectsStore } from '@/stores/projects';
 import type { Project } from '@/api/projects';
 

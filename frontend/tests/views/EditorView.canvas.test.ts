@@ -3,8 +3,8 @@ import { flushPromises } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
-import PatternCanvas from '@/components/PatternCanvas.vue';
-import EntityPropertiesPanel from '@/components/EntityPropertiesPanel.vue';
+import PatternCanvas from '@/components/canvas/PatternCanvas.vue';
+import EntityPropertiesPanel from '@/components/panels/EntityPropertiesPanel.vue';
 import { downloadSvgFile } from '@/lib/download';
 import { useEditorStore } from '@/stores/editor';
 import {

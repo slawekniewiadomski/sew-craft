@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import RibbonIcon from '@/components/RibbonIcon.vue';
+import RibbonIcon from '@/components/base/RibbonIcon.vue';
 import { ribbonIcon, type RibbonIconName } from '@/lib/ribbon-icons';
 
 defineProps<{

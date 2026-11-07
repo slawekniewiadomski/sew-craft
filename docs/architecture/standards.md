@@ -73,8 +73,8 @@ This doc is the baseline for anything those do not cover.
   `useCommandBus`).
 - Pinia stores are `<name>.ts` and export `use<Name>Store`
   (`stores/editor.ts` → `useEditorStore`).
-- Views live in `frontend/src/views/`, shared primitives in
-  `frontend/src/components/`, shadcn-vue primitives in
+- Views live in `frontend/src/views/`; shared components are grouped by role
+  under `frontend/src/components/`; shadcn-vue primitives live in
   `frontend/src/components/ui/`.
 
 ### API (Reviewed; see `api.md`)
@@ -115,16 +115,22 @@ Laravel-idiomatic, matching `docs/architecture/data-model.md`:
 
 - Directory layout under `frontend/src/`:
 
-  | Path             | Holds                                    |
-  | ---------------- | ---------------------------------------- |
-  | `components/`    | shared components (PascalCase `.vue`)    |
-  | `components/ui/` | shadcn-vue primitives, added via the CLI |
-  | `views/`         | route-level components                   |
-  | `composables/`   | `use-*.ts` composables                   |
-  | `stores/`        | Pinia stores                             |
-  | `lib/`           | framework-free helpers (e.g. `cn`)       |
-  | `api/`           | typed API clients, one file per resource |
-  | `router/`        | route definitions                        |
+  | Path                  | Holds                                                                  |
+  | --------------------- | ---------------------------------------------------------------------- |
+  | `components/base/`    | reusable primitives with no editor domain (dialog shell, icon, picker) |
+  | `components/bars/`    | editor strips above the canvas (prompt, sketch, measured edit)         |
+  | `components/canvas/`  | canvas renderers (`PatternCanvas`, `AssemblyCanvas`)                   |
+  | `components/dialogs/` | concrete modal flows built on `base/ModalDialog`                       |
+  | `components/editor/`  | editor chrome (top bar, tabs, ribbon, sidebar shell)                   |
+  | `components/panels/`  | sidebar rail panels and their shared forms                             |
+  | `components/sidebar/` | sidebar primitives (field, section, button, pill)                      |
+  | `components/ui/`      | shadcn-vue primitives, added via the CLI                               |
+  | `views/`              | route-level components                                                 |
+  | `composables/`        | `use-*.ts` composables                                                 |
+  | `stores/`             | Pinia stores                                                           |
+  | `lib/`                | framework-free helpers (e.g. `cn`)                                     |
+  | `api/`                | typed API clients, one file per resource                               |
+  | `router/`             | route definitions                                                      |
 
 - SFCs use `<script setup lang="ts">`. Declare props with `defineProps<Type>()`
   and emits with `defineEmits<...>()`.

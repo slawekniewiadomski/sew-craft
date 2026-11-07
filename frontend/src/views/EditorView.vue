@@ -53,33 +53,33 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { onBeforeRouteLeave, RouterLink, useRouter } from 'vue-router';
 
 import { ApiError, projectsApi, type Pattern, type Project } from '@/api/projects';
-import AssemblyCanvas from '@/components/AssemblyCanvas.vue';
-import AssemblyPanel from '@/components/AssemblyPanel.vue';
-import CanvasDisplayMenu from '@/components/CanvasDisplayMenu.vue';
-import ConstraintPromptBar from '@/components/ConstraintPromptBar.vue';
-import CornerRoundPromptBar from '@/components/CornerRoundPromptBar.vue';
-import MeasuredEditBar from '@/components/MeasuredEditBar.vue';
-import DimensionReferencePicker from '@/components/DimensionReferencePicker.vue';
-import EditorRibbon from '@/components/EditorRibbon.vue';
-import EditorSidebar from '@/components/EditorSidebar.vue';
-import EditorTabs from '@/components/EditorTabs.vue';
-import EditorTopBar from '@/components/EditorTopBar.vue';
-import EntityPropertiesPanel from '@/components/EntityPropertiesPanel.vue';
-import ExportDialog from '@/components/ExportDialog.vue';
-import ConstraintsPanel from '@/components/ConstraintsPanel.vue';
-import DimensionsPanel from '@/components/DimensionsPanel.vue';
-import OutlinePanel from '@/components/OutlinePanel.vue';
-import PatternCanvas from '@/components/PatternCanvas.vue';
-import PiecePanel from '@/components/PiecePanel.vue';
-import ProjectSettingsDialog from '@/components/ProjectSettingsDialog.vue';
+import AssemblyCanvas from '@/components/canvas/AssemblyCanvas.vue';
+import AssemblyPanel from '@/components/panels/AssemblyPanel.vue';
+import CanvasDisplayMenu from '@/components/editor/CanvasDisplayMenu.vue';
+import ConstraintPromptBar from '@/components/bars/ConstraintPromptBar.vue';
+import CornerRoundPromptBar from '@/components/bars/CornerRoundPromptBar.vue';
+import MeasuredEditBar from '@/components/bars/MeasuredEditBar.vue';
+import DimensionReferencePicker from '@/components/base/DimensionReferencePicker.vue';
+import EditorRibbon from '@/components/editor/EditorRibbon.vue';
+import EditorSidebar from '@/components/editor/EditorSidebar.vue';
+import EditorTabs from '@/components/editor/EditorTabs.vue';
+import EditorTopBar from '@/components/editor/EditorTopBar.vue';
+import EntityPropertiesPanel from '@/components/panels/EntityPropertiesPanel.vue';
+import ExportDialog from '@/components/dialogs/ExportDialog.vue';
+import ConstraintsPanel from '@/components/panels/ConstraintsPanel.vue';
+import DimensionsPanel from '@/components/panels/DimensionsPanel.vue';
+import OutlinePanel from '@/components/panels/OutlinePanel.vue';
+import PatternCanvas from '@/components/canvas/PatternCanvas.vue';
+import PiecePanel from '@/components/panels/PiecePanel.vue';
+import ProjectSettingsDialog from '@/components/dialogs/ProjectSettingsDialog.vue';
 import {
   allowanceEditCommands,
   pruneAllowanceTargets,
   type BulkAllowanceEdit,
 } from '@/lib/allowance-edit';
-import RibbonIcon from '@/components/RibbonIcon.vue';
-import SaveConflictDialog from '@/components/SaveConflictDialog.vue';
-import SketchToolbar from '@/components/SketchToolbar.vue';
+import RibbonIcon from '@/components/base/RibbonIcon.vue';
+import SaveConflictDialog from '@/components/dialogs/SaveConflictDialog.vue';
+import SketchToolbar from '@/components/bars/SketchToolbar.vue';
 import Pill from '@/components/sidebar/Pill.vue';
 import SidebarAction from '@/components/sidebar/SidebarAction.vue';
 import SidebarButton from '@/components/sidebar/SidebarButton.vue';
@@ -88,9 +88,9 @@ import SidebarInput from '@/components/sidebar/SidebarInput.vue';
 import SidebarSection from '@/components/sidebar/SidebarSection.vue';
 import SidebarSelect from '@/components/sidebar/SidebarSelect.vue';
 import SidebarStat from '@/components/sidebar/SidebarStat.vue';
-import SelectionSummary from '@/components/SelectionSummary.vue';
-import VariablesPanel from '@/components/VariablesPanel.vue';
-import UpgradeDocumentDialog from '@/components/UpgradeDocumentDialog.vue';
+import SelectionSummary from '@/components/editor/SelectionSummary.vue';
+import VariablesPanel from '@/components/panels/VariablesPanel.vue';
+import UpgradeDocumentDialog from '@/components/dialogs/UpgradeDocumentDialog.vue';
 import { useCommandBus } from '@/composables/use-command-bus';
 import { useReferencePicker } from '@/composables/use-reference-picker';
 import { useVariablePicker } from '@/composables/use-variable-picker';
@@ -183,7 +183,7 @@ import {
   toggleSelection,
   type SelectionMode,
 } from '@/lib/selection';
-import type { ProjectSettingsDraft } from '@/components/ProjectSettingsDialog.vue';
+import type { ProjectSettingsDraft } from '@/components/dialogs/ProjectSettingsDialog.vue';
 import {
   assemblyTab,
   nextPieceColor,
