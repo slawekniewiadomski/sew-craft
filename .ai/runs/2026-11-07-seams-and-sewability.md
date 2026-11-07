@@ -210,8 +210,8 @@ it, and the contract files are synced in the same phase as the commands.
 - [x] 6.4 Full gate: `npm run format`, `typecheck`, `lint`, `format:check`,
       `test:coverage`, `build`, the Pest `--coverage --min=100` command, Pint;
       tick the spec's acceptance boxes and set its status to implemented
-- [ ] 6.5 Ready PR referencing the spec, with the plan's boxes ticked and the
-      evidence attached; do not merge
+- [x] 6.5 Ready PR referencing the spec, with the plan's boxes ticked and the
+      evidence attached; do not merge — #140 (https://github.com/slawekniewiadomski/sew-craft/pull/140)
 
 ## Risks to watch
 
