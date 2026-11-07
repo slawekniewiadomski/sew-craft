@@ -1,6 +1,6 @@
 # Split `EditorView` by domain
 
-Status: **in progress** — phases 1–5 landed (#133–#137), phase 6 follows.
+Status: **implemented** — all seven phases landed (#133–#139).
 Refs #132
 
 ## 📝 TLDR
@@ -60,11 +60,12 @@ ones assume the earlier boundaries exist.
    Instance selection, nudge timer, move/add/remove/transform/update.
 5. **Sketch & drafting commands** → `composables/use-sketch-commands.ts` (landed) (~300).
    Point/line/arc/circle/rectangle/text/notch/centre-line/dimension commands.
-6. **Pieces & allowances** → `composables/use-piece-editing.ts` (this PR) (~200).
+6. **Pieces & allowances** → `composables/use-piece-editing.ts` (landed) (~200).
    Piece update/default/allowance/corner-allowance/removal and role changes.
-7. **Template regions** → `components/editor/EditorWorkspace.vue`,
-   `EditorInspector.vue`, `EditorOverlays.vue`. Only after phases 1–6 shrink the
-   script; the view should then be a thin shell.
+7. **Template regions** → `components/editor/EditorStrips.vue`,
+   `EditorCanvas.vue`, `EditorInspector.vue`, `EditorOverlays.vue` (landed).
+   Only after phases 1–6 shrank the script; the view is now a shell that binds
+   the state owner to those regions.
 
 ### Phase 1 contract
 
