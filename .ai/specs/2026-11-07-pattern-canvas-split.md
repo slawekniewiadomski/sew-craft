@@ -1,7 +1,7 @@
 # Split `PatternCanvas` by gesture
 
-Status: **in progress** — phase 1 lands with this spec.
-Refs #141
+Status: **in progress** — phases 1–2 landed (#141, #142).
+Refs #141, #142
 
 ## 📝 TLDR
 
@@ -42,12 +42,13 @@ behaviour. No command, API or document changes.
 ### Phases
 
 1. **Dimension gesture** → `composables/use-dimension-gesture.ts` (landed;
-   `PatternCanvas` 4,764 → 4,172 lines).
+   `PatternCanvas` 4,764 → 4,172 lines; #141).
    Pending picks, placement, drags, hover feedback, hints, ghost previews,
    pointer down/move/up, Escape, tool-change and document-change cleanup for
    both the Dimension and Cut dimension tools.
-2. **Drafting gestures** → `composables/use-drafting-gestures.ts`. Line, arc,
-   circle, rectangle, text leader, point, point-on-line, split and midpoint.
+2. **Drafting gestures** → `composables/use-drafting-gestures.ts` (landed;
+   `PatternCanvas` 4,172 → 3,463 lines; #142). Line, arc, circle, rectangle, text
+   leader, point, point-on-line, split and midpoint.
 3. **Corner-round editing** → `composables/use-corner-round-edit.ts`. Handles,
    tangent drag, inline radius editor, previews.
 4. **Viewport, pointer and hit testing** → `composables/use-canvas-viewport.ts`.
