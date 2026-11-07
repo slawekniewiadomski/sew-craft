@@ -4188,7 +4188,19 @@ watch(
           aria-hidden="true"
           data-testid="split-line-ghost"
         >
+          <path
+            v-if="splitLineHover.atCenter"
+            :d="`M ${splitLineHover.position.x} ${splitLineHover.position.y - 4} L ${
+              splitLineHover.position.x + 4
+            } ${splitLineHover.position.y} L ${splitLineHover.position.x} ${
+              splitLineHover.position.y + 4
+            } L ${splitLineHover.position.x - 4} ${splitLineHover.position.y} Z`"
+            class="fill-primary stroke-primary-foreground"
+            stroke-width="1"
+            data-testid="split-line-center"
+          />
           <circle
+            v-else
             :cx="splitLineHover.position.x"
             :cy="splitLineHover.position.y"
             :r="splitLineHover.pointId === null ? 4 : 5"
@@ -5002,9 +5014,11 @@ watch(
       data-testid="split-line-hint"
     >
       {{
-        splitLineHover.pointId === null
-          ? 'Click to split this line here.'
-          : 'Click to split this line at this point.'
+        splitLineHover.pointId !== null
+          ? 'Click to split this line at this point.'
+          : splitLineHover.atCenter
+            ? 'Click to split this line at its centre.'
+            : 'Click to split this line here.'
       }}
     </p>
 

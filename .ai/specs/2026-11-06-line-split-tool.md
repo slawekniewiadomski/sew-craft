@@ -122,16 +122,21 @@ with a message the UI can show directly.
   new `split` ribbon glyph (a line with a highlighted midpoint). Label: **Split**.
 - **Hover:** only a straight line that can be split is highlighted (thicker,
   primary colour). The pointer is projected onto the line and a ghost marks the
-  split: a small filled circle at the projection, or the snapped authored point.
+  split: a small filled circle at the projection, a diamond at the line's centre,
+  or the snapped authored point.
 - **Snap:** the nearest authored point within the 6 mm point tolerance of the
   projection is reused, provided it lies within 0.001 mm of the line, is not an
-  endpoint, is not derived, and is not in another piece. The ghost grows slightly
-  for a reused point and the hint says "at this point".
+  endpoint, is not derived, and is not in another piece. With no point to reuse,
+  a projection within the same tolerance of the line's centre snaps to the exact
+  midpoint, so an even split needs no eye-balling; an authored point wins over
+  the centre when both are in range. The ghost grows slightly for a reused point
+  and the hint says "at this point" or "at its centre".
 - **Click:** dispatches `[add_point, split_line]` when the click creates the point,
   or `split_line` alone when it reuses one, as **one journal entry**. The tool
   stays armed for the next split.
 - **Status hint:** "Click a straight line to split it." while armed; "Click to
-  split this line here." or "… at this point." over a valid line.
+  split this line here.", "… at this point." or "… at its centre." over a valid
+  line.
 - **Guards:** no hover, ghost, hint or dispatch in a read-only document. A
   click on a curve, an endpoint, a sliver, or empty canvas does nothing. A line in
   another piece follows the existing cross-piece prompt; it is not split before
@@ -157,6 +162,8 @@ with a message the UI can show directly.
       stays; an `at: 'edge'` anchor blocks the split.
 - [ ] Points in another piece, derived points, midpoint targets, endpoints,
       off-line points and slivers are rejected with a clear message.
+- [ ] A pointer near the line's centre snaps the ghost to the exact midpoint and
+      the created point sits there; an authored point in range still wins.
 - [ ] Re-applying the command is a no-op; undo restores the single edge.
 - [ ] The tool is keyboard- and touch-usable through the shared canvas pointer
       path, and clears its hover on pointer leave, Escape, tool change and any
@@ -167,9 +174,9 @@ with a message the UI can show directly.
 - `packages/geometry/tests/split-line.test.ts` — every remap and every rejection
   branch, idempotency, shared-vertex geometry, a rounded piece solved through the
   command, and 100% statement/branch/function/line coverage of `applySplitLine`.
-- `frontend/tests/lib/split-line.test.ts` — projection, snap tolerance, piece and
-  derived-point filters, role mirroring (including legacy `construction`), and a
-  batch that the command core accepts.
+- `frontend/tests/lib/split-line.test.ts` — projection, point and centre snap
+  tolerance, piece and derived-point filters, role mirroring (including legacy
+  `construction`), and a batch that the command core accepts.
 - `frontend/tests/components/PatternCanvas.test.ts` — idle/hover/point hints,
   ghost position and size, line highlight, emit payload, endpoint/curve/read-only
   guards, cross-piece refusal, and clearing on leave, Escape and tool change.
@@ -183,5 +190,6 @@ with a message the UI can show directly.
 - Splitting curves, arcs or circles.
 - Splitting an edge at a point that is not on it (no "break with gap").
 - Splitting multiple selected edges in one gesture.
-- A separate "split at midpoint" command; use the Split tool after adding a
-  point, or split by eye at the projection.
+- A separate "split at midpoint" command; the Split tool's centre snap covers
+  the even split.
+- Snapping to the centre of a curve, arc or circle; only straight lines split.

@@ -24,8 +24,10 @@ export interface SplitCandidate {
   lineId: EntityId;
   /** The authored point the split reuses, or `null` when the click creates one. */
   pointId: EntityId | null;
-  /** Where the ghost is drawn: the reused point or the projected click. */
+  /** Where the ghost is drawn: the reused point, the centre, or the projection. */
   position: Vec2;
+  /** True when the position is the line's exact centre rather than a projection. */
+  atCenter: boolean;
 }
 
 interface LineProjection {
@@ -98,8 +100,9 @@ function nearestSplitPoint(
  * Resolve a Split-tool pointer position against a straight line. The click is
  * projected onto the line; an authored point within the snap tolerance of that
  * projection wins and is reused, so the shared vertex is an exact existing
- * point. `null` when the line does not resolve or the projection is an endpoint
- * or a sliver.
+ * point. With no point to reuse, a projection within the same tolerance of the
+ * line's centre snaps there, so an even split needs no eye-balling. `null` when
+ * the line does not resolve or the projection is an endpoint or a sliver.
  */
 export function splitCandidate(
   document: PatternDocument,
@@ -124,9 +127,16 @@ export function splitCandidate(
   };
 
   const point = nearestSplitPoint(document, line, ends, projected, pointTolerance);
-  return point === null
-    ? { lineId, pointId: null, position: projected }
-    : { lineId, pointId: point.id, position: { x: point.x, y: point.y } };
+  if (point !== null) {
+    return { lineId, pointId: point.id, position: { x: point.x, y: point.y }, atCenter: false };
+  }
+
+  const center = { x: (ends.start.x + ends.end.x) / 2, y: (ends.start.y + ends.end.y) / 2 };
+  if (Math.hypot(projected.x - center.x, projected.y - center.y) <= pointTolerance) {
+    return { lineId, pointId: null, position: center, atCenter: true };
+  }
+
+  return { lineId, pointId: null, position: projected, atCenter: false };
 }
 
 /** The role the new split point mirrors from the line it splits. */

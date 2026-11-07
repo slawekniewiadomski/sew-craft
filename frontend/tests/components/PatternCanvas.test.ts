@@ -1003,6 +1003,22 @@ describe('PatternCanvas', () => {
     expect(wrapper.emitted('add-line')).toBeUndefined();
   });
 
+  it('snaps the split ghost to the centre of the line', async () => {
+    const wrapper = mountCanvas({ tool: 'split_line' });
+    const at = screenAt({ x: 52, y: 3 });
+
+    hover(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, at.x, at.y);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="split-line-hint"]').text()).toBe(
+      'Click to split this line at its centre.',
+    );
+    const center = wrapper.find('[data-testid="split-line-center"]');
+    expect(center.exists()).toBe(true);
+    expect(center.attributes('d')).toContain('M 50 ');
+    expect(wrapper.find('[data-testid="split-line-ghost"] circle').exists()).toBe(false);
+  });
+
   it('shows the split hint while the Split tool is armed', () => {
     const wrapper = mountCanvas({ tool: 'split_line' });
 
@@ -1014,7 +1030,7 @@ describe('PatternCanvas', () => {
 
   it('highlights the hovered line and previews the split point', async () => {
     const wrapper = mountCanvas({ tool: 'split_line' });
-    const at = screenAt({ x: 50, y: 20 });
+    const at = screenAt({ x: 30, y: 20 });
 
     hover(wrapper.find('[data-kind="line"][data-entity-id="ab"]').element, at.x, at.y);
     await nextTick();
@@ -1023,8 +1039,8 @@ describe('PatternCanvas', () => {
       'Click to split this line here.',
     );
     const ghost = wrapper.find('[data-testid="split-line-ghost"] circle');
-    expect(ghost.attributes('cx')).toBe('50');
-    expect(ghost.attributes('cy')).toBe('0');
+    expect(Number(ghost.attributes('cx'))).toBeCloseTo(30);
+    expect(Number(ghost.attributes('cy'))).toBeCloseTo(0);
     expect(ghost.attributes('r')).toBe('4');
 
     const line = wrapper.find('[data-kind="line"][data-entity-id="ab"]');
