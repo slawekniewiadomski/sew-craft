@@ -401,7 +401,10 @@ with fewer than two resolvable sides is omitted; an unresolved part is listed in
 `points` string per cut-part boundary (painted back to front by depth), the
 projected seam sides and dashed links, the label anchors and the shared bounds.
 The dialog paints parts at 32 % opacity in their piece colour and draws the seam
-sides thicker than the links.
+sides thicker than the links. A panel without a stored piece colour takes a
+deterministic colour from the eight-colour `PANEL_COLORS` palette by panel
+order, so two faces of the same piece and a gusset wall remain distinct; the
+same palette is used for the sewn cap/wall fills.
 
 ## Later entities (specced, not built)
 

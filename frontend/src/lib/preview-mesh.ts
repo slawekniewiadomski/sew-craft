@@ -26,6 +26,18 @@ export interface PreviewProjection {
 /** The opening camera: a three-quarter view of the front. */
 export const DEFAULT_PREVIEW_VIEW: PreviewView = { yaw: -Math.PI / 4, pitch: -Math.PI / 3.2 };
 
+/** A soft palette that keeps panels distinguishable when no colour is stored. */
+export const PANEL_COLORS = [
+  '#7d9cc0',
+  '#c2906b',
+  '#7fa889',
+  '#a58ab5',
+  '#c07f86',
+  '#6fa3ad',
+  '#b0a05a',
+  '#8b8fb0',
+];
+
 /** The rotating palette for exploded seam links. */
 export const SEAM_COLORS = [
   '#4f7cac',
@@ -41,8 +53,6 @@ export const SEAM_COLORS = [
   '#a05c8a',
   '#6b7fb0',
 ];
-
-const NEUTRAL_COLOR = '#94a3b8';
 
 const PITCH_LIMIT = Math.PI / 2.4;
 const LIGHT: Vec3 = (() => {
@@ -89,17 +99,16 @@ function triangleNormal(a: Vec3, b: Vec3, c: Vec3): Vec3 | null {
     : { x: normal.x / length, y: normal.y / length, z: normal.z / length };
 }
 
-function parseColor(color: string | null): [number, number, number] {
-  const value = color !== null && /^#[0-9a-f]{6}$/i.test(color) ? color : NEUTRAL_COLOR;
+function parseColor(color: string): [number, number, number] {
   return [
-    Number.parseInt(value.slice(1, 3), 16),
-    Number.parseInt(value.slice(3, 5), 16),
-    Number.parseInt(value.slice(5, 7), 16),
+    Number.parseInt(color.slice(1, 3), 16),
+    Number.parseInt(color.slice(3, 5), 16),
+    Number.parseInt(color.slice(5, 7), 16),
   ];
 }
 
 /** Apply a soft Lambert term to a visible outward face. */
-function shade(color: string | null, normal: Vec3 | null): string {
+function shade(color: string, normal: Vec3 | null): string {
   const lambert =
     normal === null
       ? 0.6
@@ -127,7 +136,7 @@ function polygonOf(
   const points = `${pa.x.toFixed(3)},${pa.y.toFixed(3)} ${pb.x.toFixed(3)},${pb.y.toFixed(3)} ${pc.x.toFixed(3)},${pc.y.toFixed(3)}`;
   return {
     points,
-    fill: shade(mesh.panels[triangle.panel]?.color ?? null, normal),
+    fill: shade(panelColor(mesh.panels[triangle.panel]?.color ?? null, triangle.panel), normal),
     depth: (pa.z + pb.z + pc.z) / 3,
     panel: triangle.panel,
   };
@@ -196,9 +205,11 @@ export interface ExplodedProjection {
   bounds: { minX: number; minY: number; width: number; height: number };
 }
 
-/** A stored colour, or the neutral fallback. */
-function storedColor(color: string | null): string {
-  return color !== null && /^#[0-9a-f]{6}$/i.test(color) ? color : NEUTRAL_COLOR;
+/** A stored colour, or the panel's deterministic palette colour. */
+function panelColor(color: string | null, index: number): string {
+  return color !== null && /^#[0-9a-f]{6}$/i.test(color)
+    ? color
+    : PANEL_COLORS[index % PANEL_COLORS.length]!;
 }
 
 /** Project a closed or open 3D polyline to SVG points. */
@@ -216,11 +227,12 @@ function projectedPoints(points: readonly Vec3[], view: PreviewView): string {
  * front; seam sides and the midpoint links are drawn above them.
  */
 export function projectExploded(view: ExplodedView, camera: PreviewView): ExplodedProjection {
-  const projected = view.panels.map((panel) => {
+  const projected = view.panels.map((panel, index) => {
     const boundary = panel.boundary.map((point) => projectPoint(point, camera));
     const center = projectPoint(panel.center, camera);
     return {
       panel,
+      color: panelColor(panel.color, index),
       points: boundary.map((point) => `${point.x.toFixed(3)},${point.y.toFixed(3)}`).join(' '),
       labelX: center.x,
       labelY: center.y,
@@ -261,7 +273,7 @@ export function projectExploded(view: ExplodedView, camera: PreviewView): Explod
       .sort((a, b) => a.depth - b.depth)
       .map((entry) => ({
         points: entry.points,
-        color: storedColor(entry.panel.color),
+        color: entry.color,
         label: entry.panel.label,
         labelX: entry.labelX,
         labelY: entry.labelY,

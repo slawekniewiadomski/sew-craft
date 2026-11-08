@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_PREVIEW_VIEW,
+  PANEL_COLORS,
   clampPreviewPitch,
   projectExploded,
   projectMesh,
@@ -153,13 +154,25 @@ describe('projectMesh', () => {
       skipped: [],
     };
     const projection = projectExploded(view, { yaw: 0, pitch: 0 });
-    expect(projection.panels[0]!.color).toBe('#94a3b8');
+    expect(projection.panels[0]!.color).toBe(PANEL_COLORS[0]);
 
     const neutral = projectExploded(
       { ...view, panels: [{ ...view.panels[0]!, color: null }] },
       { yaw: 0, pitch: 0 },
     );
-    expect(neutral.panels[0]!.color).toBe('#94a3b8');
+    expect(neutral.panels[0]!.color).toBe(PANEL_COLORS[0]);
+
+    const two = projectExploded(
+      {
+        ...view,
+        panels: [
+          { ...view.panels[0]!, color: null },
+          { ...view.panels[0]!, color: null },
+        ],
+      },
+      { yaw: 0, pitch: 0 },
+    );
+    expect(new Set(two.panels.map((panel) => panel.color)).size).toBe(2);
 
     const kept = projectExploded(
       { ...view, panels: [{ ...view.panels[0]!, color: '#ff0000' }] },
