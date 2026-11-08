@@ -154,6 +154,7 @@ import CanvasAnnotationLayers, {
 import CanvasPointLayers from '@/components/canvas/CanvasPointLayers.vue';
 import CanvasPieceBandLayers from '@/components/canvas/CanvasPieceBandLayers.vue';
 import CanvasPieceCutLayers from '@/components/canvas/CanvasPieceCutLayers.vue';
+import { useCanvasSceneViews } from '@/composables/use-canvas-scene-views';
 import { useDimensionScene } from '@/composables/use-dimension-scene';
 import CanvasHints from '@/components/canvas/CanvasHints.vue';
 import CanvasDimensionDrawings from '@/components/canvas/CanvasDimensionDrawings.vue';
@@ -409,23 +410,37 @@ const bandHovered = ref(false);
 
 /** A touch that pressed on a region: a tap picks it, a drag still pans. */
 const touchRegion = ref<{ target: BandTarget; start: Vec2 } | null>(null);
-const points = computed(() =>
-  allPoints(props.document).map((point) =>
-    dragState.value && dragState.value.id === point.id
-      ? { ...point, x: dragState.value.x, y: dragState.value.y }
-      : point,
-  ),
-);
-
-const pointById = computed(() => new Map(points.value.map((point) => [point.id, point])));
-
-/**
- * Derived tangent and control points stay in `points` so lines and arcs resolve,
- * but they are not drafting handles: only the explicit tangent handles render.
- */
-const visiblePoints = computed(() =>
-  points.value.filter((point) => !isCornerRoundDerived(props.document, point.id)),
-);
+const {
+  points,
+  pointById,
+  visiblePoints,
+  selectedIds,
+  highlightedIds,
+  lines,
+  curves,
+  arcs,
+  circles,
+  seams,
+  bandPiece,
+  bandRegions,
+  bandCutLoop,
+  regionViews,
+  regionClass,
+  pieceViews,
+  textViews,
+  markViews,
+} = useCanvasSceneViews({
+  document: () => props.document,
+  dragState: () => dragState.value,
+  showAllowances: () => props.showAllowances,
+  activePieceId: () => props.activePieceId,
+  selectedPieceId: () => props.selectedPieceId,
+  selectedEntityIds: () => props.selectedEntityIds,
+  highlightedEntityIds: () => props.highlightedEntityIds,
+  selectedAllowanceTargets: () => props.selectedAllowanceTargets,
+  hoveredRegion: () => hoveredRegion.value,
+  bandHovered: () => bandHovered.value,
+});
 
 /** One derived loop corner the armed cut tool offers as a pick target. */
 interface LoopHandle {
@@ -521,11 +536,6 @@ const cutEdgeHandles = computed<LineView[]>(() => {
   return lines.value.filter((entry) => ids.has(entry.line.id));
 });
 
-const selectedIds = computed(() => new Set(props.selectedEntityIds));
-
-/** The edges a measured variable reads, for the highlight layer. */
-const highlightedIds = computed(() => new Set(props.highlightedEntityIds));
-
 /** The dimension selection as a set, so a render never scans per segment. */
 const selectedDimensionIds = computed(() => new Set(props.selectedDimensionIds));
 
@@ -575,53 +585,6 @@ const marqueeDimensionCandidates = computed(() => {
   }
   return new Set(dimensionsInRect(props.document, rect, rectMode(state.start.x, state.current.x)));
 });
-
-const lines = computed(() => lineViews(props.document, pointById.value));
-
-const curves = computed(() => curveViews(props.document, pointById.value));
-
-const arcs = computed(() => arcViews(props.document, pointById.value));
-
-const circles = computed(() => circleViews(props.document, pointById.value));
-
-/**
- * Seam allowances are a render-only offset layer: hidden entirely when the
- * presentation toggle is off, and never part of the document the UI mutates.
- */
-const seams = computed(() => seamViews(props.document, props.showAllowances));
-
-/** The one piece the canvas shows: the active one, or the document's only piece. */
-const bandPiece = computed<Piece | null>(() => bandPieceOf(props.document, props.activePieceId));
-
-/** The allowance band parted into selectable regions. */
-const bandRegions = computed<BandRegion[]>(() => bandRegionsOf(props.document, bandPiece.value));
-
-/** The piece's cut loop, for the hover that reveals the region boundaries. */
-const bandCutLoop = computed(() => bandCutLoopOf(props.document, bandPiece.value));
-
-const regionViews = computed<RegionView[]>(() =>
-  regionViewsOf(bandRegions.value, {
-    showAllowances: props.showAllowances,
-    selectedTargets: props.selectedAllowanceTargets,
-    hovered: hoveredRegion.value,
-    bandHovered: bandHovered.value,
-    keyOf: bandTargetKey,
-  }),
-);
-
-/** A region draws its boundary while the piece is hovered, and fills once picked. */
-function regionClass(region: RegionView): string {
-  return regionClassFor(region, bandHovered.value);
-}
-
-/** Every piece's derived geometry, ready to draw. */
-const pieceViews = computed<PieceView[]>(() =>
-  pieceViewsOf(props.document, {
-    showAllowances: props.showAllowances,
-    selectedPieceId: props.selectedPieceId,
-    selectedEntityIds: props.selectedEntityIds,
-  }),
-);
 
 /** Screen-space diameter of a constraint icon, in pixels. */
 const CONSTRAINT_ICON_SIZE = 18;
@@ -879,70 +842,6 @@ const activePieceLabel = computed(() => {
         : 'cut loop';
   return `${name} · ${loop}`;
 });
-
-/** Annotation labels, resolved against their drag-aware anchor and leader points. */
-const textViews = computed<TextView[]>(() =>
-  props.document.entities.flatMap((entity): TextView[] => {
-    if (entity.kind !== 'text') return [];
-    const anchor = pointById.value.get(entity.anchor);
-    if (anchor === undefined) return [];
-    const layout = textLayout(entity, { x: anchor.x, y: anchor.y })!;
-    const leaderPoint =
-      entity.leader === undefined ? undefined : pointById.value.get(entity.leader);
-    return [
-      {
-        id: entity.id,
-        content: entity.content,
-        anchor: { x: anchor.x, y: anchor.y },
-        rotation: entity.rotation ?? 0,
-        fontSize: entity.fontSize ?? DEFAULT_TEXT_SIZE,
-        alignment: entity.alignment ?? 'left',
-        layout,
-        leader:
-          leaderPoint === undefined
-            ? null
-            : textLeaderGeometry(
-                entity,
-                { x: anchor.x, y: anchor.y },
-                { x: leaderPoint.x, y: leaderPoint.y },
-              ),
-      },
-    ];
-  }),
-);
-
-/** Notches and centre lines, resolved from the piece on read like every mark. */
-const markViews = computed<MarkView[]>(() =>
-  props.document.pieces.flatMap((piece: Piece): MarkView[] =>
-    pieceMarks(props.document, piece.id).flatMap((mark): MarkView[] => {
-      const selected = props.selectedEntityIds.includes(mark.id);
-      if (mark.type === 'notch') {
-        const geometry = notchGeometry(props.document, piece, mark);
-        if (geometry === null) return [];
-        const [first, second] = geometry.feet;
-        return [
-          {
-            id: mark.id,
-            kind: 'notch',
-            path: `M ${first.x} ${first.y} L ${geometry.tip.x} ${geometry.tip.y} L ${second.x} ${second.y}`,
-            selected,
-          },
-        ];
-      }
-
-      const geometry = centreLineGeometry(props.document, mark);
-      if (geometry === null) return [];
-      return [
-        {
-          id: mark.id,
-          kind: 'centre_line',
-          path: `M ${geometry.start.x} ${geometry.start.y} L ${geometry.end.x} ${geometry.end.y}`,
-          selected,
-        },
-      ];
-    }),
-  ),
-);
 
 function lineWidth(id: EntityId): number {
   return pointOnLineHover.value?.lineId === id ||

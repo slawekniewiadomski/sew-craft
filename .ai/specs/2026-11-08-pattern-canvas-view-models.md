@@ -1,6 +1,6 @@
 # Split the `PatternCanvas` view models by domain
 
-Status: **in progress** — phase 1 lands with this spec.
+Status: **in progress** — phases 1–2 have landed.
 Refs #178
 
 ## 📝 TLDR
@@ -43,8 +43,9 @@ inline editing — and the template shell.
 1. **Dimension scene** → `composables/use-dimension-scene.ts` (this PR).
    Distance and derived constraints, drawing options, preview constraints,
    drawings, labels, the label class and the inline editor position.
-2. **Piece, region and annotation views** → `composables/use-canvas-scene-views.ts`.
-   Piece views, band regions, seams, cut/stitch/folds, text and mark rows.
+2. **Canvas scene views** → `composables/use-canvas-scene-views.ts` (done).
+   Points and visible points, lines/curves/arcs/circles, seams, the allowance
+   band and its regions, piece views, text and mark rows.
 3. What remains in the component: pointer/keyboard state machines, the inline
    editor state and the SVG shell. That is the part that genuinely belongs
    there.
