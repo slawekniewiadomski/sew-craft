@@ -5,11 +5,8 @@ import { regenerateMidpoints } from '../midpoint.js';
 import { solve } from '../solver.js';
 import type { SolveOptions, SolveResult } from '../solver.js';
 import type { EntityId, PatternDocument } from '../types.js';
-import {
-  applySetDefaultAllowance,
-  applySetPieceAllowance,
-  applySetPieceCornerAllowance,
-} from './allowances.js';
+import { applySetDefaultAllowance } from './default-allowances.js';
+import { applySetPieceAllowance, applySetPieceCornerAllowance } from './piece-allowances.js';
 import {
   applyAddCornerRound,
   applyRemoveCornerRound,

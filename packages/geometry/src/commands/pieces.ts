@@ -19,7 +19,7 @@ import type {
   Piece,
   PieceDefaults,
 } from '../types.js';
-import { requireAllowancePreset, resolveCreateAllowance } from './allowances.js';
+import { requireAllowancePreset, resolveCreateAllowance } from './default-allowances.js';
 import {
   noOp,
   replacePiece,
