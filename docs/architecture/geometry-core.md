@@ -342,6 +342,28 @@ Lambert term. The dialog paints one SVG
 `<polygon>` per triangle; wireframe keeps the outline and drops the fill. There is
 no WebGL context, camera or saved pose.
 
+### Gusset box
+
+After rigid alignment, `drapeAssembly` looks for a **strip**: a panel whose
+seams reach exactly two other panels (at least two seams each), where both faces
+place the same piece and the strip is a different piece. A strip at least twice
+as long as it is wide becomes a closed box:
+
+- The front face's aligned stitch loop is the common perimeter, so the two flat
+  caps sit at `z = ±inflate × width / 2`; a congruent back face is implied.
+- One vertical quad per loop segment forms the wall, coloured with the strip's
+  piece. Winding follows the loop's signed area, so a clockwise or concave face
+  still points outward.
+- `width = area / principal extent`, with the major axis from the loop's
+  covariance; the strip's 240 × 40 loop split into four 60 mm seam edges still
+  yields 40 mm.
+- Every ambiguous shape falls back to the height field: fewer than two seams to
+  a face, unequal face pieces, the strip sharing the face piece, or a strip that
+  is not long and narrow. The box is closed and not simplified.
+
+`PREVIEW_TRIANGLE_LIMIT` does not apply to the box: it uses the raw face loop
+(one cap pair and one wall ring), not the subdivided height-field mesh.
+
 ### Exploded view (`exploded.ts`)
 
 The dialog's default mode answers “which edges sew to which” before any folding

@@ -28,8 +28,10 @@ Two decisions had to be made before a spec:
    the app’s existing theme colours, so it matches light and dark themes.
 2. **The shape models are pure TypeScript in `@sewcraft/geometry`.** `drape.ts`
    takes the document and an assembly, builds a welded panel mesh and raises it
-   on a deterministic height field; `exploded.ts` lays the cut parts out as a
-   seam-linked stack. The Vue layer only projects and paints both.
+   on a deterministic height field; when a strip joins two same-piece faces it
+   builds a closed gusset box instead (two caps and a vertical wall).
+   `exploded.ts` lays the cut parts out as a seam-linked stack. The Vue layer
+   only projects and paints all of them.
 3. **The preview is derived and read-only.** No command writes it, no document
    field stores it, and save/autosave/versioning/export never read it. The
    camera, mode, inflate amount and wireframe toggle are ephemeral view state.

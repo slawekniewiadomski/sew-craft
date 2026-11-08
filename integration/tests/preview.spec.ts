@@ -229,6 +229,15 @@ test('explodes a gusseted pouch into faces and a height strip', async ({ page, r
     path: '../.ai/specs/assets/2026-11-07-3d-preview/preview-gusset-exploded.png',
     fullPage: false,
   });
+
+  // The sewn gusset is a closed box: two caps and a wall, six visible faces
+  // from the default three-quarter camera (the rest are back-face culled).
+  await page.locator('[data-testid="preview-mode-sewn"]').click();
+  await expect(page.locator('[data-testid^="preview-face-"]')).toHaveCount(6);
+  await page.screenshot({
+    path: '../.ai/specs/assets/2026-11-07-3d-preview/preview-gusset-sewn.png',
+    fullPage: false,
+  });
 });
 
 test('previews a sewn pouch and orbits it', async ({ page, request }) => {

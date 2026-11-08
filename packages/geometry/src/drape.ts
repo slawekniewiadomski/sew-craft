@@ -95,6 +95,8 @@ interface PanelBuild {
   instance: number;
   piece: Piece;
   sign: number;
+  /** The stitch loop in the panel's aligned layout, for the gusset caps. */
+  loop: Vec2[];
   points: Vec2[];
   triangles: Triangle[];
   /** Sampled seam vertices, keyed `seam:layer:sample`. */
@@ -668,6 +670,7 @@ function buildPanel(
     instance,
     piece,
     sign,
+    loop: loop.map((point) => ({ x: point.x, y: point.y })),
     points: subdivided.points,
     triangles: subdivided.triangles,
     samples: inserted.samples,
@@ -767,6 +770,7 @@ function alignPanels(panels: PanelBuild[], planned: readonly SeamPlan[]): void {
           if (transform === null) continue;
           const panel = panels[from.panel]!;
           panel.points = panel.points.map(transform);
+          panel.loop = panel.loop.map(transform);
           placed.add(from.panel);
           changed = true;
           break;
@@ -1031,6 +1035,208 @@ function openBoundaries(mesh: GlobalMesh): number[][] {
  * result is a deterministic flat-shaded dummy: panels are welded along seams and
  * raised on a rounded height field.
  */
+
+/* -------------------------------------------------------------------------- */
+/* Gusset box                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/** The three panels a gusset strip joins, and the strip's fabric width. */
+interface GussetParts {
+  strip: number;
+  front: number;
+  back: number;
+  width: number;
+}
+
+/** Pairwise seam neighbours of every panel; self-seams are ignored. */
+function seamNeighbours(
+  planned: readonly SeamPlan[],
+  panels: readonly PanelBuild[],
+): Map<number, Map<number, number>> {
+  const panelOf = (instance: number): number =>
+    panels.findIndex((candidate) => candidate.instance === instance);
+  const counts = new Map<number, Map<number, number>>();
+  const bump = (from: number, to: number): void => {
+    const map = counts.get(from) ?? new Map<number, number>();
+    map.set(to, (map.get(to) ?? 0) + 1);
+    counts.set(from, map);
+  };
+
+  for (const plan of planned) {
+    const seen = new Set<string>();
+    for (const a of plan.sides) {
+      for (const b of plan.sides) {
+        if (a.instance === b.instance) continue;
+        const from = panelOf(a.instance);
+        const to = panelOf(b.instance);
+        if (from < 0 || to < 0) continue;
+        const key = from < to ? `${from}:${to}` : `${to}:${from}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        bump(from, to);
+        bump(to, from);
+      }
+    }
+  }
+  return counts;
+}
+
+/**
+ * A strip's principal extent and width. The major axis comes from the loop's
+ * covariance, so a strip split into short perimeter edges still measures its
+ * true length; the width is the area over that length.
+ */
+function stripMetrics(loop: readonly Vec2[]): { width: number; extent: number } | null {
+  const area = Math.abs(signedArea(loop));
+  /* v8 ignore next -- a built strip loop is simple and non-degenerate */
+  if (area < EPSILON) return null;
+
+  const count = loop.length;
+  const cx = loop.reduce((sum, point) => sum + point.x, 0) / count;
+  const cy = loop.reduce((sum, point) => sum + point.y, 0) / count;
+  let xx = 0;
+  let xy = 0;
+  let yy = 0;
+  for (const point of loop) {
+    const dx = point.x - cx;
+    const dy = point.y - cy;
+    xx += dx * dx;
+    xy += dx * dy;
+    yy += dy * dy;
+  }
+  const angle = 0.5 * Math.atan2(2 * xy, xx - yy);
+  const axis = { x: Math.cos(angle), y: Math.sin(angle) };
+  let min = Infinity;
+  let max = -Infinity;
+  for (const point of loop) {
+    const along = (point.x - cx) * axis.x + (point.y - cy) * axis.y;
+    min = Math.min(min, along);
+    max = Math.max(max, along);
+  }
+  const extent = max - min;
+  /* v8 ignore next -- a built strip loop has a positive extent */
+  if (extent < EPSILON) return null;
+  return { width: area / extent, extent };
+}
+
+/**
+ * A strip with exactly two face neighbours, both places of the same piece, is a
+ * gusset. The strip must be at least twice as long as it is wide; anything else
+ * falls back to the height field.
+ */
+function detectGusset(
+  planned: readonly SeamPlan[],
+  panels: readonly PanelBuild[],
+): GussetParts | null {
+  const neighbours = seamNeighbours(planned, panels);
+  for (const [stripIndex, map] of neighbours) {
+    if (map.size !== 2) continue;
+    const entries = [...map.entries()];
+    if (entries.some(([, count]) => count < 2)) continue;
+
+    const frontIndex = entries[0]![0];
+    const backIndex = entries[1]![0];
+    const strip = panels[stripIndex]!;
+    const front = panels[frontIndex]!;
+    const back = panels[backIndex]!;
+    if (front.piece.id !== back.piece.id) continue;
+    if (strip.piece.id === front.piece.id) continue;
+
+    const metrics = stripMetrics(strip.loop);
+    /* v8 ignore next -- a built strip always has positive metrics */
+    if (metrics === null) continue;
+    if (metrics.extent < 2 * metrics.width) continue;
+
+    return { strip: stripIndex, front: frontIndex, back: backIndex, width: metrics.width };
+  }
+  return null;
+}
+
+/**
+ * Build a closed box from a gusset: the two faces become flat caps at
+ * `±inflate * width / 2`, and the strip becomes a vertical wall around the front
+ * face perimeter. The strip's own wall grid is not reused; the front loop's
+ * boundary is the reliable correspondence between the two caps.
+ */
+function buildGussetMesh(
+  assembly: Assembly,
+  panels: readonly PanelBuild[],
+  parts: GussetParts,
+  inflate: number,
+  skipped: EntityId[],
+): PreviewMesh | null {
+  const loop = panels[parts.front]!.loop;
+  const triangles2d = triangulate(loop);
+  /* v8 ignore next -- detection already triangulated this loop */
+  if (triangles2d === null) return null;
+
+  const count = loop.length;
+  const depth = inflate * parts.width;
+  const area = signedArea(loop);
+  /* v8 ignore next -- a detected gusset has a non-degenerate loop */
+  if (Math.abs(area) < EPSILON) return null;
+  const sign = area > 0 ? 1 : -1;
+
+  const positions: Vec3[] = [
+    ...loop.map((point) => ({ x: point.x, y: point.y, z: depth / 2 })),
+    ...loop.map((point) => ({ x: point.x, y: point.y, z: -depth / 2 })),
+  ];
+  const triangles: PreviewTriangle[] = [];
+
+  const cross3 = (a: Vec3, b: Vec3): Vec3 => ({
+    x: a.y * b.z - a.z * b.y,
+    y: a.z * b.x - a.x * b.z,
+    z: a.x * b.y - a.y * b.x,
+  });
+
+  const outward = (a: number, b: number, c: number, panel: number, side: Vec3): void => {
+    const pa = positions[a]!;
+    const pb = positions[b]!;
+    const pc = positions[c]!;
+    const normal = cross3(
+      { x: pb.x - pa.x, y: pb.y - pa.y, z: pb.z - pa.z },
+      { x: pc.x - pa.x, y: pc.y - pa.y, z: pc.z - pa.z },
+    );
+    const dot = normal.x * side.x + normal.y * side.y + normal.z * side.z;
+    triangles.push(dot < 0 ? { a, b: c, c: b, panel } : { a, b, c, panel });
+  };
+
+  // The front cap faces +z, the back cap -z; each uses the common face loop.
+  for (const [a, b, c] of triangles2d) {
+    outward(a, b, c, 0, { x: 0, y: 0, z: 1 });
+    outward(count + a, count + b, count + c, 1, { x: 0, y: 0, z: -1 });
+  }
+
+  // A vertical quad per loop segment; the loop orientation gives the outward
+  // horizontal normal, so a concave face still points away from the box.
+  for (let index = 0; index < count; index += 1) {
+    const next = (index + 1) % count;
+    const dx = loop[next]!.x - loop[index]!.x;
+    const dy = loop[next]!.y - loop[index]!.y;
+    const side = { x: sign * dy, y: -sign * dx, z: 0 };
+    outward(index, next, count + next, 2, side);
+    outward(index, count + next, count + index, 2, side);
+  }
+
+  const panelOf = (index: number): PreviewPanel => {
+    const panel = panels[index]!;
+    return {
+      instance: assembly.instances[panel.instance]!.id,
+      piece: panel.piece.id,
+      color: panel.piece.color ?? null,
+    };
+  };
+
+  return {
+    positions,
+    triangles,
+    panels: [panelOf(parts.front), panelOf(parts.back), panelOf(parts.strip)],
+    openBoundaries: [],
+    simplified: false,
+    skipped,
+  };
+}
+
 export function drapeAssembly(
   document: PatternDocument,
   assembly: Assembly,
@@ -1079,6 +1285,11 @@ export function drapeAssembly(
   if (panels.length === 0) return null;
 
   alignPanels(panels, planned);
+  const parts = detectGusset(planned, panels);
+  if (parts !== null) {
+    const boxed = buildGussetMesh(assembly, panels, parts, inflate, skipped);
+    if (boxed !== null) return { ...boxed, openBoundaries: [] };
+  }
   const welded = weldPanels(assembly, panels, planned, skipped, simplified);
   /* v8 ignore next -- a hand-edited panel can collapse every triangle */
   if (welded === null) return null;

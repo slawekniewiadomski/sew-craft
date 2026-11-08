@@ -27,6 +27,8 @@ const emit = defineEmits<{ close: [] }>();
 type PreviewMode = 'exploded' | 'sewn';
 
 const mode = ref<PreviewMode>('exploded');
+/** The seam under the pointer, isolated from the rest of the exploded web. */
+const focusedSeam = ref<number | null>(null);
 const inflatePercent = ref(100);
 const wireframe = ref(false);
 const view = ref<PreviewView>({ ...DEFAULT_PREVIEW_VIEW });
@@ -60,6 +62,15 @@ const labelSize = computed(
 
 function setMode(next: PreviewMode): void {
   mode.value = next;
+  focusedSeam.value = null;
+}
+
+function focusSeam(index: number): void {
+  focusedSeam.value = index;
+}
+
+function clearSeam(): void {
+  focusedSeam.value = null;
 }
 
 const orbit = ref<{ x: number; y: number } | null>(null);
@@ -188,7 +199,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
                 :points="side"
                 fill="none"
                 :stroke="seam.color"
-                stroke-width="0.55"
+                :stroke-width="focusedSeam === index ? 0.9 : 0.55"
+                :opacity="focusedSeam === null || focusedSeam === index ? 1 : 0.12"
                 stroke-linecap="round"
                 :data-testid="`exploded-seam-${index}-${sideIndex}`"
               />
@@ -198,9 +210,38 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
                 :points="link"
                 fill="none"
                 :stroke="seam.color"
-                stroke-width="0.35"
+                :stroke-width="focusedSeam === index ? 0.6 : 0.35"
+                :opacity="focusedSeam === null || focusedSeam === index ? 1 : 0.12"
                 stroke-dasharray="2 1.5"
                 :data-testid="`exploded-link-${index}-${linkIndex}`"
+              />
+              <polyline
+                v-for="(side, sideIndex) in seam.sides"
+                :key="`side-hit-${index}-${sideIndex}`"
+                :points="side"
+                fill="none"
+                stroke="transparent"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                pointer-events="stroke"
+                class="cursor-pointer"
+                :data-testid="`seam-focus-side-${index}-${sideIndex}`"
+                @pointerenter="focusSeam(index)"
+                @pointerleave="clearSeam"
+              />
+              <polyline
+                v-for="(link, linkIndex) in seam.links"
+                :key="`link-hit-${index}-${linkIndex}`"
+                :points="link"
+                fill="none"
+                stroke="transparent"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                pointer-events="stroke"
+                class="cursor-pointer"
+                :data-testid="`seam-focus-link-${index}-${linkIndex}`"
+                @pointerenter="focusSeam(index)"
+                @pointerleave="clearSeam"
               />
             </template>
             <text
@@ -232,7 +273,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
         <p class="pointer-events-none absolute bottom-2 left-3 text-2xs text-muted-foreground">
           {{
             mode === 'exploded'
-              ? 'Drag to orbit · exploded layers · dashed links are seams'
+              ? 'Drag to orbit · exploded layers · hover a seam to isolate it'
               : 'Drag to orbit · approximate preview'
           }}
         </p>

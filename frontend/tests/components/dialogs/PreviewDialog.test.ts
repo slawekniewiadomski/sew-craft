@@ -59,6 +59,23 @@ const assemblyOf = (seamed: boolean, instances = 2): Assembly => ({
     : {}),
 });
 
+const withTwoSeams = (): Assembly => {
+  const assembly = assemblyOf(true);
+  return {
+    ...assembly,
+    seams: [
+      ...(assembly.seams ?? []),
+      {
+        id: 's2',
+        sides: [
+          { instance: 'i1', edges: ['bc'] },
+          { instance: 'i2', edges: ['bc'] },
+        ],
+      },
+    ],
+  };
+};
+
 const mountDialog = (document = rectangle(), assembly = assemblyOf(true)) =>
   mount(PreviewDialog, { props: { document, assembly } });
 
@@ -79,6 +96,28 @@ describe('PreviewDialog', () => {
     expect(wrapper.findAll('[data-testid^="exploded-link-"]')).toHaveLength(1);
     expect(wrapper.findAll('[data-testid="exploded-label"]')).toHaveLength(2);
     expect(wrapper.findAll('[data-testid^="preview-face-"]')).toHaveLength(0);
+  });
+
+  it('isolates the hovered seam from the rest of the web', async () => {
+    const wrapper = mountDialog(rectangle(), withTwoSeams());
+    const hits = wrapper.findAll('[data-testid^="seam-focus-side-"]');
+    const sides = wrapper.findAll('[data-testid^="exploded-seam-"]');
+
+    expect(hits).toHaveLength(4);
+    expect(sides[2]!.attributes('opacity')).toBe('1');
+
+    await hits[0]!.trigger('pointerenter');
+    expect(sides[0]!.attributes('opacity')).toBe('1');
+    expect(sides[2]!.attributes('opacity')).toBe('0.12');
+
+    await hits[0]!.trigger('pointerleave');
+    expect(sides[2]!.attributes('opacity')).toBe('1');
+
+    const links = wrapper.findAll('[data-testid^="seam-focus-link-"]');
+    await links[0]!.trigger('pointerenter');
+    expect(sides[2]!.attributes('opacity')).toBe('0.12');
+    await links[0]!.trigger('pointerleave');
+    expect(sides[2]!.attributes('opacity')).toBe('1');
   });
 
   it('switches to the sewn view with its controls', async () => {
