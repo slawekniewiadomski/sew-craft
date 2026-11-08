@@ -130,8 +130,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
             :key="index"
             :points="polygon.points"
             :fill="wireframe ? 'none' : polygon.fill"
-            :stroke="wireframe ? polygon.fill : 'none'"
-            :stroke-width="wireframe ? 0.15 : 0"
+            :stroke="polygon.fill"
+            :stroke-width="wireframe ? 0.15 : 0.15"
             stroke-linejoin="round"
             :data-testid="`preview-face-${polygon.panel}`"
           />

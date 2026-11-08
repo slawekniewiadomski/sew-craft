@@ -327,7 +327,7 @@ The pipeline:
    seams; ties stay outward.
 4. **Inflate.** Each panel is raised on a height field over its flat layout:
    the shortest distance to the panel boundary gives a smoothstep profile with
-   `PREVIEW_THICKNESS = 1.2` and `PREVIEW_EDGE = 1`. The boundary stays at
+   `PREVIEW_THICKNESS = 1.0` and `PREVIEW_EDGE = 0.3`. The boundary stays at
    `z = 0`; the layer order decides the sign. No distances, bending, gravity or
    time step.
 5. **Open boundaries.** Edges used by exactly one triangle form boundary loops.

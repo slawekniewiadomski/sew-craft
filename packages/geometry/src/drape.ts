@@ -23,10 +23,10 @@ export const PREVIEW_MAX_EDGE = 18;
 export const PREVIEW_TRIANGLE_LIMIT = 6000;
 
 /** A panel's height at full inflate, as a fraction of its half-size. */
-const PREVIEW_THICKNESS = 1.2;
+const PREVIEW_THICKNESS = 1.0;
 
 /** The fraction of the boundary distance that forms the rounded edge. */
-const PREVIEW_EDGE = 1;
+const PREVIEW_EDGE = 0.3;
 
 /** Uniform subdivision levels, a hard stop before the triangle budget. */
 const MAX_SUBDIVISION_LEVELS = 5;
