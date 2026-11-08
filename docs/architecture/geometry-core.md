@@ -360,6 +360,11 @@ as long as it is wide becomes a closed box:
 - Every ambiguous shape falls back to the height field: fewer than two seams to
   a face, unequal face pieces, the strip sharing the face piece, or a strip that
   is not long and narrow. The box is closed and not simplified.
+- The returned mesh carries `sewnSupported`. A gusset box and a shell of at most
+  two panels are supported; a more complex assembly is marked unsupported and
+  the dialog shows its sewn notice instead of the height-field mesh. This keeps
+  the sewn mode honest for garments while the packed parts sheet remains
+  available.
 
 `PREVIEW_TRIANGLE_LIMIT` does not apply to the box: it uses the raw face loop
 (one cap pair and one wall ring), not the subdivided height-field mesh.
@@ -389,13 +394,16 @@ interface ExplodedView {
 }
 ```
 
-Every instance is a flat **cut** part (allowances included) at
-`z = index * EXPLODE_GAP` (`60` mm), so the parts form a stack that orbit can
-separate. Each seam side comes from `resolveSeamRun` at its part's layer; the
-arc-length midpoint of every other side is linked to side 0's midpoint, and the
-rotating palette (`SEAM_COLOR_COUNT = 12`) keeps seams distinguishable. A seam
-with fewer than two resolvable sides is omitted; an unresolved part is listed in
-`skipped`. No welding, folding, inflation or triangle budget is involved.
+Every instance is a flat **cut** part (allowances included). Parts keep their
+orientation but are packed into rows up to `max(240, √area × 1.8)` mm with
+`EXPLODE_GAP = 24` mm between parts and rows, all at `z = 0`, so a many-piece
+pattern does not overlap its neighbours. Each seam side comes from
+`resolveSeamRun`, translated with its part, and keeps its stored `edges` for the
+seam list; the arc-length midpoint of every other side is linked to side 0's
+midpoint, and the rotating palette (`SEAM_COLOR_COUNT = 12`) keeps seams
+distinguishable. A seam with fewer than two resolvable sides is omitted; an
+unresolved part is listed in `skipped`. No welding, folding, inflation or
+triangle budget is involved.
 
 `projectExploded` reuses the same orthographic rotation and returns one SVG
 `points` string per cut-part boundary (painted back to front by depth), the

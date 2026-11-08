@@ -186,6 +186,126 @@ function gussetDocument(): Record<string, unknown> {
   };
 }
 
+/** A three-piece skirt: front, back and a waistband; a sewn complex assembly. */
+function skirtDocument(): Record<string, unknown> {
+  const point = (id: string, x: number, y: number, piece: string) => ({
+    id,
+    kind: 'point',
+    x,
+    y,
+    fixed: false,
+    piece,
+  });
+  const line = (id: string, start: string, end: string, piece: string) => ({
+    id,
+    kind: 'line',
+    start,
+    end,
+    piece,
+  });
+  const entities = [
+    point('fa', 0, 0, 'p1'),
+    point('fb', 70, 0, 'p1'),
+    point('fc', 100, 200, 'p1'),
+    point('fd', 0, 200, 'p1'),
+    line('fab', 'fa', 'fb', 'p1'),
+    line('fbc', 'fb', 'fc', 'p1'),
+    line('fcd', 'fc', 'fd', 'p1'),
+    line('fda', 'fd', 'fa', 'p1'),
+    point('ba', 150, 0, 'p2'),
+    point('bb', 220, 0, 'p2'),
+    point('bc', 250, 200, 'p2'),
+    point('bd', 150, 200, 'p2'),
+    line('bab', 'ba', 'bb', 'p2'),
+    line('bbc', 'bb', 'bc', 'p2'),
+    line('bcd', 'bc', 'bd', 'p2'),
+    line('bda', 'bd', 'ba', 'p2'),
+    point('w0', 0, 250, 'p3'),
+    point('w1', 70, 250, 'p3'),
+    point('w2', 140, 250, 'p3'),
+    point('w3', 140, 280, 'p3'),
+    point('w4', 70, 280, 'p3'),
+    point('w5', 0, 280, 'p3'),
+    line('u0', 'w0', 'w1', 'p3'),
+    line('u1', 'w1', 'w2', 'p3'),
+    line('ur', 'w2', 'w3', 'p3'),
+    line('u2', 'w3', 'w4', 'p3'),
+    line('u3', 'w4', 'w5', 'p3'),
+    line('ul', 'w5', 'w0', 'p3'),
+  ];
+  return {
+    schema: 'sewcraft.pattern/0.9',
+    units: 'mm',
+    entities,
+    constraints: [],
+    pieces: [
+      { id: 'p1', name: 'Skirt front', edges: ['fab', 'fbc', 'fcd', 'fda'], allowances: [] },
+      { id: 'p2', name: 'Skirt back', edges: ['bab', 'bbc', 'bcd', 'bda'], allowances: [] },
+      { id: 'p3', name: 'Waistband', edges: ['u0', 'u1', 'ur', 'u2', 'u3', 'ul'], allowances: [] },
+    ],
+    assemblies: [
+      {
+        id: 'a1',
+        name: 'Skirt',
+        instances: [
+          { id: 'i1', piece: 'p1', x: 0, y: 0 },
+          { id: 'i2', piece: 'p2', x: 150, y: 0 },
+          { id: 'i3', piece: 'p3', x: 0, y: 250 },
+        ],
+        seams: [
+          {
+            id: 'side-r',
+            sides: [
+              { instance: 'i1', edges: ['fbc'] },
+              { instance: 'i2', edges: ['bbc'] },
+            ],
+          },
+          {
+            id: 'side-l',
+            sides: [
+              { instance: 'i1', edges: ['fda'] },
+              { instance: 'i2', edges: ['bda'] },
+            ],
+          },
+          {
+            id: 'waist-f',
+            sides: [
+              { instance: 'i1', edges: ['fab'] },
+              { instance: 'i3', edges: ['u0'] },
+            ],
+          },
+          {
+            id: 'waist-b',
+            sides: [
+              { instance: 'i2', edges: ['bab'] },
+              { instance: 'i3', edges: ['u1'] },
+            ],
+          },
+          {
+            id: 'band-end',
+            sides: [
+              { instance: 'i3', edges: ['ul'] },
+              { instance: 'i3', edges: ['ur'] },
+            ],
+          },
+        ],
+        finishedEdges: [
+          { instance: 'i1', edge: 'fcd', kind: 'hem' },
+          { instance: 'i2', edge: 'bcd', kind: 'hem' },
+          { instance: 'i3', edge: 'u2', kind: 'fold' },
+          { instance: 'i3', edge: 'u3', kind: 'fold' },
+        ],
+      },
+    ],
+    tabs: [
+      { kind: 'assembly', id: 'a1' },
+      { kind: 'piece', id: 'p1' },
+      { kind: 'piece', id: 'p2' },
+      { kind: 'piece', id: 'p3' },
+    ],
+  };
+}
+
 async function seedProject(request: APIRequestContext): Promise<number> {
   const { appUrl } = getRuntime();
   const created = await request.post(`${appUrl}/api/projects`, { data: { name: unique() } });
@@ -207,6 +327,40 @@ async function seedDocument(
   return id;
 }
 
+test('keeps a complex skirt in the parts sheet and gates the sewn shell', async ({
+  page,
+  request,
+}) => {
+  const { previewUrl } = getRuntime();
+  const created = await request.post(`${getRuntime().appUrl}/api/projects`, {
+    data: { name: unique() },
+  });
+  const { data } = (await created.json()) as { data: { id: number } };
+  await seedDocument(request, data.id, skirtDocument());
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${previewUrl}/projects/${data.id}/edit`);
+  await page.locator('[data-testid="preview"]').click();
+  await expect(page.locator('[data-testid="preview-dialog"]')).toBeVisible();
+
+  await expect(page.locator('[data-testid^="exploded-panel-"]')).toHaveCount(3);
+  await expect(page.locator('[data-testid="preview-seam-row"]')).toHaveCount(5);
+  await page.screenshot({
+    path: '../.ai/specs/assets/2026-11-07-3d-preview/preview-skirt-exploded.png',
+    fullPage: false,
+  });
+
+  await page.locator('[data-testid="preview-mode-sewn"]').click();
+  await expect(page.locator('[data-testid="preview-sewn-unsupported"]')).toBeVisible();
+  await page.screenshot({
+    path: '../.ai/specs/assets/2026-11-07-3d-preview/preview-skirt-sewn.png',
+    fullPage: false,
+  });
+
+  await page.locator('[data-testid="preview-use-exploded"]').click();
+  await expect(page.locator('[data-testid^="exploded-panel-"]')).toHaveCount(3);
+});
+
 test('explodes a gusseted pouch into faces and a height strip', async ({ page, request }) => {
   const { previewUrl } = getRuntime();
   const created = await request.post(`${getRuntime().appUrl}/api/projects`, {
@@ -224,6 +378,7 @@ test('explodes a gusseted pouch into faces and a height strip', async ({ page, r
   await expect(page.locator('[data-testid^="exploded-panel-"]')).toHaveCount(3);
   await expect(page.locator('[data-testid="exploded-label"]')).toHaveCount(3);
   await expect(page.locator('[data-testid^="exploded-link-"]')).toHaveCount(9);
+  await expect(page.locator('[data-testid="preview-seam-row"]')).toHaveCount(9);
 
   await page.screenshot({
     path: '../.ai/specs/assets/2026-11-07-3d-preview/preview-gusset-exploded.png',
@@ -251,9 +406,10 @@ test('previews a sewn pouch and orbits it', async ({ page, request }) => {
   await page.locator('[data-testid="preview"]').click();
   await expect(page.locator('[data-testid="preview-dialog"]')).toBeVisible();
 
-  // Exploded is the default: two flat parts and four seam links.
+  // Exploded is the default: two flat parts, four seam links and four rows.
   await expect(page.locator('[data-testid^="exploded-panel-"]')).toHaveCount(2);
   await expect(page.locator('[data-testid^="exploded-link-"]')).toHaveCount(4);
+  await expect(page.locator('[data-testid="preview-seam-row"]')).toHaveCount(4);
   await page.screenshot({
     path: '../.ai/specs/assets/2026-11-07-3d-preview/preview-exploded.png',
     fullPage: false,

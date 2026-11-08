@@ -35,10 +35,11 @@ Two decisions had to be made before a spec:
 3. **The preview is derived and read-only.** No command writes it, no document
    field stores it, and save/autosave/versioning/export never read it. The
    camera, mode, inflate amount and wireframe toggle are ephemeral view state.
-   The default **exploded** mode is a solver-free diagram of flat cut parts and
-   their seam links (`explodedAssembly`), so the assembly is legible even where
-   the folded shell is still approximate; the sewn height field is the second
-   mode.
+   The default **exploded** mode is a solver-free parts sheet of flat cut parts
+   and their seam links (`explodedAssembly`), packed into non-overlapping rows
+   and paired with a seam list, so a many-piece assembly stays legible. The sewn
+   mode is deliberately gated to a gusset box or a two-panel shell; a complex
+   garment gets an explicit notice rather than a misleading height-field mesh.
 4. **A triangle budget bounds the SVG surface.** Above
    `PREVIEW_TRIANGLE_LIMIT` (6 000) the preview keeps the largest connected shell
    and reports that it simplified the view. If real patterns outgrow SVG, a later

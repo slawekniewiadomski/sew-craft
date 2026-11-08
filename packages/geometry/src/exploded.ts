@@ -12,8 +12,8 @@ import { resolveSeamRun } from './seams.js';
 import type { Assembly, EntityId, PatternDocument } from './types.js';
 import { magnitude, sub, type Vec2 } from './vector.js';
 
-/** Millimetres between the layers of the exploded stack. */
-export const EXPLODE_GAP = 60;
+/** Millimetres between packed parts in the exploded parts sheet. */
+export const EXPLODE_GAP = 24;
 
 /** The number of rotating colours the seam links use. */
 export const SEAM_COLOR_COUNT = 12;
@@ -31,6 +31,8 @@ export interface ExplodedPanel {
 
 export interface ExplodedSeamSide {
   instance: EntityId;
+  /** The stored edge run of the side, for the seam list. */
+  edges: EntityId[];
   /** The resolved stitch polyline of the side, in 3D. */
   points: Vec3[];
 }
@@ -50,12 +52,6 @@ export interface ExplodedView {
   seams: ExplodedSeam[];
   /** Instances whose loop did not resolve. */
   skipped: EntityId[];
-}
-
-/** The z layer of one assembly instance. */
-function layerOf(assembly: Assembly, instance: EntityId): number | null {
-  const index = assembly.instances.findIndex((candidate) => candidate.id === instance);
-  return index < 0 ? null : index * EXPLODE_GAP;
 }
 
 /** The point halfway along an open polyline, by arc length. */
@@ -99,17 +95,30 @@ function panelLabel(
 
 /**
  * Build the exploded view for one assembly, or `null` when no cut part resolves.
- * Each instance sits one `EXPLODE_GAP` layer above the previous one; the seam
- * sides and the links between their midpoints make the assembly legible.
+ * Parts are packed into a deterministic rows-of-parts sheet instead of keeping
+ * their assembly positions, so many pieces stay legible; the seam sides and the
+ * midpoint links make the pairings explicit.
  */
 export function explodedAssembly(
   document: PatternDocument,
   assembly: Assembly,
 ): ExplodedView | null {
-  const panels: ExplodedPanel[] = [];
+  interface RawPanel {
+    instance: EntityId;
+    piece: EntityId;
+    label: string;
+    color: string | null;
+    boundary: Vec2[];
+    minX: number;
+    minY: number;
+    width: number;
+    height: number;
+  }
+
+  const raw: RawPanel[] = [];
   const skipped: EntityId[] = [];
 
-  for (const [index, placed] of assembly.instances.entries()) {
+  for (const placed of assembly.instances) {
     const piece = pieceById(document, placed.piece);
     if (piece === undefined) {
       skipped.push(placed.id);
@@ -121,46 +130,92 @@ export function explodedAssembly(
       skipped.push(placed.id);
       continue;
     }
-    const z = index * EXPLODE_GAP;
-    const points = boundary.map((point) => ({ x: point.x, y: point.y, z }));
-    panels.push({
+    const xs = boundary.map((point) => point.x);
+    const ys = boundary.map((point) => point.y);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    raw.push({
       instance: placed.id,
       piece: piece.id,
       label: panelLabel(document, assembly, placed.id, piece.id),
       color: piece.color ?? null,
+      boundary,
+      minX,
+      minY,
+      width: Math.max(...xs) - minX,
+      height: Math.max(...ys) - minY,
+    });
+  }
+
+  if (raw.length === 0) return null;
+
+  // Pack rows until the target width is reached; each part keeps its own
+  // orientation, and its seam sides move by the same translation.
+  const area = raw.reduce((sum, panel) => sum + panel.width * panel.height, 0);
+  const target = Math.max(240, Math.sqrt(area) * 1.8);
+  const translations = new Map<EntityId, Vec2>();
+  let x = 0;
+  let y = 0;
+  let rowHeight = 0;
+  for (const panel of raw) {
+    if (x > 0 && x + panel.width > target) {
+      x = 0;
+      y += rowHeight + EXPLODE_GAP;
+      rowHeight = 0;
+    }
+    translations.set(panel.instance, { x: x - panel.minX, y: y - panel.minY });
+    x += panel.width + EXPLODE_GAP;
+    rowHeight = Math.max(rowHeight, panel.height);
+  }
+
+  const panels: ExplodedPanel[] = raw.map((panel) => {
+    const offset = translations.get(panel.instance)!;
+    const points = panel.boundary.map((point) => ({
+      x: point.x + offset.x,
+      y: point.y + offset.y,
+      z: 0,
+    }));
+    return {
+      instance: panel.instance,
+      piece: panel.piece,
+      label: panel.label,
+      color: panel.color,
       boundary: points,
       center: {
         x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
         y: points.reduce((sum, point) => sum + point.y, 0) / points.length,
-        z,
+        z: 0,
       },
-    });
-  }
-
-  if (panels.length === 0) return null;
+    };
+  });
 
   const seams: ExplodedSeam[] = [];
   for (const [order, seam] of (assembly.seams ?? []).entries()) {
     const sides: ExplodedSeamSide[] = [];
     for (const side of seam.sides) {
-      const z = layerOf(assembly, side.instance);
+      const offset = translations.get(side.instance);
       /* v8 ignore next -- an unknown instance is a missing reference, not a link */
-      if (z === null) continue;
+      if (offset === undefined) continue;
       const resolved = resolveSeamRun(document, assembly, side);
       if (resolved === null) continue;
       sides.push({
         instance: side.instance,
-        points: resolved.points.map((point) => ({ x: point.x, y: point.y, z })),
+        edges: [...side.edges],
+        points: resolved.points.map((point) => ({
+          x: point.x + offset.x,
+          y: point.y + offset.y,
+          z: 0,
+        })),
       });
     }
     if (sides.length < 2) continue;
 
     const origin = midpoint(sides[0]!.points.map((point) => ({ x: point.x, y: point.y })));
     const links = sides.slice(1).map((side) => {
-      const target = midpoint(side.points.map((point) => ({ x: point.x, y: point.y })));
+      const targetPoint = midpoint(side.points.map((point) => ({ x: point.x, y: point.y })));
       return [
-        { x: origin.x, y: origin.y, z: sides[0]!.points[0]!.z },
-        { x: target.x, y: target.y, z: side.points[0]!.z },
+        { x: origin.x, y: origin.y, z: 0 },
+        { x: targetPoint.x, y: targetPoint.y, z: 0 },
       ];
     });
     seams.push({ id: seam.id, sides, links, colorIndex: order % SEAM_COLOR_COUNT });

@@ -98,16 +98,24 @@ describe('explodedAssembly', () => {
     };
   };
 
-  it('separates instances into layers and links each seam side', () => {
+  it('packs the parts side by side and links each seam side', () => {
     const { document, assembly } = cube();
     const view = explodedAssembly(document, assembly)!;
 
+    const bounds = (index: number) => {
+      const xs = view.panels[index]!.boundary.map((point) => point.x);
+      return { min: Math.min(...xs), max: Math.max(...xs) };
+    };
+
     expect(view.panels).toHaveLength(2);
     expect(view.panels.map((panel) => panel.label)).toEqual(['Panel 1', 'Panel 2']);
-    expect(view.panels[0]!.boundary.every((point) => point.z === 0)).toBe(true);
-    expect(view.panels[1]!.boundary.every((point) => point.z === EXPLODE_GAP)).toBe(true);
+    expect(view.panels.flatMap((panel) => panel.boundary).every((point) => point.z === 0)).toBe(
+      true,
+    );
+    expect(bounds(1).min - bounds(0).max).toBe(EXPLODE_GAP);
     expect(view.seams).toHaveLength(5);
     expect(view.seams[0]!.sides).toHaveLength(2);
+    expect(view.seams[0]!.sides[0]!.edges).toEqual(['ab']);
     expect(view.seams[4]!.sides[0]!.points).toHaveLength(4);
     expect(view.seams[0]!.links).toHaveLength(1);
     expect(view.seams[0]!.links[0]).toHaveLength(2);
@@ -145,9 +153,24 @@ describe('explodedAssembly', () => {
 
     const view = explodedAssembly(document, assembly)!;
 
+    const panelBounds = (index: number) => {
+      const points = view.panels[index]!.boundary;
+      const xs = points.map((point) => point.x);
+      const ys = points.map((point) => point.y);
+      return {
+        minX: Math.min(...xs),
+        maxX: Math.max(...xs),
+        minY: Math.min(...ys),
+        maxY: Math.max(...ys),
+      };
+    };
+
     expect(view.panels).toHaveLength(3);
     expect(view.panels.map((panel) => panel.label)).toEqual(['Panel 1', 'Panel 2', 'Strip']);
-    expect(view.panels[2]!.boundary.every((point) => point.z === EXPLODE_GAP * 2)).toBe(true);
+    expect(view.panels.flatMap((panel) => panel.boundary).every((point) => point.z === 0)).toBe(
+      true,
+    );
+    expect(panelBounds(2).minY).toBe(panelBounds(0).maxY + EXPLODE_GAP);
     expect(view.seams).toHaveLength(5);
     expect(view.seams.at(-1)!.sides).toHaveLength(2);
   });

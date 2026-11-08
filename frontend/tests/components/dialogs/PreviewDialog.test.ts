@@ -98,6 +98,38 @@ describe('PreviewDialog', () => {
     expect(wrapper.findAll('[data-testid^="preview-face-"]')).toHaveLength(0);
   });
 
+  it('lists the seams and lets the list isolate one', async () => {
+    const wrapper = mountDialog(rectangle(), withTwoSeams());
+    const rows = wrapper.findAll('[data-testid="preview-seam-row"]');
+    const sides = wrapper.findAll('[data-testid^="exploded-seam-"]');
+
+    expect(wrapper.find('[data-testid="exploded-seams"]').exists()).toBe(true);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.text()).toContain('a → b');
+    expect(sides[2]!.attributes('opacity')).toBe('1');
+
+    await rows[0]!.trigger('pointerenter');
+    expect(sides[2]!.attributes('opacity')).toBe('0.12');
+    await rows[0]!.trigger('pointerleave');
+    expect(sides[2]!.attributes('opacity')).toBe('1');
+
+    await rows[0]!.trigger('focus');
+    expect(sides[2]!.attributes('opacity')).toBe('0.12');
+    await rows[0]!.trigger('blur');
+    expect(sides[2]!.attributes('opacity')).toBe('1');
+  });
+
+  it('keeps a complex assembly in Exploded instead of the sewn dummy', async () => {
+    const wrapper = mountDialog(rectangle(), assemblyOf(true, 3));
+    await wrapper.find('[data-testid="preview-mode-sewn"]').trigger('click');
+
+    expect(wrapper.find('[data-testid="preview-sewn-unsupported"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="preview-svg"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="preview-use-exploded"]').trigger('click');
+    expect(wrapper.findAll('[data-testid^="exploded-panel-"]')).toHaveLength(3);
+  });
+
   it('isolates the hovered seam from the rest of the web', async () => {
     const wrapper = mountDialog(rectangle(), withTwoSeams());
     const hits = wrapper.findAll('[data-testid^="seam-focus-side-"]');

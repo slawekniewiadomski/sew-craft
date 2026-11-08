@@ -26,6 +26,7 @@ const mesh = (overrides: Partial<PreviewMesh> = {}): PreviewMesh => ({
   ],
   openBoundaries: [],
   simplified: false,
+  sewnSupported: true,
   skipped: [],
   ...overrides,
 });

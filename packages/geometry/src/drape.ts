@@ -65,6 +65,11 @@ export interface PreviewMesh {
   openBoundaries: number[][];
   /** True when the triangle budget or the subdivision cap simplified the mesh. */
   simplified: boolean;
+  /**
+   * Whether the sewn mode is credible for this assembly: a gusset box, or a
+   * simple shell of at most two panels. Complex garments stay in Exploded.
+   */
+  sewnSupported: boolean;
   /** Instances whose stitch loop did not resolve. */
   skipped: EntityId[];
 }
@@ -1233,6 +1238,7 @@ function buildGussetMesh(
     panels: [panelOf(parts.front), panelOf(parts.back), panelOf(parts.strip)],
     openBoundaries: [],
     simplified: false,
+    sewnSupported: true,
     skipped,
   };
 }
@@ -1295,5 +1301,9 @@ export function drapeAssembly(
   if (welded === null) return null;
 
   inflateHeightField(welded, inflate);
-  return { ...welded, openBoundaries: openBoundaries(welded) };
+  return {
+    ...welded,
+    openBoundaries: openBoundaries(welded),
+    sewnSupported: welded.panels.length <= 2,
+  };
 }
