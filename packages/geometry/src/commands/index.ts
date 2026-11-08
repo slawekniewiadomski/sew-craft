@@ -6,13 +6,15 @@ import { solve } from '../solver.js';
 import type { SolveOptions, SolveResult } from '../solver.js';
 import type { EntityId, PatternDocument } from '../types.js';
 import {
-  applyAddCornerRound,
-  applyRemoveCornerRound,
-  applySetCornerRoundRadius,
   applySetDefaultAllowance,
   applySetPieceAllowance,
   applySetPieceCornerAllowance,
 } from './allowances.js';
+import {
+  applyAddCornerRound,
+  applyRemoveCornerRound,
+  applySetCornerRoundRadius,
+} from './corner-rounds.js';
 import {
   applyAddSeamAllowance,
   applyRemoveSeamAllowance,
