@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { AUTH_TOKEN_KEY, ApiError, readAuthToken, request, writeAuthToken } from '@/api/client';
+import { AUTH_TOKEN_KEY, readAuthToken, request, writeAuthToken } from '@/api/client';
 
 const fetchMock = vi.fn();
 
