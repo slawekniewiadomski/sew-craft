@@ -151,6 +151,7 @@ import CanvasAnnotationLayers, {
   type MarkView,
   type TextView,
 } from '@/components/canvas/CanvasAnnotationLayers.vue';
+import CanvasPointLayers from '@/components/canvas/CanvasPointLayers.vue';
 import CanvasPieceBandLayers from '@/components/canvas/CanvasPieceBandLayers.vue';
 import CanvasPieceCutLayers from '@/components/canvas/CanvasPieceCutLayers.vue';
 import CanvasDimensionDrawings from '@/components/canvas/CanvasDimensionDrawings.vue';
@@ -1752,70 +1753,19 @@ watch(
           :viewport-scale="viewport.scale"
         />
 
-        <g data-testid="corner-round-feature-layer" aria-hidden="true">
-          <circle
-            v-for="point in cornerRoundFeaturePoints"
-            :key="`feature-${point.id}`"
-            :cx="point.x"
-            :cy="point.y"
-            r="3"
-            stroke-width="1"
-            :class="featurePointClass(point)"
-            :data-entity-id="point.id"
-            data-kind="point"
-            :data-testid="`corner-round-feature-${point.id}`"
-          />
-        </g>
-
-        <g v-for="point in visiblePoints" :key="point.id">
-          <circle
-            :cx="point.x"
-            :cy="point.y"
-            r="4"
-            stroke-width="1"
-            :class="pointClass(point)"
-            :data-entity-id="point.id"
-            data-kind="point"
-            :data-dimension-candidate="
-              dimensionCandidatePointIds.has(point.id) ? 'true' : undefined
-            "
-            :data-cut-dimension-candidate="cutCandidatePointIds.has(point.id) ? 'true' : undefined"
-            :data-dimension-first-pick="
-              dimensionFirstPick?.kind === 'point' && dimensionFirstPick.id === point.id
-                ? 'true'
-                : undefined
-            "
-          />
-          <circle
-            v-if="dimensionToolArmed"
-            :cx="point.x"
-            :cy="point.y"
-            :r="6 / viewport.scale"
-            fill="transparent"
-            :data-entity-id="point.id"
-            data-kind="point"
-            data-testid="dimension-hit-target"
-          />
-          <circle
-            v-if="props.roundCornerActive"
-            :cx="point.x"
-            :cy="point.y"
-            r="6"
-            fill="transparent"
-            :data-entity-id="point.id"
-            data-kind="point"
-            data-testid="round-corner-point-target"
-          />
-          <circle
-            v-if="selectedIds.has(point.id)"
-            :cx="point.x"
-            :cy="point.y"
-            r="7"
-            class="fill-none stroke-primary"
-            stroke-width="1.5"
-            data-testid="selection-handle"
-          />
-        </g>
+        <CanvasPointLayers
+          :feature-points="cornerRoundFeaturePoints"
+          :feature-point-class="featurePointClass"
+          :points="visiblePoints"
+          :point-class="pointClass"
+          :selected-ids="selectedIds"
+          :dimension-candidate-point-ids="dimensionCandidatePointIds"
+          :cut-candidate-point-ids="cutCandidatePointIds"
+          :dimension-first-pick="dimensionFirstPick"
+          :dimension-tool-armed="dimensionToolArmed"
+          :round-corner-active="props.roundCornerActive"
+          :viewport-scale="viewport.scale"
+        />
 
         <g v-if="props.tool === 'cut_dimension'" class="pointer-events-none">
           <line
