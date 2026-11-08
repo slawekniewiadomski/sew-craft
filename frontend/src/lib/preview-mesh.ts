@@ -1,5 +1,5 @@
 /** Project the draped mesh into flat SVG polygons. Pure; no DOM. */
-import type { PreviewMesh, PreviewTriangle, Vec3 } from '@sewcraft/geometry';
+import type { ExplodedView, PreviewMesh, PreviewTriangle, Vec3 } from '@sewcraft/geometry';
 
 export interface PreviewView {
   /** Radians around the model's vertical axis. */
@@ -26,8 +26,25 @@ export interface PreviewProjection {
 /** The opening camera: a three-quarter view of the front. */
 export const DEFAULT_PREVIEW_VIEW: PreviewView = { yaw: -Math.PI / 4, pitch: -Math.PI / 3.2 };
 
+/** The rotating palette for exploded seam links. */
+export const SEAM_COLORS = [
+  '#4f7cac',
+  '#5b9e6f',
+  '#c08457',
+  '#9b6b9e',
+  '#b05c6b',
+  '#5a9aa8',
+  '#a3934a',
+  '#7d6fb0',
+  '#b07a4a',
+  '#4f9a86',
+  '#a05c8a',
+  '#6b7fb0',
+];
+
+const NEUTRAL_COLOR = '#94a3b8';
+
 const PITCH_LIMIT = Math.PI / 2.4;
-const FALLBACK_COLOR = '#94a3b8';
 const LIGHT: Vec3 = (() => {
   const x = -0.35;
   const y = -0.55;
@@ -52,6 +69,11 @@ function rotate(point: Vec3, view: PreviewView): Vec3 {
   return { x, y: y * cosP - point.z * sinP, z: y * sinP + point.z * cosP };
 }
 
+/** Project one world point with the view's clamped pitch. */
+export function projectPoint(point: Vec3, view: PreviewView): Vec3 {
+  return rotate(point, { yaw: view.yaw, pitch: clampPreviewPitch(view.pitch) });
+}
+
 /** The unit normal of a world-space triangle, or `null` for a degenerate face. */
 function triangleNormal(a: Vec3, b: Vec3, c: Vec3): Vec3 | null {
   const ab = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
@@ -68,7 +90,7 @@ function triangleNormal(a: Vec3, b: Vec3, c: Vec3): Vec3 | null {
 }
 
 function parseColor(color: string | null): [number, number, number] {
-  const value = color !== null && /^#[0-9a-f]{6}$/i.test(color) ? color : FALLBACK_COLOR;
+  const value = color !== null && /^#[0-9a-f]{6}$/i.test(color) ? color : NEUTRAL_COLOR;
   return [
     Number.parseInt(value.slice(1, 3), 16),
     Number.parseInt(value.slice(3, 5), 16),
@@ -143,6 +165,109 @@ export function projectMesh(mesh: PreviewMesh, view: PreviewView): PreviewProjec
   const pad = Math.max(width, height, 1) * 0.08;
   return {
     polygons,
+    bounds: {
+      minX: minX - pad,
+      minY: minY - pad,
+      width: width + pad * 2,
+      height: height + pad * 2,
+    },
+  };
+}
+
+export interface ExplodedPanelProjection {
+  /** SVG `points` of the cut-part boundary. */
+  points: string;
+  color: string;
+  label: string;
+  labelX: number;
+  labelY: number;
+  depth: number;
+}
+
+export interface ExplodedSeamProjection {
+  sides: string[];
+  links: string[];
+  color: string;
+}
+
+export interface ExplodedProjection {
+  panels: ExplodedPanelProjection[];
+  seams: ExplodedSeamProjection[];
+  bounds: { minX: number; minY: number; width: number; height: number };
+}
+
+/** A stored colour, or the neutral fallback. */
+function storedColor(color: string | null): string {
+  return color !== null && /^#[0-9a-f]{6}$/i.test(color) ? color : NEUTRAL_COLOR;
+}
+
+/** Project a closed or open 3D polyline to SVG points. */
+function projectedPoints(points: readonly Vec3[], view: PreviewView): string {
+  return points
+    .map((point) => {
+      const projected = projectPoint(point, view);
+      return `${projected.x.toFixed(3)},${projected.y.toFixed(3)}`;
+    })
+    .join(' ');
+}
+
+/**
+ * Project the exploded parts and their seam links. Panels are painted back to
+ * front; seam sides and the midpoint links are drawn above them.
+ */
+export function projectExploded(view: ExplodedView, camera: PreviewView): ExplodedProjection {
+  const projected = view.panels.map((panel) => {
+    const boundary = panel.boundary.map((point) => projectPoint(point, camera));
+    const center = projectPoint(panel.center, camera);
+    return {
+      panel,
+      points: boundary.map((point) => `${point.x.toFixed(3)},${point.y.toFixed(3)}`).join(' '),
+      labelX: center.x,
+      labelY: center.y,
+      depth: boundary.reduce((sum, point) => sum + point.z, 0) / boundary.length,
+    };
+  });
+
+  const seams = view.seams.map((seam) => ({
+    sides: seam.sides.map((side) => projectedPoints(side.points, camera)),
+    links: seam.links.map((link) => projectedPoints(link, camera)),
+    color: SEAM_COLORS[seam.colorIndex % SEAM_COLORS.length]!,
+  }));
+
+  const all = [
+    ...view.panels.flatMap((panel) => panel.boundary),
+    ...view.seams.flatMap((seam) => [
+      ...seam.sides.flatMap((side) => side.points),
+      ...seam.links.flatMap((link) => link),
+    ]),
+  ].map((point) => projectPoint(point, camera));
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const point of all) {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  }
+  const width = maxX - minX;
+  const height = maxY - minY;
+  const pad = Math.max(width, height, 1) * 0.1;
+
+  return {
+    panels: projected
+      .sort((a, b) => a.depth - b.depth)
+      .map((entry) => ({
+        points: entry.points,
+        color: storedColor(entry.panel.color),
+        label: entry.panel.label,
+        labelX: entry.labelX,
+        labelY: entry.labelY,
+        depth: entry.depth,
+      })),
+    seams,
     bounds: {
       minX: minX - pad,
       minY: minY - pad,

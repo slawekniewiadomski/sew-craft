@@ -1,7 +1,12 @@
 import type { PreviewMesh } from '@sewcraft/geometry';
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_PREVIEW_VIEW, clampPreviewPitch, projectMesh } from '@/lib/preview-mesh';
+import {
+  DEFAULT_PREVIEW_VIEW,
+  clampPreviewPitch,
+  projectExploded,
+  projectMesh,
+} from '@/lib/preview-mesh';
 
 const mesh = (overrides: Partial<PreviewMesh> = {}): PreviewMesh => ({
   positions: [
@@ -125,6 +130,42 @@ describe('projectMesh', () => {
     expect(projection.bounds.minY).toBeCloseTo(-0.8);
     expect(projection.bounds.width).toBeCloseTo(11.6);
     expect(projection.bounds.height).toBeCloseTo(11.6);
+  });
+
+  it('falls back to the neutral colour for an invalid exploded colour', () => {
+    const view = {
+      panels: [
+        {
+          instance: 'i1',
+          piece: 'p1',
+          label: 'Panel',
+          color: 'not-a-colour',
+          boundary: [
+            { x: 0, y: 0, z: 0 },
+            { x: 10, y: 0, z: 0 },
+            { x: 10, y: 10, z: 0 },
+            { x: 0, y: 10, z: 0 },
+          ],
+          center: { x: 5, y: 5, z: 0 },
+        },
+      ],
+      seams: [],
+      skipped: [],
+    };
+    const projection = projectExploded(view, { yaw: 0, pitch: 0 });
+    expect(projection.panels[0]!.color).toBe('#94a3b8');
+
+    const neutral = projectExploded(
+      { ...view, panels: [{ ...view.panels[0]!, color: null }] },
+      { yaw: 0, pitch: 0 },
+    );
+    expect(neutral.panels[0]!.color).toBe('#94a3b8');
+
+    const kept = projectExploded(
+      { ...view, panels: [{ ...view.panels[0]!, color: '#ff0000' }] },
+      { yaw: 0, pitch: 0 },
+    );
+    expect(kept.panels[0]!.color).toBe('#ff0000');
   });
 
   it('exposes a default three-quarter view', () => {

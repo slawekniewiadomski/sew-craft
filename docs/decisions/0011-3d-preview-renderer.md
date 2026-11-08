@@ -26,12 +26,17 @@ Two decisions had to be made before a spec:
    drawn as flat-shaded `<polygon>` elements sorted back to front (painter’s
    algorithm). There is no WebGL context and no canvas library. The preview uses
    the app’s existing theme colours, so it matches light and dark themes.
-2. **The shape model is pure TypeScript in `@sewcraft/geometry`.** `drape.ts`
+2. **The shape models are pure TypeScript in `@sewcraft/geometry`.** `drape.ts`
    takes the document and an assembly, builds a welded panel mesh and raises it
-   on a deterministic height field. The Vue layer only projects and paints it.
+   on a deterministic height field; `exploded.ts` lays the cut parts out as a
+   seam-linked stack. The Vue layer only projects and paints both.
 3. **The preview is derived and read-only.** No command writes it, no document
    field stores it, and save/autosave/versioning/export never read it. The
-   camera, inflate amount and wireframe toggle are ephemeral view state.
+   camera, mode, inflate amount and wireframe toggle are ephemeral view state.
+   The default **exploded** mode is a solver-free diagram of flat cut parts and
+   their seam links (`explodedAssembly`), so the assembly is legible even where
+   the folded shell is still approximate; the sewn height field is the second
+   mode.
 4. **A triangle budget bounds the SVG surface.** Above
    `PREVIEW_TRIANGLE_LIMIT` (6 000) the preview keeps the largest connected shell
    and reports that it simplified the view. If real patterns outgrow SVG, a later

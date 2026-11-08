@@ -318,7 +318,7 @@ The pipeline:
    Conforming midpoint subdivision stops at `PREVIEW_MAX_EDGE = 18` mm, the
    level cap or the triangle budget.
 2. **Seam samples.** Each seam side is resampled at a common
-   `PREVIEW_SAMPLE_SPACING = 4` mm along `resolveSeamRun`; the samples are
+   `PREVIEW_SAMPLE_SPACING = 8` mm along `resolveSeamRun`; the samples are
    inserted into the panel boundary by splitting the owning boundary triangle.
    The k-th sample of every side of a seam shares a weld group, so the seam is
    closed topologically.
@@ -341,6 +341,45 @@ from the camera, sorts the rest back to front and shades each with a soft
 Lambert term. The dialog paints one SVG
 `<polygon>` per triangle; wireframe keeps the outline and drops the fill. There is
 no WebGL context, camera or saved pose.
+
+### Exploded view (`exploded.ts`)
+
+The dialog's default mode answers “which edges sew to which” before any folding
+guess. `explodedAssembly(document, assembly)` returns an `ExplodedView | null`:
+
+```ts
+interface ExplodedView {
+  panels: {
+    instance: EntityId;
+    piece: EntityId;
+    label: string; // piece name, `Panel 1`/`Panel 2`, or `Piece N`
+    color: string | null;
+    boundary: Vec3[]; // cut loop, no repeated closing point
+    center: Vec3;
+  }[];
+  seams: {
+    id: EntityId;
+    sides: { instance: EntityId; points: Vec3[] }[];
+    links: Vec3[][]; // midpoint dashes to side 0
+    colorIndex: number;
+  }[];
+  skipped: EntityId[];
+}
+```
+
+Every instance is a flat **cut** part (allowances included) at
+`z = index * EXPLODE_GAP` (`60` mm), so the parts form a stack that orbit can
+separate. Each seam side comes from `resolveSeamRun` at its part's layer; the
+arc-length midpoint of every other side is linked to side 0's midpoint, and the
+rotating palette (`SEAM_COLOR_COUNT = 12`) keeps seams distinguishable. A seam
+with fewer than two resolvable sides is omitted; an unresolved part is listed in
+`skipped`. No welding, folding, inflation or triangle budget is involved.
+
+`projectExploded` reuses the same orthographic rotation and returns one SVG
+`points` string per cut-part boundary (painted back to front by depth), the
+projected seam sides and dashed links, the label anchors and the shared bounds.
+The dialog paints parts at 32 % opacity in their piece colour and draws the seam
+sides thicker than the links.
 
 ## Later entities (specced, not built)
 

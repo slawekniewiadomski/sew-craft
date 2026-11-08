@@ -1448,6 +1448,9 @@ describe('EditorView sewing', () => {
     await nextTick();
 
     expect(wrapper.find('[data-testid="preview-dialog"]').exists()).toBe(true);
+    expect(wrapper.findAll('[data-testid^="exploded-panel-"]').length).toBeGreaterThan(0);
+
+    await wrapper.find('[data-testid="preview-mode-sewn"]').trigger('click');
     expect(wrapper.findAll('[data-testid^="preview-face-"]').length).toBeGreaterThan(0);
 
     await wrapper.find('[data-testid="preview-close"]').trigger('click');

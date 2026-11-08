@@ -62,18 +62,37 @@ const assemblyOf = (seamed: boolean, instances = 2): Assembly => ({
 const mountDialog = (document = rectangle(), assembly = assemblyOf(true)) =>
   mount(PreviewDialog, { props: { document, assembly } });
 
+async function mountSewn(document = rectangle(), assembly = assemblyOf(true)) {
+  const wrapper = mountDialog(document, assembly);
+  await wrapper.find('[data-testid="preview-mode-sewn"]').trigger('click');
+  return wrapper;
+}
+
 describe('PreviewDialog', () => {
-  it('renders the projected faces and the controls', () => {
+  it('opens on the exploded parts with seam links and labels', () => {
     const wrapper = mountDialog();
 
     expect(wrapper.find('[data-testid="preview-dialog"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="preview-svg"]').exists()).toBe(true);
+    expect(wrapper.findAll('[data-testid^="exploded-panel-"]')).toHaveLength(2);
+    expect(wrapper.findAll('[data-testid^="exploded-seam-"]')).toHaveLength(2);
+    expect(wrapper.findAll('[data-testid^="exploded-link-"]')).toHaveLength(1);
+    expect(wrapper.findAll('[data-testid="exploded-label"]')).toHaveLength(2);
+    expect(wrapper.findAll('[data-testid^="preview-face-"]')).toHaveLength(0);
+  });
+
+  it('switches to the sewn view with its controls', async () => {
+    const wrapper = await mountSewn();
+
     expect(wrapper.findAll('[data-testid^="preview-face-"]').length).toBeGreaterThan(2);
     expect(wrapper.find('[data-testid="preview-inflate"]').attributes('value')).toBe('100');
     expect(wrapper.find('[data-testid="preview-inflate-value"]').text()).toBe('100%');
+
+    await wrapper.find('[data-testid="preview-mode-exploded"]').trigger('click');
+    expect(wrapper.findAll('[data-testid^="exploded-panel-"]')).toHaveLength(2);
   });
 
-  it('shows the empty state when nothing resolves', () => {
+  it('shows the empty state in both modes when nothing resolves', async () => {
     const wrapper = mountDialog(
       { ...createEmptyDocument() },
       { id: 'a1', name: 'Empty', instances: [] },
@@ -81,10 +100,13 @@ describe('PreviewDialog', () => {
 
     expect(wrapper.find('[data-testid="preview-empty"]').text()).toBe('Nothing to preview.');
     expect(wrapper.find('[data-testid="preview-svg"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="preview-mode-sewn"]').trigger('click');
+    expect(wrapper.find('[data-testid="preview-empty"]').text()).toBe('Nothing to preview.');
   });
 
   it('updates the inflate label and clamps out-of-range values', async () => {
-    const wrapper = mountDialog();
+    const wrapper = await mountSewn();
     const slider = wrapper.find('[data-testid="preview-inflate"]');
 
     await slider.setValue('100');
@@ -100,7 +122,7 @@ describe('PreviewDialog', () => {
   });
 
   it('switches to wireframe', async () => {
-    const wrapper = mountDialog();
+    const wrapper = await mountSewn();
     const face = () => wrapper.findAll('[data-testid^="preview-face-"]')[0]!;
 
     expect(face().attributes('fill')).not.toBe('none');
@@ -110,7 +132,7 @@ describe('PreviewDialog', () => {
   });
 
   it('orbits on a left drag and resets the view', async () => {
-    const wrapper = mountDialog();
+    const wrapper = await mountSewn();
     const svg = wrapper.find('[data-testid="preview-svg"]');
     const before = wrapper.findAll('[data-testid^="preview-face-"]')[0]!.attributes('points');
 
@@ -140,15 +162,15 @@ describe('PreviewDialog', () => {
     expect(wrapper.emitted('close')).toHaveLength(2);
   });
 
-  it('notes a non-sewable assembly and a simplified mesh', () => {
-    const unsewn = mountDialog(rectangle(), assemblyOf(false));
+  it('notes a non-sewable assembly and a simplified mesh in the sewn view', async () => {
+    const unsewn = await mountSewn(rectangle(), assemblyOf(false));
     expect(unsewn.find('[data-testid="preview-approximate"]').exists()).toBe(true);
 
-    const large = mountDialog(rectangle(1000), assemblyOf(false, 1));
+    const large = await mountSewn(rectangle(1000), assemblyOf(false, 1));
     expect(large.find('[data-testid="preview-simplified"]').exists()).toBe(true);
   });
 
-  it('hides the approximating note for a sewable assembly', () => {
+  it('hides the approximating note for a sewable assembly', async () => {
     const document = rectangle();
     const assembly: Assembly = {
       ...assemblyOf(false, 1),
@@ -158,13 +180,13 @@ describe('PreviewDialog', () => {
         kind: 'hem' as const,
       })),
     };
-    const wrapper = mountDialog(document, assembly);
+    const wrapper = await mountSewn(document, assembly);
 
     expect(wrapper.find('[data-testid="preview-approximate"]').exists()).toBe(false);
   });
 
   it('captures the pointer when the browser supports it', async () => {
-    const wrapper = mountDialog();
+    const wrapper = await mountSewn();
     const svg = wrapper.find('[data-testid="preview-svg"]');
     const capture = vi.fn();
     Object.defineProperty(svg.element, 'setPointerCapture', { configurable: true, value: capture });

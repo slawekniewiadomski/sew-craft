@@ -21,6 +21,7 @@ export * from './piece.js';
 export * from './assembly.js';
 export * from './seams.js';
 export * from './drape.js';
+export * from './exploded.js';
 export * from './migration.js';
 export * from './selection.js';
 export * from './solver.js';
