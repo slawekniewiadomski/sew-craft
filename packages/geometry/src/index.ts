@@ -17,6 +17,7 @@ export * from './circle.js';
 export * from './dimension.js';
 export * from './midpoint.js';
 export * from './offset.js';
+export * from './offset-seam.js';
 export * from './piece.js';
 export * from './assembly.js';
 export * from './migration.js';
