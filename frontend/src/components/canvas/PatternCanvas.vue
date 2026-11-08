@@ -146,6 +146,7 @@ import {
   type PieceView,
   type RegionView,
 } from '@/lib/pattern-canvas-views';
+import CanvasEntityLayers from '@/components/canvas/CanvasEntityLayers.vue';
 import CanvasMarquee from '@/components/canvas/CanvasMarquee.vue';
 import CanvasPreviews from '@/components/canvas/CanvasPreviews.vue';
 import CanvasRuler from '@/components/canvas/CanvasRuler.vue';
@@ -1743,183 +1744,22 @@ watch(
           />
         </g>
 
-        <g>
-          <template v-for="entry in lines" :key="entry.line.id">
-            <line
-              :x1="entry.start.x"
-              :y1="entry.start.y"
-              :x2="entry.end.x"
-              :y2="entry.end.y"
-              :class="entityClass(entry.line)"
-              :stroke-dasharray="entityDash(entry.line)"
-              :stroke-width="lineWidth(entry.line.id)"
-              stroke="currentColor"
-              stroke-linecap="round"
-              vector-effect="non-scaling-stroke"
-              :data-entity-id="entry.line.id"
-              data-kind="line"
-              :data-dimension-candidate="
-                dimensionCandidateLineIds.has(entry.line.id) ? 'true' : undefined
-              "
-              :data-cut-dimension-candidate="
-                cutEdgeCandidateIds.has(entry.line.id) ? 'true' : undefined
-              "
-              :data-dimension-first-pick="
-                dimensionFirstPick?.kind === 'line' && dimensionFirstPick.id === entry.line.id
-                  ? 'true'
-                  : undefined
-              "
-              @pointerenter="onEntityHover(entry.line.id)"
-              @pointerleave="onEntityLeave"
-            />
-            <line
-              :x1="entry.start.x"
-              :y1="entry.start.y"
-              :x2="entry.end.x"
-              :y2="entry.end.y"
-              stroke="transparent"
-              stroke-width="12"
-              vector-effect="non-scaling-stroke"
-              :data-entity-id="entry.line.id"
-              data-kind="line"
-              @pointerenter="onEntityHover(entry.line.id)"
-              @pointerleave="onEntityLeave"
-            />
-          </template>
-
-          <path
-            v-for="entry in curves"
-            :key="entry.curve.id"
-            :d="entry.d"
-            fill="none"
-            :class="entityClass(entry.curve)"
-            :stroke-dasharray="entityDash(entry.curve)"
-            :stroke-width="lineWidth(entry.curve.id)"
-            stroke="currentColor"
-            vector-effect="non-scaling-stroke"
-            :data-entity-id="entry.curve.id"
-            data-kind="curve"
-            :data-cut-dimension-candidate="
-              cutEdgeCandidateIds.has(entry.curve.id) ? 'true' : undefined
-            "
-            @pointerenter="onEntityHover(entry.curve.id)"
-            @pointerleave="onEntityLeave"
-            @dblclick.stop.prevent="onCurveDoubleClick(entry.curve.id, $event)"
-          />
-
-          <path
-            v-for="entry in arcs"
-            :key="entry.arc.id"
-            :d="entry.d"
-            fill="none"
-            :class="entityClass(entry.arc)"
-            :stroke-dasharray="entityDash(entry.arc)"
-            :stroke-width="lineWidth(entry.arc.id)"
-            stroke="currentColor"
-            vector-effect="non-scaling-stroke"
-            :data-entity-id="entry.arc.id"
-            data-kind="arc"
-            :data-cut-dimension-candidate="
-              cutEdgeCandidateIds.has(entry.arc.id) ? 'true' : undefined
-            "
-            @pointerenter="onEntityHover(entry.arc.id)"
-            @pointerleave="onEntityLeave"
-          />
-
-          <template v-for="entry in circles" :key="entry.circle.id">
-            <circle
-              :cx="entry.cx"
-              :cy="entry.cy"
-              :r="entry.r"
-              fill="none"
-              :class="entityClass(entry.circle)"
-              :stroke-dasharray="entityDash(entry.circle)"
-              :stroke-width="lineWidth(entry.circle.id)"
-              stroke="currentColor"
-              vector-effect="non-scaling-stroke"
-              :data-entity-id="entry.circle.id"
-              data-kind="circle"
-            />
-            <circle
-              :cx="entry.cx"
-              :cy="entry.cy"
-              :r="entry.r"
-              fill="none"
-              stroke="transparent"
-              stroke-width="12"
-              vector-effect="non-scaling-stroke"
-              :data-entity-id="entry.circle.id"
-              data-kind="circle"
-            />
-          </template>
-        </g>
-
-        <g
-          v-if="highlightedIds.size > 0"
-          class="pointer-events-none"
-          data-testid="measured-highlight-layer"
-          aria-hidden="true"
-        >
-          <template v-for="entry in lines" :key="`highlight-line-${entry.line.id}`">
-            <line
-              v-if="highlightedIds.has(entry.line.id)"
-              :x1="entry.start.x"
-              :y1="entry.start.y"
-              :x2="entry.end.x"
-              :y2="entry.end.y"
-              class="text-dimension-formula"
-              stroke="currentColor"
-              stroke-width="7"
-              stroke-linecap="round"
-              stroke-opacity="0.45"
-              vector-effect="non-scaling-stroke"
-              :data-measured-source="entry.line.id"
-            />
-          </template>
-          <template v-for="entry in curves" :key="`highlight-curve-${entry.curve.id}`">
-            <path
-              v-if="highlightedIds.has(entry.curve.id)"
-              :d="entry.d"
-              fill="none"
-              class="text-dimension-formula"
-              stroke="currentColor"
-              stroke-width="7"
-              stroke-linecap="round"
-              stroke-opacity="0.45"
-              vector-effect="non-scaling-stroke"
-              :data-measured-source="entry.curve.id"
-            />
-          </template>
-          <template v-for="entry in arcs" :key="`highlight-arc-${entry.arc.id}`">
-            <path
-              v-if="highlightedIds.has(entry.arc.id)"
-              :d="entry.d"
-              fill="none"
-              class="text-dimension-formula"
-              stroke="currentColor"
-              stroke-width="7"
-              stroke-linecap="round"
-              stroke-opacity="0.45"
-              vector-effect="non-scaling-stroke"
-              :data-measured-source="entry.arc.id"
-            />
-          </template>
-          <template v-for="entry in circles" :key="`highlight-circle-${entry.circle.id}`">
-            <circle
-              v-if="highlightedIds.has(entry.circle.id)"
-              :cx="entry.cx"
-              :cy="entry.cy"
-              :r="entry.r"
-              fill="none"
-              class="text-dimension-formula"
-              stroke="currentColor"
-              stroke-width="7"
-              stroke-opacity="0.45"
-              vector-effect="non-scaling-stroke"
-              :data-measured-source="entry.circle.id"
-            />
-          </template>
-        </g>
+        <CanvasEntityLayers
+          :lines="lines"
+          :curves="curves"
+          :arcs="arcs"
+          :circles="circles"
+          :highlighted-ids="highlightedIds"
+          :dimension-candidate-line-ids="dimensionCandidateLineIds"
+          :cut-edge-candidate-ids="cutEdgeCandidateIds"
+          :dimension-first-pick="dimensionFirstPick"
+          :entity-class="entityClass"
+          :entity-dash="entityDash"
+          :line-width="lineWidth"
+          @hover="onEntityHover"
+          @leave="onEntityLeave"
+          @curve-double-click="onCurveDoubleClick"
+        />
 
         <g data-testid="marks-layer">
           <g v-for="mark in markViews" :key="mark.id" class="group cursor-pointer">
