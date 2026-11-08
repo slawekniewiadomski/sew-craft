@@ -25,7 +25,7 @@ import type {
   PointEntity,
   Variable,
 } from '../types.js';
-import { applyRemoveCornerRound } from './allowances.js';
+import { applyRemoveCornerRound } from './corner-rounds.js';
 import {
   deleteEntityCommand,
   noOp,
