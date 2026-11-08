@@ -43,7 +43,7 @@ import type {
   Seam,
   SeamSide,
 } from '../types.js';
-import { requireLengthParam } from './constraints.js';
+import { requireLengthParam } from './constraint-validation.js';
 import { noOp, replacePiece, requireLine, requirePiece, requirePoint } from './shared.js';
 import type { Command, CommandApplication, CommandOf, CommandType, ParamInput } from './types.js';
 
