@@ -154,6 +154,7 @@ import CanvasAnnotationLayers, {
 import CanvasPointLayers from '@/components/canvas/CanvasPointLayers.vue';
 import CanvasPieceBandLayers from '@/components/canvas/CanvasPieceBandLayers.vue';
 import CanvasPieceCutLayers from '@/components/canvas/CanvasPieceCutLayers.vue';
+import { useDimensionScene } from '@/composables/use-dimension-scene';
 import CanvasHints from '@/components/canvas/CanvasHints.vue';
 import CanvasDimensionDrawings from '@/components/canvas/CanvasDimensionDrawings.vue';
 import CanvasDimensionPreviews from '@/components/canvas/CanvasDimensionPreviews.vue';
@@ -673,142 +674,28 @@ const pickedLineIds = computed(
     new Set(props.constraintPicks.filter((pick) => pick.kind === 'line').map((pick) => pick.id)),
 );
 
-const distanceConstraints = computed(() =>
-  props.document.constraints.filter(
-    (constraint): constraint is DistanceConstraint => constraint.type === 'distance',
-  ),
-);
-
-/** The document, selection and drag every dimension drawing reads. */
-const dimensionDrawingOptions = computed<DimensionDrawingOptions>(() => ({
-  document: props.document,
-  selectedIds: selectedDimensionIds.value,
-  drag: dimensionDrag.value,
-  dragEnabled: dimensionDragEnabled.value,
-  constraintActive: props.constraintActive,
-}));
-
-function drawingFor(constraint: DistanceConstraint, preview: boolean): DimensionDrawing | null {
-  return dimensionDrawing(constraint, preview, dimensionDrawingOptions.value);
-}
-
-/** The dimension currently being placed, or `null` when no placement is active. */
-const dimensionPreviewConstraint = computed<DistanceConstraint | null>(() => {
-  const placement = dimensionPlacement.value;
-  if (placement === null) return null;
-
-  const measured = measureDistanceDimension(props.document, {
-    id: 'dimension-preview',
-    type: 'distance',
-    a: placement.a,
-    b: placement.b,
-    orientation: placement.orientation,
-  });
-  if (measured === null || measured <= 0) return null;
-
-  // A dimension being placed is a driven preview: it measures without a value.
-  return {
-    id: 'dimension-preview',
-    type: 'distance',
-    a: placement.a,
-    b: placement.b,
-    orientation: placement.orientation,
-    offset: placement.offset,
-  };
-});
-
-/**
- * Every dimension stroke, plus the in-progress placement. Dimensions are a
- * render-only view of distance constraints: hiding them never changes the
- * document, and the preview only appears while the dimension tool is placing.
- */
-const dimensionDrawings = computed<DimensionDrawing[]>(() => {
-  const committed = props.showDimensions
-    ? distanceConstraints.value.flatMap((constraint) => {
-        const drawing = drawingFor(constraint, false);
-        return drawing === null ? [] : [drawing];
-      })
-    : [];
-
-  const previewConstraint = dimensionPreviewConstraint.value;
-  const preview = previewConstraint === null ? null : drawingFor(previewConstraint, true);
-  return preview === null ? committed : [...committed, preview];
-});
-
-const dimensionLabels = computed<DimensionLabelView[]>(() =>
-  dimensionLabelViews(dimensionDrawings.value, (point) => worldToScreen(viewport.value, point)),
-);
-
-/** Cut dimensions are read-only derived measurements of a piece's cut loop. */
-const derivedConstraints = computed(() =>
-  props.document.constraints.filter(
-    (constraint): constraint is DerivedDistanceConstraint => constraint.type === 'derived_distance',
-  ),
-);
-
-/** The cut dimension currently being placed, or `null` when none is active. */
-const cutDimensionPreviewConstraint = computed<DerivedDistanceConstraint | null>(() => {
-  const placement = cutDimensionPlacement.value;
-  if (placement === null) return null;
-  return {
-    id: 'cut-dimension-preview',
-    type: 'derived_distance',
-    piece: placement.piece,
-    a: placement.a,
-    b: placement.b,
-    orientation: placement.orientation,
-    offset: placement.offset,
-  };
-});
-
-function derivedDrawingFor(
-  constraint: DerivedDistanceConstraint,
-  preview: boolean,
-): DerivedDimensionDrawing | null {
-  return derivedDimensionDrawing(constraint, preview, {
-    ...dimensionDrawingOptions.value,
-    drag: derivedDrag.value,
-  });
-}
-
-const derivedDimensionDrawings = computed<DerivedDimensionDrawing[]>(() => {
-  if (!props.showDimensions) return [];
-
-  const committed = derivedConstraints.value.flatMap((constraint): DerivedDimensionDrawing[] => {
-    const drawing = derivedDrawingFor(constraint, false);
-    return drawing === null ? [] : [drawing];
-  });
-
-  const preview = cutDimensionPreviewConstraint.value;
-  if (preview === null) return committed;
-
-  const previewDrawing = derivedDrawingFor(preview, true);
-  return previewDrawing === null ? committed : [...committed, previewDrawing];
-});
-
-const derivedDimensionLabels = computed<DerivedDimensionLabelView[]>(() =>
-  derivedDimensionLabelViews(derivedDimensionDrawings.value, (point) =>
-    worldToScreen(viewport.value, point),
-  ),
-);
-
-/** The cut dimension behind a label, which only renders when it resolves. */
-function derivedConstraint(id: EntityId): DerivedDistanceConstraint {
-  return derivedConstraints.value.find((constraint) => constraint.id === id)!;
-}
-
-/** Where the inline editor sits, in canvas pixels. */
-const dimensionEditor = computed(() => {
-  const editing = editingDimension.value;
-  if (editing === null) return null;
-
-  const label = dimensionLabels.value.find((entry) => entry.id === editing.id)!;
-  return {
-    id: editing.id,
-    value: editing.value,
-    x: label.x,
-    y: label.y,
-  };
+const {
+  distanceConstraints,
+  dimensionDrawings,
+  dimensionLabels,
+  derivedConstraints,
+  derivedDimensionDrawings,
+  derivedDimensionLabels,
+  dimensionEditor,
+  derivedConstraint,
+  labelClass,
+} = useDimensionScene({
+  document: () => props.document,
+  showDimensions: () => props.showDimensions,
+  constraintActive: () => props.constraintActive,
+  selectedDimensionIds: () => selectedDimensionIds.value,
+  dimensionDrag: () => dimensionDrag.value,
+  dimensionDragEnabled: () => dimensionDragEnabled.value,
+  derivedDrag: () => derivedDrag.value,
+  dimensionPlacement: () => dimensionPlacement.value,
+  cutDimensionPlacement: () => cutDimensionPlacement.value,
+  viewport: () => viewport.value,
+  editingDimension: () => editingDimension.value,
 });
 
 /** Insert a picked variable token into whichever inline editor is open. */
@@ -1070,21 +957,6 @@ function lineWidth(id: EntityId): number {
     marqueeCandidates.value.has(id)
     ? 3
     : 2;
-}
-
-function labelClass(label: DimensionLabelView): string {
-  switch (label.state) {
-    case 'referenced':
-      return 'fill-dimension-reference';
-    case 'broken':
-      return 'fill-destructive';
-    case 'driven':
-      return 'fill-muted-foreground';
-    case 'formula':
-      return 'fill-dimension-formula';
-    case 'set':
-      return 'fill-foreground';
-  }
 }
 
 function onDimensionDoubleClick(label: DimensionLabelView): void {
