@@ -324,3 +324,167 @@ function typeLabel(row: VariableRow): string {
     </td>
   </tr>
 </template>
+
+<style scoped>
+td {
+  height: 26px;
+  border: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.rowno {
+  background: color-mix(in oklab, var(--muted) 55%, transparent);
+  color: var(--muted-foreground);
+  font-family: var(--font-annotation);
+  font-size: 9px;
+  text-align: center;
+  padding: 0;
+}
+
+tr:hover td:not(.rowno) {
+  background: color-mix(in oklab, var(--muted) 45%, transparent);
+}
+
+.cell {
+  display: block;
+  width: 100%;
+  height: 25px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  padding: 0 4px;
+}
+
+.cell.name {
+  font-weight: 500;
+}
+
+.cell.comment {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.cell.value {
+  font-family: var(--font-annotation);
+  font-size: 10px;
+  text-align: right;
+}
+
+.cell:focus {
+  outline: 2px solid color-mix(in oklab, var(--primary) 55%, transparent);
+  outline-offset: -2px;
+  background: var(--background);
+}
+
+.measured {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  height: 25px;
+  padding: 0 4px;
+  color: color-mix(in oklab, var(--dimension-formula) 80%, var(--foreground));
+  font-family: var(--font-annotation);
+  font-size: 10px;
+}
+
+.value-wrap {
+  display: flex;
+  align-items: center;
+  height: 25px;
+  padding-right: 2px;
+}
+
+.unit.inline {
+  width: 20px;
+  flex: none;
+  font-size: 8px;
+  color: var(--muted-foreground);
+}
+
+.unit {
+  display: block;
+  width: 100%;
+  height: 25px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-annotation);
+  font-size: 9px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.unit:hover {
+  background: color-mix(in oklab, var(--muted) 70%, transparent);
+}
+
+.type {
+  display: block;
+  height: 25px;
+  overflow: hidden;
+  padding: 0 4px;
+  color: var(--muted-foreground);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  line-height: 25px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  width: 100%;
+  text-align: left;
+}
+
+.type.formula,
+.type.measured {
+  color: color-mix(in oklab, var(--dimension-formula) 80%, var(--foreground));
+}
+
+.type.broken {
+  color: var(--destructive);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1px;
+  height: 25px;
+  padding: 0 2px;
+}
+
+.iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  opacity: 0.55;
+  padding: 0;
+}
+
+tr:hover .iconbtn,
+tr:focus-within .iconbtn,
+.iconbtn.active {
+  opacity: 1;
+}
+
+.iconbtn:hover {
+  background: color-mix(in oklab, var(--destructive) 10%, transparent);
+  color: var(--destructive);
+}
+
+.iconbtn.note.active,
+.iconbtn.edit.active,
+.iconbtn.edit:hover {
+  background: color-mix(in oklab, var(--primary) 14%, transparent);
+  color: color-mix(in oklab, var(--primary) 80%, var(--foreground));
+}
+</style>
