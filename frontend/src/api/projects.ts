@@ -1,9 +1,18 @@
 import type { PatternDocument } from '@sewcraft/geometry';
 
+import { request } from './client';
+
+export { ApiError } from './client';
+
 export interface Project {
   id: number;
+  user_id: number;
   name: string;
   description: string | null;
+  /** The owner's public identity, when the API eager-loaded it. */
+  owner?: { id: number; email: string };
+  /** Whether the signed-in account owns this project and may edit it. */
+  can_edit: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -12,6 +21,8 @@ export interface Paginated<T> {
   data: T[];
   links?: Record<string, string | null>;
   meta?: Record<string, unknown>;
+  /** How many projects the signed-in account owns, across all pages. */
+  my_project_count?: number;
 }
 
 export interface Resource<T> {
@@ -51,49 +62,6 @@ export interface SavePatternPayload {
 export interface SavePatternOptions {
   /** Keep the request alive when the page is hidden or unloading. */
   keepalive?: boolean;
-}
-
-/**
- * A non-2xx API response. `body` keeps the parsed JSON so callers can react to
- * the documented `409` conflict payload without reparsing.
- */
-export class ApiError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly body: unknown,
-  ) {
-    const message = (body as { message?: unknown } | null)?.message;
-    super(typeof message === 'string' ? message : `Request failed with status ${status}`);
-    this.name = 'ApiError';
-  }
-}
-
-const baseUrl = import.meta.env.VITE_API_URL ?? '/api';
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, {
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    ...init,
-  });
-
-  if (!response.ok) {
-    let body: unknown = null;
-    try {
-      body = await response.json();
-    } catch {
-      body = null;
-    }
-    throw new ApiError(response.status, body);
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return (await response.json()) as T;
 }
 
 export interface UpdateProjectPayload {

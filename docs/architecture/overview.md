@@ -25,11 +25,11 @@ geometry can be tested, reused and eventually driven by agents without a browser
 
 ## Responsibilities
 
-| Component           | Owns                                                            | Must not                                |
-| ------------------- | --------------------------------------------------------------- | --------------------------------------- |
-| `frontend/`         | UI, interactions, viewport, rendering, local editor state       | contain geometry math or business rules |
-| `packages/geometry` | entities, constraint solving, units, later export serializers   | import Vue/DOM, do I/O                  |
-| `app/` (Laravel)    | persistence, validation, auth (later), export job orchestration | contain geometry math                   |
+| Component           | Owns                                                          | Must not                                |
+| ------------------- | ------------------------------------------------------------- | --------------------------------------- |
+| `frontend/`         | UI, interactions, viewport, rendering, local editor state     | contain geometry math or business rules |
+| `packages/geometry` | entities, constraint solving, units, later export serializers | import Vue/DOM, do I/O                  |
+| `app/` (Laravel)    | persistence, validation, auth, export job orchestration       | contain geometry math                   |
 
 ## Data flow
 

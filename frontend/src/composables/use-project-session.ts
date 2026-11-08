@@ -118,6 +118,8 @@ export function useProjectSession({
       ]);
       project.value = projectResponse.data;
       applySnapshot(patternResponse.data, projectResponse.data.name);
+      // Every account may open every public project, but only its owner edits.
+      if (!projectResponse.data.can_edit) editor.setReadOnly(true);
       loadState.value = 'ready';
     } catch (cause) {
       loadError.value = cause instanceof Error ? cause.message : 'Failed to load the project';

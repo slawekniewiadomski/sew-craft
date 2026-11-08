@@ -17,8 +17,10 @@ describe('EditorView project settings', () => {
     updateMock.mockImplementation(async (id, payload) => ({
       data: {
         id,
+        user_id: 1,
         name: payload.name,
         description: payload.description,
+        can_edit: true,
         created_at: '',
         updated_at: '',
       },
@@ -26,12 +28,33 @@ describe('EditorView project settings', () => {
     getMock.mockImplementation(async () => ({
       data: {
         id: 1,
+        user_id: 1,
         name: 'Bodice',
         description: 'A fitted bodice block',
+        can_edit: true,
         created_at: '',
         updated_at: '',
       },
     }));
+  });
+
+  it('opens another account project read-only', async () => {
+    getMock.mockImplementation(async () => ({
+      data: {
+        id: 1,
+        user_id: 2,
+        name: 'Bodice',
+        description: null,
+        can_edit: false,
+        created_at: '',
+        updated_at: '',
+      },
+    }));
+    const { wrapper, store } = await mountLoaded(lineDoc);
+
+    expect(store.readOnly).toBe(true);
+    expect(wrapper.find('[data-testid="read-only-pill"]').text()).toBe('Read-only');
+    expect(wrapper.find('[data-testid="project-settings"]').attributes('disabled')).toBeDefined();
   });
 
   it('opens the modal from the top bar and closes it on cancel', async () => {

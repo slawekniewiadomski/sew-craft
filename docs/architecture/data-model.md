@@ -7,14 +7,17 @@ while the entity model evolves. The canonical geometry document is versioned.
 
 ### `projects`
 
-| Column                      | Type       | Notes    |
-| --------------------------- | ---------- | -------- |
-| `id`                        | bigint PK  |          |
-| `name`                      | string     | required |
-| `description`               | text, null |          |
-| `created_at` / `updated_at` | timestamp  |          |
+| Column                      | Type                 | Notes    |
+| --------------------------- | -------------------- | -------- |
+| `id`                        | bigint PK            |          |
+| `user_id`                   | FK → users (cascade) | owner    |
+| `name`                      | string               | required |
+| `description`               | text, null           |          |
+| `created_at` / `updated_at` | timestamp            |          |
 
-A project is the top-level container a user opens and exports.
+A project is the top-level container a user opens and exports. It always belongs
+to one account; an account may own at most three. Every signed-in account may
+read every project, while only the owner may change it.
 
 ### `patterns`
 
@@ -345,5 +348,8 @@ command schema.
 
 - Use `json` (not `jsonb`) for now so the in-memory SQLite test connection works
   unchanged. Revisit if we need indexing into geometry.
-- No `user_id` yet; single-user self-hosted. Add it together with Sanctum when
-  multi-user arrives.
+- `users` are email + password accounts. `projects.user_id` is required and
+  cascades on user deletion; projects created before accounts existed are removed
+  by the migration.
+- Sanctum's `personal_access_tokens` table holds bearer tokens. The API is
+  stateless: a request authenticates from its token, never a session cookie.

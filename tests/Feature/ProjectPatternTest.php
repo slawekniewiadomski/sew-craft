@@ -3,7 +3,14 @@
 use App\Models\Pattern;
 use App\Models\PatternVersion;
 use App\Models\Project;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Laravel\Sanctum\Sanctum;
+
+beforeEach(function () {
+    $this->user = User::factory()->create();
+    Sanctum::actingAs($this->user);
+});
 
 /**
  * @return array<string, mixed>
@@ -20,7 +27,7 @@ function patternDocument(string $schema = 'sewcraft.pattern/0.2'): array
 }
 
 it('shows an unsaved pattern without a document', function () {
-    $project = Project::factory()->create(['name' => 'Summer dress']);
+    $project = Project::factory()->for($this->user)->create(['name' => 'Summer dress']);
 
     $this->getJson("/api/projects/{$project->id}/pattern")
         ->assertOk()
@@ -37,7 +44,7 @@ it('returns a 404 for a missing project', function () {
 });
 
 it('shows the working copy and latest checkpoint', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
     $pattern = Pattern::factory()->for($project)->create([
         'geometry' => patternDocument(),
     ]);
@@ -56,7 +63,7 @@ it('shows the working copy and latest checkpoint', function () {
 });
 
 it('reports zero for a pattern without checkpoints', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
     Pattern::factory()->for($project)->create(['geometry' => patternDocument()]);
 
     $this->getJson("/api/projects/{$project->id}/pattern")
@@ -66,7 +73,7 @@ it('reports zero for a pattern without checkpoints', function () {
 });
 
 it('creates the pattern and its first checkpoint on the first save', function () {
-    $project = Project::factory()->create(['name' => 'Summer dress']);
+    $project = Project::factory()->for($this->user)->create(['name' => 'Summer dress']);
 
     $this->putJson("/api/projects/{$project->id}/pattern", [
         'document' => patternDocument(),
@@ -84,7 +91,7 @@ it('creates the pattern and its first checkpoint on the first save', function ()
 });
 
 it('appends one checkpoint per changed save', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
 
     $this->putJson("/api/projects/{$project->id}/pattern", [
         'document' => patternDocument(),
@@ -110,7 +117,7 @@ it('appends one checkpoint per changed save', function () {
 });
 
 it('does not append a checkpoint for an unchanged document', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
 
     $this->putJson("/api/projects/{$project->id}/pattern", [
         'document' => patternDocument(),
@@ -129,7 +136,7 @@ it('does not append a checkpoint for an unchanged document', function () {
 });
 
 it('rejects a stale expected version with the current checkpoint', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
     Pattern::factory()->for($project)->create();
 
     $this->putJson("/api/projects/{$project->id}/pattern", [
@@ -150,7 +157,7 @@ it('rejects a stale expected version with the current checkpoint', function () {
 });
 
 it('forces an overwrite when the expected version is null', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
     Pattern::factory()->for($project)->create();
     $this->putJson("/api/projects/{$project->id}/pattern", [
         'document' => patternDocument(),
@@ -171,7 +178,7 @@ it('forces an overwrite when the expected version is null', function () {
 });
 
 it('treats a reordered but identical document as unchanged', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
 
     $this->putJson("/api/projects/{$project->id}/pattern", [
         'document' => patternDocument(),
@@ -195,7 +202,7 @@ it('treats a reordered but identical document as unchanged', function () {
 });
 
 it('returns the current time when a stored document has no checkpoint', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
     Pattern::factory()->for($project)->create(['geometry' => patternDocument()]);
 
     $this->putJson("/api/projects/{$project->id}/pattern", [
@@ -210,7 +217,7 @@ it('returns the current time when a stored document has no checkpoint', function
 });
 
 it('archives the old working copy before an upgrade save', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
     $pattern = Pattern::factory()->for($project)->create([
         'geometry' => patternDocument('sewcraft.pattern/0.1'),
     ]);
@@ -235,7 +242,7 @@ it('archives the old working copy before an upgrade save', function () {
 });
 
 it('does not archive when the save carries no expected schema', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
     $pattern = Pattern::factory()->for($project)->create([
         'geometry' => patternDocument('sewcraft.pattern/0.1'),
     ]);
@@ -251,7 +258,7 @@ it('does not archive when the save carries no expected schema', function () {
 });
 
 it('validates the document envelope', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
 
     $this->putJson("/api/projects/{$project->id}/pattern", [])
         ->assertUnprocessable()
@@ -273,7 +280,7 @@ it('validates the document envelope', function () {
 });
 
 it('rejects a document larger than two megabytes', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
 
     $document = patternDocument();
     $document['blob'] = str_repeat('a', 2 * 1024 * 1024);
@@ -284,7 +291,7 @@ it('rejects a document larger than two megabytes', function () {
 });
 
 it('validates the expected version and schema', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
 
     $this->putJson("/api/projects/{$project->id}/pattern", [
         'document' => patternDocument(),
@@ -316,7 +323,7 @@ it('returns a 404 when saving to a missing project', function () {
 });
 
 it('saves an empty document', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
 
     $this->putJson("/api/projects/{$project->id}/pattern", [
         'document' => patternDocument(),
@@ -327,7 +334,7 @@ it('saves an empty document', function () {
 });
 
 it('saves to the first pattern only', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
     $first = Pattern::factory()->for($project)->create();
     $second = Pattern::factory()->for($project)->create();
 
@@ -343,7 +350,7 @@ it('saves to the first pattern only', function () {
 });
 
 it('rolls the transaction back when the expected version conflicts', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
 
     $this->putJson("/api/projects/{$project->id}/pattern", [
         'document' => patternDocument(),
@@ -355,7 +362,7 @@ it('rolls the transaction back when the expected version conflicts', function ()
 });
 
 it('tags a save without an origin as a manual checkpoint', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
 
     $this->putJson("/api/projects/{$project->id}/pattern", [
         'document' => patternDocument(),
@@ -366,7 +373,7 @@ it('tags a save without an origin as a manual checkpoint', function () {
 });
 
 it('coalesces autosave checkpoints and keeps every manual one', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
 
     $this->putJson("/api/projects/{$project->id}/pattern", [
         'document' => patternDocument(),
@@ -421,7 +428,7 @@ it('coalesces autosave checkpoints and keeps every manual one', function () {
 });
 
 it('appends nothing for an unchanged autosave document', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
 
     $this->putJson("/api/projects/{$project->id}/pattern", [
         'document' => patternDocument(),
@@ -441,7 +448,7 @@ it('appends nothing for an unchanged autosave document', function () {
 });
 
 it('still rejects a stale autosave write with the current checkpoint', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
 
     $this->putJson("/api/projects/{$project->id}/pattern", [
         'document' => patternDocument(),
@@ -458,7 +465,7 @@ it('still rejects a stale autosave write with the current checkpoint', function 
 });
 
 it('rejects an unknown write origin', function () {
-    $project = Project::factory()->create();
+    $project = Project::factory()->for($this->user)->create();
 
     $this->putJson("/api/projects/{$project->id}/pattern", [
         'document' => patternDocument(),
@@ -467,4 +474,16 @@ it('rejects an unknown write origin', function () {
     ])
         ->assertUnprocessable()
         ->assertJsonValidationErrors('origin');
+});
+
+it('refuses a pattern save from another account', function () {
+    $owner = User::factory()->create();
+    $project = Project::factory()->for($owner)->create();
+
+    $this->putJson("/api/projects/{$project->id}/pattern", [
+        'document' => patternDocument(),
+        'expected_version' => null,
+    ])->assertForbidden();
+
+    expect(Pattern::query()->count())->toBe(0);
 });

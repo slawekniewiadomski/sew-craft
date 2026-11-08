@@ -1100,6 +1100,7 @@ onBeforeUnmount(() => {
       :saved-at="editor.lastSavedAt"
       :origin="editor.lastSaveOrigin"
       :read-only="editor.readOnly"
+      :can-edit-project="project?.can_edit ?? true"
       :load-state="loadState"
       @save="save"
       @settings="openSettings"

@@ -16,10 +16,12 @@ const props = withDefaults(
     /** Which writer produced the last save; only the saved copy uses it. */
     origin?: 'manual' | 'autosave' | null;
     readOnly?: boolean;
+    /** Whether the signed-in account owns this project and may rename it. */
+    canEditProject?: boolean;
     /** Until the document is ready the bar shows identity only. */
     loadState?: LoadState;
   }>(),
-  { savedAt: null, origin: null, readOnly: false, loadState: 'ready' },
+  { savedAt: null, origin: null, readOnly: false, canEditProject: true, loadState: 'ready' },
 );
 
 const emit = defineEmits<{ save: []; settings: [] }>();
@@ -107,6 +109,7 @@ const dotTone = computed(() => {
         title="Project settings"
         aria-label="Project settings"
         data-testid="project-settings"
+        :disabled="!canEditProject"
         @click="emit('settings')"
       >
         <svg
@@ -128,7 +131,7 @@ const dotTone = computed(() => {
         class="shrink-0 rounded-sm border px-1.5 py-0.5 text-2xs font-medium"
         data-testid="read-only-pill"
       >
-        Read-only (older format)
+        Read-only
       </span>
     </div>
 

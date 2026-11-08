@@ -131,8 +131,14 @@ describe('EditorTopBar', () => {
   it('blocks saving and shows the read-only pill for a read-only document', async () => {
     const wrapper = await mountBar({ state: 'dirty', readOnly: true });
 
-    expect(wrapper.find('[data-testid="read-only-pill"]').text()).toBe('Read-only (older format)');
+    expect(wrapper.find('[data-testid="read-only-pill"]').text()).toBe('Read-only');
     expect(wrapper.find('[data-testid="save-project"]').attributes('disabled')).toBeDefined();
+  });
+
+  it('disables project settings for another account project', async () => {
+    const wrapper = await mountBar({ canEditProject: false });
+
+    expect(wrapper.find('[data-testid="project-settings"]').attributes('disabled')).toBeDefined();
   });
 
   it('emits save from the button', async () => {

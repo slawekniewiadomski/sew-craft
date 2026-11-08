@@ -1,8 +1,10 @@
 # API
 
-Stateless JSON API under `/api`. No auth in v0.1 (single-user, self-hosted); the
-surface is designed so Sanctum can be added without breaking clients. Bump the
-`spec_version` for breaking contract changes.
+Stateless JSON API under `/api`. Authentication uses Sanctum personal access
+tokens: register or log in to receive a bearer token, and send it on every
+protected request. The command spec, registration and login stay public; every
+project route requires an account. Bump the `spec_version` for breaking contract
+changes.
 
 Base URL: `http://localhost:8000/api` (`/api` is proxied by the Vite dev server).
 
@@ -10,14 +12,18 @@ Base URL: `http://localhost:8000/api` (`/api` is proxied by the Vite dev server)
 
 | Method    | Path                      | Purpose                              |
 | --------- | ------------------------- | ------------------------------------ |
+| POST      | `/register`               | Create an account and return a token |
+| POST      | `/login`                  | Sign in and return a token           |
+| POST      | `/logout`                 | Revoke the current token             |
+| GET       | `/user`                   | The signed-in account                |
 | GET       | `/commands`               | Machine-readable command spec        |
-| GET       | `/projects`               | Paginated list of projects           |
-| POST      | `/projects`               | Create a project                     |
-| GET       | `/projects/{id}`          | Show a project                       |
-| PUT/PATCH | `/projects/{id}`          | Update a project                     |
-| DELETE    | `/projects/{id}`          | Delete a project                     |
+| GET       | `/projects`               | Paginated public projects            |
+| POST      | `/projects`               | Create a project (max 3 per account) |
+| GET       | `/projects/{id}`          | Show a public project                |
+| PUT/PATCH | `/projects/{id}`          | Update an owned project              |
+| DELETE    | `/projects/{id}`          | Delete an owned project              |
 | GET       | `/projects/{id}/pattern`  | Fetch the canonical pattern document |
-| PUT       | `/projects/{id}/pattern`  | Replace the pattern document         |
+| PUT       | `/projects/{id}/pattern`  | Replace an owned pattern document    |
 | POST      | `/projects/{id}/commands` | Apply a batch of commands ⏳         |
 | POST      | `/patterns/{id}/exports`  | Queue an export (svg/pdf/dxf)        |
 
@@ -30,12 +36,21 @@ Rows marked ⏳ are specified but not yet implemented.
 - **Validation** errors return `422` with `{ "message", "errors": { field: [...] } }`.
 - **Not found** returns `404`. **Success with no body** returns `204`.
 - All requests send `Accept: application/json`.
+- Protected requests send `Authorization: Bearer <token>`.
 - Timestamps are ISO-8601 UTC.
+- Every signed-in account may read every project; only its owner may update,
+  delete or save it. An account may own at most three projects.
 
 ## Examples
 
 ```bash
+TOKEN=$(curl -s -X POST http://localhost:8000/api/register \
+  -H 'Content-Type: application/json' -H 'Accept: application/json' \
+  -d '{"email":"maker@example.com","password":"correct-horse","password_confirmation":"correct-horse"}' \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["token"])')
+
 curl -X POST http://localhost:8000/api/projects \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -H 'Accept: application/json' \
   -d '{"name":"Summer dress","description":"A-line block"}'
 ```
@@ -45,8 +60,11 @@ curl -X POST http://localhost:8000/api/projects \
 {
   "data": {
     "id": 1,
+    "user_id": 1,
     "name": "Summer dress",
     "description": "A-line block",
+    "owner": { "id": 1, "email": "maker@example.com" },
+    "can_edit": true,
     "created_at": "...",
     "updated_at": "...",
   },
@@ -153,7 +171,15 @@ POST /api/projects/1/commands
 The API lives under `/api` and evolves additively. The command/
 document contract versions separately via `config('geometry.spec_version')`.
 
-## Auth (later)
+## Auth
 
-When added: Laravel Sanctum token/SPA auth, `user_id` on `projects`, scoped
-queries. No endpoint shape should need to change — only middleware and ownership.
+Laravel Sanctum personal access tokens. `users` hold an email and password;
+`projects.user_id` names the owner. Registration derives a display name from the
+email's local part and returns a token immediately. Login issues a new token;
+logout deletes only the token used for the request. Email verification, password
+reset and token expiry are not part of this version.
+
+All project reads are public to signed-in accounts. Owner-only routes use a
+`ProjectPolicy` (`update`, `delete`); the pattern save reuses `update`. The
+project list returns `my_project_count` beside the paginated rows, so the UI can
+show the three-project allowance without loading every project.

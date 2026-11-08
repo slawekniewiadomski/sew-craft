@@ -18,16 +18,16 @@ constraint solver exist and are tested; real editing features are specced in
 
 ## Stack (locked decisions)
 
-| Area               | Choice                                                                       |
-| ------------------ | ---------------------------------------------------------------------------- |
-| Backend            | Laravel 13, PHP 8.4, PostgreSQL 16                                           |
-| Frontend           | Vue 3 + Vite + TypeScript, Pinia, Vue Router, Tailwind v4, shadcn-vue        |
-| Geometry / solver  | Custom, framework-agnostic TypeScript in `packages/geometry`                 |
-| Geometry rendering | SVG (no canvas library)                                                      |
-| Testing            | Pest (backend), Vitest (frontend + geometry)                                 |
-| Lint/format        | Pint (PHP), ESLint + Prettier (JS/TS)                                        |
-| Runtime            | Docker Compose (app + db), npm workspaces for JS                             |
-| Auth               | None yet (single-user, self-hosted). API stays stateless so it can be added. |
+| Area               | Choice                                                                                        |
+| ------------------ | --------------------------------------------------------------------------------------------- |
+| Backend            | Laravel 13, PHP 8.4, PostgreSQL 16                                                            |
+| Frontend           | Vue 3 + Vite + TypeScript, Pinia, Vue Router, Tailwind v4, shadcn-vue                         |
+| Geometry / solver  | Custom, framework-agnostic TypeScript in `packages/geometry`                                  |
+| Geometry rendering | SVG (no canvas library)                                                                       |
+| Testing            | Pest (backend), Vitest (frontend + geometry)                                                  |
+| Lint/format        | Pint (PHP), ESLint + Prettier (JS/TS)                                                         |
+| Runtime            | Docker Compose (app + db), npm workspaces for JS                                              |
+| Auth               | Sanctum bearer tokens. Accounts own projects (max 3); projects are public to signed-in users. |
 
 Rationale is recorded in `docs/decisions/`.
 
@@ -195,4 +195,5 @@ the PR ready for a human to review and merge.
 - **Don't** introduce a second state store or bypass the command layer.
 - **Don't** couple the geometry package to Laravel, Vue, or a specific renderer.
 - **Don't** commit generated artifacts (`dist/`, `public/build/`).
-- **Don't** add auth, CI, or deployment config until a spec asks for it.
+- **Don't** add another auth provider, email verification, password reset or a
+  paywall until a spec asks for it.
