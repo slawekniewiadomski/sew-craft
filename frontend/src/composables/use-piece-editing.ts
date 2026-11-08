@@ -11,7 +11,11 @@ import type {
 import { pieceById } from '@sewcraft/geometry';
 import type { ComputedRef, Ref } from 'vue';
 
-import { allowanceEditCommands, type BulkAllowanceEdit } from '@/lib/allowance-edit';
+import {
+  allowanceEditCommands,
+  type AllowanceEdgeWidth,
+  type BulkAllowanceEdit,
+} from '@/lib/allowance-edit';
 import type { AllowanceChoice } from '@/lib/allowance-defaults';
 import { nextCommandId } from '@/lib/command-ids';
 import { pieceCreationFromSelection } from '@/lib/pieces';
@@ -218,6 +222,74 @@ export function usePieceEditing({
     );
   }
 
+  /** Set one finished width on every selected edge, keeping each fold kind. */
+  function onSetAllowanceWidths(changes: AllowanceEdgeWidth[], width: number): void {
+    const piece = activePiece.value;
+    /* v8 ignore next -- the card renders only for the active piece */
+    if (piece === null) return;
+
+    run(() =>
+      dispatchGroup(
+        changes.map((change) => ({
+          id: nextCommandId('allowance'),
+          type: 'set_piece_allowance',
+          params: { piece: piece.id, edge: change.edge, width, kind: change.kind },
+        })),
+      ),
+    );
+  }
+
+  /** Remove the allowance strip from every selected edge as one undo step. */
+  function onRemoveAllowanceEdges(edges: EntityId[]): void {
+    const piece = activePiece.value;
+    /* v8 ignore next -- the card renders only for the active piece */
+    if (piece === null) return;
+
+    run(() =>
+      dispatchGroup(
+        edges.map((edge) => ({
+          id: nextCommandId('allowance'),
+          type: 'set_piece_allowance',
+          params: { piece: piece.id, edge, remove: true },
+        })),
+      ),
+    );
+  }
+
+  /** Give every selected corner the same own cut width as one undo step. */
+  function onSetCornerAllowanceWidths(rounds: EntityId[], cutWidth: number): void {
+    const piece = activePiece.value;
+    /* v8 ignore next -- the card renders only for the active piece */
+    if (piece === null) return;
+
+    run(() =>
+      dispatchGroup(
+        rounds.map((round) => ({
+          id: nextCommandId('corner-allowance'),
+          type: 'set_piece_corner_allowance',
+          params: { piece: piece.id, round, cutWidth },
+        })),
+      ),
+    );
+  }
+
+  /** Drop every selected corner's own width back to its edges, as one undo step. */
+  function onClearCornerAllowanceWidths(rounds: EntityId[]): void {
+    const piece = activePiece.value;
+    /* v8 ignore next -- the card renders only for the active piece */
+    if (piece === null) return;
+
+    run(() =>
+      dispatchGroup(
+        rounds.map((round) => ({
+          id: nextCommandId('corner-allowance'),
+          type: 'set_piece_corner_allowance',
+          params: { piece: piece.id, round, remove: true },
+        })),
+      ),
+    );
+  }
+
   /** One command per selected region, dispatched as one undo step. */
   function onApplyAllowances(edit: BulkAllowanceEdit): void {
     const piece = activePiece.value;
@@ -288,6 +360,10 @@ export function usePieceEditing({
     onUpdatePiece,
     onSetPieceAllowance,
     onSetPieceCornerAllowance,
+    onSetAllowanceWidths,
+    onRemoveAllowanceEdges,
+    onSetCornerAllowanceWidths,
+    onClearCornerAllowanceWidths,
     onApplyAllowances,
     onSetPieceDefault,
     onRemovePiece,

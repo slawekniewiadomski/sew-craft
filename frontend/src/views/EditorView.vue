@@ -716,6 +716,10 @@ const {
   onUpdatePiece,
   onSetPieceAllowance,
   onSetPieceCornerAllowance,
+  onSetAllowanceWidths,
+  onRemoveAllowanceEdges,
+  onSetCornerAllowanceWidths,
+  onClearCornerAllowanceWidths,
   onApplyAllowances,
   onSetPieceDefault,
   onRemovePiece,
@@ -1291,6 +1295,10 @@ onBeforeUnmount(() => {
           @set-all-allowances="onSetAllAllowances"
           @set-piece-corner-allowance="onSetPieceCornerAllowance"
           @apply-allowances="onApplyAllowances"
+          @set-edge-widths="onSetAllowanceWidths"
+          @remove-edge-allowances="onRemoveAllowanceEdges"
+          @set-corner-widths="onSetCornerAllowanceWidths"
+          @clear-corner-widths="onClearCornerAllowanceWidths"
           @remove-piece="onRemovePiece"
           @set-role="onSetRole"
           @update-text="onUpdateText"

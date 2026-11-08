@@ -79,6 +79,15 @@ describe('PieceParametersForm', () => {
     expect(emitted().at(-1)).toEqual([{ notes: null }]);
   });
 
+  it('ignores an empty name when the piece has none', async () => {
+    const wrapper = mountForm({ piece: piece({ name: undefined }) });
+    const name = wrapper.find('[data-testid="piece-parameters-name"]');
+
+    await name.setValue('');
+
+    expect(wrapper.emitted('update-piece')).toBeUndefined();
+  });
+
   it('validates the quantity', async () => {
     const wrapper = mountForm();
     const quantity = wrapper.find('[data-testid="piece-parameters-quantity"]');
