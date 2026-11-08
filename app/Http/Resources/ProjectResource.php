@@ -18,8 +18,14 @@ class ProjectResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'user_id' => $this->user_id,
             'name' => $this->name,
             'description' => $this->description,
+            'owner' => $this->whenLoaded('user', fn (): array => [
+                'id' => $this->user->id,
+                'email' => $this->user->email,
+            ]),
+            'can_edit' => $request->user()?->id === $this->user_id,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

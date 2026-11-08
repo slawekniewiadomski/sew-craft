@@ -129,8 +129,11 @@ beforeEach(() => {
   vi.mocked(projectsApi.get).mockImplementation(async () => ({
     data: {
       id: 1,
+      user_id: 1,
       name: 'Bodice',
       description: 'A fitted bodice block',
+      owner: { id: 1, email: 'maker@example.com' },
+      can_edit: true,
       created_at: '2026-10-01T00:00:00.000Z',
       updated_at: '2026-10-01T00:00:00.000Z',
     },
@@ -138,8 +141,11 @@ beforeEach(() => {
   vi.mocked(projectsApi.update).mockImplementation(async (id, payload) => ({
     data: {
       id,
+      user_id: 1,
       name: payload.name,
       description: payload.description,
+      owner: { id: 1, email: 'maker@example.com' },
+      can_edit: true,
       created_at: '2026-10-01T00:00:00.000Z',
       updated_at: '2026-11-04T00:00:00.000Z',
     },

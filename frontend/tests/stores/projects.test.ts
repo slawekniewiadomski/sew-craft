@@ -31,7 +31,18 @@ describe('projects store', () => {
 
   it('loads projects and clears the loading flag', async () => {
     listMock.mockResolvedValue({
-      data: [{ id: 1, name: 'A', description: null, created_at: '', updated_at: '' }],
+      data: [
+        {
+          id: 1,
+          user_id: 1,
+          can_edit: true,
+          name: 'A',
+          description: null,
+          created_at: '',
+          updated_at: '',
+        },
+      ],
+      my_project_count: 1,
     });
     const store = useProjectsStore();
 
@@ -66,10 +77,29 @@ describe('projects store', () => {
 
   it('prepends a created project', async () => {
     listMock.mockResolvedValue({
-      data: [{ id: 1, name: 'A', description: null, created_at: '', updated_at: '' }],
+      data: [
+        {
+          id: 1,
+          user_id: 1,
+          can_edit: true,
+          name: 'A',
+          description: null,
+          created_at: '',
+          updated_at: '',
+        },
+      ],
+      my_project_count: 1,
     });
     createMock.mockResolvedValue({
-      data: { id: 2, name: 'B', description: null, created_at: '', updated_at: '' },
+      data: {
+        id: 2,
+        user_id: 1,
+        can_edit: true,
+        name: 'B',
+        description: null,
+        created_at: '',
+        updated_at: '',
+      },
     });
     const store = useProjectsStore();
     await store.fetchProjects();
@@ -82,10 +112,29 @@ describe('projects store', () => {
 
   it('replaces a cached row after an update', async () => {
     listMock.mockResolvedValue({
-      data: [{ id: 1, name: 'A', description: null, created_at: '', updated_at: '' }],
+      data: [
+        {
+          id: 1,
+          user_id: 1,
+          can_edit: true,
+          name: 'A',
+          description: null,
+          created_at: '',
+          updated_at: '',
+        },
+      ],
+      my_project_count: 1,
     });
     updateMock.mockResolvedValue({
-      data: { id: 1, name: 'Renamed', description: 'new', created_at: '', updated_at: '' },
+      data: {
+        id: 1,
+        user_id: 1,
+        can_edit: true,
+        name: 'Renamed',
+        description: 'new',
+        created_at: '',
+        updated_at: '',
+      },
     });
     const store = useProjectsStore();
     await store.fetchProjects();
@@ -95,19 +144,51 @@ describe('projects store', () => {
     expect(updated.name).toBe('Renamed');
     expect(updateMock).toHaveBeenCalledWith(1, { name: 'Renamed', description: 'new' });
     expect(store.projects).toEqual([
-      { id: 1, name: 'Renamed', description: 'new', created_at: '', updated_at: '' },
+      {
+        id: 1,
+        user_id: 1,
+        can_edit: true,
+        name: 'Renamed',
+        description: 'new',
+        created_at: '',
+        updated_at: '',
+      },
     ]);
   });
 
   it('keeps unrelated rows when an update returns', async () => {
     listMock.mockResolvedValue({
       data: [
-        { id: 1, name: 'A', description: null, created_at: '', updated_at: '' },
-        { id: 2, name: 'B', description: null, created_at: '', updated_at: '' },
+        {
+          id: 1,
+          user_id: 1,
+          can_edit: true,
+          name: 'A',
+          description: null,
+          created_at: '',
+          updated_at: '',
+        },
+        {
+          id: 2,
+          user_id: 1,
+          can_edit: true,
+          name: 'B',
+          description: null,
+          created_at: '',
+          updated_at: '',
+        },
       ],
     });
     updateMock.mockResolvedValue({
-      data: { id: 1, name: 'A2', description: null, created_at: '', updated_at: '' },
+      data: {
+        id: 1,
+        user_id: 1,
+        can_edit: true,
+        name: 'A2',
+        description: null,
+        created_at: '',
+        updated_at: '',
+      },
     });
     const store = useProjectsStore();
     await store.fetchProjects();
@@ -120,8 +201,24 @@ describe('projects store', () => {
   it('removes a project', async () => {
     listMock.mockResolvedValue({
       data: [
-        { id: 1, name: 'A', description: null, created_at: '', updated_at: '' },
-        { id: 2, name: 'B', description: null, created_at: '', updated_at: '' },
+        {
+          id: 1,
+          user_id: 1,
+          can_edit: true,
+          name: 'A',
+          description: null,
+          created_at: '',
+          updated_at: '',
+        },
+        {
+          id: 2,
+          user_id: 1,
+          can_edit: true,
+          name: 'B',
+          description: null,
+          created_at: '',
+          updated_at: '',
+        },
       ],
     });
     removeMock.mockResolvedValue(undefined);

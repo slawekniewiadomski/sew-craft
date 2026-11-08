@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 
 import { Button } from '@/components/ui/button';
@@ -10,9 +10,11 @@ import type { Project } from '@/api/projects';
 
 const store = useProjectsStore();
 const name = ref('');
+const createError = ref<string | null>(null);
 const editing = ref<Project | null>(null);
 const saving = ref(false);
 const settingsError = ref<string | null>(null);
+const atLimit = computed(() => store.myProjectCount >= 3);
 
 onMounted(() => {
   void store.fetchProjects();
@@ -20,10 +22,15 @@ onMounted(() => {
 
 async function submit(): Promise<void> {
   const trimmed = name.value.trim();
-  if (trimmed === '') return;
+  if (trimmed === '' || atLimit.value) return;
 
-  await store.createProject({ name: trimmed });
-  name.value = '';
+  createError.value = null;
+  try {
+    await store.createProject({ name: trimmed });
+    name.value = '';
+  } catch (cause) {
+    createError.value = cause instanceof Error ? cause.message : 'Failed to create the project';
+  }
 }
 
 function openSettings(project: Project): void {
@@ -59,15 +66,34 @@ async function onSaveSettings(draft: ProjectSettingsDraft): Promise<void> {
       <h1 class="text-2xl font-semibold">Projects</h1>
     </div>
 
-    <form class="flex gap-2" @submit.prevent="submit">
-      <input
-        v-model="name"
-        type="text"
-        placeholder="New project name"
-        class="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      />
-      <Button type="submit" :disabled="name.trim() === ''">Create</Button>
-    </form>
+    <div class="space-y-2">
+      <form class="flex gap-2" @submit.prevent="submit">
+        <input
+          v-model="name"
+          type="text"
+          placeholder="New project name"
+          :disabled="atLimit"
+          class="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+          data-testid="project-name-input"
+        />
+        <Button
+          type="submit"
+          :disabled="atLimit || name.trim() === ''"
+          data-testid="project-create"
+        >
+          Create
+        </Button>
+      </form>
+      <p class="text-xs text-muted-foreground" data-testid="project-quota">
+        {{ store.myProjectCount }} of 3 projects used
+      </p>
+      <p v-if="atLimit" class="text-xs text-muted-foreground" data-testid="project-limit">
+        You have reached the limit for this account.
+      </p>
+      <p v-if="createError" class="text-sm text-destructive" data-testid="project-create-error">
+        {{ createError }}
+      </p>
+    </div>
 
     <p v-if="store.loading" class="text-sm text-muted-foreground">Loading…</p>
     <p v-else-if="store.error" class="text-sm text-destructive">{{ store.error }}</p>
@@ -78,27 +104,34 @@ async function onSaveSettings(draft: ProjectSettingsDraft): Promise<void> {
         :key="project.id"
         class="flex items-center justify-between px-4 py-3"
       >
-        <div>
+        <div class="min-w-0">
           <p class="font-medium">{{ project.name }}</p>
           <p v-if="project.description" class="text-sm text-muted-foreground">
             {{ project.description }}
           </p>
+          <p class="text-xs text-muted-foreground" data-testid="project-owner">
+            {{ project.can_edit ? 'Yours' : (project.owner?.email ?? 'Public project') }}
+          </p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex shrink-0 items-center gap-2">
           <RouterLink :to="`/projects/${project.id}/edit`">
-            <Button variant="outline" size="sm">Open</Button>
+            <Button variant="outline" size="sm">
+              {{ project.can_edit ? 'Open' : 'View' }}
+            </Button>
           </RouterLink>
-          <Button
-            variant="ghost"
-            size="sm"
-            :aria-label="`Settings for ${project.name}`"
-            @click="openSettings(project)"
-          >
-            Settings
-          </Button>
-          <Button variant="ghost" size="sm" @click="store.removeProject(project.id)">
-            Delete
-          </Button>
+          <template v-if="project.can_edit">
+            <Button
+              variant="ghost"
+              size="sm"
+              :aria-label="`Settings for ${project.name}`"
+              @click="openSettings(project)"
+            >
+              Settings
+            </Button>
+            <Button variant="ghost" size="sm" @click="store.removeProject(project.id)">
+              Delete
+            </Button>
+          </template>
         </div>
       </li>
       <li

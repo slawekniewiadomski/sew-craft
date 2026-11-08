@@ -16,12 +16,20 @@ const createMock = vi.mocked(projectsApi.create);
 const updateMock = vi.mocked(projectsApi.update);
 const removeMock = vi.mocked(projectsApi.remove);
 
-const project = (id: number, description: string | null = null): Project => ({
+const project = (
+  id: number,
+  description: string | null = null,
+  overrides: Partial<Project> = {},
+): Project => ({
   id,
+  user_id: 1,
   name: `Project ${id}`,
   description,
+  owner: { id: 1, email: 'maker@example.com' },
+  can_edit: true,
   created_at: '',
   updated_at: '',
+  ...overrides,
 });
 
 const Stub = { template: '<div />' };
@@ -190,6 +198,95 @@ describe('ProjectsView', () => {
 
     expect(removeMock).toHaveBeenCalledWith(1);
     expect(wrapper.findAll('li')).toHaveLength(1);
+  });
+
+  it('disables creation once the account owns three projects', async () => {
+    listMock.mockResolvedValue({ data: [project(1)], my_project_count: 3 });
+
+    const { wrapper } = await mountView();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="project-quota"]').text()).toBe('3 of 3 projects used');
+    expect(wrapper.find('[data-testid="project-limit"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="project-create"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.find('[data-testid="project-name-input"]').attributes('disabled')).toBeDefined();
+
+    await wrapper.find('form').trigger('submit');
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('shows a create error from the server', async () => {
+    listMock.mockResolvedValue({ data: [], my_project_count: 0 });
+    createMock.mockRejectedValue(new Error('You can have at most 3 projects.'));
+
+    const { wrapper } = await mountView();
+    await flushPromises();
+
+    await wrapper.find('[data-testid="project-name-input"]').setValue('Fourth');
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="project-create-error"]').text()).toBe(
+      'You can have at most 3 projects.',
+    );
+  });
+
+  it('falls back for a non-Error create failure', async () => {
+    listMock.mockResolvedValue({ data: [], my_project_count: 0 });
+    createMock.mockRejectedValue('offline');
+
+    const { wrapper } = await mountView();
+    await flushPromises();
+
+    await wrapper.find('[data-testid="project-name-input"]').setValue('Fourth');
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="project-create-error"]').text()).toBe(
+      'Failed to create the project',
+    );
+  });
+
+  it('shows another account project without edit actions', async () => {
+    listMock.mockResolvedValue({
+      data: [
+        project(1, null, {
+          can_edit: false,
+          owner: { id: 2, email: 'other@example.com' },
+        }),
+      ],
+      my_project_count: 0,
+    });
+
+    const { wrapper } = await mountView();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="project-owner"]').text()).toBe('other@example.com');
+    expect(wrapper.text()).toContain('View');
+    const labels = wrapper.findAll('button').map((button) => button.text());
+    expect(labels).not.toContain('Settings');
+    expect(labels).not.toContain('Delete');
+  });
+
+  it('labels a public project whose owner is not included', async () => {
+    listMock.mockResolvedValue({
+      data: [project(1, null, { can_edit: false, owner: undefined })],
+      my_project_count: 0,
+    });
+
+    const { wrapper } = await mountView();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="project-owner"]').text()).toBe('Public project');
+  });
+
+  it('marks an owned project as yours', async () => {
+    listMock.mockResolvedValue({ data: [project(1)], my_project_count: 1 });
+
+    const { wrapper } = await mountView();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="project-owner"]').text()).toBe('Yours');
   });
 
   it('ignores an empty submit and creates on a valid one', async () => {
