@@ -8,9 +8,16 @@ import {
   type AllowanceKind,
   type BandTarget,
   type Command,
+  type EntityId,
   type PatternDocument,
   type Piece,
 } from '@sewcraft/geometry';
+
+/** One edge whose finished width is about to change, keeping its fold kind. */
+export interface AllowanceEdgeWidth {
+  edge: EntityId;
+  kind: AllowanceKind;
+}
 
 /** One edit applied to every selected allowance region. */
 export interface BulkAllowanceEdit {

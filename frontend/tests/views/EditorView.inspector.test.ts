@@ -634,7 +634,6 @@ describe('EditorView', () => {
 
     expect(wrapper.find('[data-testid="entity-kind"]').text()).toBe('Line');
     expect(wrapper.find('[data-testid="entity-length"]').text()).toBe('50 mm');
-    expect(wrapper.find('[data-testid="entity-dimension-w"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="entity-constraint-h"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="workspace-summary"]').text()).toContain('0 command(s)');
   });
@@ -664,32 +663,16 @@ describe('EditorView', () => {
     });
   });
 
-  it('edits and removes related dimensions and constraints from the inspector', async () => {
+  it('removes a related constraint from the inspector', async () => {
     const { wrapper, store } = await mountLoaded(inspectorDoc);
     entityDown(wrapper, 'line', 'l1');
     await nextTick();
 
-    const value = wrapper.find('[data-testid="entity-dimension-value-w"]');
-    expect((value.element as HTMLInputElement).value).toBe('50');
-
-    await value.setValue('0');
-    await flushPromises();
-    expect((value.element as HTMLInputElement).value).toBe('50');
-    expect(store.journal).toHaveLength(0);
-
-    await value.setValue('60');
-    await flushPromises();
-    expect(store.document.constraints.find((constraint) => constraint.id === 'w')).toMatchObject({
-      value: 60,
-    });
-
-    await wrapper.find('[data-testid="entity-remove-dimension-w"]').trigger('click');
-    await flushPromises();
-    expect(store.document.constraints.some((constraint) => constraint.id === 'w')).toBe(false);
-
     await wrapper.find('[data-testid="entity-remove-constraint-h"]').trigger('click');
     await flushPromises();
-    expect(store.document.constraints).toHaveLength(0);
+
+    expect(store.document.constraints).toHaveLength(1);
+    expect(store.document.constraints.some((constraint) => constraint.id === 'w')).toBe(true);
     expect(wrapper.text()).toContain('No constraints on this line.');
   });
 
@@ -700,7 +683,6 @@ describe('EditorView', () => {
     await nextTick();
 
     expect(wrapper.find('[data-testid="entity-kind"]').text()).toBe('Point');
-    expect(wrapper.find('[data-testid="entity-dimension-w"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="entity-constraint-h"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="entity-seam"]').exists()).toBe(false);
   });

@@ -11,6 +11,7 @@ import type {
   Piece,
 } from '@sewcraft/geometry';
 
+import AllowancePropertiesSection from '@/components/panels/AllowancePropertiesSection.vue';
 import AssemblyPanel from '@/components/panels/AssemblyPanel.vue';
 import ConstraintsPanel from '@/components/panels/ConstraintsPanel.vue';
 import DimensionsPanel from '@/components/panels/DimensionsPanel.vue';
@@ -21,7 +22,7 @@ import EditorSidebar from '@/components/editor/EditorSidebar.vue';
 import SelectionSummary from '@/components/editor/SelectionSummary.vue';
 import SidebarEmpty from '@/components/sidebar/SidebarEmpty.vue';
 import SidebarStat from '@/components/sidebar/SidebarStat.vue';
-import type { BulkAllowanceEdit } from '@/lib/allowance-edit';
+import type { AllowanceEdgeWidth, BulkAllowanceEdit } from '@/lib/allowance-edit';
 import type { AllowanceChoice } from '@/lib/allowance-defaults';
 import type { DimensionPatch } from '@/lib/dimensions';
 import type { EntityProperties } from '@/lib/entity-properties';
@@ -105,6 +106,10 @@ const emit = defineEmits<{
     value: { cutWidth: number } | null,
   ];
   'apply-allowances': [edit: BulkAllowanceEdit];
+  'set-edge-widths': [changes: AllowanceEdgeWidth[], width: number];
+  'remove-edge-allowances': [edges: EntityId[]];
+  'set-corner-widths': [rounds: EntityId[], cutWidth: number];
+  'clear-corner-widths': [rounds: EntityId[]];
   'remove-piece': [id: EntityId];
   'set-role': [id: EntityId, role: 'cut' | 'construction' | 'annotation'];
   'update-text': [id: EntityId, patch: Record<string, unknown>];
@@ -164,6 +169,18 @@ function emitPieceAllowance(piece: EntityId, edge: EntityId, value: AllowanceVal
 function emitAllAllowances(piece: EntityId, value: AllowanceValue): void {
   emit('set-all-allowances', piece, value);
 }
+function emitEdgeWidths(changes: AllowanceEdgeWidth[], width: number): void {
+  emit('set-edge-widths', changes, width);
+}
+function emitRemoveEdgeAllowances(edges: EntityId[]): void {
+  emit('remove-edge-allowances', edges);
+}
+function emitCornerWidths(rounds: EntityId[], cutWidth: number): void {
+  emit('set-corner-widths', rounds, cutWidth);
+}
+function emitClearCornerWidths(rounds: EntityId[]): void {
+  emit('clear-corner-widths', rounds);
+}
 function emitCornerAllowance(
   piece: EntityId,
   round: EntityId,
@@ -209,8 +226,19 @@ function emitVariableComment(slug: string, comment: string | null): void {
     @update:collapsed="emit('update:collapsed', $event)"
   >
     <template #properties>
+      <AllowancePropertiesSection
+        v-if="selectedAllowanceTargets.length > 0 && activePieceSummary"
+        :document="pattern"
+        :summary="activePieceSummary"
+        :targets="selectedAllowanceTargets"
+        @set-edge-widths="emitEdgeWidths"
+        @remove-edge-allowances="emitRemoveEdgeAllowances"
+        @set-corner-widths="emitCornerWidths"
+        @clear-corner-widths="emitClearCornerWidths"
+      />
+
       <SelectionSummary
-        v-if="selectedDimensionIds.length > 0 || selectedEntityIds.length > 1"
+        v-else-if="selectedDimensionIds.length > 0 || selectedEntityIds.length > 1"
         :entities="selectedEntities"
         :dimensions="selectedDimensionIds.length"
         :delete-disabled="deleteDisabled"
@@ -226,18 +254,10 @@ function emitVariableComment(slug: string, comment: string | null): void {
         v-else-if="selectedEntity"
         :document="pattern"
         :entity="selectedEntity"
-        @update-dimension="emitUpdateDimension"
         @remove-constraint="emit('remove-constraint', $event)"
         @set-corner-round-radius="emitCornerRadius"
         @remove-corner-round="emit('remove-corner-round', $event)"
         @set-circle-radius="emitCircleRadius"
-        @update-piece="emitUpdatePiece"
-        @set-piece-default="emitPieceDefault"
-        @set-piece-allowance="emitPieceAllowance"
-        @set-all-allowances="emitAllAllowances"
-        @set-piece-corner-allowance="emitCornerAllowance"
-        @apply-allowances="emit('apply-allowances', $event)"
-        @remove-piece="emit('remove-piece', $event)"
         @set-role="emitSetRole"
         @update-text="emitUpdateText"
       />

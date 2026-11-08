@@ -71,6 +71,7 @@ function mountInspector(overrides: Record<string, unknown> = {}) {
         EditorSidebar: SidebarStub,
         SelectionSummary: stub('SelectionSummary'),
         EntityPropertiesPanel: stub('EntityPropertiesPanel'),
+        AllowancePropertiesSection: stub('AllowancePropertiesSection'),
         PiecePanel: stub('PiecePanel'),
         AssemblyPanel: stub('AssemblyPanel'),
         DimensionsPanel: stub('DimensionsPanel'),
@@ -98,21 +99,45 @@ describe('EditorInspector', () => {
     const wrapper = mountInspector();
     const edit = { width: 10, kind: 'seam' };
 
-    await wrapper
-      .findComponent({ name: 'EntityPropertiesPanel' })
-      .vm.$emit('apply-allowances', edit);
+    await wrapper.findComponent({ name: 'PiecePanel' }).vm.$emit('apply-allowances', edit);
     await wrapper.findComponent({ name: 'PiecePanel' }).vm.$emit('set-cut-loop', 'p1');
+    await wrapper
+      .findComponent({ name: 'PiecePanel' })
+      .vm.$emit('set-piece-allowance', 'p1', 'ab', { kind: 'seam', width: 10 });
 
     expect(wrapper.emitted('apply-allowances')).toEqual([[edit]]);
     expect(wrapper.emitted('set-cut-loop')).toEqual([['p1']]);
+    expect(wrapper.emitted('set-piece-allowance')).toEqual([
+      ['p1', 'ab', { kind: 'seam', width: 10 }],
+    ]);
+  });
+
+  it('shows the allowance section and forwards its edits', async () => {
+    const wrapper = mountInspector({
+      selectedEntity: null,
+      selectedEntityIds: [],
+      selectedAllowanceTargets: [{ kind: 'edge', edge: 'ab' }],
+    });
+    const section = wrapper.findComponent({ name: 'AllowancePropertiesSection' });
+    expect(section.exists()).toBe(true);
+
+    await section.vm.$emit('set-edge-widths', [{ edge: 'ab', kind: 'seam' }], 12);
+    await section.vm.$emit('remove-edge-allowances', ['ab']);
+    await section.vm.$emit('set-corner-widths', ['r1'], 8);
+    await section.vm.$emit('clear-corner-widths', ['r1']);
+
+    expect(wrapper.emitted('set-edge-widths')).toEqual([[[{ edge: 'ab', kind: 'seam' }], 12]]);
+    expect(wrapper.emitted('remove-edge-allowances')).toEqual([[['ab']]]);
+    expect(wrapper.emitted('set-corner-widths')).toEqual([[['r1'], 8]]);
+    expect(wrapper.emitted('clear-corner-widths')).toEqual([[['r1']]]);
   });
 
   it('forwards a selected-row action and a dimension edit', async () => {
     const wrapper = mountInspector();
 
     await wrapper
-      .findComponent({ name: 'EntityPropertiesPanel' })
-      .vm.$emit('update-dimension', 'd1', { offset: 2 });
+      .findComponent({ name: 'DimensionsPanel' })
+      .vm.$emit('update', 'd1', { offset: 2 });
     await wrapper.findComponent({ name: 'AssemblyPanel' }).vm.$emit('open-piece', 'p2');
 
     expect(wrapper.emitted('update-dimension')).toEqual([['d1', { offset: 2 }]]);

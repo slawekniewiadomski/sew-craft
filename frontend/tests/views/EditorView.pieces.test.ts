@@ -297,30 +297,17 @@ describe('EditorView', () => {
     expect(wrapper.find('[data-testid="dimension-readonly-cut"]').exists()).toBe(true);
   });
 
-  it('edits the piece card and removes the piece', async () => {
+  it('edits and removes an allowance from the piece drawer', async () => {
     const { wrapper, store } = await mountLoaded(pieceDoc);
-    entityDown(wrapper, 'line', 'ab');
-    await nextTick();
+    await openPanel(wrapper, 'pieces');
 
-    const name = wrapper.find('[data-testid="entity-name"]');
-    await name.setValue('Back');
-    await name.trigger('change');
-    await flushPromises();
-    expect(store.document.pieces[0]?.name).toBe('Back');
-
-    const quantity = wrapper.find('[data-testid="entity-quantity"]');
-    await quantity.setValue('4');
-    await quantity.trigger('change');
-    await flushPromises();
-    expect(store.document.pieces[0]?.quantity).toBe(4);
-
-    const kind = wrapper.find('[data-testid="entity-piece-kind-ab"]');
+    const kind = wrapper.find('[data-testid="piece-drawer-piece-kind-ab"]');
     await kind.setValue('single');
     await kind.trigger('change');
     await flushPromises();
     expect(store.document.pieces[0]?.allowances[0]).toMatchObject({ kind: 'single', width: 10 });
 
-    const width = wrapper.find('[data-testid="entity-piece-width-ab"]');
+    const width = wrapper.find('[data-testid="piece-drawer-piece-width-ab"]');
     await width.setValue('12');
     await width.trigger('change');
     await flushPromises();
@@ -330,24 +317,6 @@ describe('EditorView', () => {
     await kind.trigger('change');
     await flushPromises();
     expect(store.document.pieces[0]?.allowances).toEqual([]);
-
-    await wrapper.find('[data-testid="entity-remove-piece-p1"]').trigger('click');
-    await flushPromises();
-    expect(store.document.pieces).toEqual([]);
-  });
-
-  it('shows a piece whose point was deleted without a size instead of crashing', async () => {
-    const { wrapper } = await mountLoaded({
-      ...pieceDoc,
-      entities: pieceDoc.entities.filter((entity) => entity.id !== 'c'),
-    });
-
-    entityDown(wrapper, 'line', 'ab');
-    await nextTick();
-
-    expect(wrapper.find('[data-testid="entity-piece"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="entity-piece-finished"]').text()).toBe('—');
-    expect(wrapper.find('[data-testid="entity-piece-cut"]').text()).toBe('—');
   });
 
   it('groups an edge under its piece in the outline tree', async () => {
@@ -1199,6 +1168,48 @@ describe('EditorView allowance regions', () => {
     const undone = store.document.pieces[0]!;
     expect(undone.cornerAllowances).toEqual([{ round: 'r1', cutWidth: 20 }]);
     expect(undone.allowances.find((allowance) => allowance.edge === 'ab')?.width).not.toBe(15);
+  });
+
+  it('shows and edits a selected edge allowance in Properties', async () => {
+    const { wrapper, store } = await mountLoaded(pieceDoc);
+    wrapper
+      .findComponent(PatternCanvas)
+      .vm.$emit('update:selectedAllowanceTargets', [{ kind: 'edge', edge: 'ab' }]);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="allowance-properties"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="allowance-edge-kind-ab"]').text()).toBe('Seam 10 mm');
+
+    const width = wrapper.find('[data-testid="allowance-edge-width"]');
+    await width.setValue('12');
+    await flushPromises();
+    expect(store.document.pieces[0]?.allowances[0]).toMatchObject({ kind: 'seam', width: 12 });
+
+    store.undo();
+    await nextTick();
+    expect(store.document.pieces[0]?.allowances[0]).toMatchObject({ width: 10 });
+
+    await wrapper.find('[data-testid="allowance-edge-remove"]').trigger('click');
+    await flushPromises();
+    expect(store.document.pieces[0]?.allowances).toEqual([]);
+  });
+
+  it('edits and clears a selected corner allowance in Properties', async () => {
+    const { wrapper, store } = await mountLoaded(roundedLineDoc);
+    wrapper
+      .findComponent(PatternCanvas)
+      .vm.$emit('update:selectedAllowanceTargets', [{ kind: 'round', round: 'r1' }]);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="allowance-properties"]').exists()).toBe(true);
+    const input = wrapper.find('[data-testid="allowance-corner-width"]');
+    await input.setValue('8');
+    await flushPromises();
+    expect(store.document.pieces[0]?.cornerAllowances).toEqual([{ round: 'r1', cutWidth: 8 }]);
+
+    await wrapper.find('[data-testid="allowance-corner-inherit"]').trigger('click');
+    await flushPromises();
+    expect(store.document.pieces[0]?.cornerAllowances).toEqual([]);
   });
 
   it('ignores a bulk edit that has no command to run', async () => {
