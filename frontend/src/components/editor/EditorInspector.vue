@@ -14,6 +14,7 @@ import type {
 import AllowancePropertiesSection from '@/components/panels/AllowancePropertiesSection.vue';
 import AssemblyPanel from '@/components/panels/AssemblyPanel.vue';
 import ConstraintsPanel from '@/components/panels/ConstraintsPanel.vue';
+import DimensionPropertiesPanel from '@/components/panels/DimensionPropertiesPanel.vue';
 import DimensionsPanel from '@/components/panels/DimensionsPanel.vue';
 import EntityPropertiesPanel from '@/components/panels/EntityPropertiesPanel.vue';
 import PiecePanel from '@/components/panels/PiecePanel.vue';
@@ -24,7 +25,7 @@ import SidebarEmpty from '@/components/sidebar/SidebarEmpty.vue';
 import SidebarStat from '@/components/sidebar/SidebarStat.vue';
 import type { AllowanceEdgeWidth, BulkAllowanceEdit } from '@/lib/allowance-edit';
 import type { AllowanceChoice } from '@/lib/allowance-defaults';
-import type { DimensionPatch } from '@/lib/dimensions';
+import type { DimensionPatch, DimensionRow } from '@/lib/dimensions';
 import type { EntityProperties } from '@/lib/entity-properties';
 import type { PanelId } from '@/lib/editor-panels';
 import type { PieceMarkRow, PieceSummary } from '@/lib/pieces';
@@ -48,6 +49,7 @@ defineProps<{
   measureDisabled: boolean;
   measureHint: string | undefined;
   selectedEntity: EntityProperties | null;
+  selectedDimension: DimensionRow | null;
   pattern: PatternDocument;
   activePiece: Piece | null;
   activePieceSummary: PieceSummary | null;
@@ -235,6 +237,15 @@ function emitVariableComment(slug: string, comment: string | null): void {
         @remove-edge-allowances="emitRemoveEdgeAllowances"
         @set-corner-widths="emitCornerWidths"
         @clear-corner-widths="emitClearCornerWidths"
+      />
+
+      <DimensionPropertiesPanel
+        v-else-if="selectedDimension"
+        :document="pattern"
+        :dimension-id="selectedDimension.id"
+        @select="emitDimensionSelect"
+        @update="emitUpdateDimension"
+        @remove="emit('remove-constraint', $event)"
       />
 
       <SelectionSummary

@@ -12,6 +12,7 @@ import {
   canvasDown,
   canvasUp,
   curveDoc,
+  cutDimensionDoc,
   distanceOffset,
   entityDown,
   inspectorDoc,
@@ -1315,12 +1316,9 @@ describe('EditorView dimension selection', () => {
     await nextTick();
 
     expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
-    expect(wrapper.find('[data-testid="selection-breakdown"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="selection-pointer-note"]').text()).toBe(
-      'Ctrl/Cmd-click adds or removes a dimension.',
-    );
+    expect(wrapper.find('[data-testid="dimension-properties"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-value-width"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="selection-status"]').text()).toBe('1 dimension selected');
     expect(wrapper.find('[data-testid="sidebar-tab-count-properties"]').text()).toBe('1');
 
@@ -1346,7 +1344,77 @@ describe('EditorView dimension selection', () => {
     expect(store.document.constraints.some((constraint) => constraint.id === 'height')).toBe(true);
   });
 
-  it('deletes the selection from the ribbon and the summary', async () => {
+  it('edits a selected dimension from Properties', async () => {
+    const { wrapper, store } = await mountLoaded(seededDocument);
+    wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedDimensionIds', ['width']);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="dimension-properties"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="dimension-state-width"]').text()).toBe('Set');
+
+    const value = wrapper.find('[data-testid="dimension-value-width"]');
+    await value.setValue('200');
+    await value.trigger('change');
+    await flushPromises();
+    expect(
+      store.document.constraints.find((constraint) => constraint.id === 'width'),
+    ).toMatchObject({ value: 200 });
+
+    const orientation = wrapper.find('[data-testid="dimension-orientation-width"]');
+    await orientation.setValue('horizontal');
+    await orientation.trigger('change');
+    await flushPromises();
+    expect(
+      store.document.constraints.find((constraint) => constraint.id === 'width'),
+    ).toMatchObject({ orientation: 'horizontal' });
+
+    const offset = wrapper.find('[data-testid="dimension-offset-width"]');
+    await offset.setValue('25');
+    await offset.trigger('change');
+    await flushPromises();
+    expect(
+      store.document.constraints.find((constraint) => constraint.id === 'width'),
+    ).toMatchObject({ offset: 25 });
+
+    await wrapper.find('[data-testid="select-dimension-width"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="dimension-properties"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="remove-dimension-width"]').trigger('click');
+    await nextTick();
+    expect(store.document.constraints.some((constraint) => constraint.id === 'width')).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-properties"]').exists()).toBe(false);
+  });
+
+  it('shows a cut dimension as read-only in Properties', async () => {
+    const { wrapper } = await mountLoaded(cutDimensionDoc);
+    wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedDimensionIds', ['cut']);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="dimension-properties"]').exists()).toBe(true);
+    expect(
+      wrapper.find('[data-testid="dimension-value-cut"]').attributes('readonly'),
+    ).toBeDefined();
+    expect(wrapper.find('[data-testid="dimension-readonly-cut"]').text()).toContain(
+      'Cut dimension — read-only',
+    );
+    expect(
+      (wrapper.find('[data-testid="dimension-orientation-cut"]').element as HTMLSelectElement)
+        .value,
+    ).toBe('horizontal');
+  });
+
+  it('falls back to the summary for a dimension id the document no longer has', async () => {
+    const { wrapper } = await mountLoaded(seededDocument);
+    wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedDimensionIds', ['missing']);
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="dimension-properties"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
+  });
+
+  it('deletes the selection from the ribbon and the properties editor', async () => {
     const { wrapper, store } = await mountLoaded(seededDocument);
     const canvas = wrapper.findComponent(PatternCanvas);
 
@@ -1358,7 +1426,7 @@ describe('EditorView dimension selection', () => {
 
     canvas.vm.$emit('update:selectedDimensionIds', ['height']);
     await nextTick();
-    await wrapper.find('[data-testid="selection-delete"]').trigger('click');
+    await wrapper.find('[data-testid="remove-dimension-height"]').trigger('click');
     await nextTick();
     expect(store.document.constraints.some((constraint) => constraint.id === 'height')).toBe(false);
   });
@@ -1507,7 +1575,8 @@ describe('EditorView dimension selection', () => {
     await wrapper.find('[data-testid="select-dimension-w"]').trigger('click');
     await nextTick();
     await openPanel(wrapper, 'properties');
-    expect(wrapper.find('[data-testid="selection-count"]').text()).toBe('1 dimension selected');
+    expect(wrapper.find('[data-testid="dimension-properties"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="dimension-value-w"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="entity-properties"]').exists()).toBe(false);
 
     // Switching tabs clears both selections.
@@ -1580,7 +1649,7 @@ describe('EditorView dimension selection', () => {
     await wrapper.find('[data-testid="select-dimension-width"]').trigger('click');
     await nextTick();
     await openPanel(wrapper, 'properties');
-    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="dimension-properties"]').exists()).toBe(true);
     await openPanel(wrapper, 'dimensions');
 
     await wrapper.find('[data-testid="remove-dimension-width"]').trigger('click');
@@ -1590,19 +1659,19 @@ describe('EditorView dimension selection', () => {
     expect(wrapper.findAll('[aria-label="Dimensions"] li')).toHaveLength(1);
 
     await openPanel(wrapper, 'properties');
-    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-properties"]').exists()).toBe(false);
   });
 
   it('prunes a dimension id removed underneath the selection', async () => {
     const { wrapper, store } = await mountLoaded(seededDocument);
     wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedDimensionIds', ['width']);
     await nextTick();
-    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="dimension-properties"]').exists()).toBe(true);
 
     store.dispatch({ id: 'external', type: 'remove_constraint', params: { id: 'width' } });
     await nextTick();
 
-    expect(wrapper.find('[data-testid="selection-summary"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="dimension-properties"]').exists()).toBe(false);
   });
 
   it('keeps a hidden dimension selected and deletable from the drawer', async () => {

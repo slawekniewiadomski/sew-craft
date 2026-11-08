@@ -29,6 +29,8 @@ const props = defineProps<{
   document: PatternDocument;
   /** The dimension selection, for row highlighting. */
   selectedIds: ReadonlySet<EntityId>;
+  /** When set, only these dimension ids render; Properties narrows to one. */
+  only?: ReadonlySet<EntityId>;
 }>();
 
 const emit = defineEmits<{
@@ -37,8 +39,12 @@ const emit = defineEmits<{
   remove: [id: EntityId];
 }>();
 
-/** Every dimension row the drawer lists, in document order. */
-const dimensions = computed(() => dimensionRows(props.document));
+/** Every dimension row the drawer lists, narrowed to `only` in Properties. */
+const dimensions = computed(() => {
+  const rows = dimensionRows(props.document);
+  const only = props.only;
+  return only === undefined ? rows : rows.filter((row) => only.has(row.id));
+});
 
 /** A drawer value being typed that does not resolve yet. */
 const dimensionDrafts = ref<Record<EntityId, { text: string; issue: string }>>({});
