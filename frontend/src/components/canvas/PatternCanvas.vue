@@ -154,6 +154,7 @@ import CanvasAnnotationLayers, {
 import CanvasPointLayers from '@/components/canvas/CanvasPointLayers.vue';
 import CanvasPieceBandLayers from '@/components/canvas/CanvasPieceBandLayers.vue';
 import CanvasPieceCutLayers from '@/components/canvas/CanvasPieceCutLayers.vue';
+import CanvasHints from '@/components/canvas/CanvasHints.vue';
 import CanvasDimensionDrawings from '@/components/canvas/CanvasDimensionDrawings.vue';
 import CanvasDimensionPreviews from '@/components/canvas/CanvasDimensionPreviews.vue';
 import CanvasDimensionLabels from '@/components/canvas/CanvasDimensionLabels.vue';
@@ -1821,93 +1822,19 @@ watch(
       <CanvasMarquee :rect="marqueeRect" />
     </svg>
 
-    <div
-      v-if="props.activePieceId !== null"
-      class="pointer-events-none absolute left-2 top-2 rounded-sm bg-background/90 px-2 py-1 text-2xs shadow-sm"
-      data-testid="active-piece-badge"
-      role="status"
-      aria-live="polite"
-    >
-      {{ activePieceLabel }}
-    </div>
-
-    <p
-      v-if="arcHint"
-      class="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground shadow-sm"
-      role="status"
-      data-testid="arc-hint"
-    >
-      pick a point off the line
-    </p>
-
-    <p
-      v-if="midpointHover !== null"
-      class="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground shadow-sm"
-      role="status"
-      data-testid="midpoint-hint"
-    >
-      Click to create a point at this line's midpoint.
-    </p>
-
-    <p
-      v-if="pointOnLineHover !== null"
-      class="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground shadow-sm"
-      role="status"
-      data-testid="point-on-line-hint"
-    >
-      Click to create a point constrained to this line.
-    </p>
-
-    <p
-      v-if="props.tool === 'split_line' && !props.readOnly && splitLineHover === null"
-      class="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground shadow-sm"
-      role="status"
-      data-testid="split-line-hint"
-    >
-      Click a straight line to split it.
-    </p>
-
-    <p
-      v-if="splitLineHover !== null"
-      class="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground shadow-sm"
-      role="status"
-      data-testid="split-line-hint"
-    >
-      {{
-        splitLineHover.pointId !== null
-          ? 'Click to split this line at this point.'
-          : splitLineHover.atCenter
-            ? 'Click to split this line at its centre.'
-            : 'Click to split this line here.'
-      }}
-    </p>
-
-    <p
-      v-if="dimensionHintText !== null"
-      class="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground shadow-sm"
-      role="status"
-      data-testid="dimension-hint"
-    >
-      {{ dimensionHintText }}
-    </p>
-
-    <p
-      v-if="cutDimensionHintText !== null"
-      class="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground shadow-sm"
-      role="status"
-      data-testid="cut-dimension-hint"
-    >
-      {{ cutDimensionHintText }}
-    </p>
-
-    <p
-      v-if="textLeaderHint !== null"
-      class="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground shadow-sm"
-      role="status"
-      data-testid="text-leader-hint"
-    >
-      {{ textLeaderHint }}
-    </p>
+    <CanvasHints
+      :active-piece-id="props.activePieceId"
+      :active-piece-label="activePieceLabel"
+      :arc-hint="arcHint"
+      :midpoint-hover="midpointHover !== null"
+      :point-on-line-hover="pointOnLineHover !== null"
+      :tool="props.tool"
+      :read-only="props.readOnly"
+      :split-line-hover="splitLineHover"
+      :dimension-hint-text="dimensionHintText"
+      :cut-dimension-hint-text="cutDimensionHintText"
+      :text-leader-hint="textLeaderHint"
+    />
 
     <input
       v-if="dimensionEditor !== null"
