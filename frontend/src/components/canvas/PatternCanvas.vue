@@ -151,6 +151,8 @@ import CanvasAnnotationLayers, {
   type MarkView,
   type TextView,
 } from '@/components/canvas/CanvasAnnotationLayers.vue';
+import CanvasDimensionDrawings from '@/components/canvas/CanvasDimensionDrawings.vue';
+import CanvasDimensionLabels from '@/components/canvas/CanvasDimensionLabels.vue';
 import CanvasEntityLayers from '@/components/canvas/CanvasEntityLayers.vue';
 import CanvasMarquee from '@/components/canvas/CanvasMarquee.vue';
 import CanvasPreviews from '@/components/canvas/CanvasPreviews.vue';
@@ -2062,221 +2064,22 @@ watch(
           </template>
         </g>
 
-        <g
-          v-for="drawing in dimensionDrawings"
-          :key="drawing.id"
-          class="pointer-events-none"
-          :data-testid="`dimension-lines-${drawing.id}`"
-          :data-dimension-id="drawing.id"
-          :data-selected="drawing.selected ? 'true' : 'false'"
-        >
-          <template v-for="segment in drawing.segments" :key="segment.key">
-            <line
-              v-if="
-                segment.main && (drawing.selected || marqueeDimensionCandidates.has(drawing.id))
-              "
-              :x1="segment.x1"
-              :y1="segment.y1"
-              :x2="segment.x2"
-              :y2="segment.y2"
-              :class="drawing.selected ? 'stroke-primary opacity-30' : 'stroke-primary opacity-20'"
-              stroke-width="4"
-              vector-effect="non-scaling-stroke"
-              :data-testid="
-                drawing.selected ? 'dimension-selection-halo' : 'dimension-marquee-preview'
-              "
-            />
-            <line
-              :x1="segment.x1"
-              :y1="segment.y1"
-              :x2="segment.x2"
-              :y2="segment.y2"
-              :class="
-                drawing.preview
-                  ? 'stroke-primary'
-                  : segment.main
-                    ? 'stroke-foreground'
-                    : 'stroke-muted-foreground'
-              "
-              stroke-width="1"
-              vector-effect="non-scaling-stroke"
-            />
-          </template>
-          <line
-            v-if="drawing.draggable"
-            :x1="drawing.layout.dimensionStart.x"
-            :y1="drawing.layout.dimensionStart.y"
-            :x2="drawing.layout.dimensionEnd.x"
-            :y2="drawing.layout.dimensionEnd.y"
-            stroke="transparent"
-            stroke-width="24"
-            vector-effect="non-scaling-stroke"
-            class="pointer-events-auto cursor-move"
-            :data-testid="`dimension-drag-${drawing.id}`"
-            @pointerdown.left.stop="onDimensionPointerDown(drawing.constraint, $event)"
-          />
-        </g>
-
-        <g
-          v-for="drawing in derivedDimensionDrawings"
-          :key="`derived-${drawing.id}`"
-          class="pointer-events-none"
-          :data-testid="`dimension-lines-${drawing.id}`"
-          :data-dimension-id="drawing.id"
-          :data-dimension-derived="drawing.id"
-          :data-selected="drawing.selected ? 'true' : 'false'"
-        >
-          <template v-for="segment in drawing.segments" :key="segment.key">
-            <line
-              v-if="
-                segment.main && (drawing.selected || marqueeDimensionCandidates.has(drawing.id))
-              "
-              :x1="segment.x1"
-              :y1="segment.y1"
-              :x2="segment.x2"
-              :y2="segment.y2"
-              :class="drawing.selected ? 'stroke-primary opacity-30' : 'stroke-primary opacity-20'"
-              stroke-width="4"
-              vector-effect="non-scaling-stroke"
-              :data-testid="
-                drawing.selected ? 'dimension-selection-halo' : 'dimension-marquee-preview'
-              "
-            />
-            <line
-              :x1="segment.x1"
-              :y1="segment.y1"
-              :x2="segment.x2"
-              :y2="segment.y2"
-              :class="
-                drawing.preview && segment.main
-                  ? 'stroke-primary'
-                  : segment.main
-                    ? 'stroke-dimension-derived'
-                    : 'stroke-muted-foreground'
-              "
-              stroke-width="1"
-              vector-effect="non-scaling-stroke"
-            />
-          </template>
-          <line
-            v-if="drawing.draggable"
-            :x1="drawing.layout.dimensionStart.x"
-            :y1="drawing.layout.dimensionStart.y"
-            :x2="drawing.layout.dimensionEnd.x"
-            :y2="drawing.layout.dimensionEnd.y"
-            stroke="transparent"
-            stroke-width="24"
-            vector-effect="non-scaling-stroke"
-            class="pointer-events-auto cursor-move"
-            :data-testid="`dimension-drag-${drawing.id}`"
-            @pointerdown.left.stop="onDimensionPointerDown(drawing.constraint, $event)"
-          />
-        </g>
+        <CanvasDimensionDrawings
+          :drawings="dimensionDrawings"
+          :derived-drawings="derivedDimensionDrawings"
+          :marquee-dimension-candidates="marqueeDimensionCandidates"
+          @pointer-down="onDimensionPointerDown"
+        />
       </g>
 
-      <g class="pointer-events-none" data-testid="dimension-labels-layer">
-        <g
-          v-for="label in dimensionLabels"
-          :key="label.id"
-          :class="
-            label.draggable
-              ? 'pointer-events-auto cursor-move'
-              : label.editable
-                ? 'pointer-events-auto cursor-text'
-                : 'pointer-events-none'
-          "
-          :data-dimension-id="label.id"
-          :data-testid="`dimension-label-${label.id}`"
-          :data-selected="label.selected ? 'true' : 'false'"
-          :transform="`translate(${label.x} ${label.y}) rotate(${label.angle})`"
-          role="img"
-          :aria-label="label.accessibleName"
-          @pointerdown.left.stop="
-            label.draggable ? onDimensionPointerDown(label.constraint, $event) : undefined
-          "
-          @dblclick.stop.prevent="onDimensionDoubleClick(label)"
-        >
-          <title>
-            {{
-              label.draggable
-                ? 'Click to select, drag to reposition, double-click to edit'
-                : label.editable
-                  ? 'Double-click to edit'
-                  : 'Dimension preview'
-            }}
-          </title>
-          <rect
-            :x="-label.width / 2"
-            y="-8"
-            :width="label.width"
-            height="16"
-            rx="2"
-            :class="label.selected ? 'fill-background stroke-primary' : 'fill-background'"
-            :stroke-width="label.selected ? 2 : 0"
-          />
-          <text
-            v-if="label.state === 'broken'"
-            :x="-label.width / 2 - 6"
-            y="1"
-            text-anchor="end"
-            dominant-baseline="middle"
-            class="fill-destructive text-[11px]"
-            data-testid="dimension-broken-glyph"
-            aria-hidden="true"
-          >
-            ⚠
-          </text>
-          <text
-            text-anchor="middle"
-            dominant-baseline="middle"
-            :class="[labelClass(label), 'text-[11px]']"
-            :data-dimension-state="label.state"
-          >
-            {{ label.value }}
-          </text>
-        </g>
-
-        <g
-          v-for="label in derivedDimensionLabels"
-          :key="`derived-${label.id}`"
-          :class="label.draggable ? 'pointer-events-auto cursor-move' : 'pointer-events-none'"
-          :data-dimension-id="label.id"
-          :data-dimension-derived="label.id"
-          :data-testid="`dimension-label-${label.id}`"
-          :data-selected="label.selected ? 'true' : 'false'"
-          :transform="`translate(${label.x} ${label.y}) rotate(${label.angle})`"
-          role="img"
-          :aria-label="label.accessibleName"
-          @pointerdown.left.stop="
-            label.draggable
-              ? onDimensionPointerDown(derivedConstraint(label.id), $event)
-              : undefined
-          "
-        >
-          <title>
-            {{
-              label.draggable ? 'Click to select, drag to reposition' : 'Cut dimension (read-only)'
-            }}
-          </title>
-          <rect
-            :x="-label.width / 2"
-            y="-8"
-            :width="label.width"
-            height="16"
-            rx="2"
-            :class="label.selected ? 'fill-background stroke-primary' : 'fill-background'"
-            :stroke-width="label.selected ? 2 : 0"
-          />
-          <text
-            text-anchor="middle"
-            dominant-baseline="middle"
-            class="fill-dimension-derived text-[11px]"
-            :data-dimension-state="label.state"
-          >
-            {{ label.value }}
-          </text>
-        </g>
-      </g>
+      <CanvasDimensionLabels
+        :labels="dimensionLabels"
+        :derived-labels="derivedDimensionLabels"
+        :label-class="labelClass"
+        :derived-constraint="derivedConstraint"
+        @pointer-down="onDimensionPointerDown"
+        @double-click="onDimensionDoubleClick"
+      />
 
       <CanvasOverlayLayers
         :round-handles="roundHandles"
