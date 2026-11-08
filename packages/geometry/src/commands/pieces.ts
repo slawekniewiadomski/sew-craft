@@ -10,16 +10,9 @@ import {
 import { CommandValidationError } from '../errors.js';
 import { pieceById, validatePiece } from '../piece.js';
 import { roleOf } from '../roles.js';
-import type { CutAnchorIssueReason } from '../dimension.js';
-import type {
-  CutAnchor,
-  Entity,
-  EntityId,
-  PatternDocument,
-  Piece,
-  PieceDefaults,
-} from '../types.js';
-import { requireAllowancePreset, resolveCreateAllowance } from './default-allowances.js';
+import type { Entity, EntityId, PatternDocument, Piece } from '../types.js';
+import { resolveCreateAllowance } from './default-allowances.js';
+import { requirePieceDefaults } from './piece-defaults.js';
 import {
   noOp,
   replacePiece,
@@ -33,7 +26,7 @@ import {
   withoutTab,
 } from './shared.js';
 import { captureMeasuredValues } from './variables.js';
-import type { Command, CommandApplication, CommandOf, CommandType } from './types.js';
+import type { CommandApplication, CommandOf } from './types.js';
 
 /** The longest free-text note a piece stores. */
 export const MAX_PIECE_NOTES_LENGTH = 500;
@@ -41,85 +34,6 @@ export const MAX_PIECE_NOTES_LENGTH = 500;
 /** The longest fabric name a piece stores. */
 export const MAX_PIECE_FABRIC_LENGTH = 120;
 
-/** Reject an anchor that does not address a vertex or whole edge of this piece. */
-export function requireCutAnchor(commandType: CommandType, piece: Piece, anchor: CutAnchor): void {
-  if (!piece.edges.includes(anchor.edge)) {
-    throw new CommandValidationError(
-      commandType,
-      `edge ${anchor.edge} is not in piece ${piece.id}`,
-    );
-  }
-  if (anchor.at !== 'start' && anchor.at !== 'end' && anchor.at !== 'edge') {
-    throw new CommandValidationError(
-      commandType,
-      `anchor ${String(anchor.at)} must be 'start', 'end' or 'edge'`,
-    );
-  }
-  if (anchor.loop !== undefined && anchor.loop !== 'stitch' && anchor.loop !== 'cut') {
-    throw new CommandValidationError(
-      commandType,
-      `anchor loop ${String(anchor.loop)} must be 'stitch' or 'cut'`,
-    );
-  }
-  // A stitch edge anchor would duplicate a cut edge and has no stitch equivalent.
-  if (anchor.loop === 'stitch' && anchor.at === 'edge') {
-    throw new CommandValidationError(
-      commandType,
-      "a stitch anchor must be 'start' or 'end', not 'edge'",
-    );
-  }
-}
-
-/** The command error for each shared cut-anchor rejection. */
-export const CUT_ANCHOR_MESSAGES: Record<CutAnchorIssueReason, string> = {
-  missing: 'the piece cut loop cannot resolve these anchors',
-  'not-straight': 'an edge anchor must be a straight line edge',
-  'different-piece': 'both anchors must belong to the same piece',
-  'same-anchor': 'the two anchors must be different',
-  'not-parallel': 'two edge anchors must be parallel',
-  'zero-span': 'the two anchors must not resolve to the same point',
-};
-
-/** Validate a per-piece defaults object, copying its preset. */
-function requirePieceDefaults(
-  document: PatternDocument,
-  commandType: CommandType,
-  defaults: PieceDefaults | undefined,
-): PieceDefaults | undefined {
-  if (defaults === undefined) return undefined;
-  if (defaults.allowance === null) return { allowance: null };
-  return { allowance: requireAllowancePreset(document, commandType, defaults.allowance) };
-}
-
-/** The defaults a piece override represents, turned into a restoring command. */
-function restorePieceDefaults(piece: EntityId, defaults: PieceDefaults | undefined): Command {
-  if (defaults === undefined) {
-    return {
-      id: `${piece}:default-allowance`,
-      type: 'set_piece_default_allowance',
-      params: { piece, mode: 'inherit' },
-    };
-  }
-  if (defaults.allowance === null) {
-    return {
-      id: `${piece}:default-allowance`,
-      type: 'set_piece_default_allowance',
-      params: { piece, mode: 'none' },
-    };
-  }
-  return {
-    id: `${piece}:default-allowance`,
-    type: 'set_piece_default_allowance',
-    params: {
-      piece,
-      mode: 'preset',
-      width: defaults.allowance.width,
-      ...(defaults.allowance.kind === undefined ? {} : { kind: defaults.allowance.kind }),
-    },
-  };
-}
-
-/** Create an empty piece; its loop is captured later with `set_piece_loop`. */
 export function applyCreatePiece(
   document: PatternDocument,
   command: CommandOf<'create_piece'>,
@@ -461,47 +375,6 @@ export function applySetRole(
   return {
     document: { ...document, entities },
     inverse: { id: command.id, type: 'set_role', params: { id, role: current } },
-  };
-}
-
-/** Store or clear a piece's allowance override. */
-export function applySetPieceDefaultAllowance(
-  document: PatternDocument,
-  command: CommandOf<'set_piece_default_allowance'>,
-): CommandApplication {
-  const { piece: pieceId, mode } = command.params;
-  const piece = requirePiece(document, pieceId, 'set_piece_default_allowance');
-
-  let defaults: PieceDefaults | undefined;
-  if (mode === 'inherit') {
-    defaults = undefined;
-  } else if (mode === 'none') {
-    defaults = { allowance: null };
-  } else if (mode === 'preset') {
-    defaults = {
-      allowance: requireAllowancePreset(document, 'set_piece_default_allowance', {
-        width: command.params.width ?? Number.NaN,
-        ...(command.params.kind === undefined ? {} : { kind: command.params.kind }),
-      }),
-    };
-  } else {
-    throw new CommandValidationError(
-      'set_piece_default_allowance',
-      `unknown mode: ${String(mode)}`,
-    );
-  }
-
-  const next: Piece = { ...piece };
-  if (defaults === undefined) delete next.defaults;
-  else next.defaults = defaults;
-
-  if (JSON.stringify(next.defaults) === JSON.stringify(piece.defaults)) {
-    return noOp(document);
-  }
-
-  return {
-    document: replacePiece(document, next),
-    inverse: restorePieceDefaults(pieceId, piece.defaults),
   };
 }
 

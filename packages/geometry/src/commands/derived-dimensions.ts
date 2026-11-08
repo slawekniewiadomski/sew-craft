@@ -9,7 +9,7 @@ import {
 import { pieceById } from '../piece.js';
 import { DIMENSION_ORIENTATIONS } from '../types.js';
 import type { DerivedDistanceConstraint, PatternDocument } from '../types.js';
-import { CUT_ANCHOR_MESSAGES, requireCutAnchor } from './pieces.js';
+import { CUT_ANCHOR_MESSAGES, requireCutAnchor } from './piece-anchors.js';
 import { noOp } from './shared.js';
 import type { AddDerivedDimensionParams, CommandApplication, CommandOf } from './types.js';
 

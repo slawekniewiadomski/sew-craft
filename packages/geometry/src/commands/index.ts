@@ -51,11 +51,11 @@ import {
   applyCreatePiece,
   applyDeletePiece,
   applyPlacePiece,
-  applySetPieceDefaultAllowance,
   applySetPieceLoop,
   applySetRole,
   applyUpdatePiece,
 } from './pieces.js';
+import { applySetPieceDefaultAllowance } from './piece-defaults.js';
 import { noOp, roleFromParams } from './shared.js';
 import { applyRemoveVariable, applySetVariable, applyUpdateVariable } from './variables.js';
 import type {
