@@ -7,15 +7,17 @@ import type { SolveOptions, SolveResult } from '../solver.js';
 import type { EntityId, PatternDocument } from '../types.js';
 import {
   applyAddCornerRound,
-  applyAddSeamAllowance,
   applyRemoveCornerRound,
-  applyRemoveSeamAllowance,
   applySetCornerRoundRadius,
   applySetDefaultAllowance,
   applySetPieceAllowance,
   applySetPieceCornerAllowance,
-  applySetSeamAllowance,
 } from './allowances.js';
+import {
+  applyAddSeamAllowance,
+  applyRemoveSeamAllowance,
+  applySetSeamAllowance,
+} from './seam-allowances.js';
 import {
   applyAddInstance,
   applyCreateAssembly,
@@ -66,7 +68,7 @@ import type {
 } from './types.js';
 
 export * from './types.js';
-export { DEFAULT_SEAM_ALLOWANCE } from './allowances.js';
+export { DEFAULT_SEAM_ALLOWANCE } from './seam-allowances.js';
 export { MAX_ASSEMBLY_NAME_LENGTH } from './assemblies.js';
 export { MIN_SPLIT_LENGTH } from './entities.js';
 export { MAX_PIECE_NOTES_LENGTH, MAX_PIECE_FABRIC_LENGTH } from './pieces.js';
