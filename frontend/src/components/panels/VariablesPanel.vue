@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PatternDocument, Unit } from '@sewcraft/geometry';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, ref } from 'vue';
 
 import SidebarEmpty from '@/components/sidebar/SidebarEmpty.vue';
 import {
@@ -12,6 +12,7 @@ import {
   type VariableSortKey,
 } from '@/lib/variable-sort';
 import { variableRows, type VariableValueInput } from '@/lib/variables';
+import VariableAddMenu from '@/components/panels/VariableAddMenu.vue';
 import VariableRow from '@/components/panels/VariableRow.vue';
 
 const props = withDefaults(
@@ -95,42 +96,6 @@ const visibleColumns = computed(() =>
 );
 
 /** The add-row menu, its measured entry enabled only for a valid chain. */
-const addOpen = ref(false);
-const addRoot = ref<HTMLElement | null>(null);
-
-function openAdd(): void {
-  addOpen.value = !addOpen.value;
-}
-
-function chooseCreate(): void {
-  addOpen.value = false;
-  emit('create');
-}
-
-function chooseMeasured(): void {
-  addOpen.value = false;
-  emit('create-measured');
-}
-
-function onDocumentPointerDown(event: PointerEvent): void {
-  if (!addOpen.value) return;
-  if (addRoot.value!.contains(event.target as Node)) return;
-  addOpen.value = false;
-}
-
-function onDocumentKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') addOpen.value = false;
-}
-
-onMounted(() => {
-  document.addEventListener('pointerdown', onDocumentPointerDown);
-  document.addEventListener('keydown', onDocumentKeydown);
-});
-onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', onDocumentPointerDown);
-  document.removeEventListener('keydown', onDocumentKeydown);
-});
-
 /** In compact mode the comment opens as a full-width row under its variable. */
 const openCommentSlug = ref<string | null>(null);
 
@@ -140,7 +105,7 @@ function toggleComment(slug: string): void {
 </script>
 
 <template>
-  <div ref="addRoot" data-testid="variables-panel">
+  <div data-testid="variables-panel">
     <table class="w-full table-fixed border-collapse text-left" data-testid="variables-table">
       <colgroup>
         <col class="w-[16px]" />
@@ -218,81 +183,12 @@ function toggleComment(slug: string): void {
         />
         <tr class="foot">
           <td :colspan="props.compact ? 5 : 7" class="p-0">
-            <button
-              type="button"
-              class="addbtn"
-              :disabled="props.readOnly"
-              aria-haspopup="menu"
-              :aria-expanded="addOpen ? 'true' : 'false'"
-              data-testid="variables-add"
-              @click="openAdd"
-            >
-              + New variable <span aria-hidden="true" class="caret">▼</span>
-            </button>
-            <div v-if="addOpen" class="menu" role="menu" data-testid="variables-add-menu">
-              <button
-                type="button"
-                role="menuitem"
-                class="menu-item"
-                :disabled="props.readOnly"
-                data-testid="add-variable"
-                @click="chooseCreate"
-              >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  aria-hidden="true"
-                >
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-                <span>
-                  <span class="menu-label">New variable</span>
-                  <span class="menu-hint">Name a number or write a formula</span>
-                </span>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                class="menu-item"
-                :disabled="props.readOnly || !props.canMeasure"
-                :title="
-                  props.canMeasure
-                    ? 'Measure the connected edges you have selected'
-                    : 'Select one or more connected edges first'
-                "
-                data-testid="add-measured-variable"
-                @click="chooseMeasured"
-              >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.2"
-                  stroke-linecap="round"
-                  aria-hidden="true"
-                >
-                  <path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1" />
-                  <path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1" />
-                </svg>
-                <span>
-                  <span class="menu-label">New measured variable</span>
-                  <span class="menu-hint">
-                    {{
-                      props.canMeasure
-                        ? 'From the selected connected edges'
-                        : 'Select connected edges first'
-                    }}
-                  </span>
-                </span>
-              </button>
-            </div>
+            <VariableAddMenu
+              :read-only="props.readOnly"
+              :can-measure="props.canMeasure"
+              @create="emit('create')"
+              @create-measured="emit('create-measured')"
+            />
           </td>
         </tr>
       </tbody>
@@ -337,90 +233,5 @@ td {
   position: relative;
   background: color-mix(in oklab, var(--muted) 35%, transparent);
   padding: 0 4px;
-}
-
-.addbtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 22px;
-  border: 0;
-  border-radius: 3px;
-  background: transparent;
-  color: var(--muted-foreground);
-  font: inherit;
-  font-size: 10px;
-  cursor: pointer;
-  padding: 0 4px;
-}
-
-.addbtn:hover:not(:disabled) {
-  background: var(--muted);
-  color: var(--foreground);
-}
-
-.addbtn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.caret {
-  font-size: 7px;
-  opacity: 0.7;
-}
-
-.menu {
-  position: absolute;
-  left: 4px;
-  bottom: 26px;
-  z-index: 20;
-  width: 218px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--background);
-  box-shadow: 0 8px 24px color-mix(in oklab, var(--foreground) 12%, transparent);
-  padding: 3px;
-}
-
-.menu-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
-  width: 100%;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  padding: 5px 6px;
-}
-
-.menu-item:hover:not(:disabled) {
-  background: var(--muted);
-}
-
-.menu-item:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-
-.menu-item svg {
-  flex: none;
-  margin-top: 1px;
-  color: var(--muted-foreground);
-}
-
-.menu-label {
-  display: block;
-  font-size: 11px;
-}
-
-.menu-hint {
-  display: block;
-  margin-top: 1px;
-  color: var(--muted-foreground);
-  font-size: 9.5px;
 }
 </style>
