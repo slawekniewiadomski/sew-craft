@@ -65,7 +65,9 @@ export function useToolPrompts({
   const cornerRoundPreviewRadius = ref<number | null>(null);
 
   const constraintPromptText = computed(() =>
-    constraintPrompt(activeConstraint.value!, constraintPicks.value),
+    activeConstraint.value === null
+      ? ''
+      : constraintPrompt(activeConstraint.value, constraintPicks.value),
   );
   const constraintValueReady = computed(
     () => activeConstraint.value !== null && pendingConstraint.value !== null,

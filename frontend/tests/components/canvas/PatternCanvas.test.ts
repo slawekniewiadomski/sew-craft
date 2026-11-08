@@ -1495,7 +1495,7 @@ describe('PatternCanvas', () => {
     expect(cut.classes()).toContain('text-foreground');
   });
 
-  it('ignores an arc as a dimension pick', () => {
+  it('ignores an arc as a dimension pick', async () => {
     const arcDoc = doc([
       pt('a', 0, 0),
       pt('b', 100, 0),
@@ -1507,6 +1507,9 @@ describe('PatternCanvas', () => {
     down(wrapper.find('[data-kind="arc"]').element, 400, 300);
 
     expect(wrapper.emitted('add-dimension')).toBeUndefined();
+
+    await wrapper.find('[data-kind="arc"]').trigger('pointerenter');
+    await wrapper.find('[data-kind="arc"]').trigger('pointerleave');
   });
 
   it('commits a circle between two existing points', async () => {
@@ -2988,6 +2991,10 @@ describe('PatternCanvas', () => {
 
     await wrapper.find('[data-kind="curve"][data-entity-id="r1:arc"]').trigger('pointerenter');
     expect(wrapper.find('[data-testid="corner-round-handle-r1-0"]').exists()).toBe(true);
+
+    for (const entity of wrapper.findAll('[data-kind]')) {
+      await entity.trigger('pointerleave');
+    }
   });
 
   it('drags a tangent handle along its line and commits one radius command', async () => {

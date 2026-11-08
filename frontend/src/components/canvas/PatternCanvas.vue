@@ -1,31 +1,15 @@
 <script setup lang="ts">
 import {
   allPoints,
-  arcThroughPoints,
   type ArcEntity,
-  bounds,
-  constraintOffset,
-  constraintOrientation,
-  cornerRoundGeometry,
-  cornerRounds,
-  cornerRoundsForEntity,
   type CircleEntity,
-  type CornerRound,
   type CurveEntity,
   type CutAnchor,
-  cutAnchorIssue,
-  type CutAnchorIssueReason,
-  DEFAULT_DIMENSION_OFFSET,
   type DerivedDistanceConstraint,
-  type DimensionOrientation,
   derivedDimensionGeometry,
   derivedDimensionState,
   derivedDimensionValue,
   dimensionGeometry,
-  dimensionOffsetForPointer,
-  dimensionOffsetFromSpan,
-  distanceAnchorIssue,
-  type DistanceAnchorReason,
   type DimensionLayout,
   dimensionState,
   dimensionValue,
@@ -34,8 +18,6 @@ import {
   type DistanceConstraint,
   entitiesInRect,
   type EntityId,
-  inferDimensionOrientation,
-  inferOrientationFromSpan,
   getEntity,
   isAnnotation,
   isConstruction,
@@ -43,13 +25,11 @@ import {
   centreLineGeometry,
   notchGeometry,
   pieceMarks,
-  lineEndpoints,
   type LineEntity,
   type LeaderGeometry,
   measureDistanceDimension,
   measureLinearDimension,
   MIN_RADIUS,
-  type Param,
   type ParamInput,
   type PatternDocument,
   type Piece,
@@ -60,10 +40,7 @@ import {
   pieceLoop,
   pieceLoopVertex,
   type PointEntity,
-  projectPointOnLine,
   type Rect,
-  resolveCutSpan,
-  resolveParam,
   type TextLayout,
   type TextEntity,
   textLayout,
@@ -72,8 +49,6 @@ import {
   bandTargetKey,
   pieceBandRegions,
   seamAllowancePaths,
-  svgArcCommand,
-  usesCutEdgeAnchor,
   type BandRegion,
   type BandTarget,
   type Vec2,
@@ -82,22 +57,10 @@ import { cutLoopContains, regionAt } from '@/lib/allowance-regions';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import { arcFromEndpoints } from '@/lib/arc-tool';
-import { curvePath, polylinePath } from '@/lib/canvas-render';
 import { resolveCircleEndpoint, sameCircleEndpoint, type CircleEndpoint } from '@/lib/circle-tool';
 import type { ConstraintPick } from '@/lib/constraint-tools';
 import { CONSTRAINT_ICONS, constraintMarkers, type ConstraintMarker } from '@/lib/constraint-view';
-import {
-  cornerRoundLabel,
-  cornerRoundPreview,
-  formatCornerRadius,
-  formatCornerRadiusParam,
-  parseCornerRadiusField,
-  roundableCorners,
-  sameCornerRadiusParam,
-  tangentDragRadius,
-  type CornerRoundLabel,
-  type CornerRoundPicks,
-} from '@/lib/corner-round';
+import { type CornerRoundPicks } from '@/lib/corner-round';
 import {
   formulaIssue,
   insertVariableToken,
@@ -124,48 +87,18 @@ import {
   type DimensionSegment,
   type CutDimensionPlacement,
 } from '@/lib/dimensions';
-import {
-  cutAnchorPreviewPosition,
-  cutEdgeCandidateFor,
-  cutGhostFor,
-  cutLoopCandidateFor,
-  cutPointCandidateFor,
-  dimensionCandidateFor,
-  dimensionGhostFor,
-  dimensionPickFor,
-  pickPreviewPosition,
-  pickPreviewTick,
-  type CutPick,
-  type DimensionPick,
-  type FeedbackHit,
-} from '@/lib/dimension-feedback';
+
 import { isEditableTarget } from '@/lib/dom';
-import {
-  endpointMissing,
-  endpointPosition,
-  resolveDraftingEndpoint,
-  resolveLeaderEndpoint,
-  resolveTextAnchorEndpoint,
-  sameDraftingEndpoint,
-  type DraftingEndpoint,
-} from '@/lib/drafting';
+import { type DraftingEndpoint } from '@/lib/drafting';
 import type { EditorTool } from '@/lib/editor-tools';
 import {
   anchorForEdge,
-  anchorForPoint,
   canEditEntity,
   edgeEndpoints,
   nearestLoopHandle,
   pieceForEntity,
-  pieceOwningEdge,
-  piecesAtPoint,
 } from '@/lib/pieces';
-import {
-  newRectangleCorners,
-  RECTANGLE_CLICKS,
-  rectangleCorners,
-  type RectangleMode,
-} from '@/lib/rectangle-tool';
+import { type RectangleMode } from '@/lib/rectangle-tool';
 import {
   applySelection,
   rectMode,
@@ -176,27 +109,9 @@ import {
 import { nearestLineMidpoint } from '@/lib/midpoint';
 import { notchTargetAt } from '@/lib/marks';
 import { splitCandidate, type SplitCandidate } from '@/lib/split-line';
-import {
-  MIDPOINT_SNAP_PIXELS,
-  nearestPoint,
-  POINT_SNAP_TOLERANCE,
-  snapPoint,
-  snapToGrid,
-} from '@/lib/snap';
+import { snapToGrid } from '@/lib/snap';
 import { DEFAULT_TEXT_CONTENT, leaderTargetIssue } from '@/lib/text-tool';
-import {
-  fitToBounds,
-  niceStep,
-  panBy,
-  screenToWorld,
-  ticksAlong,
-  viewportTransform,
-  visibleWorldRect,
-  worldToScreen,
-  zoomAt,
-  type Size,
-  type Viewport,
-} from '@/lib/viewport';
+import { panBy, screenToWorld, worldToScreen, type Viewport } from '@/lib/viewport';
 
 import {
   derivedDimensionDrawing,
@@ -209,6 +124,10 @@ import {
   type DimensionDrawingOptions,
   type DimensionLabelView,
 } from '@/lib/pattern-canvas-dimensions';
+import { useCanvasViewport, type CanvasHit as Hit } from '@/composables/use-canvas-viewport';
+import { useCornerRoundEdit } from '@/composables/use-corner-round-edit';
+import { useDimensionGesture } from '@/composables/use-dimension-gesture';
+import { useDraftingGestures } from '@/composables/use-drafting-gestures';
 import { useReferencePicker } from '@/composables/use-reference-picker';
 import { useVariablePicker } from '@/composables/use-variable-picker';
 import {
@@ -227,13 +146,11 @@ import {
   type PieceView,
   type RegionView,
 } from '@/lib/pattern-canvas-views';
+import CanvasMarquee from '@/components/canvas/CanvasMarquee.vue';
+import CanvasPreviews from '@/components/canvas/CanvasPreviews.vue';
+import CanvasRuler from '@/components/canvas/CanvasRuler.vue';
 import DimensionReferencePicker from '@/components/base/DimensionReferencePicker.vue';
 import VariablePickerList from '@/components/base/VariablePickerList.vue';
-
-interface Hit {
-  id: EntityId;
-  kind: string;
-}
 
 /** A bare-canvas drag that may become a rectangular selection. */
 interface MarqueeState {
@@ -247,21 +164,6 @@ interface MarqueeState {
 
 /** Screen pixels the pointer must travel before a click becomes a marquee. */
 const MARQUEE_THRESHOLD = 4;
-
-/** A tangent handle of a selected round, positioned in screen space. */
-interface CornerRoundHandleView {
-  id: EntityId;
-  endIndex: 0 | 1;
-  x: number;
-  y: number;
-}
-
-/** The `R 12` label of a selected round, positioned in screen space. */
-interface CornerRoundLabelView extends CornerRoundLabel {
-  round: CornerRound;
-  screenX: number;
-  screenY: number;
-}
 
 const props = withDefaults(
   defineProps<{
@@ -346,82 +248,145 @@ const emit = defineEmits<{
   'add-centre-line': [start: EntityId, end: EntityId];
 }>();
 
-const svg = ref<SVGSVGElement | null>(null);
-const viewport = ref<Viewport>({ x: -40, y: -40, scale: 1 });
-const size = ref<Size>({ width: 800, height: 600 });
-let resizeObserver: ResizeObserver | null = null;
+const {
+  svg,
+  viewport,
+  size,
+  gridStep,
+  gridPath,
+  transform,
+  xTicks,
+  yTicks,
+  updateSize,
+  screenPoint,
+  hitEntity,
+  onWheel,
+  fit,
+} = useCanvasViewport({
+  document: () => props.document,
+  canZoom: () => marqueeState.value === null,
+});
+
 const dragState = ref<{ id: EntityId; x: number; y: number; origin: Vec2 } | null>(null);
 /** A move gesture: its start in world space and the live translation. */
 const moveDrag = ref<{ start: Vec2; dx: number; dy: number } | null>(null);
 const panState = ref<{ start: Vec2; origin: Viewport } | null>(null);
 const marqueeState = ref<MarqueeState | null>(null);
-const pending = ref<EntityId[]>([]);
-/** The line gesture's first endpoint; `null` until the first click. */
-const lineStart = ref<DraftingEndpoint | null>(null);
-/** The snapped pointer position while a line gesture is pending. */
-const linePreview = ref<Vec2 | null>(null);
-/** The arc gesture's start and end clicks; `null` until each click lands. */
-const arcStart = ref<DraftingEndpoint | null>(null);
-const arcEnd = ref<DraftingEndpoint | null>(null);
-/** The snapped pointer while the arc gesture is pending; the preview's through point. */
-const arcPointer = ref<Vec2 | null>(null);
-/** True after a rejected third click, until the pointer leaves the chord. */
-const arcHint = ref(false);
-/** The circle gesture's pending centre; `null` until the first click. */
-const circleCenter = ref<CircleEndpoint | null>(null);
-/** The snapped pointer position while a circle gesture is pending. */
-const circlePreview = ref<Vec2 | null>(null);
-/** The rectangle gesture's clicks so far; empty when no gesture is pending. */
-const rectangleClicks = ref<DraftingEndpoint[]>([]);
-/** The snapped pointer while a rectangle gesture is pending; its next click. */
-const rectanglePointer = ref<Vec2 | null>(null);
-/** The label anchor stored by the first click of the Text with leader tool. */
-const textAnchor = ref<DraftingEndpoint | null>(null);
-/** The snapped arrow target while the leader gesture is pending. */
-const textPointer = ref<Vec2 | null>(null);
-/** The point the Centre line tool stored on its first click. */
-const centreStart = ref<EntityId | null>(null);
+const {
+  pendingIds,
+  pendingLineStartId,
+  pendingLineStart,
+  lineStart,
+  linePreview,
+  arcStartPosition,
+  arcChord,
+  arcPreview,
+  arcPendingStart,
+  arcPendingEnd,
+  arcHint,
+  pendingCircleCenterId,
+  pendingCircleCenter,
+  circleCenter,
+  circlePreview,
+  circlePreviewRadius,
+  rectangleMode,
+  rectanglePreview,
+  rectanglePendingCorners,
+  textPreview,
+  textLeaderHint,
+  pointOnLineHover,
+  splitLineHover,
+  midpointHover,
+  onPointerDown: onDraftingPointerDown,
+  onPointerMove: onDraftingPointerMove,
+  onPointerLeave: onDraftingPointerLeave,
+  clearTextOnEscape,
+  clearGestureOnEscape,
+  resetOnToolChange: resetDraftingOnToolChange,
+  pruneOnDocumentChange: pruneDraftingOnDocumentChange,
+} = useDraftingGestures({
+  document: () => props.document,
+  tool: () => props.tool,
+  activePieceId: () => props.activePieceId,
+  readOnly: () => props.readOnly,
+  points: () => points.value,
+  viewport: () => viewport.value,
+  onAddPoint: (x, y) => emit('add-point', x, y),
+  onAddPointOnLine: (lineId, x, y) => emit('add-point-on-line', lineId, x, y),
+  onAddPointMidpoint: (lineId) => emit('add-point-midpoint', lineId),
+  onSplitLine: (lineId, x, y) => emit('split-line', lineId, x, y),
+  onAddLine: (start, end) => emit('add-line', start, end),
+  onAddArc: (start, end, through) => emit('add-arc', start, end, through),
+  onAddCircle: (center, rim) => emit('add-circle', center, rim),
+  onAddRectangle: (mode, clicks) => emit('add-rectangle', mode, clicks),
+  onAddText: (anchor, leader) => emit('add-text', anchor, leader),
+  onAddNotch: (point, edge) => emit('add-notch', point, edge),
+  onAddCentreLine: (start, end) => emit('add-centre-line', start, end),
+  onAddCurve: (points) => emit('add-curve', points),
+});
 const spaceHeld = ref(false);
 
-/** Anchors picked for a dimension that has not yet been placed. */
-const dimensionPending = ref<DimensionPick[]>([]);
-/** Why the last dimension pick was rejected; cleared by a valid pick. */
-const dimensionHint = ref<string | null>(null);
-/** The dimension being placed; its orientation/offset follow the pointer. */
-const dimensionPlacement = ref<DimensionPlacement | null>(null);
-/** The first corner picked for a cut dimension, with its owning piece. */
-const cutDimensionPending = ref<CutPick | null>(null);
-/** The cut dimension being placed; it always measures the piece's cut loop. */
-const cutDimensionPlacement = ref<CutDimensionPlacement | null>(null);
-/** Why the last cut-dimension pick was rejected; cleared by a valid pick. */
-const cutDimensionHint = ref<string | null>(null);
-/** The entity under the pointer while a dimension tool is armed. */
-const hoveredPick = ref<FeedbackHit | null>(null);
-/** The derived loop corner nearest the pointer while the cut tool is armed. */
-const hoveredLoopHandle = ref<LoopHandle | null>(null);
-/** The pointer in world space, for the ghost's unsnapped end. */
-const pointerWorld = ref<Vec2 | null>(null);
-/** Live drag of an existing dimension line, in world space. */
-const dimensionDrag = ref<{
-  id: EntityId;
-  a: EntityId;
-  b: EntityId;
-  orientation: DimensionOrientation;
-  startOffset: number;
-  offset: number;
-} | null>(null);
-/** Live drag of a cut dimension; its span comes from the piece's cut loop. */
-const derivedDrag = ref<{
-  id: EntityId;
-  orientation: DimensionOrientation;
-  startOffset: number;
-  offset: number;
-  span: { a: Vec2; b: Vec2 };
-} | null>(null);
+const {
+  dimensionPending,
+  dimensionPlacement,
+  cutDimensionPlacement,
+  dimensionDrag,
+  derivedDrag,
+  cutDimensionHintText,
+  dimensionHintText,
+  dimensionToolArmed,
+  dimensionFirstPick,
+  dimensionSecondPick,
+  dimensionCandidate,
+  cutPointCandidate,
+  cutEdgeCandidate,
+  dimensionGhost,
+  cutDimensionGhost,
+  dimensionFirstPickPointIds,
+  dimensionFirstPickLineIds,
+  dimensionPickPointIds,
+  dimensionPickLineIds,
+  dimensionCandidatePointIds,
+  dimensionCandidateLineIds,
+  cutCandidatePointIds,
+  cutEdgeCandidateIds,
+  cutCandidateKeys,
+  dimensionFirstPickPoint,
+  dimensionFirstPickTick,
+  dimensionSecondPickPoint,
+  dimensionSecondPickTick,
+  dimensionCandidatePoint,
+  cutFirstPickPosition,
+  cutSecondPickPosition,
+  dragEnabled: dimensionDragEnabled,
+  beginDrag: onDimensionPointerDown,
+  updateHover: updateDimensionHover,
+  clearHover: clearDimensionHover,
+  onPick: onDimensionPick,
+  updatePlacements: updateDimensionPlacements,
+  onDragMove: onDimensionDragMove,
+  commitDrag: commitDimensionDrag,
+  cancelDrag: cancelDimensionDrag,
+  clearOnEscape: clearDimensionOnEscape,
+  resetOnToolChange: resetDimensionOnToolChange,
+  pruneOnDocumentChange: pruneDimensionOnDocumentChange,
+} = useDimensionGesture({
+  document: () => props.document,
+  tool: () => props.tool,
+  readOnly: () => props.readOnly,
+  constraintActive: () => props.constraintActive,
+  selectedDimensionIds: () => props.selectedDimensionIds,
+  viewport: () => viewport.value,
+  beginPointerTracking: addPointerListeners,
+  onAddDimension: (placement) => emit('add-dimension', placement),
+  onAddCutDimension: (placement) => emit('add-cut-dimension', placement),
+  onUpdateDimension: (id, patch) => emit('update-dimension', id, patch),
+  onSelectDimensions: (ids) => emit('update:selectedDimensionIds', ids),
+  onSelectEntities: (ids) => emit('update:selectedEntityIds', ids),
+});
 /** The inline value editor, keyed to the dimension being edited. */
 const editingDimension = ref<{ id: EntityId; value: string } | null>(null);
 const dimensionInput = ref<HTMLInputElement | null>(null);
-/** The round whose tangent handles and label are shown because it is hovered. */
 const hoveredRoundId = ref<EntityId | null>(null);
 
 /** The allowance region under the pointer, and whether the pointer is inside its piece. */
@@ -430,39 +395,6 @@ const bandHovered = ref(false);
 
 /** A touch that pressed on a region: a tap picks it, a drag still pans. */
 const touchRegion = ref<{ target: BandTarget; start: Vec2 } | null>(null);
-/**
- * The straight line the Point tool would constrain a click to, with the raw
- * pointer and the projection that click would use.
- */
-const pointOnLineHover = ref<{ lineId: EntityId; pointer: Vec2; point: Vec2 } | null>(null);
-const splitLineHover = ref<SplitCandidate | null>(null);
-/**
- * The visible line whose middle is under the pointer while a point-creating tool
- * is armed. `pointer` is kept so a document edit can re-resolve the candidate.
- */
-const midpointHover = ref<{
-  lineId: EntityId;
-  x: number;
-  y: number;
-  pointer: Vec2;
-} | null>(null);
-/** Live tangent-handle drag; the radius changes on release. */
-const tangentDrag = ref<{
-  id: EntityId;
-  endIndex: 0 | 1;
-  radius: number;
-  startRadius: number;
-} | null>(null);
-/** The inline `R` label editor, anchored at the label in screen space. */
-const editingCornerRound = ref<{
-  id: EntityId;
-  value: string;
-  startParam: Param;
-  x: number;
-  y: number;
-} | null>(null);
-const cornerRoundInput = ref<HTMLInputElement | null>(null);
-
 const points = computed(() =>
   allPoints(props.document).map((point) =>
     dragState.value && dragState.value.id === point.id
@@ -575,362 +507,6 @@ const cutEdgeHandles = computed<LineView[]>(() => {
   return lines.value.filter((entry) => ids.has(entry.line.id));
 });
 
-/** The cut tool's status message: a rejection, a next-pick prompt, or the idle cue. */
-const cutDimensionHintText = computed<string | null>(() => {
-  if (cutDimensionHint.value !== null) return cutDimensionHint.value;
-  if (props.tool !== 'cut_dimension' || cutDimensionPlacement.value !== null) return null;
-  if (cutDimensionPending.value !== null) return 'Pick the second anchor on the same piece.';
-  return 'Pick a seamline or cut corner, or a straight edge, of one piece.';
-});
-
-/** The Dimension tool's status message: a rejection, or the next pick prompt. */
-const dimensionHintText = computed<string | null>(() => {
-  if (dimensionHint.value !== null) return dimensionHint.value;
-  if (dimensionPlacement.value !== null) return null;
-  if (dimensionPending.value.length > 0) return 'Pick the second anchor.';
-  return props.tool === 'dimension' ? 'Pick a point or a line.' : null;
-});
-
-/** Whether a dimension tool owns the pointer feedback. */
-const dimensionToolArmed = computed(
-  () => props.tool === 'dimension' || props.tool === 'cut_dimension',
-);
-
-/** The first anchor of the gesture, pending or already being placed. */
-const dimensionFirstPick = computed<DimensionPick | null>(() => {
-  const pendingPick = dimensionPending.value[0];
-  if (pendingPick !== undefined) return pendingPick;
-  const placement = dimensionPlacement.value;
-  return placement === null
-    ? null
-    : dimensionPickFor(props.document, { id: placement.a, kind: '' });
-});
-
-/** The second anchor of a dimension already being placed. */
-const dimensionSecondPick = computed<DimensionPick | null>(() => {
-  const placement = dimensionPlacement.value;
-  return placement === null
-    ? null
-    : dimensionPickFor(props.document, { id: placement.b, kind: '' });
-});
-
-/** The eligible anchor under the pointer, validated against a pending first pick. */
-const dimensionCandidate = computed<DimensionPick | null>(() => {
-  if (props.tool !== 'dimension' || props.readOnly || dimensionPlacement.value !== null)
-    return null;
-  return dimensionCandidateFor(props.document, hoveredPick.value, dimensionFirstPick.value);
-});
-
-/** The cut corner under the pointer, same-piece only after the first corner. */
-const cutPointCandidate = computed(() => {
-  if (props.tool !== 'cut_dimension' || props.readOnly || cutDimensionPlacement.value !== null) {
-    return null;
-  }
-  const loopHandle = hoveredLoopHandle.value;
-  if (loopHandle !== null) {
-    return cutLoopCandidateFor(props.document, loopHandle, cutDimensionPending.value);
-  }
-  return cutPointCandidateFor(props.document, hoveredPick.value, cutDimensionPending.value);
-});
-
-/** A whole piece edge under the pointer; it skips the ghost stage. */
-const cutEdgeCandidate = computed(() => {
-  if (
-    props.tool !== 'cut_dimension' ||
-    props.readOnly ||
-    cutDimensionPending.value !== null ||
-    cutDimensionPlacement.value !== null ||
-    hoveredLoopHandle.value !== null
-  ) {
-    return null;
-  }
-  return cutEdgeCandidateFor(props.document, hoveredPick.value);
-});
-
-/** The dashed guide from the first Dimension pick, snapped when a candidate is valid. */
-const dimensionGhost = computed(() => {
-  if (props.tool !== 'dimension' || props.readOnly || dimensionPlacement.value !== null)
-    return null;
-  return dimensionGhostFor(
-    props.document,
-    dimensionPending.value[0] ?? null,
-    dimensionCandidate.value,
-    pointerWorld.value,
-  );
-});
-
-/** The dashed guide from the first cut corner to the pointer or a same-piece corner. */
-const cutDimensionGhost = computed(() => {
-  if (props.tool !== 'cut_dimension' || props.readOnly || cutDimensionPlacement.value !== null) {
-    return null;
-  }
-  return cutGhostFor(
-    props.document,
-    cutDimensionPending.value,
-    cutPointCandidate.value,
-    pointerWorld.value,
-  );
-});
-
-function idSet(id: EntityId | null): Set<EntityId> {
-  return new Set(id === null ? [] : [id]);
-}
-
-const dimensionFirstPickPointIds = computed(() => {
-  const pick = dimensionFirstPick.value;
-  return idSet(pick !== null && pick.kind === 'point' ? pick.id : null);
-});
-
-const dimensionFirstPickLineIds = computed(() => {
-  const pick = dimensionFirstPick.value;
-  return idSet(pick !== null && pick.kind === 'line' ? pick.id : null);
-});
-
-const dimensionSecondPickPointIds = computed(() => {
-  const pick = dimensionSecondPick.value;
-  return idSet(pick !== null && pick.kind === 'point' ? pick.id : null);
-});
-
-const dimensionSecondPickLineIds = computed(() => {
-  const pick = dimensionSecondPick.value;
-  return idSet(pick !== null && pick.kind === 'line' ? pick.id : null);
-});
-
-const dimensionPickPointIds = computed(() => {
-  const ids = new Set(dimensionFirstPickPointIds.value);
-  for (const id of dimensionSecondPickPointIds.value) ids.add(id);
-  return ids;
-});
-
-const dimensionPickLineIds = computed(() => {
-  const ids = new Set(dimensionFirstPickLineIds.value);
-  for (const id of dimensionSecondPickLineIds.value) ids.add(id);
-  return ids;
-});
-
-const dimensionCandidatePointIds = computed(() => {
-  const pick = dimensionCandidate.value;
-  return idSet(pick !== null && pick.kind === 'point' ? pick.id : null);
-});
-
-const dimensionCandidateLineIds = computed(() => {
-  const pick = dimensionCandidate.value;
-  return idSet(pick !== null && pick.kind === 'line' ? pick.id : null);
-});
-
-const cutCandidatePointIds = computed(() => idSet(cutPointCandidate.value?.pointId ?? null));
-const cutEdgeCandidateIds = computed(() => idSet(cutEdgeCandidate.value?.edge ?? null));
-const cutCandidateKeys = computed(() => {
-  const key = cutPointCandidate.value?.key;
-  return new Set(key === undefined ? [] : [key]);
-});
-
-const dimensionFirstPickPoint = computed<Vec2 | null>(() => {
-  const pick = dimensionFirstPick.value;
-  return pick !== null && pick.kind === 'point' ? pickPreviewPosition(props.document, pick) : null;
-});
-
-const dimensionFirstPickTick = computed(() => {
-  const pick = dimensionFirstPick.value;
-  return pick !== null && pick.kind === 'line' ? pickPreviewTick(props.document, pick) : null;
-});
-
-const dimensionSecondPickPoint = computed<Vec2 | null>(() => {
-  const pick = dimensionSecondPick.value;
-  return pick !== null && pick.kind === 'point' ? pickPreviewPosition(props.document, pick) : null;
-});
-
-const dimensionSecondPickTick = computed(() => {
-  const pick = dimensionSecondPick.value;
-  return pick !== null && pick.kind === 'line' ? pickPreviewTick(props.document, pick) : null;
-});
-
-const dimensionCandidatePoint = computed<Vec2 | null>(() => {
-  const pick = dimensionCandidate.value;
-  return pick !== null && pick.kind === 'point' ? pickPreviewPosition(props.document, pick) : null;
-});
-
-const cutPlacementPiece = computed<Piece | null>(() => {
-  const placement = cutDimensionPlacement.value;
-  // The document watcher clears a placement whose piece disappears.
-  return placement === null
-    ? null
-    : props.document.pieces.find((piece) => piece.id === placement.piece)!;
-});
-
-const cutFirstPickPosition = computed<Vec2 | null>(() => {
-  const pendingPick = cutDimensionPending.value;
-  if (pendingPick !== null) {
-    return cutAnchorPreviewPosition(props.document, pendingPick.piece, pendingPick.anchor);
-  }
-  const placement = cutDimensionPlacement.value;
-  const piece = cutPlacementPiece.value;
-  return placement === null || piece === null
-    ? null
-    : cutAnchorPreviewPosition(props.document, piece, placement.a);
-});
-
-const cutSecondPickPosition = computed<Vec2 | null>(() => {
-  const placement = cutDimensionPlacement.value;
-  const piece = cutPlacementPiece.value;
-  return placement === null || piece === null
-    ? null
-    : cutAnchorPreviewPosition(props.document, piece, placement.b);
-});
-
-const roundPickedLineIds = computed(() => {
-  const picks = [props.roundCornerPicks.first, props.roundCornerPicks.second];
-  return new Set(picks.filter((id): id is EntityId => id !== null));
-});
-
-/**
- * The live tool preview: trimmed lines, tangent dots and a dashed arc. It is
- * aria-hidden and never written to the document until Apply.
- */
-const roundPreview = computed(() => {
-  const radius = props.cornerRoundPreviewRadius;
-  if (!props.roundCornerActive || radius === null) return null;
-  return cornerRoundPreview(props.document, props.roundCornerPicks, radius);
-});
-
-/**
- * Corners the Round corner tool can act on, drawn as small rings while it is
- * active. The prompt and live region carry the meaning; the rings are decorative.
- */
-const roundableCornerPoints = computed(() => {
-  const ids = new Set(roundableCorners(props.document));
-  return visiblePoints.value.filter((point) => ids.has(point.id));
-});
-
-/**
- * Every round's derived feature points — the radius centre and both tangency
- * points — as always-visible construction marks. They are ordinary point
- * entities, so hit testing, selection, snapping and dimension picks apply.
- */
-const cornerRoundFeaturePoints = computed<PointEntity[]>(() =>
-  cornerRounds(props.document).flatMap((round) =>
-    [round.center, round.ends[0].tangent, round.ends[1].tangent].flatMap((id) => {
-      if (id === undefined) return [];
-      const point = pointById.value.get(id);
-      return point === undefined ? [] : [point];
-    }),
-  ),
-);
-
-/** Rounds whose handles and label are visible: selected, hovered or dragging. */
-const activeRounds = computed<CornerRound[]>(() => {
-  const rounds: CornerRound[] = [];
-  const add = (round: CornerRound | undefined): void => {
-    if (round !== undefined && !rounds.some((candidate) => candidate.id === round.id)) {
-      rounds.push(round);
-    }
-  };
-
-  if (props.selectedEntityIds.length > 0) {
-    props.selectedEntityIds.forEach((id) => cornerRoundsForEntity(props.document, id).forEach(add));
-  }
-  if (hoveredRoundId.value !== null) {
-    add(cornerRounds(props.document).find((round) => round.id === hoveredRoundId.value));
-  }
-  if (tangentDrag.value !== null) {
-    add(cornerRounds(props.document).find((round) => round.id === tangentDrag.value!.id));
-  }
-
-  return rounds;
-});
-
-/** A selected round promotes its three feature dots to the primary colour. */
-function featurePointClass(point: PointEntity): string {
-  const selected = activeRounds.value.some(
-    (round) => round.center === point.id || round.ends.some((end) => end.tangent === point.id),
-  );
-
-  return selected ? 'fill-primary stroke-primary' : 'fill-background stroke-muted-foreground';
-}
-
-/** The radius a round shows: the dragged value while the handle is moving. */
-function radiusOf(round: CornerRound): number {
-  const drag = tangentDrag.value;
-  return drag !== null && drag.id === round.id
-    ? drag.radius
-    : resolveParam(props.document, round.radius);
-}
-
-function roundGeometryOf(round: CornerRound): ReturnType<typeof cornerRoundGeometry>['geometry'] {
-  return cornerRoundGeometry(
-    props.document,
-    round.corner,
-    round.ends[0].anchor,
-    round.ends[1].anchor,
-    radiusOf(round),
-  ).geometry;
-}
-
-/** Tangent handles, in screen space so they stay a constant size at any zoom. */
-const roundHandles = computed<CornerRoundHandleView[]>(() =>
-  activeRounds.value.flatMap((round) => {
-    const geometry = roundGeometryOf(round);
-    if (geometry === null) return [];
-    return ([0, 1] as const).flatMap((endIndex) => {
-      const screen = worldToScreen(
-        viewport.value,
-        endIndex === 0 ? geometry.tangentA : geometry.tangentB,
-      );
-      return [{ id: round.id, endIndex, x: screen.x, y: screen.y }];
-    });
-  }),
-);
-
-/** `R 12` labels, offset outward from the arc's midpoint by a constant 18 px. */
-const roundLabels = computed<CornerRoundLabelView[]>(() =>
-  activeRounds.value.flatMap((round) => {
-    const label = cornerRoundLabel(props.document, round);
-    if (label === null) return [];
-
-    const mid = worldToScreen(viewport.value, { x: label.x, y: label.y });
-    const radius = radiusOf(round);
-    const text = formatCornerRadius(radius);
-
-    return [
-      {
-        ...label,
-        round,
-        radius,
-        text: `R ${text}`,
-        accessible: `Corner radius ${text} millimetres`,
-        screenX: mid.x + label.outwardX * 18,
-        screenY: mid.y + label.outwardY * 18,
-      },
-    ];
-  }),
-);
-
-/** Rounds keyed by their arc, so a double-click on the arc can find its radius. */
-const roundsByArc = computed(() => {
-  const arcs = new Map<EntityId, CornerRound>();
-  for (const round of cornerRounds(props.document)) arcs.set(round.arc, round);
-  return arcs;
-});
-
-/** The dashed arc that follows a tangent-handle drag, before it is committed. */
-const tangentPreview = computed(() => {
-  const drag = tangentDrag.value;
-  if (drag === null) return null;
-
-  const round = cornerRounds(props.document).find((candidate) => candidate.id === drag.id);
-  if (round === undefined) return null;
-
-  const geometry = roundGeometryOf(round);
-  if (geometry === null) return null;
-
-  return {
-    id: drag.id,
-    arc: curvePath([geometry.tangentA, geometry.control1, geometry.control2, geometry.tangentB]),
-    tangents: [geometry.tangentA, geometry.tangentB],
-  };
-});
-
-/** Membership test for every selected entity's highlight. */
 const selectedIds = computed(() => new Set(props.selectedEntityIds));
 
 /** The edges a measured variable reads, for the highlight layer. */
@@ -1066,164 +642,6 @@ const constraintLayer = computed<ConstraintMarker[]>(() => {
   });
 });
 
-const pendingIds = computed(() => new Set(pending.value));
-/** The document point reused as the line start, highlighted while pending. */
-const pendingLineStartId = computed(() =>
-  lineStart.value?.kind === 'point' ? lineStart.value.id : null,
-);
-/**
- * World position of the pending start. An id is always current because the
- * document watcher clears a start whose point disappeared.
- */
-const pendingLineStart = computed<Vec2 | null>(() =>
-  lineStart.value === null ? null : endpointPosition(props.document, lineStart.value),
-);
-/**
- * World position of the pending arc start. An id is always current because the
- * document watcher clears a gesture whose point disappeared.
- */
-const arcStartPosition = computed<Vec2 | null>(() =>
-  arcStart.value === null ? null : endpointPosition(props.document, arcStart.value),
-);
-/** The dashed chord shown between the start click and the end click. */
-const arcChord = computed(() => {
-  if (arcEnd.value !== null) return null;
-  const start = arcStartPosition.value;
-  const pointer = arcPointer.value;
-  if (start === null || pointer === null) return null;
-  return { start, end: pointer };
-});
-/**
- * The dashed arc that follows the pointer after the second click. It is built by
- * the same `arcFromEndpoints` guard the commit uses, so what is previewed is
- * exactly what a third click would store.
- */
-const arcPreview = computed(() => {
-  const start = arcStart.value;
-  const end = arcEnd.value;
-  const pointer = arcPointer.value;
-  if (start === null || end === null || pointer === null) return null;
-
-  const geometry = arcFromEndpoints(props.document, start, end, {
-    kind: 'new',
-    x: pointer.x,
-    y: pointer.y,
-  });
-  if (geometry === null) return null;
-
-  // A non-null geometry means both endpoints resolved to points, so both positions exist.
-  const startPosition = endpointPosition(props.document, start)!;
-  const endPosition = endpointPosition(props.document, end)!;
-  return { d: svgArcCommand(geometry, startPosition, endPosition) };
-});
-
-/** Marker for a start click that created a new point rather than reusing one. */
-const arcPendingStart = computed<Vec2 | null>(() => {
-  const start = arcStart.value;
-  return start !== null && start.kind === 'new' ? { x: start.x, y: start.y } : null;
-});
-/** Marker for an end click that created a new point rather than reusing one. */
-const arcPendingEnd = computed<Vec2 | null>(() => {
-  const end = arcEnd.value;
-  return end !== null && end.kind === 'new' ? { x: end.x, y: end.y } : null;
-});
-
-/** The document point reused as the circle centre, highlighted while pending. */
-const pendingCircleCenterId = computed(() =>
-  circleCenter.value?.kind === 'point' ? circleCenter.value.id : null,
-);
-/**
- * World position of the pending circle centre. An id is always current because
- * the document watcher clears a centre whose point disappeared.
- */
-const pendingCircleCenter = computed<Vec2 | null>(() =>
-  circleCenter.value === null ? null : endpointPosition(props.document, circleCenter.value),
-);
-/** The dashed preview radius: pending centre to the snapped pointer. Read only
- * while both the pending centre and the preview position exist. */
-const circlePreviewRadius = computed<number>(() => {
-  const center = pendingCircleCenter.value!;
-  const rim = circlePreview.value!;
-  return Math.hypot(rim.x - center.x, rim.y - center.y);
-});
-/** The rectangle mode the active tool draws, or `null` for every other tool. */
-const rectangleMode = computed<RectangleMode | null>(() => {
-  switch (props.tool) {
-    case 'add_rectangle':
-      return 'diagonal';
-    case 'add_center_rectangle':
-      return 'center';
-    case 'add_3point_rectangle':
-      return 'three_point';
-    default:
-      return null;
-  }
-});
-/** The test id each mode's dashed preview carries. */
-const RECTANGLE_PREVIEW_TEST_IDS: Record<RectangleMode, string> = {
-  diagonal: 'rectangle-preview',
-  center: 'center-rectangle-preview',
-  three_point: 'three-point-rectangle-preview',
-};
-/**
- * The clicks a commit would carry right now: the pending clicks plus the snapped
- * pointer as the last one. Read only once the gesture is one click short.
- */
-const rectanglePreviewClicks = computed<DraftingEndpoint[] | null>(() => {
-  const mode = rectangleMode.value;
-  const pointer = rectanglePointer.value;
-  if (
-    mode === null ||
-    pointer === null ||
-    rectangleClicks.value.length !== RECTANGLE_CLICKS[mode] - 1
-  ) {
-    return null;
-  }
-  return [...rectangleClicks.value, { kind: 'new', x: pointer.x, y: pointer.y }];
-});
-/**
- * The dashed rectangle that follows the pointer, built by the same
- * `rectangleCorners` guard the commit uses, so what is previewed is exactly what
- * the next click stores.
- */
-const rectanglePreview = computed<{
-  corners: Vec2[];
-  path: string;
-  testId: string;
-} | null>(() => {
-  const mode = rectangleMode.value;
-  const clicks = rectanglePreviewClicks.value;
-  if (mode === null || clicks === null) return null;
-
-  const corners = rectangleCorners(props.document, mode, clicks);
-  if (corners === null) return null;
-
-  return {
-    corners,
-    path: polylinePath([...corners, corners[0]!]),
-    testId: RECTANGLE_PREVIEW_TEST_IDS[mode],
-  };
-});
-/**
- * Corners the gesture will turn into new points: the derived ones once the
- * preview exists, otherwise the clicks that already landed on bare canvas.
- */
-const rectanglePendingCorners = computed<Vec2[]>(() => {
-  const preview = rectanglePreview.value;
-  if (preview !== null) return newRectangleCorners(props.document, preview.corners);
-
-  return rectangleClicks.value.flatMap((click) =>
-    click.kind === 'new' ? [{ x: click.x, y: click.y }] : [],
-  );
-});
-const gridStep = computed(() => niceStep(viewport.value.scale));
-/** The 8 px magnet in world units, so it stays 8 screen pixels at any zoom. */
-const midpointTolerance = computed(() => MIDPOINT_SNAP_PIXELS / viewport.value.scale);
-const gridPath = computed(() => `M ${gridStep.value} 0 L 0 0 0 ${gridStep.value}`);
-const transform = computed(() => viewportTransform(viewport.value));
-const visible = computed(() => visibleWorldRect(viewport.value, size.value));
-const xTicks = computed(() => ticksAlong(visible.value, 'x', gridStep.value));
-const yTicks = computed(() => ticksAlong(visible.value, 'y', gridStep.value));
 const cursorClass = computed(() =>
   props.constraintActive ||
   props.roundCornerActive ||
@@ -1232,6 +650,7 @@ const cursorClass = computed(() =>
     ? 'cursor-crosshair'
     : 'cursor-default',
 );
+
 const pickedPointIds = computed(
   () =>
     new Set(props.constraintPicks.filter((pick) => pick.kind === 'point').map((pick) => pick.id)),
@@ -1245,13 +664,6 @@ const distanceConstraints = computed(() =>
   props.document.constraints.filter(
     (constraint): constraint is DistanceConstraint => constraint.type === 'distance',
   ),
-);
-
-/** Committed dimensions can be dragged only with the tools that own a placed line. */
-const dimensionDragEnabled = computed(
-  () =>
-    !props.constraintActive &&
-    (props.tool === 'select' || props.tool === 'dimension' || props.tool === 'cut_dimension'),
 );
 
 /** The document, selection and drag every dimension drawing reads. */
@@ -1393,8 +805,7 @@ function applyVariableToken(target: 'dimension' | 'corner-round', slug: string):
     editingDimension.value = { id: editing.id, value: insertVariableToken(editing.value, slug) };
     return;
   }
-  const editing = editingCornerRound.value!;
-  editingCornerRound.value = { ...editing, value: insertVariableToken(editing.value, slug) };
+  applyCornerRoundVariableToken(slug);
 }
 
 /** The `$` picker both inline editors share. */
@@ -1409,6 +820,51 @@ const {
   () => props.document,
   (target, _id, slug) => applyVariableToken(target, slug),
 );
+
+const {
+  roundPickedLineIds,
+  roundPreview,
+  roundableCornerPoints,
+  cornerRoundFeaturePoints,
+  featurePointClass,
+  roundHandles,
+  roundLabels,
+  tangentPreview,
+  tangentDrag,
+  editingCornerRound,
+  cornerRoundInput,
+  onEntityHover,
+  onEntityLeave,
+  beginTangentDragHandle,
+  onDragMove: onCornerRoundDragMove,
+  commitDrag: commitTangentDrag,
+  cancelDrag: cancelTangentDrag,
+  onCurveDoubleClick,
+  onEditInput: onCornerRoundEditInput,
+  onEditorKeydown: onCornerRoundEditorKeydown,
+  finishEdit: finishCornerRoundEdit,
+  applyVariableToken: applyCornerRoundVariableToken,
+  resetOnToolChange: resetCornerRoundOnToolChange,
+  cancelOnDocumentChange: cancelCornerRoundOnDocumentChange,
+  openEditor: openCornerRoundEditor,
+} = useCornerRoundEdit({
+  document: () => props.document,
+  tool: () => props.tool,
+  constraintActive: () => props.constraintActive,
+  selectedEntityIds: () => props.selectedEntityIds,
+  roundCornerPicks: () => props.roundCornerPicks,
+  roundCornerActive: () => props.roundCornerActive,
+  cornerRoundPreviewRadius: () => props.cornerRoundPreviewRadius,
+  visiblePoints,
+  pointById,
+  viewport: () => viewport.value,
+  screenPoint,
+  beginPointerTracking: addPointerListeners,
+  openVariablePicker: (field, id, text) => openVariablePicker(field, id, text),
+  closeVariablePicker,
+  onVariablePickerKeydown: (field, id, event) => onVariablePickerKeydown(field, id, event),
+  onSetRadius: (id, radius) => emit('set-corner-round-radius', id, radius),
+});
 
 /** The `#` picker the dimension editor opens while a `#` token is typed. */
 const {
@@ -1607,53 +1063,6 @@ const markViews = computed<MarkView[]>(() =>
   ),
 );
 
-/** The synthetic label a pending leader gesture previews. */
-const TEXT_PREVIEW_ENTITY: TextEntity = {
-  id: 'text-preview',
-  kind: 'text',
-  anchor: 'text-preview-anchor',
-  content: DEFAULT_TEXT_CONTENT,
-  alignment: 'left',
-  rotation: 0,
-  fontSize: DEFAULT_TEXT_SIZE,
-  leader: 'text-preview-target',
-};
-
-interface TextLeaderPreview {
-  entity: TextEntity;
-  anchor: Vec2;
-  layout: TextLayout;
-  geometry: LeaderGeometry | null;
-  issue: string | null;
-}
-
-/**
- * The pending leader gesture's ghost label and live rule/arrow. The provisional
- * anchor is a coordinate, so it always resolves; `endpointPosition` returns
- * `null` only for a missing document point, which this gesture never holds.
- */
-const textPreview = computed<TextLeaderPreview | null>(() => {
-  if (props.tool !== 'add_text_leader' || textAnchor.value === null) return null;
-  const entity = TEXT_PREVIEW_ENTITY;
-  const anchor = endpointPosition(props.document, textAnchor.value)!;
-  const target = textPointer.value;
-  return {
-    entity,
-    anchor,
-    layout: textLayout(entity, anchor)!,
-    geometry: target === null ? null : textLeaderGeometry(entity, anchor, target),
-    issue: target === null ? null : leaderTargetIssue(entity, anchor, target),
-  };
-});
-
-/** What the leader gesture asks for next, or null while it is satisfied. */
-const textLeaderHint = computed<string | null>(() => {
-  const preview = textPreview.value;
-  if (preview === null) return null;
-  if (preview.issue !== null) return preview.issue;
-  return textPointer.value === null ? 'Click the arrow target.' : null;
-});
-
 function lineWidth(id: EntityId): number {
   return pointOnLineHover.value?.lineId === id ||
     splitLineHover.value?.lineId === id ||
@@ -1667,336 +1076,6 @@ function lineWidth(id: EntityId): number {
     marqueeCandidates.value.has(id)
     ? 3
     : 2;
-}
-
-function svgRect(): DOMRect {
-  return svg.value!.getBoundingClientRect();
-}
-
-function updateSize(): void {
-  const rect = svgRect();
-  size.value = { width: rect.width, height: rect.height };
-}
-
-function screenPoint(event: { clientX: number; clientY: number }): Vec2 {
-  const rect = svgRect();
-  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
-}
-
-function hitEntity(event: Event): Hit | null {
-  const element = (event.target as Element).closest('[data-entity-id]');
-  if (!element) return null;
-  return {
-    id: element.getAttribute('data-entity-id')!,
-    kind: element.getAttribute('data-kind')!,
-  };
-}
-
-function snappedPoint(world: Vec2): Vec2 {
-  const candidates = points.value.map((point) => ({ x: point.x, y: point.y }));
-  return snapPoint(world, candidates);
-}
-
-/**
- * Dimension placement: every dimension picks two anchors, each a point or a
- * whole straight line; the next click after the second pick drops the line.
- */
-function onDimensionPointer(hit: Hit | null): void {
-  if (dimensionPlacement.value !== null) {
-    commitDimensionPlacement();
-    return;
-  }
-
-  if (hit === null) {
-    dimensionPending.value = [];
-    dimensionHint.value = null;
-    return;
-  }
-
-  if (hit.kind !== 'point' && hit.kind !== 'line') {
-    dimensionHint.value = 'Pick a point or a straight line.';
-    return;
-  }
-
-  const pick: DimensionPick = { id: hit.id, kind: hit.kind };
-  const pending = dimensionPending.value;
-  if (pending.length === 0) {
-    dimensionPending.value = [pick];
-    dimensionHint.value = null;
-    return;
-  }
-
-  // Clicking the same anchor twice is a no-op, not a zero-length dimension.
-  if (pending[0]!.id === pick.id) return;
-
-  const issue = distanceAnchorIssue(props.document, pending[0]!.id, pick.id);
-  if (issue.reason !== null) {
-    dimensionHint.value = DIMENSION_ANCHOR_HINTS[issue.reason];
-    return;
-  }
-
-  dimensionPending.value = [];
-  dimensionHint.value = null;
-  startDimensionPlacement(pending[0]!.id, pick.id);
-}
-
-/** The canvas hint for each shared pick-time anchor rejection. */
-const DIMENSION_ANCHOR_HINTS: Record<DistanceAnchorReason, string> = {
-  missing: 'Pick a point or a straight line.',
-  'not-a-line': 'Pick a point or a straight line.',
-  'not-parallel': 'Pick two parallel lines — use Angle for a corner.',
-  'point-on-line': 'The point lies on the line.',
-  coincident: 'The lines are coincident.',
-  'zero-length': 'Pick a point or a straight line.',
-};
-
-function startDimensionPlacement(a: EntityId, b: EntityId): void {
-  dimensionPlacement.value = {
-    a,
-    b,
-    orientation: 'aligned',
-    offset: DEFAULT_DIMENSION_OFFSET,
-  };
-}
-
-function commitDimensionPlacement(): void {
-  const placement = dimensionPlacement.value!;
-  dimensionPlacement.value = null;
-  emit('add-dimension', placement);
-}
-
-function startCutDimensionPlacement(piece: EntityId, a: CutAnchor, b: CutAnchor): void {
-  cutDimensionPlacement.value = {
-    piece,
-    a,
-    b,
-    orientation: 'aligned',
-    offset: DEFAULT_DIMENSION_OFFSET,
-  };
-}
-
-function commitCutDimensionPlacement(): void {
-  const placement = cutDimensionPlacement.value!;
-  cutDimensionPlacement.value = null;
-  cutDimensionHint.value = null;
-  emit('add-cut-dimension', placement);
-}
-
-/** Drop the cut tool's pending pick, placement and message. */
-function clearCutDimensionGesture(): void {
-  cutDimensionPending.value = null;
-  cutDimensionPlacement.value = null;
-  cutDimensionHint.value = null;
-}
-
-/**
- * The cut tool's pick rules: two anchors of one piece, where each anchor is a
- * piece corner (seamline or cut) or a whole straight edge. A derived loop corner
- * picked near the pointer wins over the entity under it, so a corner with an
- * allowance offers both its stitch and its cut anchor. A rejected pick leaves a
- * hint instead of emitting a command; the shared `cutAnchorIssue` decides.
- */
-function onCutDimensionPointer(hit: Hit | null, loopHandle: LoopHandle | null): void {
-  if (cutDimensionPlacement.value !== null) {
-    commitCutDimensionPlacement();
-    return;
-  }
-
-  const pending = cutDimensionPending.value;
-
-  if (hit === null && loopHandle === null) {
-    cutDimensionPending.value = null;
-    cutDimensionHint.value = null;
-    return;
-  }
-
-  const candidate =
-    loopHandle === null
-      ? cutAnchorCandidate(hit!, pending?.piece ?? null)
-      : { piece: loopHandle.piece, anchor: loopHandle.anchor };
-
-  if (candidate === null) {
-    cutDimensionPending.value = null;
-    cutDimensionHint.value =
-      hit !== null && (hit.kind === 'curve' || hit.kind === 'arc')
-        ? 'Pick a straight edge.'
-        : 'Pick a seamline or cut corner, or a straight edge, of a piece.';
-    return;
-  }
-
-  if (pending === null) {
-    cutDimensionHint.value = null;
-    cutDimensionPending.value = candidate;
-    return;
-  }
-
-  const issue = cutAnchorIssue(props.document, pending.piece, pending.anchor, candidate.anchor);
-  if (issue.reason !== null) {
-    if (CUT_ANCHOR_CLEARS_PENDING[issue.reason]) cutDimensionPending.value = null;
-    cutDimensionHint.value = CUT_ANCHOR_HINTS[issue.reason];
-    return;
-  }
-
-  cutDimensionPending.value = null;
-  cutDimensionHint.value = null;
-  startCutDimensionPlacement(pending.piece.id, pending.anchor, candidate.anchor);
-}
-
-/** The hint shown for each shared cut-anchor rejection. */
-const CUT_ANCHOR_HINTS: Record<CutAnchorIssueReason, string> = {
-  missing: 'Pick a seamline or cut corner, or a straight edge, of a piece.',
-  'not-straight': 'Pick a straight edge.',
-  'different-piece': 'Both anchors must belong to the same piece.',
-  'same-anchor': 'The anchors must be different.',
-  'not-parallel': 'Pick two parallel edges.',
-  'zero-span': 'The anchors must be different.',
-};
-
-/** Whether a rejection resets the first pick instead of keeping it pending. */
-const CUT_ANCHOR_CLEARS_PENDING: Record<CutAnchorIssueReason, boolean> = {
-  missing: true,
-  'not-straight': true,
-  'different-piece': true,
-  'same-anchor': false,
-  'not-parallel': false,
-  'zero-span': false,
-};
-
-/**
- * The cut anchor a pointer hit addresses: a corner or a whole straight edge of
- * a piece. A corner shared by several pieces prefers the pending piece.
- */
-function cutAnchorCandidate(
-  hit: Hit,
-  pendingPiece: Piece | null,
-): { piece: Piece; anchor: CutAnchor } | null {
-  if (hit.kind === 'point') {
-    const pieces = piecesAtPoint(props.document, hit.id);
-    const preferred =
-      pendingPiece === null
-        ? undefined
-        : pieces.find((candidate) => candidate.id === pendingPiece.id);
-    const piece = preferred ?? pieces[0];
-    if (piece === undefined) return null;
-    return { piece, anchor: anchorForPoint(props.document, piece, hit.id)! };
-  }
-
-  if (hit.kind !== 'line') return null;
-  const piece = pieceOwningEdge(props.document, hit.id);
-  const anchor = piece === null ? null : anchorForEdge(props.document, piece, hit.id);
-  return piece === null || anchor === null ? null : { piece, anchor };
-}
-
-/** Follow the pointer while placing a cut dimension, over the piece's cut span. */
-function updateCutDimensionPlacement(screen: Vec2): void {
-  const placement = cutDimensionPlacement.value!;
-  const constraint = {
-    id: placement.piece,
-    type: 'derived_distance' as const,
-    piece: placement.piece,
-    a: placement.a,
-    b: placement.b,
-  };
-  const span = resolveCutSpan(props.document, constraint);
-  if (span === null) return;
-
-  const world = screenToWorld(viewport.value, screen);
-  // An edge anchor has no single axis definition, so its dimension is aligned.
-  const orientation = usesCutEdgeAnchor(constraint)
-    ? 'aligned'
-    : inferOrientationFromSpan(span, world);
-  cutDimensionPlacement.value = {
-    ...placement,
-    orientation,
-    offset: dimensionOffsetFromSpan(span, orientation, world),
-  };
-}
-
-/** Follow the pointer while placing, choosing the axis and offset live. */
-function updateDimensionPlacement(screen: Vec2): void {
-  const placement = dimensionPlacement.value!;
-
-  const world = screenToWorld(viewport.value, screen);
-  const orientation = inferDimensionOrientation(props.document, placement.a, placement.b, world);
-  dimensionPlacement.value = {
-    ...placement,
-    orientation,
-    offset: dimensionOffsetForPointer(props.document, placement.a, placement.b, orientation, world),
-  };
-}
-
-/**
- * Selection comes first: with the Select tool a press selects, adds or
- * subtracts the dimension; only a plain press then starts the existing drag.
- * The Dimension and Cut dimension tools keep their drag-only behaviour.
- */
-function onDimensionPointerDown(
-  constraint: DistanceConstraint | DerivedDistanceConstraint,
-  event: PointerEvent,
-): void {
-  if (props.readOnly) return;
-
-  if (props.tool === 'select') {
-    const mode = selectionModeFrom(event);
-    if (mode === 'replace') {
-      emit('update:selectedDimensionIds', [constraint.id]);
-    } else {
-      emit(
-        'update:selectedDimensionIds',
-        mode === 'add'
-          ? toggleSelection(props.selectedDimensionIds, constraint.id)
-          : applySelection(props.selectedDimensionIds, [constraint.id], 'subtract'),
-      );
-      // A modified press selects only; it never starts a drag.
-      event.stopPropagation();
-      event.preventDefault();
-      emit('update:selectedEntityIds', []);
-      return;
-    }
-    // Clicks are exclusive: a dimension click clears the entity selection.
-    emit('update:selectedEntityIds', []);
-  }
-
-  if (constraint.type === 'distance') {
-    beginDimensionDrag(constraint, event);
-  } else {
-    beginDerivedDimensionDrag(constraint, event);
-  }
-}
-
-function beginDimensionDrag(constraint: DistanceConstraint, event: PointerEvent): void {
-  event.stopPropagation();
-  event.preventDefault();
-  const offset = constraintOffset(constraint);
-  dimensionDrag.value = {
-    id: constraint.id,
-    a: constraint.a,
-    b: constraint.b,
-    orientation: constraintOrientation(constraint),
-    startOffset: offset,
-    offset,
-  };
-  addPointerListeners();
-}
-
-/** Start dragging a cut dimension line; its span comes from the cut loop. */
-function beginDerivedDimensionDrag(
-  constraint: DerivedDistanceConstraint,
-  event: PointerEvent,
-): void {
-  event.stopPropagation();
-  event.preventDefault();
-  // The drag strip only renders for a drawing whose span already resolved.
-  const span = resolveCutSpan(props.document, constraint)!;
-  const offset = constraintOffset(constraint);
-  derivedDrag.value = {
-    id: constraint.id,
-    orientation: constraintOrientation(constraint),
-    startOffset: offset,
-    offset,
-    span,
-  };
-  addPointerListeners();
 }
 
 function labelClass(label: DimensionLabelView): string {
@@ -2106,123 +1185,6 @@ function cancelDimensionEdit(): void {
   closeVariablePicker();
 }
 
-/** Show a round's handles while its line or arc is hovered. */
-function onEntityHover(id: EntityId): void {
-  hoveredRoundId.value = cornerRoundsForEntity(props.document, id)[0]?.id ?? null;
-}
-
-function onEntityLeave(): void {
-  hoveredRoundId.value = null;
-}
-
-function beginTangentDrag(round: CornerRound, endIndex: 0 | 1, event: PointerEvent): void {
-  event.stopPropagation();
-  event.preventDefault();
-  tangentDrag.value = {
-    id: round.id,
-    endIndex,
-    radius: radiusOf(round),
-    startRadius: radiusOf(round),
-  };
-  addPointerListeners();
-}
-
-function beginTangentDragHandle(handle: CornerRoundHandleView, event: PointerEvent): void {
-  const round = cornerRounds(props.document).find((candidate) => candidate.id === handle.id);
-  if (round !== undefined) beginTangentDrag(round, handle.endIndex, event);
-}
-
-function commitTangentDrag(): void {
-  const drag = tangentDrag.value!;
-  tangentDrag.value = null;
-  if (drag.radius !== drag.startRadius) {
-    emit('set-corner-round-radius', drag.id, drag.radius);
-  }
-}
-
-/** Open the inline radius field for a round, anchored at a screen position. */
-async function openCornerRoundEditor(round: CornerRound, x: number, y: number): Promise<void> {
-  editingCornerRound.value = {
-    id: round.id,
-    value: formatCornerRadiusParam(round.radius),
-    startParam: round.radius,
-    x,
-    y,
-  };
-  closeVariablePicker();
-  await nextTick();
-  cornerRoundInput.value!.focus();
-  cornerRoundInput.value!.select();
-}
-
-/** Double-clicking a rounded arc opens the same radius field as the `R` label. */
-function onCurveDoubleClick(id: EntityId, event: MouseEvent): void {
-  if (props.tool !== 'select' || props.constraintActive) return;
-
-  const round = roundsByArc.value.get(id);
-  if (round === undefined) return;
-
-  const point = screenPoint(event);
-  void openCornerRoundEditor(round, point.x, point.y);
-}
-
-function onCornerRoundEditInput(event: Event): void {
-  const editing = editingCornerRound.value!;
-  const value = (event.target as HTMLInputElement).value;
-  editingCornerRound.value = { ...editing, value };
-  openVariablePicker('corner-round', editing.id, variableQuery(value));
-}
-
-/** Arrow keys drive the `$` picker; Enter commits, Escape cancels. */
-function onCornerRoundEditorKeydown(event: KeyboardEvent): void {
-  if (onVariablePickerKeydown('corner-round', editingCornerRound.value!.id, event)) {
-    event.preventDefault();
-    return;
-  }
-  if (event.key === 'Enter') {
-    event.preventDefault();
-    applyCornerRoundEdit();
-    return;
-  }
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    cancelCornerRoundEdit();
-  }
-}
-
-/** Enter: apply a valid radius or formula, otherwise keep editing to fix it. */
-function applyCornerRoundEdit(): void {
-  const editing = editingCornerRound.value!;
-  const field = parseCornerRadiusField(props.document, editing.value);
-  if (field.kind === 'invalid') return;
-
-  editingCornerRound.value = null;
-  closeVariablePicker();
-  if (!sameCornerRadiusParam(editing.startParam, field.param)) {
-    emit('set-corner-round-radius', editing.id, field.param);
-  }
-}
-
-/** Blur: commit a valid edit and discard an invalid one. */
-function finishCornerRoundEdit(): void {
-  // Removing the focused input fires a final blur; there is nothing to commit.
-  if (editingCornerRound.value === null) return;
-
-  const editing = editingCornerRound.value;
-  const field = parseCornerRadiusField(props.document, editing.value);
-  editingCornerRound.value = null;
-  closeVariablePicker();
-  if (field.kind === 'param' && !sameCornerRadiusParam(editing.startParam, field.param)) {
-    emit('set-corner-round-radius', editing.id, field.param);
-  }
-}
-
-function cancelCornerRoundEdit(): void {
-  editingCornerRound.value = null;
-  closeVariablePicker();
-}
-
-/** Tools that show the midpoint magnet and can create a midpoint endpoint. */
 const MIDPOINT_TOOLS = new Set<EditorTool>([
   'add_point',
   'add_line',
@@ -2255,58 +1217,6 @@ const DRAFTING_TOOLS = new Set<EditorTool>([
 function movePreview(pieceId: EntityId): string | undefined {
   if (moveDrag.value === null || pieceId !== props.activePieceId) return undefined;
   return `translate(${moveDrag.value.dx} ${moveDrag.value.dy})`;
-}
-
-/** One click of the Text with leader gesture: the anchor, then the target. */
-function onTextLeaderPointer(screen: Vec2): void {
-  const world = screenToWorld(viewport.value, screen);
-  if (textAnchor.value === null) {
-    textAnchor.value = resolveTextAnchorEndpoint(props.document, world, props.activePieceId);
-    textPointer.value = null;
-    return;
-  }
-
-  const leader = resolveLeaderEndpoint(props.document, world, props.activePieceId);
-  const anchor = endpointPosition(props.document, textAnchor.value)!;
-  const target = endpointPosition(props.document, leader)!;
-  textPointer.value = target;
-  if (leaderTargetIssue(TEXT_PREVIEW_ENTITY, anchor, target) !== null) return;
-
-  emit('add-text', textAnchor.value, leader);
-  textAnchor.value = null;
-  textPointer.value = null;
-}
-
-/**
- * One click of the Notch tool. The hit must be a point on the active piece's
- * loop; the edge nearest the pointer decides which allowance the V cuts into.
- */
-function onNotchPointer(hit: Hit | null, screen: Vec2): void {
-  if (hit === null || hit.kind !== 'point') return;
-  const pieceId = props.activePieceId;
-  if (pieceId === null) return;
-
-  const target = notchTargetAt(
-    props.document,
-    pieceId,
-    hit.id,
-    screenToWorld(viewport.value, screen),
-  );
-  if (target !== null) emit('add-notch', target.point, target.edge);
-}
-
-/** Two clicks of the Centre line tool: the two snapped points it joins. */
-function onCentreLinePointer(hit: Hit | null): void {
-  if (hit === null || hit.kind !== 'point') return;
-
-  if (centreStart.value === null) {
-    centreStart.value = hit.id;
-    return;
-  }
-  if (centreStart.value === hit.id) return;
-
-  emit('add-centre-line', centreStart.value, hit.id);
-  centreStart.value = null;
 }
 
 function onPointerDown(event: PointerEvent): void {
@@ -2402,52 +1312,23 @@ function onPointerDown(event: PointerEvent): void {
       break;
     }
     case 'add_point':
-      onAddPointPointer(hit, screen);
-      break;
     case 'add_line':
-      onLinePointer(hit, screen);
-      break;
     case 'add_circle':
-      onCirclePointer(hit, screen);
-      break;
     case 'add_rectangle':
     case 'add_center_rectangle':
     case 'add_3point_rectangle':
-      onRectanglePointer(hit, screen);
-      break;
     case 'add_curve':
-      selectPendingPoint(hit, 4);
-      break;
     case 'add_arc':
-      onArcPointer(hit, screen);
+    case 'add_text':
+    case 'add_text_leader':
+    case 'notch':
+    case 'split_line':
+    case 'centre_line':
+      onDraftingPointerDown(screen, hit);
       break;
     case 'dimension':
-      onDimensionPointer(hit);
-      break;
     case 'cut_dimension':
-      onCutDimensionPointer(hit, pickLoopHandle(screen));
-      break;
-    case 'add_text':
-      emit(
-        'add-text',
-        resolveTextAnchorEndpoint(
-          props.document,
-          screenToWorld(viewport.value, screen),
-          props.activePieceId,
-        ),
-      );
-      break;
-    case 'add_text_leader':
-      onTextLeaderPointer(screen);
-      break;
-    case 'notch':
-      onNotchPointer(hit, screen);
-      break;
-    case 'split_line':
-      onSplitLinePointer(hit, screen);
-      break;
-    case 'centre_line':
-      onCentreLinePointer(hit);
+      onDimensionPick(hit, props.tool === 'cut_dimension' ? pickLoopHandle(screen) : null);
       break;
   }
 }
@@ -2462,42 +1343,12 @@ function onPointerMove(event: PointerEvent): void {
       dx: world.x - moveDrag.value.start.x,
       dy: world.y - moveDrag.value.start.y,
     };
-  } else if (tangentDrag.value) {
-    const drag = tangentDrag.value;
-    const round = cornerRounds(props.document).find((candidate) => candidate.id === drag.id);
-    if (round !== undefined) {
-      const radius = tangentDragRadius(
-        props.document,
-        round,
-        drag.endIndex,
-        screenToWorld(viewport.value, screen),
-      );
-      if (radius !== null) tangentDrag.value = { ...drag, radius };
-    }
+  } else if (onCornerRoundDragMove(screen)) {
+    // The tangent-handle drag consumed the move.
   } else if (marqueeState.value) {
     updateMarquee(screen);
-  } else if (dimensionDrag.value) {
-    const drag = dimensionDrag.value;
-    dimensionDrag.value = {
-      ...drag,
-      offset: dimensionOffsetForPointer(
-        props.document,
-        drag.a,
-        drag.b,
-        drag.orientation,
-        screenToWorld(viewport.value, screen),
-      ),
-    };
-  } else if (derivedDrag.value) {
-    const drag = derivedDrag.value;
-    derivedDrag.value = {
-      ...drag,
-      offset: dimensionOffsetFromSpan(
-        drag.span,
-        drag.orientation,
-        screenToWorld(viewport.value, screen),
-      ),
-    };
+  } else if (onDimensionDragMove(screen)) {
+    // The dimension drag consumed the move.
   } else if (panState.value) {
     const dx = screen.x - panState.value.start.x;
     const dy = screen.y - panState.value.start.y;
@@ -2524,97 +1375,37 @@ function onCanvasPointerMove(event: PointerEvent): void {
     bandHovered.value = false;
   }
 
-  if (dimensionToolArmed.value && !props.readOnly) {
-    hoveredPick.value = hitEntity(event);
-    hoveredLoopHandle.value = props.tool === 'cut_dimension' ? pickLoopHandle(screen) : null;
-    pointerWorld.value = screenToWorld(viewport.value, screen);
-  }
+  const hit = hitEntity(event);
 
-  if (dimensionPlacement.value !== null && dimensionDrag.value === null) {
-    updateDimensionPlacement(screen);
-  }
-
-  if (cutDimensionPlacement.value !== null) {
-    updateCutDimensionPlacement(screen);
-  }
-
-  if (props.tool === 'add_line' && lineStart.value !== null) {
-    linePreview.value = snappedPoint(screenToWorld(viewport.value, screen));
-  }
-
-  if (props.tool === 'add_arc' && arcStart.value !== null) {
-    const world = snappedPoint(screenToWorld(viewport.value, screen));
-    arcPointer.value = world;
-
-    // The hint clears as soon as the pointer leaves the chord into a valid bulge.
-    if (
-      arcEnd.value !== null &&
-      arcFromEndpoints(props.document, arcStart.value, arcEnd.value, {
-        kind: 'new',
-        x: world.x,
-        y: world.y,
-      }) !== null
-    ) {
-      arcHint.value = false;
-    }
-  }
-
-  if (MIDPOINT_TOOLS.has(props.tool) && !props.readOnly) {
-    updateMidpointHover(screen);
-  }
-
-  if (props.tool === 'add_point' && !props.readOnly) {
-    // The midpoint magnet wins over point-on-line, so the two hints never show
-    // at once.
-    if (midpointHover.value === null) updatePointOnLineHover(event, screen);
-    else pointOnLineHover.value = null;
-  }
-
-  if (props.tool === 'split_line' && !props.readOnly) {
-    updateSplitLineHover(event, screen);
-  }
-
-  if (props.tool === 'add_circle' && circleCenter.value !== null) {
-    circlePreview.value = snappedPoint(screenToWorld(viewport.value, screen));
-  }
-
-  if (rectangleMode.value !== null && rectangleClicks.value.length > 0) {
-    rectanglePointer.value = snappedPoint(screenToWorld(viewport.value, screen));
-  }
-
-  if (props.tool === 'add_text_leader' && textAnchor.value !== null) {
-    const leader = resolveLeaderEndpoint(
-      props.document,
+  if (dimensionToolArmed.value) {
+    updateDimensionHover(
+      hit,
+      props.tool === 'cut_dimension' ? pickLoopHandle(screen) : null,
       screenToWorld(viewport.value, screen),
-      props.activePieceId,
     );
-    textPointer.value = endpointPosition(props.document, leader)!;
   }
+
+  updateDimensionPlacements(screen);
+  onDraftingPointerMove(screen, hit);
 }
 
 /** The pointer left the canvas: end the hover and ghost, keep a pending pick. */
 function onCanvasPointerLeave(): void {
-  hoveredPick.value = null;
-  hoveredLoopHandle.value = null;
+  clearDimensionHover();
+  onDraftingPointerLeave();
   hoveredRegion.value = null;
   bandHovered.value = false;
-  pointerWorld.value = null;
-  pointOnLineHover.value = null;
-  splitLineHover.value = null;
-  midpointHover.value = null;
-  textPointer.value = null;
 }
 
 /** Drop every in-flight pointer interaction without emitting a command. */
 function cancelPointerInteraction(): void {
   cancelMarquee();
-  dimensionDrag.value = null;
-  derivedDrag.value = null;
+  cancelDimensionDrag();
   dragState.value = null;
   moveDrag.value = null;
   panState.value = null;
   touchRegion.value = null;
-  tangentDrag.value = null;
+  cancelTangentDrag();
   removePointerListeners();
 }
 
@@ -2648,21 +1439,7 @@ function onPointerUp(): void {
     return;
   }
 
-  if (dimensionDrag.value) {
-    const { id, offset, startOffset } = dimensionDrag.value;
-    dimensionDrag.value = null;
-    if (offset !== startOffset) {
-      emit('update-dimension', id, { offset });
-    }
-  }
-
-  if (derivedDrag.value) {
-    const { id, offset, startOffset } = derivedDrag.value;
-    derivedDrag.value = null;
-    if (offset !== startOffset) {
-      emit('update-dimension', id, { offset });
-    }
-  }
+  commitDimensionDrag();
 
   if (dragState.value) {
     const { id, x, y, origin } = dragState.value;
@@ -2676,20 +1453,11 @@ function onPointerUp(): void {
   removePointerListeners();
 }
 
-function onWheel(event: WheelEvent): void {
-  // The rectangle must not change scale under the pointer mid-gesture.
-  if (marqueeState.value !== null) return;
-  const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
-  viewport.value = zoomAt(viewport.value, screenPoint(event), factor);
-}
-
 function onKeyDown(event: KeyboardEvent): void {
   if (event.code === 'Space' && isEditableTarget(event.target)) return;
 
-  if (event.key === 'Escape' && textAnchor.value !== null) {
+  if (event.key === 'Escape' && clearTextOnEscape()) {
     event.preventDefault();
-    textAnchor.value = null;
-    textPointer.value = null;
     return;
   }
 
@@ -2699,51 +1467,13 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
 
-  if (event.key === 'Escape' && rectangleClicks.value.length > 0) {
+  if (event.key === 'Escape' && clearGestureOnEscape()) {
     event.preventDefault();
-    clearRectangleGesture();
     return;
   }
 
-  if (event.key === 'Escape' && midpointHover.value !== null) {
+  if (event.key === 'Escape' && clearDimensionOnEscape()) {
     event.preventDefault();
-    midpointHover.value = null;
-    return;
-  }
-
-  if (event.key === 'Escape' && pointOnLineHover.value !== null) {
-    event.preventDefault();
-    pointOnLineHover.value = null;
-    return;
-  }
-
-  if (event.key === 'Escape' && splitLineHover.value !== null) {
-    event.preventDefault();
-    splitLineHover.value = null;
-    return;
-  }
-
-  if (
-    event.key === 'Escape' &&
-    (dimensionPending.value.length > 0 ||
-      dimensionPlacement.value !== null ||
-      dimensionHint.value !== null)
-  ) {
-    event.preventDefault();
-    dimensionPending.value = [];
-    dimensionPlacement.value = null;
-    dimensionHint.value = null;
-    return;
-  }
-
-  if (
-    event.key === 'Escape' &&
-    (cutDimensionPending.value !== null ||
-      cutDimensionPlacement.value !== null ||
-      cutDimensionHint.value !== null)
-  ) {
-    event.preventDefault();
-    clearCutDimensionGesture();
     return;
   }
 
@@ -2757,295 +1487,6 @@ function onKeyUp(event: KeyboardEvent): void {
   if (event.code === 'Space') {
     spaceHeld.value = false;
   }
-}
-
-function emitAddPoint(screen: Vec2): void {
-  const world = snappedPoint(screenToWorld(viewport.value, screen));
-  emit('add-point', world.x, world.y);
-}
-
-/**
- * Where a Point-tool click on `lineId` would land, or `null` when the click is
- * not a line inference: a point within the snap tolerance wins, and only a
- * resolvable, non-degenerate straight line projects.
- */
-function pointOnLineTarget(lineId: EntityId, world: Vec2): Vec2 | null {
-  if (nearestPoint(world, points.value, POINT_SNAP_TOLERANCE) !== null) return null;
-  const segment = lineEndpoints(props.document, lineId);
-  return segment === null ? null : projectPointOnLine(world, segment);
-}
-
-/**
- * Resolve the midpoint magnet under the pointer. An existing point within the
- * 6 mm snap wins, and no tool other than the Point tool competes for the hover.
- */
-function updateMidpointHover(screen: Vec2): void {
-  const world = screenToWorld(viewport.value, screen);
-  if (nearestPoint(world, points.value, POINT_SNAP_TOLERANCE) !== null) {
-    midpointHover.value = null;
-    return;
-  }
-  const candidate = nearestLineMidpoint(
-    props.document,
-    world,
-    midpointTolerance.value,
-    props.activePieceId,
-  );
-  midpointHover.value = candidate === null ? null : { ...candidate, pointer: world };
-}
-
-/** Track the line the Point tool would infer, so the click is never a surprise. */
-function updatePointOnLineHover(event: Event, screen: Vec2): void {
-  const hit = hitEntity(event);
-  if (hit === null || hit.kind !== 'line') {
-    pointOnLineHover.value = null;
-    return;
-  }
-
-  const pointer = screenToWorld(viewport.value, screen);
-  const point = pointOnLineTarget(hit.id, pointer);
-  pointOnLineHover.value = point === null ? null : { lineId: hit.id, pointer, point };
-}
-
-/**
- * Track the straight line under the Split tool and where the split would land,
- * so the highlighted line and the ghost match what a click will do.
- */
-function updateSplitLineHover(event: Event, screen: Vec2): void {
-  const hit = hitEntity(event);
-  if (
-    hit === null ||
-    hit.kind !== 'line' ||
-    (props.activePieceId !== null && !canEditEntity(props.document, hit.id, props.activePieceId))
-  ) {
-    splitLineHover.value = null;
-    return;
-  }
-  splitLineHover.value = splitCandidate(
-    props.document,
-    hit.id,
-    screenToWorld(viewport.value, screen),
-  );
-}
-
-/** One click of the Split tool: a valid projection dispatches the split. */
-function onSplitLinePointer(hit: Hit | null, screen: Vec2): void {
-  if (hit === null || hit.kind !== 'line') return;
-  const world = screenToWorld(viewport.value, screen);
-  if (splitCandidate(props.document, hit.id, world) === null) return;
-  splitLineHover.value = null;
-  emit('split-line', hit.id, world.x, world.y);
-}
-
-/**
- * The Point tool: a click on a straight line creates a point constrained to it,
- * as one undoable gesture; every other click keeps today's free-point behaviour.
- */
-function onAddPointPointer(hit: Hit | null, screen: Vec2): void {
-  const world = screenToWorld(viewport.value, screen);
-
-  // Point snap wins, then the midpoint magnet, then the line inference, then the
-  // grid. This mirrors `updateMidpointHover` so the click matches the marker.
-  if (nearestPoint(world, points.value, POINT_SNAP_TOLERANCE) === null) {
-    const midpoint = nearestLineMidpoint(
-      props.document,
-      world,
-      midpointTolerance.value,
-      props.activePieceId,
-    );
-    if (midpoint !== null) {
-      midpointHover.value = null;
-      pointOnLineHover.value = null;
-      emit('add-point-midpoint', midpoint.lineId);
-      return;
-    }
-  }
-
-  if (hit !== null && hit.kind === 'line') {
-    if (pointOnLineTarget(hit.id, world) !== null) {
-      pointOnLineHover.value = null;
-      emit('add-point-on-line', hit.id, world.x, world.y);
-      return;
-    }
-  }
-
-  emitAddPoint(screen);
-}
-
-function selectPendingPoint(hit: Hit | null, required: number): void {
-  if (!hit || hit.kind !== 'point') {
-    pending.value = [];
-    return;
-  }
-
-  const ids = pending.value.includes(hit.id) ? pending.value : [...pending.value, hit.id];
-  if (ids.length === required) {
-    commitPending(ids);
-  } else {
-    pending.value = ids;
-  }
-}
-
-function commitPending(ids: EntityId[]): void {
-  pending.value = [];
-  emit('add-curve', [ids[0]!, ids[1]!, ids[2]!, ids[3]!]);
-}
-
-/**
- * The line gesture: a point hit is reused by id, a bare canvas resolves to the
- * snapped position (which may coincide with an existing point). The first click
- * only stores a provisional start; the second emits both endpoints so the
- * editor can commit the points and the line as one undoable gesture.
- */
-function onLinePointer(hit: Hit | null, screen: Vec2): void {
-  const endpoint: DraftingEndpoint =
-    hit !== null && hit.kind === 'point'
-      ? { kind: 'point', id: hit.id }
-      : resolveDraftingEndpoint(
-          props.document,
-          screenToWorld(viewport.value, screen),
-          props.activePieceId,
-          midpointTolerance.value,
-        );
-
-  const start = lineStart.value;
-  if (start === null) {
-    lineStart.value = endpoint;
-    linePreview.value = null;
-    return;
-  }
-
-  if (sameDraftingEndpoint(start, endpoint)) return;
-
-  lineStart.value = null;
-  linePreview.value = null;
-  emit('add-line', start, endpoint);
-}
-
-/** Drop the pending arc gesture without emitting a command. */
-function clearArcGesture(): void {
-  arcStart.value = null;
-  arcEnd.value = null;
-  arcPointer.value = null;
-  arcHint.value = false;
-}
-
-/**
- * The arc gesture: click 1 is the start, click 2 the end, click 3 a point on the
- * arc between them. Each click resolves like the Line tool. A repeated endpoint
- * is ignored silently; a third click on the chord would give an infinite radius,
- * so it is ignored and the hint asks for a point off the line, leaving the
- * pending start and end in place so the user can try again.
- */
-function onArcPointer(hit: Hit | null, screen: Vec2): void {
-  const endpoint: DraftingEndpoint =
-    hit !== null && hit.kind === 'point'
-      ? { kind: 'point', id: hit.id }
-      : resolveDraftingEndpoint(
-          props.document,
-          screenToWorld(viewport.value, screen),
-          props.activePieceId,
-          midpointTolerance.value,
-        );
-
-  const start = arcStart.value;
-  if (start === null) {
-    clearArcGesture();
-    arcStart.value = endpoint;
-    return;
-  }
-
-  if (sameDraftingEndpoint(start, endpoint)) return;
-
-  const end = arcEnd.value;
-  if (end === null) {
-    arcEnd.value = endpoint;
-    arcPointer.value = null;
-    return;
-  }
-
-  if (sameDraftingEndpoint(end, endpoint)) return;
-
-  if (arcFromEndpoints(props.document, start, end, endpoint) === null) {
-    arcHint.value = true;
-    return;
-  }
-
-  clearArcGesture();
-  emit('add-arc', start, end, endpoint);
-}
-
-/**
- * The circle gesture mirrors the line gesture: a point hit is reused by id, a
- * bare canvas resolves to the snapped position. The first click stores a
- * provisional centre; the second emits both endpoints so the editor can commit
- * the points and the circle as one undoable gesture.
- */
-function onCirclePointer(hit: Hit | null, screen: Vec2): void {
-  const endpoint: CircleEndpoint =
-    hit !== null && hit.kind === 'point'
-      ? { kind: 'point', id: hit.id }
-      : resolveCircleEndpoint(
-          props.document,
-          screenToWorld(viewport.value, screen),
-          props.activePieceId,
-          midpointTolerance.value,
-        );
-
-  const center = circleCenter.value;
-  if (center === null) {
-    circleCenter.value = endpoint;
-    circlePreview.value = null;
-    return;
-  }
-
-  if (sameCircleEndpoint(center, endpoint)) return;
-
-  circleCenter.value = null;
-  circlePreview.value = null;
-  emit('add-circle', center, endpoint);
-}
-
-/** Drop the pending rectangle gesture without emitting a command. */
-function clearRectangleGesture(): void {
-  rectangleClicks.value = [];
-  rectanglePointer.value = null;
-}
-
-/**
- * The rectangle gesture: each click resolves like the Line tool, a click on a
- * corner the gesture already holds is ignored, and the click that completes the
- * mode emits every click so the editor can commit the points, the four sides and
- * their constraints as one undoable gesture. A click that cannot complete a
- * rectangle leaves the pending clicks in place so the user can try again.
- */
-function onRectanglePointer(hit: Hit | null, screen: Vec2): void {
-  // Only the three rectangle tool cases below call this, so a mode always exists.
-  const mode = rectangleMode.value!;
-
-  const endpoint: DraftingEndpoint =
-    hit !== null && hit.kind === 'point'
-      ? { kind: 'point', id: hit.id }
-      : resolveDraftingEndpoint(
-          props.document,
-          screenToWorld(viewport.value, screen),
-          props.activePieceId,
-          midpointTolerance.value,
-        );
-
-  if (rectangleClicks.value.some((click) => sameDraftingEndpoint(click, endpoint))) return;
-
-  const clicks = [...rectangleClicks.value, endpoint];
-  if (clicks.length < RECTANGLE_CLICKS[mode]) {
-    rectangleClicks.value = clicks;
-    rectanglePointer.value = null;
-    return;
-  }
-
-  if (rectangleCorners(props.document, mode, clicks) === null) return;
-
-  clearRectangleGesture();
-  emit('add-rectangle', mode, clicks);
 }
 
 /** Combine one clicked entity with the current selection under `mode`. */
@@ -3163,38 +1604,20 @@ function removePointerListeners(): void {
   window.removeEventListener('pointercancel', onPointerCancel);
 }
 
-function fit(): void {
-  const documentBounds = bounds(props.document);
-  if (documentBounds) {
-    updateSize();
-    viewport.value = fitToBounds(documentBounds, size.value);
-  }
-}
-
 function onWindowBlur(): void {
   cancelPointerInteraction();
 }
 
 onMounted(() => {
-  updateSize();
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', onWindowBlur);
-  window.addEventListener('resize', updateSize);
-  if (typeof ResizeObserver !== 'undefined') {
-    resizeObserver = new ResizeObserver(updateSize);
-    resizeObserver.observe(svg.value!);
-  }
-  fit();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown);
   window.removeEventListener('keyup', onKeyUp);
   window.removeEventListener('blur', onWindowBlur);
-  window.removeEventListener('resize', updateSize);
-  resizeObserver?.disconnect();
-  resizeObserver = null;
   removePointerListeners();
 });
 
@@ -3206,31 +1629,11 @@ watch(
 watch(
   () => props.tool,
   () => {
-    pending.value = [];
-    lineStart.value = null;
-    linePreview.value = null;
-    clearArcGesture();
-    circleCenter.value = null;
-    circlePreview.value = null;
-    clearRectangleGesture();
-    textAnchor.value = null;
-    textPointer.value = null;
-    centreStart.value = null;
-    dimensionPending.value = [];
-    dimensionPlacement.value = null;
-    dimensionHint.value = null;
-    hoveredPick.value = null;
-    hoveredLoopHandle.value = null;
-    pointerWorld.value = null;
-    clearCutDimensionGesture();
+    resetDraftingOnToolChange();
+    resetDimensionOnToolChange();
+    resetCornerRoundOnToolChange();
     editingDimension.value = null;
     cancelPointerInteraction();
-    dimensionDrag.value = null;
-    hoveredRoundId.value = null;
-    editingCornerRound.value = null;
-    pointOnLineHover.value = null;
-    splitLineHover.value = null;
-    midpointHover.value = null;
   },
 );
 
@@ -3241,52 +1644,9 @@ watch(
   () => props.document,
   () => {
     editingDimension.value = null;
-    editingCornerRound.value = null;
-    splitLineHover.value = null;
-
-    // Recompute the Point tool's inferred line against the new document so a
-    // removed or degenerate line clears the hover signal.
-    const pointOnLine = pointOnLineHover.value;
-    if (pointOnLine !== null) {
-      const point = pointOnLineTarget(pointOnLine.lineId, pointOnLine.pointer);
-      pointOnLineHover.value = point === null ? null : { ...pointOnLine, point };
-    }
-
-    // Re-resolve the midpoint magnet against the new document so a removed,
-    // trimmed or degenerate line clears or moves the signal immediately.
-    const midpoint = midpointHover.value;
-    if (midpoint !== null) {
-      const candidate = nearestLineMidpoint(
-        props.document,
-        midpoint.pointer,
-        midpointTolerance.value,
-        props.activePieceId,
-      );
-      midpointHover.value = candidate === null ? null : { ...candidate, pointer: midpoint.pointer };
-    }
-    if (pendingLineStartId.value !== null && !pointById.value.has(pendingLineStartId.value)) {
-      lineStart.value = null;
-      linePreview.value = null;
-    }
-    const arcPointMissing = [arcStart.value, arcEnd.value].some((endpoint) =>
-      endpointMissing(props.document, endpoint),
-    );
-    if (arcPointMissing) clearArcGesture();
-
-    if (pendingCircleCenterId.value !== null && !pointById.value.has(pendingCircleCenterId.value)) {
-      circleCenter.value = null;
-      circlePreview.value = null;
-    }
-
-    if (rectangleClicks.value.some((endpoint) => endpointMissing(props.document, endpoint))) {
-      clearRectangleGesture();
-    }
-
-    const cutPiece = cutDimensionPending.value?.piece.id ?? cutDimensionPlacement.value?.piece;
-    if (cutPiece !== undefined && !props.document.pieces.some((piece) => piece.id === cutPiece)) {
-      clearCutDimensionGesture();
-      cutDimensionHint.value = 'Piece no longer exists';
-    }
+    cancelCornerRoundOnDocumentChange();
+    pruneDraftingOnDocumentChange();
+    pruneDimensionOnDocumentChange();
   },
 );
 
@@ -3736,262 +2096,30 @@ watch(
           </template>
         </g>
 
-        <g
-          v-if="roundPreview"
-          class="pointer-events-none"
-          data-testid="corner-round-preview"
-          aria-hidden="true"
-        >
-          <line
-            v-for="(entry, index) in roundPreview.lines"
-            :key="entry.id"
-            :x1="entry.from.x"
-            :y1="entry.from.y"
-            :x2="entry.to.x"
-            :y2="entry.to.y"
-            class="stroke-primary"
-            stroke-width="1.5"
-            stroke-dasharray="4 3"
-            vector-effect="non-scaling-stroke"
-            :data-testid="`corner-round-preview-line-${index}`"
-          />
-          <path
-            :d="roundPreview.arc"
-            fill="none"
-            class="stroke-primary"
-            stroke-width="1.5"
-            stroke-dasharray="4 3"
-            vector-effect="non-scaling-stroke"
-            data-testid="corner-round-preview-arc"
-          />
-          <circle
-            v-for="(tangent, index) in roundPreview.tangents"
-            :key="`preview-${index}`"
-            :cx="tangent.x"
-            :cy="tangent.y"
-            r="2.5"
-            class="fill-primary"
-          />
-        </g>
-
-        <g
-          v-if="tangentPreview"
-          class="pointer-events-none"
-          data-testid="corner-round-drag-preview"
-          aria-hidden="true"
-        >
-          <path
-            :d="tangentPreview.arc"
-            fill="none"
-            class="stroke-primary"
-            stroke-width="1.5"
-            stroke-dasharray="4 3"
-            vector-effect="non-scaling-stroke"
-          />
-          <circle
-            v-for="(tangent, index) in tangentPreview.tangents"
-            :key="`drag-${index}`"
-            :cx="tangent.x"
-            :cy="tangent.y"
-            r="2.5"
-            class="fill-primary"
-          />
-        </g>
-
-        <g v-if="pointOnLineHover !== null" class="pointer-events-none" aria-hidden="true">
-          <circle
-            :cx="pointOnLineHover.point.x"
-            :cy="pointOnLineHover.point.y"
-            r="4"
-            class="fill-primary stroke-primary-foreground"
-            stroke-width="1"
-            data-testid="point-on-line-ghost"
-          />
-        </g>
-
-        <g
-          v-if="splitLineHover !== null"
-          class="pointer-events-none"
-          aria-hidden="true"
-          data-testid="split-line-ghost"
-        >
-          <path
-            v-if="splitLineHover.atCenter"
-            :d="`M ${splitLineHover.position.x} ${splitLineHover.position.y - 4} L ${
-              splitLineHover.position.x + 4
-            } ${splitLineHover.position.y} L ${splitLineHover.position.x} ${
-              splitLineHover.position.y + 4
-            } L ${splitLineHover.position.x - 4} ${splitLineHover.position.y} Z`"
-            class="fill-primary stroke-primary-foreground"
-            stroke-width="1"
-            data-testid="split-line-center"
-          />
-          <circle
-            v-else
-            :cx="splitLineHover.position.x"
-            :cy="splitLineHover.position.y"
-            :r="splitLineHover.pointId === null ? 4 : 5"
-            class="fill-primary stroke-primary-foreground"
-            stroke-width="1"
-          />
-        </g>
-
-        <g
-          v-if="midpointHover !== null"
-          class="pointer-events-none"
-          aria-hidden="true"
-          data-testid="midpoint-marker"
-        >
-          <path
-            :d="`M ${midpointHover.x} ${midpointHover.y - 5 / viewport.scale} L ${
-              midpointHover.x + 5 / viewport.scale
-            } ${midpointHover.y} L ${midpointHover.x} ${
-              midpointHover.y + 5 / viewport.scale
-            } L ${midpointHover.x - 5 / viewport.scale} ${midpointHover.y} Z`"
-            class="fill-primary stroke-primary-foreground"
-            stroke-width="1"
-            vector-effect="non-scaling-stroke"
-          />
-        </g>
-
-        <g v-if="pendingLineStart !== null" class="pointer-events-none" aria-hidden="true">
-          <line
-            v-if="linePreview !== null"
-            :x1="pendingLineStart.x"
-            :y1="pendingLineStart.y"
-            :x2="linePreview.x"
-            :y2="linePreview.y"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-dasharray="4 4"
-            vector-effect="non-scaling-stroke"
-            class="text-muted-foreground"
-            data-testid="line-preview"
-          />
-          <circle
-            v-if="lineStart?.kind === 'new'"
-            :cx="pendingLineStart.x"
-            :cy="pendingLineStart.y"
-            r="4"
-            class="fill-accent stroke-accent-foreground"
-            stroke-width="1"
-            data-testid="line-pending-point"
-          />
-        </g>
-
-        <g v-if="arcStartPosition !== null" class="pointer-events-none" aria-hidden="true">
-          <line
-            v-if="arcChord !== null"
-            :x1="arcChord.start.x"
-            :y1="arcChord.start.y"
-            :x2="arcChord.end.x"
-            :y2="arcChord.end.y"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-dasharray="4 4"
-            vector-effect="non-scaling-stroke"
-            class="text-muted-foreground"
-            data-testid="arc-chord"
-          />
-          <path
-            v-if="arcPreview !== null"
-            :d="arcPreview.d"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-dasharray="4 4"
-            vector-effect="non-scaling-stroke"
-            class="text-muted-foreground"
-            data-testid="arc-preview"
-          />
-          <circle
-            v-if="arcPendingStart !== null"
-            :cx="arcPendingStart.x"
-            :cy="arcPendingStart.y"
-            r="4"
-            class="fill-accent stroke-accent-foreground"
-            stroke-width="1"
-            data-testid="arc-pending-start"
-          />
-          <circle
-            v-if="arcPendingEnd !== null"
-            :cx="arcPendingEnd.x"
-            :cy="arcPendingEnd.y"
-            r="4"
-            class="fill-accent stroke-accent-foreground"
-            stroke-width="1"
-            data-testid="arc-pending-end"
-          />
-        </g>
-
-        <g v-if="pendingCircleCenter !== null" class="pointer-events-none" aria-hidden="true">
-          <circle
-            v-if="circlePreview !== null"
-            :cx="pendingCircleCenter.x"
-            :cy="pendingCircleCenter.y"
-            :r="circlePreviewRadius"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-dasharray="4 4"
-            vector-effect="non-scaling-stroke"
-            class="text-muted-foreground"
-            data-testid="circle-preview"
-          />
-          <circle
-            v-if="circleCenter?.kind === 'new'"
-            :cx="pendingCircleCenter.x"
-            :cy="pendingCircleCenter.y"
-            r="4"
-            class="fill-accent stroke-accent-foreground"
-            stroke-width="1"
-            data-testid="circle-pending-center"
-          />
-        </g>
-
-        <g
-          v-if="props.roundCornerActive"
-          class="pointer-events-none"
-          aria-hidden="true"
-          data-testid="roundable-corner-layer"
-        >
-          <circle
-            v-for="corner in roundableCornerPoints"
-            :key="`roundable-${corner.id}`"
-            :cx="corner.x"
-            :cy="corner.y"
-            r="2"
-            class="roundable-corner fill-primary/60"
-            data-testid="roundable-corner"
-            :data-roundable-corner="corner.id"
-          />
-        </g>
-
-        <g v-if="rectanglePreview !== null" class="pointer-events-none" aria-hidden="true">
-          <path
-            :d="rectanglePreview.path"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-dasharray="4 4"
-            vector-effect="non-scaling-stroke"
-            class="text-muted-foreground"
-            :data-testid="rectanglePreview.testId"
-          />
-        </g>
-
-        <g v-if="rectanglePendingCorners.length > 0" class="pointer-events-none" aria-hidden="true">
-          <circle
-            v-for="(corner, index) in rectanglePendingCorners"
-            :key="`rectangle-corner-${index}`"
-            :cx="corner.x"
-            :cy="corner.y"
-            r="4"
-            class="fill-accent stroke-accent-foreground"
-            stroke-width="1"
-            :data-testid="`rectangle-pending-corner-${index}`"
-          />
-        </g>
+        <CanvasPreviews
+          :round-preview="roundPreview"
+          :tangent-preview="tangentPreview"
+          :point-on-line-hover="pointOnLineHover"
+          :split-line-hover="splitLineHover"
+          :midpoint-hover="midpointHover"
+          :pending-line-start="pendingLineStart"
+          :line-preview="linePreview"
+          :line-start="lineStart"
+          :arc-start-position="arcStartPosition"
+          :arc-chord="arcChord"
+          :arc-preview="arcPreview"
+          :arc-pending-start="arcPendingStart"
+          :arc-pending-end="arcPendingEnd"
+          :pending-circle-center="pendingCircleCenter"
+          :circle-preview="circlePreview"
+          :circle-preview-radius="circlePreviewRadius"
+          :circle-center="circleCenter"
+          :round-corner-active="props.roundCornerActive"
+          :roundable-corner-points="roundableCornerPoints"
+          :rectangle-preview="rectanglePreview"
+          :rectangle-pending-corners="rectanglePendingCorners"
+          :viewport-scale="viewport.scale"
+        />
 
         <g data-testid="corner-round-feature-layer" aria-hidden="true">
           <circle
@@ -4527,65 +2655,15 @@ watch(
         </g>
       </g>
 
-      <g class="pointer-events-none">
-        <rect
-          x="0"
-          y="0"
-          :width="size.width"
-          height="16"
-          class="fill-background/90"
-          data-testid="ruler-x"
-        />
-        <rect
-          x="0"
-          y="0"
-          width="16"
-          :height="size.height"
-          class="fill-background/90"
-          data-testid="ruler-y"
-        />
+      <CanvasRuler
+        :size="size"
+        :x-ticks="xTicks"
+        :y-ticks="yTicks"
+        :x-tick-position="xTickPosition"
+        :y-tick-position="yTickPosition"
+      />
 
-        <g v-for="tick in xTicks" :key="`x-${tick}`">
-          <line
-            :x1="xTickPosition(tick)"
-            :x2="xTickPosition(tick)"
-            y1="12"
-            y2="16"
-            class="stroke-border"
-            vector-effect="non-scaling-stroke"
-          />
-          <text :x="xTickPosition(tick) + 3" y="11" class="fill-muted-foreground text-[8px]">
-            {{ tick }}
-          </text>
-        </g>
-
-        <g v-for="tick in yTicks" :key="`y-${tick}`">
-          <line
-            x1="12"
-            x2="16"
-            :y1="yTickPosition(tick)"
-            :y2="yTickPosition(tick)"
-            class="stroke-border"
-            vector-effect="non-scaling-stroke"
-          />
-        </g>
-      </g>
-
-      <g v-if="marqueeRect !== null" class="pointer-events-none" data-testid="selection-marquee">
-        <rect
-          :x="marqueeRect.x"
-          :y="marqueeRect.y"
-          :width="marqueeRect.width"
-          :height="marqueeRect.height"
-          fill="currentColor"
-          fill-opacity="0.1"
-          stroke="currentColor"
-          stroke-width="1"
-          stroke-dasharray="4 4"
-          vector-effect="non-scaling-stroke"
-          class="text-primary"
-        />
-      </g>
+      <CanvasMarquee :rect="marqueeRect" />
     </svg>
 
     <div
