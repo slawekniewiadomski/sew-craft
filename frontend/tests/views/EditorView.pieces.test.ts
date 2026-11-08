@@ -350,15 +350,15 @@ describe('EditorView', () => {
     expect(wrapper.find('[data-testid="entity-piece-cut"]').text()).toBe('—');
   });
 
-  it('describes an edge that belongs to a piece in the outline', async () => {
+  it('groups an edge under its piece in the outline tree', async () => {
     const { wrapper } = await mountLoaded(pieceDoc);
-    await openPanel(wrapper, 'outline');
 
-    entityDown(wrapper, 'line', 'ab');
-    await nextTick();
+    expect(wrapper.find('[data-testid="outline-piece-p1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="outline-group-p1-geometry"]').exists()).toBe(true);
 
-    expect(wrapper.find('[data-testid="edge-piece-ab"]').text()).toContain('In piece p1');
-    expect(wrapper.find('[data-testid="edge-piece-ab"]').text()).toContain('seam 10 mm');
+    const row = wrapper.find('[data-testid="outline-select-ab"]');
+    expect(row.text()).toContain('a → b');
+    expect(wrapper.find('[data-testid="outline-select-a"]').text()).toContain('a');
   });
 });
 
@@ -386,8 +386,7 @@ describe('EditorView piece, pattern and assembly drawers', () => {
     await openPanel(wrapper, 'pieces');
     expect(wrapper.find('[data-testid="pieces-empty"]').exists()).toBe(true);
 
-    await openPanel(wrapper, 'outline');
-    expect(wrapper.text()).toContain('No edges yet.');
+    expect(wrapper.text()).toContain('Nothing to outline yet.');
   });
 
   it('edits and clears the per-piece parameters', async () => {
@@ -854,7 +853,6 @@ describe('EditorView edge cases', () => {
 
   it('selects outline rows with add and subtract modifiers', async () => {
     const { wrapper } = await mountLoaded(seededDocument);
-    await openPanel(wrapper, 'outline');
 
     await wrapper.find('[data-testid="outline-select-ab"]').trigger('click');
     expect(wrapper.find('[data-testid="outline-select-ab"]').attributes('aria-current')).toBe(
@@ -868,7 +866,6 @@ describe('EditorView edge cases', () => {
 
     await openPanel(wrapper, 'properties');
     expect(wrapper.find('[data-testid="selection-summary"]').text()).toContain('2 entities');
-    await openPanel(wrapper, 'outline');
 
     await wrapper
       .find('[data-testid="outline-select-ab"]')
@@ -876,6 +873,73 @@ describe('EditorView edge cases', () => {
     expect(wrapper.find('[data-testid="outline-select-ab"]').attributes('aria-current')).toBe(
       undefined,
     );
+  });
+
+  it('selects dimensions and constraint references from the outline tree', async () => {
+    const { wrapper } = await mountLoaded({
+      ...pieceDoc,
+      constraints: [
+        {
+          id: 'dim',
+          type: 'distance',
+          a: 'a',
+          b: 'b',
+          piece: 'p1',
+          value: 100,
+          orientation: 'horizontal',
+        },
+        { id: 'hz', type: 'horizontal', a: 'a', b: 'b', piece: 'p1' },
+      ],
+    });
+
+    await wrapper.find('[data-testid="outline-select-dim"]').trigger('click');
+    expect(wrapper.find('[data-testid="outline-select-dim"]').attributes('aria-current')).toBe(
+      'true',
+    );
+
+    await wrapper.find('[data-testid="outline-select-hz"]').trigger('click');
+    expect(wrapper.find('[data-testid="outline-select-a"]').attributes('aria-current')).toBe(
+      'true',
+    );
+    expect(wrapper.find('[data-testid="outline-select-b"]').attributes('aria-current')).toBe(
+      'true',
+    );
+    expect(wrapper.find('[data-testid="outline-select-dim"]').attributes('aria-current')).toBe(
+      undefined,
+    );
+  });
+
+  it('opens a piece from its outline header', async () => {
+    const { wrapper, store } = await mountLoaded({
+      ...pieceDoc,
+      pieces: [...pieceDoc.pieces, { id: 'p2', name: 'Back', edges: [], allowances: [] }],
+      tabs: [
+        { kind: 'piece', id: 'p1' },
+        { kind: 'piece', id: 'p2' },
+      ],
+    });
+
+    await wrapper.find('[data-testid="outline-toggle-piece-p2"]').trigger('click');
+    await nextTick();
+
+    expect(store.activeTab).toEqual({ kind: 'piece', id: 'p2' });
+  });
+
+  it('reveals a clicked entity by opening its outline branch and scrolling to it', async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const { wrapper } = await mountLoaded(pieceDoc);
+
+    await wrapper.find('[data-testid="outline-toggle-group-p1-geometry"]').trigger('click');
+    entityDown(wrapper, 'line', 'ab');
+    await nextTick();
+    await nextTick();
+    await nextTick();
+
+    expect(
+      wrapper.find('[data-testid="outline-toggle-group-p1-geometry"]').attributes('aria-expanded'),
+    ).toBe('true');
+    expect(scrollIntoView).toHaveBeenCalled();
   });
 
   it('reports invalid label content before dispatching an update', async () => {

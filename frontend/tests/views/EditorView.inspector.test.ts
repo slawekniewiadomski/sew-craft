@@ -767,11 +767,11 @@ describe('EditorView', () => {
 
     await wrapper.find('[data-testid="sidebar-toggle"]').trigger('click');
     await nextTick();
-    await wrapper.find('[data-testid="sidebar-tab-outline"]').trigger('click');
+    await wrapper.find('[data-testid="sidebar-tab-dimensions"]').trigger('click');
     await nextTick();
 
     expect(wrapper.find('[data-testid="sidebar-panel"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="sidebar-panel-title"]').text()).toBe('Outline');
+    expect(wrapper.find('[data-testid="sidebar-panel-title"]').text()).toBe('Dimensions');
   });
 });
 

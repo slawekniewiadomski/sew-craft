@@ -18,7 +18,6 @@ import {
   mountEditor,
   mountLoaded,
   openExport,
-  openPanel,
   pointDown,
   points,
   roundedLineDoc,
@@ -1044,89 +1043,11 @@ describe('EditorView', () => {
     expect(remounted.findAll('[data-kind="line"]')).toHaveLength(2);
   });
 
-  it('converts a cut edge to construction and undoes it', async () => {
-    const pinia = createPinia();
-    setActivePinia(pinia);
-    const store = useEditorStore();
-    store.load(
-      withPiece({
-        ...createEmptyDocument(),
-        entities: [
-          { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
-          { id: 'q', kind: 'point', x: 10, y: 0, construction: false, fixed: false },
-          { id: 'l1', kind: 'line', start: 'p', end: 'q', construction: false },
-        ],
-      }),
-    );
-
-    const wrapper = await mountEditor(pinia);
-    await openPanel(wrapper, 'outline');
-    expect(wrapper.text()).toContain('1 cut edge(s)');
-
-    await wrapper.find('[data-testid="outline-construction-l1"]').trigger('click');
-
-    expect(wrapper.find('line').attributes('stroke-dasharray')).toBe('4 4');
-    expect(wrapper.text()).toContain('0 cut edge(s)');
-
-    await wrapper.find('[data-testid="undo"]').trigger('click');
-
-    expect(wrapper.find('line').attributes('stroke-dasharray')).toBeUndefined();
-    expect(wrapper.text()).toContain('1 cut edge(s)');
-  });
-
-  it('converts a construction edge back to a cut edge', async () => {
-    const pinia = createPinia();
-    setActivePinia(pinia);
-    const store = useEditorStore();
-    store.load(
-      withPiece({
-        ...createEmptyDocument(),
-        entities: [
-          { id: 'p', kind: 'point', x: 0, y: 0, construction: false, fixed: false },
-          { id: 'q', kind: 'point', x: 10, y: 0, construction: false, fixed: false },
-          { id: 'l1', kind: 'line', start: 'p', end: 'q', construction: true },
-        ],
-      }),
-    );
-
-    const wrapper = await mountEditor(pinia);
-    await openPanel(wrapper, 'outline');
-
-    await wrapper.find('[data-testid="outline-construction-l1"]').trigger('click');
-
-    expect(wrapper.find('line').attributes('stroke-dasharray')).toBeUndefined();
-    expect(wrapper.text()).toContain('1 cut edge(s)');
-  });
-
   it('no longer offers the Seam allowance tool in the ribbon', async () => {
     const { wrapper } = await mountLoaded(edgeDoc);
 
     expect(wrapper.find('[data-testid="tool-add_allowance"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="editor-ribbon"]').text()).not.toContain('Seam allowance');
-  });
-
-  it('renders a legacy allowance as read-only text with no editor', async () => {
-    const { wrapper } = await mountLoaded({
-      ...edgeDoc,
-      seams: [{ id: 's1', edge: 'l1', width: 10 }],
-    });
-    await openPanel(wrapper, 'outline');
-
-    expect(wrapper.find('[data-testid="seam-label-l1"]').text()).toBe('Allowance 10 mm');
-    expect(wrapper.find('[data-testid="seam-width-l1"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="flip-seam-l1"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="remove-seam-l1"]').exists()).toBe(false);
-    expect(wrapper.find('[data-seam-hit]').exists()).toBe(false);
-  });
-
-  it('shows No allowance for an unattached edge with no add control', async () => {
-    const { wrapper } = await mountLoaded(edgeDoc);
-    await openPanel(wrapper, 'outline');
-
-    expect(wrapper.find('[data-testid="seam-empty-l1"]').text()).toBe('No allowance');
-    expect(wrapper.find('[data-testid="add-seam-l1"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="seam-width-l1"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="flip-seam-l1"]').exists()).toBe(false);
   });
 
   it('keeps the legacy dashed path without offering removal', async () => {

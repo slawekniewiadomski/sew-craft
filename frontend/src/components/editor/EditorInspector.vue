@@ -15,7 +15,6 @@ import AssemblyPanel from '@/components/panels/AssemblyPanel.vue';
 import ConstraintsPanel from '@/components/panels/ConstraintsPanel.vue';
 import DimensionsPanel from '@/components/panels/DimensionsPanel.vue';
 import EntityPropertiesPanel from '@/components/panels/EntityPropertiesPanel.vue';
-import OutlinePanel, { type OutlineRow } from '@/components/panels/OutlinePanel.vue';
 import PiecePanel from '@/components/panels/PiecePanel.vue';
 import VariablesPanel from '@/components/panels/VariablesPanel.vue';
 import EditorSidebar from '@/components/editor/EditorSidebar.vue';
@@ -56,7 +55,6 @@ defineProps<{
   activePieceMarks: PieceMarkRow[];
   activeAssembly: Assembly | null;
   selectedInstanceId: EntityId | null;
-  edges: OutlineRow[];
   selectedIds: ReadonlySet<EntityId>;
   selectedDimensionIdSet: ReadonlySet<EntityId>;
   highlightedVariableSlug: string | null;
@@ -73,7 +71,6 @@ const emit = defineEmits<{
   'update:collapsed': [collapsed: boolean];
   'delete-selected': [];
   'measure-selection': [];
-  convert: [id: EntityId, construction: boolean];
   'update-dimension': [id: EntityId, patch: DimensionPatch];
   'remove-constraint': [id: EntityId];
   'set-corner-round-radius': [id: EntityId, radius: ParamInput];
@@ -119,7 +116,6 @@ const emit = defineEmits<{
   'update-instance': [patch: { x?: number; y?: number; rotation?: number; mirrored?: boolean }];
   'open-piece': [piece: EntityId];
   'remove-instance': [id: EntityId];
-  'select-outline': [id: EntityId, mode: SelectionMode];
   'select-dimension': [id: EntityId, mode: SelectionMode];
   'create-variable': [];
   'rename-variable': [slug: string, name: string];
@@ -147,9 +143,6 @@ type PieceDefault =
 
 type AllowanceValue = { kind: AllowanceKind; width: number } | null;
 
-function emitConvert(id: EntityId, construction: boolean): void {
-  emit('convert', id, construction);
-}
 function emitUpdateDimension(id: EntityId, patch: DimensionPatch): void {
   emit('update-dimension', id, patch);
 }
@@ -186,9 +179,6 @@ function emitUpdateText(id: EntityId, patch: Record<string, unknown>): void {
 }
 function emitNotchDepth(id: EntityId, depth: number | null): void {
   emit('set-notch-depth', id, depth);
-}
-function emitOutlineSelect(id: EntityId, mode: SelectionMode): void {
-  emit('select-outline', id, mode);
 }
 function emitDimensionSelect(id: EntityId, mode: SelectionMode): void {
   emit('select-dimension', id, mode);
@@ -236,7 +226,6 @@ function emitVariableComment(slug: string, comment: string | null): void {
         v-else-if="selectedEntity"
         :document="pattern"
         :entity="selectedEntity"
-        @set-construction="emitConvert"
         @update-dimension="emitUpdateDimension"
         @remove-constraint="emit('remove-constraint', $event)"
         @set-corner-round-radius="emitCornerRadius"
@@ -317,15 +306,6 @@ function emitVariableComment(slug: string, comment: string | null): void {
         @set-default="emitPieceDefault"
         @open-piece="emit('open-piece', $event)"
         @remove-instance="emit('remove-instance', $event)"
-      />
-    </template>
-
-    <template #outline>
-      <OutlinePanel
-        :edges="edges"
-        :selected-ids="selectedIds"
-        @select="emitOutlineSelect"
-        @convert="emitConvert"
       />
     </template>
 

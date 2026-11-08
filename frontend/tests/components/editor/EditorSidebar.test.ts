@@ -38,7 +38,7 @@ function mountSidebar(
       pieces: '<p data-testid="slot-pieces">Pieces</p>',
       pattern: '<p data-testid="slot-pattern">Pattern</p>',
       assembly: '<p data-testid="slot-assembly">Assembly</p>',
-      outline: '<p data-testid="slot-outline">Outline</p>',
+      variables: '<p data-testid="slot-variables">Variables</p>',
       dimensions: '<p data-testid="slot-dimensions">Dimensions</p>',
       constraints: '<p data-testid="slot-constraints">Constraints</p>',
       ...(extras.stats === true
@@ -69,7 +69,7 @@ describe('EditorSidebar rail', () => {
   it('opens Properties on a piece and shows one section slot', () => {
     const wrapper = mountSidebar();
 
-    for (const id of ['properties', 'pieces', 'outline', 'dimensions', 'constraints']) {
+    for (const id of ['properties', 'pieces', 'dimensions', 'constraints', 'variables']) {
       expect(wrapper.find(`[data-testid="sidebar-tab-${id}"]`).exists()).toBe(true);
     }
     expect(wrapper.find('[data-testid="sidebar-tab-properties"]').attributes('aria-pressed')).toBe(
@@ -77,25 +77,25 @@ describe('EditorSidebar rail', () => {
     );
     expect(wrapper.find('[data-testid="sidebar-panel-title"]').text()).toBe('Properties');
     expect(wrapper.find('[data-testid="slot-properties"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="slot-outline"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="slot-variables"]').exists()).toBe(false);
   });
 
   it('switches the one visible section, remembers it and keeps an active click open', async () => {
     const wrapper = mountSidebar();
 
-    await wrapper.find('[data-testid="sidebar-tab-outline"]').trigger('click');
+    await wrapper.find('[data-testid="sidebar-tab-variables"]').trigger('click');
     await nextTick();
 
-    expect(wrapper.find('[data-testid="sidebar-panel-title"]').text()).toBe('Outline');
-    expect(wrapper.find('[data-testid="slot-outline"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="sidebar-panel-title"]').text()).toBe('Variables');
+    expect(wrapper.find('[data-testid="slot-variables"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="slot-properties"]').exists()).toBe(false);
-    expect(window.localStorage.getItem(persistedPanelKey('1', 'piece'))).toBe('outline');
+    expect(window.localStorage.getItem(persistedPanelKey('1', 'piece'))).toBe('variables');
     expect(wrapper.emitted('update:collapsed')).toBeUndefined();
 
-    await wrapper.find('[data-testid="sidebar-tab-outline"]').trigger('click');
+    await wrapper.find('[data-testid="sidebar-tab-variables"]').trigger('click');
     await nextTick();
 
-    expect(wrapper.find('[data-testid="slot-outline"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="slot-variables"]').exists()).toBe(true);
     expect(wrapper.emitted('update:collapsed')).toBeUndefined();
   });
 
@@ -117,17 +117,17 @@ describe('EditorSidebar rail', () => {
   });
 
   it('shows counts on the rail and in the active panel header', async () => {
-    const wrapper = mountSidebar(320, false, { counts: { outline: 12, dimensions: 0 } });
+    const wrapper = mountSidebar(320, false, { counts: { variables: 12, dimensions: 0 } });
 
-    expect(wrapper.find('[data-testid="sidebar-tab-count-outline"]').text()).toBe('12');
+    expect(wrapper.find('[data-testid="sidebar-tab-count-variables"]').text()).toBe('12');
     expect(wrapper.find('[data-testid="sidebar-tab-count-dimensions"]').exists()).toBe(false);
 
-    await wrapper.find('[data-testid="sidebar-tab-outline"]').trigger('click');
+    await wrapper.find('[data-testid="sidebar-tab-variables"]').trigger('click');
     await nextTick();
 
     expect(wrapper.find('[data-testid="sidebar-panel-count"]').text()).toBe('12');
-    expect(wrapper.find('[data-testid="sidebar-tab-outline"]').attributes('aria-label')).toBe(
-      'Outline, 12 items',
+    expect(wrapper.find('[data-testid="sidebar-tab-variables"]').attributes('aria-label')).toBe(
+      'Variables, 12 items',
     );
   });
 
@@ -165,7 +165,7 @@ describe('EditorSidebar collapse', () => {
 
     expect(wrapper.find('[data-testid="sidebar-panel"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="sidebar-resize"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="sidebar-tab-outline"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="sidebar-tab-variables"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="sidebar-collapse"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="sidebar-expand"]').exists()).toBe(false);
   });
@@ -213,11 +213,11 @@ describe('EditorSidebar details', () => {
 
     expect(wrapper.find('fieldset').attributes('disabled')).toBeDefined();
     expect(
-      wrapper.find('[data-testid="sidebar-tab-outline"]').attributes('disabled'),
+      wrapper.find('[data-testid="sidebar-tab-variables"]').attributes('disabled'),
     ).toBeUndefined();
 
-    await wrapper.find('[data-testid="sidebar-tab-outline"]').trigger('click');
-    expect(wrapper.find('[data-testid="slot-outline"]').exists()).toBe(true);
+    await wrapper.find('[data-testid="sidebar-tab-variables"]').trigger('click');
+    expect(wrapper.find('[data-testid="slot-variables"]').exists()).toBe(true);
   });
 
   it('renders the stats slot below the panel body only when provided', () => {

@@ -16,7 +16,6 @@ describe('EDITOR_PANELS', () => {
       { id: 'properties', label: 'Properties', icon: 'select' },
       { id: 'pieces', label: 'Piece', icon: 'piece' },
       { id: 'assembly', label: 'Assembly', icon: 'piece' },
-      { id: 'outline', label: 'Outline', icon: 'line' },
       { id: 'dimensions', label: 'Dimensions', icon: 'dimension' },
       { id: 'constraints', label: 'Constraints', icon: 'constraints' },
       { id: 'variables', label: 'Variables', icon: 'variables' },
@@ -29,7 +28,6 @@ describe('panelsFor', () => {
     expect(panelsFor('piece').map((panel) => panel.id)).toEqual([
       'properties',
       'pieces',
-      'outline',
       'dimensions',
       'constraints',
       'variables',
@@ -45,14 +43,14 @@ describe('panelsFor', () => {
 
 describe('parsePanel', () => {
   it('keeps a section the mode offers', () => {
-    expect(parsePanel('outline', 'piece')).toBe('outline');
+    expect(parsePanel('dimensions', 'piece')).toBe('dimensions');
   });
 
   it('falls back for a missing, unknown or wrong-mode section', () => {
     expect(parsePanel(null, 'piece')).toBe('properties');
     expect(parsePanel('missing', 'piece')).toBe('properties');
     expect(parsePanel('assembly', 'piece')).toBe('properties');
-    expect(parsePanel('outline', 'assembly')).toBe('assembly');
+    expect(parsePanel('properties', 'assembly')).toBe('assembly');
   });
 });
 
@@ -91,9 +89,9 @@ describe('persisted panel', () => {
       },
       '7',
       'piece',
-      'outline',
+      'variables',
     );
-    expect(store.get('sewcraft:sidebar:panel:piece:7')).toBe('outline');
+    expect(store.get('sewcraft:sidebar:panel:piece:7')).toBe('variables');
 
     expect(() =>
       writePersistedPanel(
@@ -104,7 +102,7 @@ describe('persisted panel', () => {
         },
         '7',
         'piece',
-        'outline',
+        'variables',
       ),
     ).not.toThrow();
   });

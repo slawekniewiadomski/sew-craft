@@ -23,7 +23,6 @@ import {
   pieceById,
   piecePlacement,
   pieceCutLoop,
-  seamForEdge,
   toSvgPiece,
   type ParamInput,
 } from '@sewcraft/geometry';
@@ -51,6 +50,7 @@ import EditorCanvas from '@/components/editor/EditorCanvas.vue';
 import EditorInspector from '@/components/editor/EditorInspector.vue';
 import EditorOverlays from '@/components/editor/EditorOverlays.vue';
 import EditorStrips from '@/components/editor/EditorStrips.vue';
+import OutlineFloat from '@/components/editor/OutlineFloat.vue';
 import { pruneAllowanceTargets } from '@/lib/allowance-edit';
 import { useCommandBus } from '@/composables/use-command-bus';
 import { useReferencePicker } from '@/composables/use-reference-picker';
@@ -91,7 +91,6 @@ import type { PanelId } from '@/lib/editor-panels';
 import { EDITOR_TOOLS, type EditorTool } from '@/lib/editor-tools';
 import { entityProperties } from '@/lib/entity-properties';
 import {
-  edgeLabel,
   canonicalCutAnchors,
   canEditEntity,
   findDerivedDimension,
@@ -358,27 +357,6 @@ const assemblyDocument = computed(() => {
   return documentForAssembly(pattern.value, activeAssembly.value.id);
 });
 
-/** Every line, curve, arc and circle, so any edge can be converted between guide and cut. */
-const edges = computed(() =>
-  pattern.value.entities
-    .filter((entity) => entity.kind !== 'point' && entity.kind !== 'text' && entity.kind !== 'mark')
-    .map((entity) => {
-      const seam = seamForEdge(pattern.value, entity.id);
-      const piece = pattern.value.pieces.find((candidate) => candidate.edges.includes(entity.id));
-      const allowance = piece?.allowances.find((candidate) => candidate.edge === entity.id);
-      return {
-        id: entity.id,
-        kind: entity.kind,
-        label: edgeLabel(pattern.value, entity.id),
-        construction: isConstruction(entity),
-        seamWidth: seam?.width ?? null,
-        pieceId: piece?.id ?? null,
-        allowanceKind: allowance === undefined ? null : (allowance.kind ?? 'seam'),
-        allowanceWidth: allowance?.width ?? null,
-      };
-    }),
-);
-
 const cutEdgeCount = computed(() => cutEdges(pattern.value).length);
 
 /** The single-entity inspector view model; `null` for zero or many selected. */
@@ -392,6 +370,11 @@ const defaultAllowance = computed(() => defaultAllowanceSummary(pattern.value));
 /** The entity selection as a set, for row highlighting and `aria-current`. */
 const selectedIds = computed(() => new Set(selectedEntityIds.value));
 
+/** The most recently selected entity or dimension, so the outline can reveal it. */
+const outlineFocusId = computed(
+  () => selectedEntityIds.value.at(-1) ?? selectedDimensionIds.value.at(-1) ?? null,
+);
+
 /** The dimension selection as a set, for drawer row highlighting. */
 const selectedDimensionIdSet = computed(() => new Set(selectedDimensionIds.value));
 
@@ -402,7 +385,6 @@ const pieces = computed(() => pieceSummaries(pattern.value));
 const panelCounts = computed<Partial<Record<PanelId, number>>>(() => ({
   properties: selectedEntityIds.value.length + selectedDimensionIds.value.length,
   pieces: pieces.value.length,
-  outline: edges.value.length,
   dimensions: dimensions.value.length,
   constraints: otherConstraints.value.length,
   variables: (pattern.value.variables ?? []).length,
@@ -792,18 +774,18 @@ async function onSaveSettings(draft: ProjectSettingsDraft): Promise<void> {
  * Select one Outline row's entity with the canvas' modifier rules: plain click
  * replaces, Ctrl/Cmd toggles, Ctrl/Cmd+Shift (or Alt) subtracts.
  */
-function onOutlineSelect(id: EntityId, mode: SelectionMode): void {
+function onOutlineSelect(ids: EntityId[], mode: SelectionMode): void {
   // A drawer click is exclusive like a canvas click: the marquee is the only
   // gesture that may leave both kinds selected.
   selectedDimensionIds.value = [];
   if (mode === 'replace') {
-    selectedEntityIds.value = [id];
+    selectedEntityIds.value = ids;
     return;
   }
   selectedEntityIds.value =
     mode === 'add'
-      ? toggleSelection(selectedEntityIds.value, id)
-      : applySelection(selectedEntityIds.value, [id], 'subtract');
+      ? ids.reduce((selection, id) => toggleSelection(selection, id), selectedEntityIds.value)
+      : applySelection(selectedEntityIds.value, ids, 'subtract');
 }
 
 /**
@@ -924,7 +906,6 @@ const {
   onAddDimension,
   onAddCutDimension,
   onUpdateDimension,
-  convert,
 } = useSketchCommands({
   pattern: () => pattern.value,
   interactionDocument,
@@ -1188,66 +1169,79 @@ onBeforeUnmount(() => {
       />
 
       <div class="flex min-h-0 flex-1">
-        <EditorCanvas
-          v-model:selected-entity-ids="selectedEntityIds"
-          v-model:selected-dimension-ids="selectedDimensionIds"
-          v-model:selected-allowance-targets="selectedAllowanceTargets"
-          :pattern="pattern"
-          :visible-document="visibleDocument"
-          :assembly-document="assemblyDocument"
-          :active-assembly="activeAssembly"
-          :is-assembly-tab="isAssemblyTab"
-          :is-sketch="isSketch"
-          :active-tool="activeTool"
-          :active-piece-id="activePieceId"
-          :read-only="editor.readOnly"
-          :selected-instance-id="selectedInstanceId"
-          :assembly-picker-open="assemblyPickerOpen"
-          :fit-token="fitToken"
-          :sketch-arrange="sketchArrange"
-          :display="display"
-          :display-items="displayItems"
-          :display-values="displayValues"
-          :active-constraint="activeConstraint"
-          :constraint-picks="constraintPicks"
-          :corner-round-active="cornerRoundActive"
-          :corner-round-picks="cornerRoundPicks"
-          :corner-round-preview-radius="cornerRoundPreviewRadius"
-          :measured-editing="editingMeasured !== null"
-          :measured-highlight-ids="measuredHighlightIds"
-          @toggle-display="toggleDisplay"
-          @select-instance="selectInstance"
-          @move-instance="onMoveInstance"
-          @nudge-instance="onNudgeInstance"
-          @remove-instance="onRemoveInstance"
-          @add-instance="onAddInstance"
-          @close-picker="assemblyPickerOpen = false"
-          @move-piece="onMovePiece"
-          @activate-piece="onSketchTarget"
-          @cross-piece="onSketchTarget"
-          @move-point="onMovePoint"
-          @add-text="onAddText"
-          @add-notch="onAddNotch"
-          @add-centre-line="onAddCentreLine"
-          @add-point="onAddPoint"
-          @add-point-on-line="onAddPointOnLine"
-          @add-point-midpoint="onAddPointMidpoint"
-          @split-line="onSplitLine"
-          @add-line="onAddLine"
-          @add-curve="onAddCurve"
-          @add-arc="onAddArc"
-          @add-circle="onAddCircle"
-          @add-rectangle="onAddRectangle"
-          @constraint-pick="onConstraintPick"
-          @round-corner-pick="onRoundCornerPick"
-          @set-corner-round-radius="setCornerRoundRadius"
-          @add-dimension="onAddDimension"
-          @add-cut-dimension="onAddCutDimension"
-          @update-dimension="onUpdateDimension"
-          @marquee-change="marqueeActive = $event"
-          @measure-pick="onMeasuredEdgeToggle"
-          @update:selected-entity-ids="onSelectEntities"
-        />
+        <div class="relative flex min-h-0 min-w-0 flex-1">
+          <EditorCanvas
+            v-model:selected-entity-ids="selectedEntityIds"
+            v-model:selected-dimension-ids="selectedDimensionIds"
+            v-model:selected-allowance-targets="selectedAllowanceTargets"
+            :pattern="pattern"
+            :visible-document="visibleDocument"
+            :assembly-document="assemblyDocument"
+            :active-assembly="activeAssembly"
+            :is-assembly-tab="isAssemblyTab"
+            :is-sketch="isSketch"
+            :active-tool="activeTool"
+            :active-piece-id="activePieceId"
+            :read-only="editor.readOnly"
+            :selected-instance-id="selectedInstanceId"
+            :assembly-picker-open="assemblyPickerOpen"
+            :fit-token="fitToken"
+            :sketch-arrange="sketchArrange"
+            :display="display"
+            :display-items="displayItems"
+            :display-values="displayValues"
+            :active-constraint="activeConstraint"
+            :constraint-picks="constraintPicks"
+            :corner-round-active="cornerRoundActive"
+            :corner-round-picks="cornerRoundPicks"
+            :corner-round-preview-radius="cornerRoundPreviewRadius"
+            :measured-editing="editingMeasured !== null"
+            :measured-highlight-ids="measuredHighlightIds"
+            @toggle-display="toggleDisplay"
+            @select-instance="selectInstance"
+            @move-instance="onMoveInstance"
+            @nudge-instance="onNudgeInstance"
+            @remove-instance="onRemoveInstance"
+            @add-instance="onAddInstance"
+            @close-picker="assemblyPickerOpen = false"
+            @move-piece="onMovePiece"
+            @activate-piece="onSketchTarget"
+            @cross-piece="onSketchTarget"
+            @move-point="onMovePoint"
+            @add-text="onAddText"
+            @add-notch="onAddNotch"
+            @add-centre-line="onAddCentreLine"
+            @add-point="onAddPoint"
+            @add-point-on-line="onAddPointOnLine"
+            @add-point-midpoint="onAddPointMidpoint"
+            @split-line="onSplitLine"
+            @add-line="onAddLine"
+            @add-curve="onAddCurve"
+            @add-arc="onAddArc"
+            @add-circle="onAddCircle"
+            @add-rectangle="onAddRectangle"
+            @constraint-pick="onConstraintPick"
+            @round-corner-pick="onRoundCornerPick"
+            @set-corner-round-radius="setCornerRoundRadius"
+            @add-dimension="onAddDimension"
+            @add-cut-dimension="onAddCutDimension"
+            @update-dimension="onUpdateDimension"
+            @marquee-change="marqueeActive = $event"
+            @measure-pick="onMeasuredEdgeToggle"
+            @update:selected-entity-ids="onSelectEntities"
+          />
+
+          <OutlineFloat
+            :document="pattern"
+            :selected-ids="selectedIds"
+            :selected-dimension-ids="selectedDimensionIdSet"
+            :active-piece-id="activePieceId"
+            :focus-id="outlineFocusId"
+            @select="onOutlineSelect"
+            @select-dimension="onDimensionSelect"
+            @open-piece="openPieceTab"
+          />
+        </div>
 
         <EditorInspector
           :width="width"
@@ -1273,7 +1267,6 @@ onBeforeUnmount(() => {
           :active-piece-marks="activePieceMarks"
           :active-assembly="activeAssembly"
           :selected-instance-id="selectedInstanceId"
-          :edges="edges"
           :selected-ids="selectedIds"
           :selected-dimension-id-set="selectedDimensionIdSet"
           :highlighted-variable-slug="highlightedVariableSlug"
@@ -1287,7 +1280,6 @@ onBeforeUnmount(() => {
           @update:collapsed="collapsed = $event"
           @delete-selected="deleteSelected"
           @measure-selection="onMeasureSelection"
-          @convert="convert"
           @update-dimension="onUpdateDimension"
           @remove-constraint="removeConstraint"
           @set-corner-round-radius="setCornerRoundRadius"
@@ -1310,7 +1302,6 @@ onBeforeUnmount(() => {
           @update-instance="onUpdateInstance"
           @open-piece="openPieceTab"
           @remove-instance="onRemoveInstance"
-          @select-outline="onOutlineSelect"
           @select-dimension="onDimensionSelect"
           @create-variable="onAddVariable"
           @rename-variable="onRenameVariable"

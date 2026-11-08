@@ -2,7 +2,7 @@ import type { RibbonIconName } from './ribbon-icons';
 
 /** The editor's sidebar sections. The id is also the slot name in EditorView. */
 export type PanelId =
-  'properties' | 'pieces' | 'assembly' | 'outline' | 'dimensions' | 'constraints' | 'variables';
+  'properties' | 'pieces' | 'assembly' | 'dimensions' | 'constraints' | 'variables';
 
 /** The tab kinds that carry a sidebar, matching the bottom editor tabs. */
 export type PanelMode = 'piece' | 'assembly';
@@ -19,14 +19,13 @@ export const EDITOR_PANELS: PanelDefinition[] = [
   { id: 'properties', label: 'Properties', icon: 'select' },
   { id: 'pieces', label: 'Piece', icon: 'piece' },
   { id: 'assembly', label: 'Assembly', icon: 'piece' },
-  { id: 'outline', label: 'Outline', icon: 'line' },
   { id: 'dimensions', label: 'Dimensions', icon: 'dimension' },
   { id: 'constraints', label: 'Constraints', icon: 'constraints' },
   { id: 'variables', label: 'Variables', icon: 'variables' },
 ];
 
 const PANEL_IDS: Record<PanelMode, PanelId[]> = {
-  piece: ['properties', 'pieces', 'outline', 'dimensions', 'constraints', 'variables'],
+  piece: ['properties', 'pieces', 'dimensions', 'constraints', 'variables'],
   assembly: ['assembly'],
 };
 

@@ -23,7 +23,6 @@ const SidebarStub = defineComponent({
     <slot name="stats" />
     <slot name="pieces" />
     <slot name="assembly" />
-    <slot name="outline" />
     <slot name="dimensions" />
     <slot name="variables" />
     <slot name="constraints" />
@@ -56,7 +55,6 @@ function mountInspector(overrides: Record<string, unknown> = {}) {
       activePieceMarks: [],
       activeAssembly: assembly,
       selectedInstanceId: null,
-      edges: [],
       selectedIds: new Set<string>(),
       selectedDimensionIdSet: new Set<string>(),
       highlightedVariableSlug: null,
@@ -75,7 +73,6 @@ function mountInspector(overrides: Record<string, unknown> = {}) {
         EntityPropertiesPanel: stub('EntityPropertiesPanel'),
         PiecePanel: stub('PiecePanel'),
         AssemblyPanel: stub('AssemblyPanel'),
-        OutlinePanel: stub('OutlinePanel'),
         DimensionsPanel: stub('DimensionsPanel'),
         VariablesPanel: stub('VariablesPanel'),
         ConstraintsPanel: stub('ConstraintsPanel'),
@@ -116,9 +113,9 @@ describe('EditorInspector', () => {
     await wrapper
       .findComponent({ name: 'EntityPropertiesPanel' })
       .vm.$emit('update-dimension', 'd1', { offset: 2 });
-    await wrapper.findComponent({ name: 'OutlinePanel' }).vm.$emit('convert', 'e2', true);
+    await wrapper.findComponent({ name: 'AssemblyPanel' }).vm.$emit('open-piece', 'p2');
 
     expect(wrapper.emitted('update-dimension')).toEqual([['d1', { offset: 2 }]]);
-    expect(wrapper.emitted('convert')).toEqual([['e2', true]]);
+    expect(wrapper.emitted('open-piece')).toEqual([['p2']]);
   });
 });
