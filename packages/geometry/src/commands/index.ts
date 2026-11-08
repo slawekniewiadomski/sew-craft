@@ -25,12 +25,8 @@ import {
   applyUpdateAssembly,
   applyUpdateInstance,
 } from './assemblies.js';
-import {
-  applyAddConstraint,
-  applyAddDerivedDimension,
-  applyRemoveConstraint,
-  applyUpdateConstraint,
-} from './constraints.js';
+import { applyAddConstraint, applyRemoveConstraint, applyUpdateConstraint } from './constraints.js';
+import { applyAddDerivedDimension } from './derived-dimensions.js';
 import {
   applyAddArc,
   applyAddCircle,
