@@ -201,8 +201,9 @@ describe('VariablesPanel', () => {
 
     await wrapper.find('[data-testid="variables-add"]').trigger('click');
     wrapper
-      .find('[data-testid="variables-panel"]')
+      .find('[data-testid="variables-add-menu"]')
       .element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    await nextTick();
     expect(wrapper.find('[data-testid="variables-add-menu"]').exists()).toBe(true);
 
     document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
