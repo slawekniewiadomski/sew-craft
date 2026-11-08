@@ -17,6 +17,7 @@ const display = {
     folds: true,
     notches: true,
     labels: true,
+    seams: true,
   },
   export: { construction: true, stitch: true, fold: true },
 };
@@ -52,6 +53,9 @@ function mountCanvas(overrides: Record<string, unknown> = {}) {
       cornerRoundPreviewRadius: null,
       measuredEditing: false,
       measuredHighlightIds: [],
+      sewActive: false,
+      draftSides: [],
+      selectedSeamId: null,
       ...overrides,
     },
     global: {

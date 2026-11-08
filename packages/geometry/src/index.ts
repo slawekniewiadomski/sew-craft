@@ -19,6 +19,7 @@ export * from './midpoint.js';
 export * from './offset.js';
 export * from './piece.js';
 export * from './assembly.js';
+export * from './seams.js';
 export * from './migration.js';
 export * from './selection.js';
 export * from './solver.js';

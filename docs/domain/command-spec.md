@@ -34,7 +34,7 @@ length rejects a ratio or an area. Variables are managed with `set_variable`,
 `update_variable` and `remove_variable`; a variable is either written (a literal
 or a formula) or measured from a connected chain of edges.
 
-## Commands (v0.21)
+## Commands (v0.22)
 
 ### `add_point`
 
@@ -648,6 +648,50 @@ Replace the document's tab order.
   every ref known. Reordering is undoable.
 - inverse: `reorder_tabs` with the previous order.
 
+### `add_seam_match`
+
+Sew two or more edge runs together on one assembly.
+
+- params: `assembly: entity_id`, `sides: SeamRun[]`, `eased?: bool` where
+  `SeamRun = { instance: entity_id, edges: entity_id[], reversed?: bool }`
+- `sides` is ordered by layer and needs at least two entries. Every instance must
+  belong to the assembly, every edge must be in that instance's piece loop, and a
+  side's edges must be consecutive in `Piece.edges` order with at most one wrap.
+- No edge may repeat in the seam, already belong to another seam, or be marked
+  finished.
+- The record id is the command id; re-applying it is a no-op.
+- inverse: `remove_seam_match`
+
+### `update_seam_match`
+
+Change a seam's sides, its ease flag, or both.
+
+- params: `assembly: entity_id`, `seam: entity_id`, `eased?: bool`,
+  `sides?: SeamRun[]`; at least one of `eased` and `sides` is required.
+- `sides`, when present, passes the `add_seam_match` rules while ignoring this
+  seam's own claims. An unknown seam is an error.
+- inverse: `update_seam_match` with the previous sides and ease flag.
+
+### `remove_seam_match`
+
+Unsew a seam.
+
+- params: `assembly: entity_id`, `seam: entity_id`
+- Removing an already-missing seam is a no-op.
+- inverse: `add_seam_match` with the stored sides and ease flag, under the same
+  id.
+
+### `set_edge_finished`
+
+Mark an instance edge as finished, change its kind, or clear the mark.
+
+- params: `assembly: entity_id`, `instance: entity_id`, `edge: entity_id`,
+  `kind: 'hem' | 'binding' | 'fold' | 'opening' | null`
+- The instance must belong to the assembly, the edge must be in its piece loop,
+  and the edge must not be in a seam. `kind: null` clears the mark; setting the
+  same kind is a no-op.
+- inverse: `set_edge_finished` with the previous kind, or `null`.
+
 ### `set_piece_allowance`
 
 Set, change or remove the allowance of one loop edge of a piece.
@@ -878,6 +922,16 @@ Request a solver rebuild. Typically emitted after a batch of geometry commands.
 3. Implement `applyCommand` handling in `@sewcraft/geometry` with tests.
 4. Wire any UI affordance. Emit it from the command bus — never mutate state
    directly.
+
+## Migration from spec 0.21.0
+
+`spec_version` is **0.22.0** and the pattern schema is `sewcraft.pattern/0.9`.
+Additive: `Assembly` gains optional `seams` and `finishedEdges` arrays, written by
+the four new seam and finish commands. A 0.8 document loads without conversion;
+both arrays stay absent until the maker sews or finishes an edge. An older build
+that meets a 0.9 document refuses it rather than dropping the seam record, so keep
+the seams on rollback or unsew them deliberately. The sewability report is
+advisory and never blocks save, autosave, versioning or export.
 
 ## Migration from spec 0.20.0
 

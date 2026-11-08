@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import AssemblyCanvas from '@/components/canvas/AssemblyCanvas.vue';
 import AssemblyPanel from '@/components/panels/AssemblyPanel.vue';
+import SeamPromptBar from '@/components/bars/SeamPromptBar.vue';
 import EditorTabs from '@/components/editor/EditorTabs.vue';
 import PiecePanel from '@/components/panels/PiecePanel.vue';
 import PatternCanvas from '@/components/canvas/PatternCanvas.vue';
@@ -1190,5 +1191,279 @@ describe('EditorView allowance regions', () => {
     wrapper.findComponent(PatternCanvas).vm.$emit('update:selectedDimensionIds', ['cut']);
     await nextTick();
     expect(wrapper.findComponent(PiecePanel).props('selectedTargets')).toEqual([]);
+  });
+});
+
+describe('EditorView sewing', () => {
+  const sewingDoc = (
+    seams: PatternDocument['assemblies'][number]['seams'] = undefined,
+  ): PatternDocument => ({
+    ...withPiece(lineDoc, 'p1', ['ab', 'bc', 'cd', 'da']),
+    pieces: [{ id: 'p1', name: 'Front', edges: ['ab', 'bc', 'cd', 'da'], allowances: [] }],
+    assemblies: [
+      {
+        id: 'a1',
+        name: 'Shell',
+        instances: [
+          { id: 'i1', piece: 'p1', x: 0, y: 0 },
+          { id: 'i2', piece: 'p1', x: 200, y: 0 },
+        ],
+        ...(seams === undefined ? {} : { seams }),
+      },
+    ],
+    tabs: [
+      { kind: 'piece', id: 'p1' },
+      { kind: 'assembly', id: 'a1' },
+    ],
+  });
+
+  async function mountSewing(document = sewingDoc()) {
+    const result = await mountLoaded(document);
+    await result.wrapper.find('[data-testid="tab-assembly-a1"]').trigger('click');
+    await flushPromises();
+    return result;
+  }
+
+  const pick = async (
+    wrapper: Awaited<ReturnType<typeof mountSewing>>['wrapper'],
+    instance: string,
+    edge: string,
+  ): Promise<void> => {
+    wrapper.findComponent(AssemblyCanvas).vm.$emit('pick-edge', instance, edge);
+    await nextTick();
+  };
+
+  const arm = async (
+    wrapper: Awaited<ReturnType<typeof mountSewing>>['wrapper'],
+  ): Promise<void> => {
+    await wrapper.find('[data-testid="sew"]').trigger('click');
+    await nextTick();
+  };
+
+  it('sews two picked edges into one record and selects it', async () => {
+    const { wrapper, store } = await mountSewing();
+
+    await arm(wrapper);
+    expect(wrapper.find('[data-testid="seam-prompt-bar"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="sew"]').attributes('aria-pressed')).toBe('true');
+
+    await pick(wrapper, 'i1', 'ab');
+    await pick(wrapper, 'i2', 'ab');
+    expect(wrapper.find('[data-testid="seam-side-0"]').text()).toContain('Side 1');
+    expect(wrapper.find('[data-testid="seam-side-1"]').text()).toContain('Side 2');
+
+    await wrapper.find('[data-testid="seam-commit"]').trigger('click');
+    await flushPromises();
+
+    const seams = store.document.assemblies[0]!.seams!;
+    expect(seams).toHaveLength(1);
+    expect(seams[0]!.sides).toEqual([
+      { instance: 'i1', edges: ['ab'] },
+      { instance: 'i2', edges: ['ab'] },
+    ]);
+    expect(wrapper.find('[data-testid="seam-side-0"]').exists()).toBe(false);
+    expect(wrapper.findComponent(AssemblyCanvas).props('selectedSeamId')).toBe(seams[0]!.id);
+    expect(wrapper.find('[data-testid="seam-prompt-bar"]').exists()).toBe(true);
+  });
+
+  it('starts a new side, flips it and stores eased', async () => {
+    const { wrapper, store } = await mountSewing();
+
+    await arm(wrapper);
+    await pick(wrapper, 'i1', 'ab');
+    await pick(wrapper, 'i1', 'bc');
+    await wrapper.find('[data-testid="seam-new-side"]').trigger('click');
+    await pick(wrapper, 'i1', 'cd');
+    await wrapper.find('[data-testid="seam-flip"]').trigger('click');
+    await wrapper.find('[data-testid="seam-eased"]').setValue(true);
+
+    await wrapper.find('[data-testid="seam-commit"]').trigger('click');
+    await flushPromises();
+
+    expect(store.document.assemblies[0]!.seams![0]).toMatchObject({
+      eased: true,
+      sides: [
+        { instance: 'i1', edges: ['ab', 'bc'] },
+        { instance: 'i1', edges: ['cd'], reversed: true },
+      ],
+    });
+  });
+
+  it('removes a pick from its prompt chip', async () => {
+    const { wrapper } = await mountSewing();
+
+    await arm(wrapper);
+    await pick(wrapper, 'i1', 'ab');
+    await pick(wrapper, 'i2', 'ab');
+    await wrapper.find('[data-testid="seam-pick-i1-ab"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="seam-side-1"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="seam-commit"]').attributes('disabled')).toBeDefined();
+  });
+
+  it('ignores a commit with fewer than two sides', async () => {
+    const { wrapper, store } = await mountSewing();
+
+    await arm(wrapper);
+    await pick(wrapper, 'i1', 'ab');
+    wrapper.findComponent(SeamPromptBar).vm.$emit('commit');
+    await flushPromises();
+
+    expect(store.document.assemblies[0]!.seams).toBeUndefined();
+    expect(wrapper.find('[data-testid="seam-side-0"]').exists()).toBe(true);
+  });
+
+  it('cancels and escapes the gesture', async () => {
+    const { wrapper, store } = await mountSewing();
+
+    await arm(wrapper);
+    await pick(wrapper, 'i1', 'ab');
+    await wrapper.find('[data-testid="seam-cancel"]').trigger('click');
+    await nextTick();
+    expect(wrapper.find('[data-testid="seam-prompt-bar"]').exists()).toBe(false);
+    expect(store.document.assemblies[0]!.seams).toBeUndefined();
+
+    await arm(wrapper);
+    await pick(wrapper, 'i1', 'ab');
+    keydown('Escape');
+    await nextTick();
+    expect(wrapper.find('[data-testid="seam-prompt-bar"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="sew"]').attributes('aria-pressed')).toBeUndefined();
+  });
+
+  it('turns Sew mode off from the ribbon', async () => {
+    const { wrapper } = await mountSewing();
+
+    await arm(wrapper);
+    expect(wrapper.find('[data-testid="seam-prompt-bar"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="sew"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="seam-prompt-bar"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="sew"]').attributes('aria-pressed')).toBeUndefined();
+  });
+
+  it('resets the gesture when the tab changes', async () => {
+    const { wrapper } = await mountSewing();
+
+    await arm(wrapper);
+    await pick(wrapper, 'i1', 'ab');
+    await wrapper.find('[data-testid="tab-piece-p1"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="seam-prompt-bar"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="tab-assembly-a1"]').trigger('click');
+    await flushPromises();
+    await arm(wrapper);
+    expect(wrapper.find('[data-testid="seam-side-0"]').exists()).toBe(false);
+  });
+
+  it('keeps the gesture when the commit is rejected', async () => {
+    const sewn = sewingDoc([
+      {
+        id: 's1',
+        sides: [
+          { instance: 'i1', edges: ['ab'] },
+          { instance: 'i2', edges: ['ab'] },
+        ],
+      },
+    ]);
+    const { wrapper, store } = await mountSewing(sewn);
+
+    await arm(wrapper);
+    await pick(wrapper, 'i1', 'ab');
+    await pick(wrapper, 'i2', 'ab');
+    await wrapper.find('[data-testid="seam-commit"]').trigger('click');
+    await flushPromises();
+
+    expect(store.document.assemblies[0]!.seams).toHaveLength(1);
+    expect(wrapper.findComponent(AssemblyCanvas).props('selectedSeamId')).toBeNull();
+    expect(wrapper.find('[data-testid="seam-side-0"]').exists()).toBe(true);
+  });
+
+  it('selects a seam, toggles ease and removes a broken one from the panel', async () => {
+    const broken = sewingDoc([
+      {
+        id: 'b',
+        sides: [
+          { instance: 'i1', edges: ['ab'] },
+          { instance: 'ghost', edges: ['ab'] },
+        ],
+      },
+    ]);
+    const { wrapper, store } = await mountSewing(broken);
+    const canvas = () => wrapper.findComponent(AssemblyCanvas);
+
+    await wrapper.find('[data-testid="seam-select-b"]').trigger('click');
+    await nextTick();
+    expect(canvas().props('selectedSeamId')).toBe('b');
+
+    await wrapper.find('[data-testid="seam-remove-b"]').trigger('click');
+    await flushPromises();
+    expect(store.document.assemblies[0]!.seams).toEqual([]);
+    expect(canvas().props('selectedSeamId')).toBeNull();
+  });
+
+  it('toggles eased and marks an edge finished from the panel', async () => {
+    const document = sewingDoc([
+      {
+        id: 's1',
+        sides: [
+          { instance: 'i1', edges: ['ab'] },
+          { instance: 'i2', edges: ['ab'] },
+        ],
+      },
+    ]);
+    const { wrapper, store } = await mountSewing(document);
+
+    await wrapper.find('[data-testid="seam-eased-s1"]').setValue(true);
+    await flushPromises();
+    expect(store.document.assemblies[0]!.seams![0]!.eased).toBe(true);
+
+    await wrapper.find('[data-testid="mark-finished-i1-bc"]').setValue('hem');
+    await flushPromises();
+    expect(store.document.assemblies[0]!.finishedEdges).toContainEqual({
+      instance: 'i1',
+      edge: 'bc',
+      kind: 'hem',
+    });
+  });
+
+  it('selects the instance an unmatched issue names', async () => {
+    const { wrapper } = await mountSewing();
+    const issue = wrapper.findAll('[data-testid^="check-issue-select-"]')[0]!;
+
+    await issue.trigger('click');
+    await nextTick();
+    expect(wrapper.findComponent(AssemblyCanvas).props('selectedInstanceId')).not.toBeNull();
+  });
+
+  it('clears a selected seam when the document loses it', async () => {
+    const document = sewingDoc([
+      {
+        id: 's1',
+        sides: [
+          { instance: 'i1', edges: ['ab'] },
+          { instance: 'i2', edges: ['ab'] },
+        ],
+      },
+    ]);
+    const { wrapper, store } = await mountSewing(document);
+
+    await wrapper.find('[data-testid="seam-select-s1"]').trigger('click');
+    await nextTick();
+    expect(wrapper.findComponent(AssemblyCanvas).props('selectedSeamId')).toBe('s1');
+
+    const cleared = { ...document.assemblies[0]! };
+    delete cleared.seams;
+    store.load({ ...document, assemblies: [cleared] });
+    await flushPromises();
+    await wrapper.find('[data-testid="tab-assembly-a1"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.findComponent(AssemblyCanvas).props('selectedSeamId')).toBeNull();
   });
 });

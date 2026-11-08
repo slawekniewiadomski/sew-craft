@@ -1,7 +1,14 @@
 import type { Bounds } from './document.js';
 import type { NotchGeometry } from './mark.js';
 import { notchGeometry, pieceMarks } from './mark.js';
-import { pieceBounds, pieceCutLoop, pieceFoldLines, pieceLoop, loopBounds } from './piece.js';
+import {
+  pieceBounds,
+  pieceCutLoop,
+  pieceEdgeSegments,
+  pieceFoldLines,
+  pieceLoop,
+  loopBounds,
+} from './piece.js';
 import type { Assembly, AssemblyInstance, EntityId, PatternDocument, Piece } from './types.js';
 import type { Vec2 } from './vector.js';
 
@@ -85,6 +92,25 @@ function placeNotch(notch: NotchGeometry, placement: InstancePlacement): NotchGe
     tip: placePoint(notch.tip, placement),
     feet: [placePoint(notch.feet[0], placement), placePoint(notch.feet[1], placement)],
   };
+}
+
+/**
+ * The stitch polyline of every loop edge of one placed instance, in authored
+ * order and authored direction, with corner-round bridges excluded. `null` when
+ * the piece has no anchor or its loop does not resolve.
+ */
+export function instanceEdgeSegments(
+  document: PatternDocument,
+  piece: Piece,
+  instance: AssemblyInstance,
+): Vec2[][] | null {
+  const placement = instancePlacement(document, piece, instance);
+  if (placement === null) return null;
+
+  const segments = pieceEdgeSegments(document, piece);
+  if (segments === null) return null;
+
+  return segments.map((points) => points.map((point) => placePoint(point, placement)));
 }
 
 /** Every derived loop of a placed instance, in assembly coordinates. */

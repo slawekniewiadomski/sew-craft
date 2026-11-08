@@ -5,6 +5,7 @@ import { defineComponent } from 'vue';
 import type { PatternDocument } from '@sewcraft/geometry';
 
 import EditorStrips from '@/components/editor/EditorStrips.vue';
+import { emptySeamDraft } from '@/lib/seam-picks';
 
 const pattern = { pieces: [], tabs: [] } as unknown as PatternDocument;
 
@@ -42,6 +43,12 @@ function mountStrips(overrides: Record<string, unknown> = {}) {
       isSketch: true,
       sketchTarget: null,
       sketchArrange: false,
+      activeAction: null,
+      seamActive: false,
+      seamDocument: pattern,
+      seamAssembly: null,
+      seamDraft: emptySeamDraft(),
+      seamEased: false,
       ...overrides,
     },
     global: {

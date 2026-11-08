@@ -75,7 +75,7 @@ describe('createEmptyDocument', () => {
     const document = createEmptyDocument();
 
     expect(document.schema).toBe(PATTERN_SCHEMA);
-    expect(document.schema).toBe('sewcraft.pattern/0.8');
+    expect(document.schema).toBe('sewcraft.pattern/0.9');
     expect(document.units).toBe('mm');
     expect(document.entities).toEqual([]);
     expect(document.constraints).toEqual([]);

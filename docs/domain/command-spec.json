@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://sewcraft.local/schemas/command-spec-0.21.json",
+  "$id": "https://sewcraft.local/schemas/command-spec-0.22.json",
   "title": "SewCraft Command Spec",
-  "schema": "sewcraft.command-spec/0.21",
-  "spec_version": "0.21.0",
+  "schema": "sewcraft.command-spec/0.22",
+  "spec_version": "0.22.0",
   "units": "mm",
   "envelope": {
     "id": "ULID string, client-generated, unique",
@@ -50,7 +50,7 @@
       "inverse": null
     },
     "add_curve": {
-      "description": "Create a cubic B\u00e9zier curve through four control points.",
+      "description": "Create a cubic Bézier curve through four control points.",
       "params": {
         "p0": "entity_id",
         "p1": "entity_id",
@@ -162,7 +162,7 @@
       "inverse": "delete_piece"
     },
     "set_piece_loop": {
-      "description": "Store an ordered closed chain of the piece\u2019s own cut line/curve/arc edges, or clear it with an empty list. The allowance preset fills edges that have none yet.",
+      "description": "Store an ordered closed chain of the piece’s own cut line/curve/arc edges, or clear it with an empty list. The allowance preset fills edges that have none yet.",
       "params": {
         "piece": "entity_id",
         "edges": "entity_id[]",
@@ -183,7 +183,7 @@
       "inverse": "delete_entity"
     },
     "update_text": {
-      "description": "Edit a label\u2019s content, anchor, alignment, rotation, size or leader. Null removes the leader.",
+      "description": "Edit a label’s content, anchor, alignment, rotation, size or leader. Null removes the leader.",
       "params": {
         "id": "entity_id",
         "content": "string?",
@@ -359,6 +359,43 @@
         "tabs": "tab_ref[]"
       },
       "inverse": "reorder_tabs"
+    },
+    "add_seam_match": {
+      "description": "Sew two or more edge runs together, in layer order. Each side is a run of consecutive loop edges on one placed instance; the record id is the command id.",
+      "params": {
+        "assembly": "entity_id",
+        "sides": "seam_run[]",
+        "eased": "bool?"
+      },
+      "inverse": "remove_seam_match"
+    },
+    "update_seam_match": {
+      "description": "Change a seam sides, its ease flag, or both. At least one field is required; the inverse carries the previous values.",
+      "params": {
+        "assembly": "entity_id",
+        "seam": "entity_id",
+        "eased": "bool?",
+        "sides": "seam_run[]?"
+      },
+      "inverse": "update_seam_match"
+    },
+    "remove_seam_match": {
+      "description": "Unsew a seam. An unknown seam is a no-op; the inverse recreates the record exactly.",
+      "params": {
+        "assembly": "entity_id",
+        "seam": "entity_id"
+      },
+      "inverse": "add_seam_match"
+    },
+    "set_edge_finished": {
+      "description": "Mark one instance edge as finished (hem, binding, fold or opening), change its kind, or clear the mark with null. A sewn edge cannot be finished.",
+      "params": {
+        "assembly": "entity_id",
+        "instance": "entity_id",
+        "edge": "entity_id",
+        "kind": "finish_kind|null"
+      },
+      "inverse": "set_edge_finished"
     },
     "set_piece_allowance": {
       "description": "Set, change or remove the allowance of one piece loop edge. Width is the finished width in mm; double folds cut twice it.",

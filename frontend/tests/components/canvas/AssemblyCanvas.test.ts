@@ -510,3 +510,181 @@ describe('AssemblyCanvas cancel and fit', () => {
     expect(viewBoxOf(wrapper)).toEqual(fitted);
   });
 });
+
+describe('AssemblyCanvas seams', () => {
+  /** One instance with a sewn dart, a finished edge and an unmatched edge. */
+  const seamedDoc = (): PatternDocument => {
+    const document = documentOf();
+    document.assemblies[0] = {
+      ...document.assemblies[0]!,
+      seams: [
+        {
+          id: 's1',
+          sides: [
+            { instance: 'i1', edges: ['ab'] },
+            { instance: 'i1', edges: ['bc'] },
+          ],
+        },
+      ],
+      finishedEdges: [{ instance: 'i1', edge: 'cd', kind: 'hem' }],
+    };
+    return document;
+  };
+
+  it('draws sewn, finished and unmatched edge overlays', () => {
+    const wrapper = mountCanvas({ document: seamedDoc() });
+
+    const edges = wrapper.findAll('[data-testid="instance-seam-edge"]');
+    expect(edges).toHaveLength(4);
+    expect(edges[0]!.classes()).toContain('stroke-primary');
+    expect(edges[1]!.classes()).toContain('stroke-primary');
+    expect(edges[2]!.classes()).toContain('stroke-muted-foreground');
+    expect(edges[2]!.attributes('stroke-dasharray')).toBe('1.4 1.4');
+    expect(edges[3]!.classes()).toContain('stroke-destructive');
+    expect(edges[3]!.attributes('stroke-dasharray')).toBe('3 1.6');
+  });
+
+  it('hides the overlays when the Seams layer is off', () => {
+    const wrapper = mountCanvas({ document: seamedDoc(), showSeams: false });
+
+    expect(wrapper.findAll('[data-testid="instance-seam-edge"]')).toHaveLength(0);
+  });
+
+  it('highlights the draft picks', () => {
+    const wrapper = mountCanvas({
+      document: seamedDoc(),
+      draftSides: [{ instance: 'i1', edges: ['da'], reversed: false }],
+    });
+
+    const edges = wrapper.findAll('[data-testid="instance-seam-edge"]');
+    expect(edges[3]!.classes()).toContain('stroke-primary');
+    expect(edges[3]!.attributes('stroke-dasharray')).toBeUndefined();
+  });
+
+  it('emits a pick from a hit path only in Sew mode', async () => {
+    const idle = mountCanvas({ document: seamedDoc() });
+    expect(idle.findAll('[data-testid^="seam-hit-"]')).toHaveLength(0);
+
+    const wrapper = mountCanvas({ document: seamedDoc(), sewActive: true });
+    const hit = wrapper.find('[data-testid="seam-hit-i1-ab"]');
+    expect(hit.exists()).toBe(true);
+
+    await hit.trigger('pointerdown', { button: 0 });
+    expect(wrapper.emitted('pick-edge')).toEqual([['i1', 'ab']]);
+
+    const readOnly = mountCanvas({ document: seamedDoc(), sewActive: true, readOnly: true });
+    await readOnly.find('[data-testid="seam-hit-i1-ab"]').trigger('pointerdown', { button: 0 });
+    expect(readOnly.emitted('pick-edge')).toBeUndefined();
+  });
+
+  it('reports the hovered edge and shows its length beside the pointer', async () => {
+    const wrapper = mountCanvas({ document: seamedDoc(), sewActive: true });
+    withWidth(wrapper);
+
+    const hit = wrapper.find('[data-testid="seam-hit-i1-ab"]');
+    await hit.trigger('pointermove', { clientX: 10, clientY: 10 });
+    expect(wrapper.emitted('hover-edge')).toEqual([['i1', 'ab']]);
+    expect(wrapper.find('[data-testid="seam-hover-length"]').text()).toContain('100 mm');
+
+    await hit.trigger('pointerleave');
+    expect(wrapper.emitted('hover-edge')!.at(-1)).toEqual([null, null]);
+    expect(wrapper.find('[data-testid="seam-hover-length"]').exists()).toBe(false);
+  });
+
+  it('draws guide arcs from the selected seam', () => {
+    const document = seamedDoc();
+    document.assemblies[0]!.seams![0]!.sides = [
+      { instance: 'i1', edges: ['ab', 'bc', 'cd'] },
+      { instance: 'i1', edges: ['da'] },
+    ];
+    const selected = mountCanvas({ document, selectedSeamId: 's1' });
+    expect(selected.findAll('[data-testid="seam-guide"]')).toHaveLength(1);
+
+    const missing = mountCanvas({ document: seamedDoc(), selectedSeamId: 'nope' });
+    expect(missing.findAll('[data-testid="seam-guide"]')).toHaveLength(0);
+  });
+
+  it('draws no guide when fewer than two sides resolve', () => {
+    const document = seamedDoc();
+    document.assemblies[0]!.seams!.push({
+      id: 'ghost',
+      sides: [
+        { instance: 'ghost', edges: ['ab'] },
+        { instance: 'i1', edges: ['da'] },
+      ],
+    });
+
+    const wrapper = mountCanvas({ document, selectedSeamId: 'ghost' });
+
+    expect(wrapper.findAll('[data-testid="seam-guide"]')).toHaveLength(0);
+  });
+
+  it('ignores hover before the canvas has a size and a leave with no hover', async () => {
+    const wrapper = mountCanvas({ document: seamedDoc(), sewActive: true });
+    const hit = wrapper.find('[data-testid="seam-hit-i1-ab"]');
+
+    await hit.trigger('pointermove', { clientX: 10, clientY: 10 });
+    await hit.trigger('pointerleave');
+
+    expect(wrapper.emitted('hover-edge')).toBeUndefined();
+  });
+
+  it('draws a guide for a zero-length side', () => {
+    const zero = {
+      ...documentOf(),
+      entities: [
+        { id: 'a', kind: 'point' as const, x: 0, y: 0, piece: 'p1', fixed: false },
+        { id: 'b', kind: 'point' as const, x: 100, y: 0, piece: 'p1', fixed: false },
+        { id: 'c', kind: 'point' as const, x: 0, y: 100, piece: 'p1', fixed: false },
+        { id: 'a2', kind: 'point' as const, x: 0, y: 0, piece: 'p1', fixed: false },
+        { id: 'ab', kind: 'line' as const, start: 'a', end: 'b', piece: 'p1' },
+        { id: 'bc', kind: 'line' as const, start: 'b', end: 'c', piece: 'p1' },
+        { id: 'ca', kind: 'line' as const, start: 'c', end: 'a', piece: 'p1' },
+        { id: 'zz', kind: 'line' as const, start: 'a2', end: 'a2', piece: 'p1' },
+      ],
+      pieces: [{ id: 'p1', edges: ['ab', 'bc', 'ca', 'zz'], allowances: [] }],
+      assemblies: [
+        {
+          id: 'a1',
+          name: 'Shell',
+          instances: [{ id: 'i1', piece: 'p1', x: 0, y: 0 }],
+          seams: [
+            {
+              id: 'zero',
+              sides: [
+                { instance: 'i1', edges: ['zz'] },
+                { instance: 'i1', edges: ['zz'] },
+              ],
+            },
+          ],
+        },
+      ],
+      tabs: [],
+    };
+
+    const wrapper = mountCanvas({ document: zero, selectedSeamId: 'zero' });
+
+    expect(wrapper.findAll('[data-testid="seam-guide"]')).toHaveLength(1);
+  });
+
+  it('draws a zero-length guide when two side midpoints coincide', () => {
+    const document = seamedDoc();
+    document.assemblies[0]!.seams!.push({
+      id: 'same',
+      sides: [
+        { instance: 'i1', edges: ['da'] },
+        { instance: 'i1', edges: ['da'] },
+      ],
+    });
+
+    const wrapper = mountCanvas({ document, selectedSeamId: 'same' });
+
+    expect(wrapper.findAll('[data-testid="seam-guide"]')).toHaveLength(1);
+  });
+
+  it('resolves no overlays outside an assembly', () => {
+    const wrapper = mountCanvas({ assemblyId: 'missing' });
+
+    expect(wrapper.findAll('[data-testid="instance-seam-edge"]')).toHaveLength(0);
+  });
+});

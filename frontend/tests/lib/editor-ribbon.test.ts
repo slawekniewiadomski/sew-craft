@@ -222,6 +222,13 @@ describe('ASSEMBLY_RIBBON_GROUPS', () => {
   it('marks Add piece with a plus badge on the piece glyph', () => {
     expect(ASSEMBLY_RIBBON_GROUPS[0]!.items[1]).toEqual({
       kind: 'action',
+      id: 'sew',
+      label: 'Sew',
+      icon: 'sew',
+      action: 'sew',
+    });
+    expect(ASSEMBLY_RIBBON_GROUPS[0]!.items[2]).toEqual({
+      kind: 'action',
       id: 'add-instance',
       label: 'Add piece',
       icon: 'piece-add',

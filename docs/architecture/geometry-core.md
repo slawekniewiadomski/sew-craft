@@ -225,6 +225,71 @@ piece instead of breaking the canvas or export:
 - `basicPieceForLoops(document)` — every simple closed chain of cut edges, used
   by the 0.1 migration to adopt closed seam chains.
 
+## Seams and the sewability check (`seams.ts`)
+
+An assembly records which edge runs are sewn to each other in optional `seams`
+and which edges are finished instead in optional `finishedEdges`. Both are
+advisory data: nothing in the editor, save, autosave, versioning or export path
+blocks on them.
+
+```ts
+interface SeamRun {
+  instance: EntityId;
+  /** Consecutive ids in Piece.edges order; may wrap once. */
+  edges: EntityId[];
+  /** Traverse from the run's other end; absent means forward. */
+  reversed?: boolean;
+}
+
+interface SeamMatch {
+  id: EntityId;
+  /** Two or more sides, ordered by layer. */
+  sides: SeamRun[];
+  /** A deliberate length difference; downgrades a mismatch to a warning. */
+  eased?: boolean;
+}
+
+interface FinishedEdge {
+  instance: EntityId;
+  edge: EntityId;
+  kind: 'hem' | 'binding' | 'fold' | 'opening';
+}
+```
+
+**Resolution.** `resolveSeamRun(document, assembly, run)` walks the side's run in
+authored `Piece.edges` order into one assembly-space polyline. It orients each
+edge to connect to the previous one, inserts a committed corner round's **bridge**
+between consecutive edges, and reverses the whole chain when `reversed` is true.
+The run starts at the first edge's **outer end** (the end not shared with the
+next edge). It returns `null` for any unresolvable instance, piece, edge or loop
+and never throws. The same polyline is the check's length and a future 3D
+preview's vertex correspondence, so the seam's start and `reversed` are part of
+the contract, not presentation.
+
+**Validation.** `validateSeamRun` checks one side (instance belongs to the
+assembly, its piece resolves, every edge is in the loop). `validateSeam` adds the
+cross-side rules: at least two sides, consecutive runs with at most one wrap, no
+repeated edge, and no edge already sewn by another seam or marked finished. The
+four commands (`add_seam_match`, `update_seam_match`, `remove_seam_match`,
+`set_edge_finished`) call the same validators; `split_line` replaces a split edge
+in place with its two halves inside every run.
+
+**Report.** `sewabilityReport(document, assembly)` returns counts and a flat,
+severity-ordered issue list:
+
+| Kind                 | Severity             | Meaning                                                  |
+| -------------------- | -------------------- | -------------------------------------------------------- |
+| `unmatched_edge`     | error                | no seam and no finish mark                               |
+| `edge_used_twice`    | error                | two seams, or a seam and a finish, claim one edge        |
+| `missing_reference`  | error                | instance, piece, edge or loop no longer resolves         |
+| `length_mismatch`    | error, warning eased | side lengths differ by more than `SEAM_LENGTH_TOLERANCE` |
+| `allowance_mismatch` | warning              | cut distances across the seam differ                     |
+| `folded_edge_sewn`   | warning              | an edge with a `double` allowance is sewn                |
+
+`SEAM_LENGTH_TOLERANCE` is 5 mm and `ALLOWANCE_MATCH_TOLERANCE` is 1e-6 mm; both
+are exported constants, not stored per seam. An empty assembly is vacuously
+sewable. Errors are listed before warnings, and each group keeps document order.
+
 ## Later entities (specced, not built)
 
 - `dart` — first-class construction element.

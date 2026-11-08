@@ -75,7 +75,7 @@ can be written when it changes.
 
 ```jsonc
 {
-  "schema": "sewcraft.pattern/0.8",
+  "schema": "sewcraft.pattern/0.9",
   "units": "mm",
   "entities": [
     // Every entity names its piece; role absent means cut.
@@ -146,7 +146,23 @@ can be written when it changes.
       "id": "as1",
       "name": "Outer shell",
       // The anchor is the piece's derived finished-loop centre.
-      "instances": [{ "id": "in1", "piece": "pc1", "x": 100, "y": 100, "rotation": 1.57 }],
+      "instances": [
+        { "id": "in1", "piece": "pc1", "x": 100, "y": 100, "rotation": 1.57 },
+        { "id": "in2", "piece": "pc1", "x": 300, "y": 100, "mirrored": true },
+      ],
+      // Optional; absent means nothing is sewn.
+      "seams": [
+        {
+          "id": "sm1",
+          "sides": [
+            { "instance": "in1", "edges": ["l1"] },
+            { "instance": "in2", "edges": ["l1"], "reversed": true },
+          ],
+          "eased": false,
+        },
+      ],
+      // Optional; absent means no edge is marked finished.
+      "finishedEdges": [{ "instance": "in1", "edge": "l2", "kind": "hem" }],
     },
   ],
   // Authoritative tab order: every piece and assembly exactly once.
@@ -166,7 +182,7 @@ built-in **10 mm seam** preset, and `normalizeDocument` fills the field on load
 allowance. A piece may override it with `defaults.allowance` (absent inherits,
 `null` means none). Changing or clearing either default never rewrites an existing
 piece's allowances. An invalid stored width or kind falls back to the built-in
-preset; the pattern schema string is `sewcraft.pattern/0.8`.
+preset; the pattern schema string is `sewcraft.pattern/0.9`.
 
 `cornerRounds` is optional, so documents written before the feature load
 unchanged. A round is a live feature: it stores the sharp corner, both line
@@ -176,7 +192,7 @@ anchors and the radius, while its derived entities (tangent points `r1:a`,
 are trimmed to the tangent points, and `p2` stays as a construction point.
 `center` is optional and additive — it points at a fixed construction point, is
 minted once on load for rounds written before feature points, and never joins a
-piece loop or the SVG export. The schema string is `sewcraft.pattern/0.8`.
+piece loop or the SVG export. The schema string is `sewcraft.pattern/0.9`.
 
 An `arc` entity is a true circular arc referencing three ordinary points: `start`
 and `end` bound it and `through` lies on it between them, fixing both the bulge
@@ -251,12 +267,14 @@ together and subtracts it again before a coordinate becomes a command, so moving
 a piece never rewrites geometry and geometry never moves a piece. A new piece is
 placed to the right of the pieces that already drew.
 
-The schema is `sewcraft.pattern/0.8`. `normalizeDocument` in
-`packages/geometry/src/migration.ts` reads 0.7, 0.6, 0.5 and the 0.4 subset they
-supersede, and refuses every other schema (a stored 0.3 document included)
-through `UnsupportedPatternSchemaError`. A 0.7 document differs only by having no
-placements: it needs no coordinate change, and unplaced pieces are packed left to
-right once on load. A 0.6 document differs only by having no measured variables,
+The schema is `sewcraft.pattern/0.9`. `normalizeDocument` in
+`packages/geometry/src/migration.ts` reads 0.8, 0.7, 0.6, 0.5 and the 0.4 subset
+they supersede, and refuses every other schema (a stored 0.3 document included)
+through `UnsupportedPatternSchemaError`. A 0.8 document differs only by having no
+assembly `seams` or `finishedEdges`: both stay absent, every reader uses
+`assembly.seams ?? []`, and no conversion is needed. A 0.7 document differs only
+by having no placements: it needs no coordinate change, and unplaced pieces are
+packed left to right once on load. A 0.6 document differs only by having no measured variables,
 so it needs no conversion. It also fills `defaults`, defaults a missing
 `assemblies` to
 `[]`, and normalises `tabs` — duplicate refs and refs to missing objects are
@@ -271,6 +289,14 @@ derived anchor, `rotation` is in radians with SVG's y-down convention, and
 Nothing about a piece's position in an assembly is written back to its geometry.
 `tabs` is the authoritative tab order; it lives in the document because reordering
 is undoable, and every valid document holds each piece and assembly exactly once.
+
+`seams` and `finishedEdges` are optional assembly arrays in schema 0.9. A seam
+match names two or more **sides**, each a run of consecutive `Piece.edges` on one
+instance, ordered by layer; `reversed` is the side's direction relative to the
+authored run. A finished edge marks one instance edge with a `hem`, `binding`,
+`fold` or `opening` kind. Seams are recorded against the stitch loop, so an
+allowance edit never invalidates them, and they are advisory: no save, autosave,
+version or export path reads them.
 
 The whole set of placement rules is in `docs/architecture/geometry-core.md`.
 
@@ -295,8 +321,8 @@ constraint leaves an ordinary free point at its last coordinate. The line form
 stores the line id so it follows the line's visible endpoints through a
 corner-round trim; the two-point form keeps its named points. A target may not be
 corner-round derived, already a midpoint target, or a source of another midpoint,
-and neither may a source be an existing target (no chains). The document stays
-`sewcraft.pattern/0.8`; only the constraint list gains an additive entry.
+and neither may a source be an existing target (no chains). The document schema is
+unchanged by this feature; only the constraint list gains an additive entry.
 
 A `derived_distance` constraint is a **cut dimension**. It addresses two anchors
 of one piece by `{ edge, at: 'start' | 'end' | 'edge', loop?: 'stitch' | 'cut' }`

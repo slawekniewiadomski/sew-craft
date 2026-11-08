@@ -21,36 +21,47 @@ import type { DraftingEndpoint } from '@/lib/drafting';
 import type { EditorTool } from '@/lib/editor-tools';
 import type { LineEndpoint } from '@/lib/line-tool';
 import type { RectangleMode } from '@/lib/rectangle-tool';
+import type { SeamDraftSide } from '@/lib/seam-picks';
 
 /** The canvas area and the display menu over it. */
-defineProps<{
-  pattern: PatternDocument;
-  visibleDocument: PatternDocument;
-  assemblyDocument: PatternDocument;
-  activeAssembly: Assembly | null;
-  isAssemblyTab: boolean;
-  isSketch: boolean;
-  activeTool: EditorTool;
-  activePieceId: EntityId | null;
-  readOnly: boolean;
-  selectedEntityIds: EntityId[];
-  selectedDimensionIds: EntityId[];
-  selectedAllowanceTargets: BandTarget[];
-  selectedInstanceId: EntityId | null;
-  assemblyPickerOpen: boolean;
-  fitToken: number;
-  sketchArrange: boolean;
-  display: DisplaySettings;
-  displayItems: CanvasDisplayItem[];
-  displayValues: Record<string, boolean>;
-  activeConstraint: ConstraintType | null;
-  constraintPicks: ConstraintPick[];
-  cornerRoundActive: boolean;
-  cornerRoundPicks: CornerRoundPicks;
-  cornerRoundPreviewRadius: number | null;
-  measuredEditing: boolean;
-  measuredHighlightIds: EntityId[];
-}>();
+withDefaults(
+  defineProps<{
+    pattern: PatternDocument;
+    visibleDocument: PatternDocument;
+    assemblyDocument: PatternDocument;
+    activeAssembly: Assembly | null;
+    isAssemblyTab: boolean;
+    isSketch: boolean;
+    activeTool: EditorTool;
+    activePieceId: EntityId | null;
+    readOnly: boolean;
+    selectedEntityIds: EntityId[];
+    selectedDimensionIds: EntityId[];
+    selectedAllowanceTargets: BandTarget[];
+    selectedInstanceId: EntityId | null;
+    assemblyPickerOpen: boolean;
+    fitToken: number;
+    sketchArrange: boolean;
+    display: DisplaySettings;
+    displayItems: CanvasDisplayItem[];
+    displayValues: Record<string, boolean>;
+    activeConstraint: ConstraintType | null;
+    constraintPicks: ConstraintPick[];
+    cornerRoundActive: boolean;
+    cornerRoundPicks: CornerRoundPicks;
+    cornerRoundPreviewRadius: number | null;
+    measuredEditing: boolean;
+    measuredHighlightIds: EntityId[];
+    sewActive: boolean;
+    draftSides: SeamDraftSide[];
+    selectedSeamId: EntityId | null;
+  }>(),
+  {
+    sewActive: false,
+    draftSides: () => [],
+    selectedSeamId: null,
+  },
+);
 
 const emit = defineEmits<{
   'update:selectedEntityIds': [ids: EntityId[]];
@@ -87,6 +98,7 @@ const emit = defineEmits<{
   'update-dimension': [id: EntityId, patch: DimensionPatch];
   'marquee-change': [active: boolean];
   'measure-pick': [id: EntityId];
+  'pick-edge': [instance: EntityId, edge: EntityId];
 }>();
 
 function forwardToggleDisplay(key: string, value: boolean): void {
@@ -140,6 +152,9 @@ function forwardCornerRadius(id: EntityId, radius: ParamInput): void {
 function forwardUpdateDimension(id: EntityId, patch: DimensionPatch): void {
   emit('update-dimension', id, patch);
 }
+function forwardPickEdge(instance: EntityId, edge: EntityId): void {
+  emit('pick-edge', instance, edge);
+}
 </script>
 
 <template>
@@ -166,12 +181,17 @@ function forwardUpdateDimension(id: EntityId, patch: DimensionPatch): void {
       :show-folds="display.assembly.folds"
       :show-notches="display.assembly.notches"
       :show-labels="display.assembly.labels"
+      :show-seams="display.assembly.seams"
+      :sew-active="sewActive"
+      :draft-sides="draftSides"
+      :selected-seam-id="selectedSeamId"
       @select="emit('select-instance', $event)"
       @move="forwardMoveInstance"
       @nudge="forwardNudgeInstance"
       @remove="emit('remove-instance', $event)"
       @add-piece="emit('add-instance', $event)"
       @close-picker="emit('close-picker')"
+      @pick-edge="forwardPickEdge"
     />
     <PatternCanvas
       v-else

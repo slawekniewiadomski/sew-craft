@@ -1,13 +1,21 @@
 <script setup lang="ts">
-import type { ConstraintType, EntityId, ParamInput, PatternDocument } from '@sewcraft/geometry';
+import type {
+  Assembly,
+  ConstraintType,
+  EntityId,
+  ParamInput,
+  PatternDocument,
+} from '@sewcraft/geometry';
 
 import ConstraintPromptBar from '@/components/bars/ConstraintPromptBar.vue';
 import CornerRoundPromptBar from '@/components/bars/CornerRoundPromptBar.vue';
 import MeasuredEditBar from '@/components/bars/MeasuredEditBar.vue';
+import SeamPromptBar from '@/components/bars/SeamPromptBar.vue';
 import SketchToolbar from '@/components/bars/SketchToolbar.vue';
 import EditorRibbon from '@/components/editor/EditorRibbon.vue';
 import type { RibbonAction } from '@/lib/editor-ribbon';
 import type { EditorTool } from '@/lib/editor-tools';
+import type { SeamDraft } from '@/lib/seam-picks';
 
 /** The ribbon and the strips above the canvas. */
 defineProps<{
@@ -40,6 +48,12 @@ defineProps<{
   isSketch: boolean;
   sketchTarget: EntityId | null;
   sketchArrange: boolean;
+  activeAction?: RibbonAction | null;
+  seamActive: boolean;
+  seamDocument: PatternDocument;
+  seamAssembly: Assembly | null;
+  seamDraft: SeamDraft;
+  seamEased: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -57,8 +71,19 @@ const emit = defineEmits<{
   'cancel-measured': [];
   'update:sketchTarget': [id: EntityId];
   'update:sketchArrange': [on: boolean];
+  'seam-new-side': [];
+  'seam-flip': [];
+  'seam-remove-pick': [instance: EntityId, edge: EntityId];
+  'seam-eased': [value: boolean];
+  'seam-commit': [];
+  'seam-cancel': [];
   fit: [];
 }>();
+
+/** The seam bar reports both the picked instance and edge. */
+function forwardSeamRemove(instance: EntityId, edge: EntityId): void {
+  emit('seam-remove-pick', instance, edge);
+}
 </script>
 
 <template>
@@ -73,6 +98,7 @@ const emit = defineEmits<{
     :export-hint="exportHint"
     :read-only="readOnly"
     :sidebar-collapsed="sidebarCollapsed"
+    :active-action="activeAction"
     @select-tool="emit('select-tool', $event)"
     @select-constraint="emit('select-constraint', $event)"
     @action="emit('action', $event)"
@@ -112,6 +138,21 @@ const emit = defineEmits<{
     @remove="emit('remove-measured', $event)"
     @done="emit('done-measured')"
     @cancel="emit('cancel-measured')"
+  />
+
+  <SeamPromptBar
+    v-if="seamActive && seamAssembly"
+    :document="seamDocument"
+    :assembly="seamAssembly"
+    :draft="seamDraft"
+    :eased="seamEased"
+    :read-only="readOnly"
+    @new-side="emit('seam-new-side')"
+    @flip="emit('seam-flip')"
+    @remove-pick="forwardSeamRemove"
+    @update:eased="emit('seam-eased', $event)"
+    @commit="emit('seam-commit')"
+    @cancel="emit('seam-cancel')"
   />
 
   <p v-if="error" class="border-b px-3 py-1 text-sm text-destructive">{{ error }}</p>

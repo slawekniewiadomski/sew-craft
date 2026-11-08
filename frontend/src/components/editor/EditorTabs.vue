@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { PatternDocument, TabRef } from '@sewcraft/geometry';
+import { sewabilityReport, type PatternDocument, type TabRef } from '@sewcraft/geometry';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,16 @@ const list = ref<HTMLElement | null>(null);
 const tabElements = ref<HTMLButtonElement[]>([]);
 
 const activeIndex = computed(() => tabIndex(props.document, props.modelValue));
+
+/** Seam error counts, resolved once per document rather than per tab row. */
+const seamErrors = computed(() => {
+  const counts = new Map<string, number>();
+  for (const assembly of props.document.assemblies) {
+    const report = sewabilityReport(props.document, assembly);
+    if (report.errors > 0) counts.set(assembly.id, report.errors);
+  }
+  return counts;
+});
 
 function setTabElement(index: number, element: unknown): void {
   if (element instanceof HTMLButtonElement) tabElements.value[index] = element;
@@ -268,6 +278,14 @@ watch(
         />
         <span v-else class="text-xs" aria-hidden="true" data-testid="tab-assembly-glyph">▣</span>
         <span class="truncate">{{ tabLabel(props.document, tab) }}</span>
+        <span
+          v-if="tab.kind === 'assembly' && (seamErrors.get(tab.id) ?? 0) > 0"
+          class="rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-medium leading-none text-destructive-foreground"
+          :aria-label="`${seamErrors.get(tab.id)} seam issues`"
+          :data-testid="`tab-seam-errors-${tab.id}`"
+        >
+          {{ seamErrors.get(tab.id) }}
+        </span>
       </button>
     </div>
   </div>

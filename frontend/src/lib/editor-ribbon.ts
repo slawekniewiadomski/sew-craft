@@ -10,6 +10,7 @@ export type RibbonAction =
   | 'set_cut_loop'
   | 'download_svg'
   | 'add_instance'
+  | 'sew'
   | 'mirror_instance'
   | 'rotate_instance';
 
@@ -213,6 +214,7 @@ export const ASSEMBLY_RIBBON_GROUPS: RibbonGroup[] = [
     label: 'Assembly',
     items: [
       toolItem('select'),
+      actionItem('sew', 'Sew', 'sew', 'sew'),
       actionItem('add-instance', 'Add piece', 'add_instance', 'piece-add'),
       actionItem('mirror-instance', 'Mirror', 'mirror_instance', 'mirror'),
       actionItem('rotate-instance', 'Rotate 90°', 'rotate_instance', 'rotate'),

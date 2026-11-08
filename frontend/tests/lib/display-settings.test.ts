@@ -19,6 +19,7 @@ describe('defaultDisplaySettings', () => {
         folds: true,
         notches: true,
         labels: true,
+        seams: true,
       },
       export: { construction: false, stitch: true, fold: true },
     });
@@ -58,6 +59,7 @@ describe('parseDisplaySettings', () => {
         folds: true,
         notches: true,
         labels: true,
+        seams: true,
       },
       export: { construction: false, stitch: true, fold: false },
     });

@@ -157,6 +157,7 @@ export function useAssemblyViewport({ document, assembly }: AssemblyViewportOpti
     view,
     viewBox,
     unitPerPixel,
+    pointerWorld,
     onWheel,
     beginPan,
     resetFit,

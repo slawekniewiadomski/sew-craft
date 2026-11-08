@@ -6,6 +6,7 @@ import type {
   Constraint,
   Entity,
   EntityId,
+  FinishKind,
   ParamInput,
   PatternDocument,
   Piece,
@@ -130,6 +131,11 @@ const emit = defineEmits<{
   'create-measured': [];
   'highlight-variable': [slug: string | null];
   'edit-measured': [slug: string];
+  'select-seam': [seam: EntityId | null];
+  'remove-seam': [seam: EntityId];
+  'toggle-eased': [seam: EntityId, eased: boolean];
+  'set-finished': [instance: EntityId, edge: EntityId, kind: FinishKind | null];
+  'select-edge': [instance: EntityId];
 }>();
 
 interface PiecePatch {
@@ -204,6 +210,12 @@ function emitVariableUnit(slug: string, unit: 'mm' | 'cm'): void {
 }
 function emitVariableComment(slug: string, comment: string | null): void {
   emit('set-variable-comment', slug, comment);
+}
+function emitFinished(instance: EntityId, edge: EntityId, kind: FinishKind | null): void {
+  emit('set-finished', instance, edge, kind);
+}
+function emitEased(seam: EntityId, eased: boolean): void {
+  emit('toggle-eased', seam, eased);
 }
 </script>
 
@@ -317,6 +329,11 @@ function emitVariableComment(slug: string, comment: string | null): void {
         @set-default="emitPieceDefault"
         @open-piece="emit('open-piece', $event)"
         @remove-instance="emit('remove-instance', $event)"
+        @select-seam="emit('select-seam', $event)"
+        @remove-seam="emit('remove-seam', $event)"
+        @toggle-eased="emitEased"
+        @set-finished="emitFinished"
+        @select-edge="emit('select-edge', $event)"
       />
     </template>
 
