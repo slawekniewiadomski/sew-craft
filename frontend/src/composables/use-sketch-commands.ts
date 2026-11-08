@@ -341,16 +341,6 @@ export function useSketchCommands({
     );
   }
 
-  function convert(id: string, construction: boolean): void {
-    run(() =>
-      dispatch({
-        id: nextCommandId('construction'),
-        type: 'set_construction',
-        params: { id, construction },
-      }),
-    );
-  }
-
   return {
     onMovePoint,
     onAddPoint,
@@ -370,6 +360,5 @@ export function useSketchCommands({
     onAddDimension,
     onAddCutDimension,
     onUpdateDimension,
-    convert,
   };
 }
