@@ -366,6 +366,13 @@ const selectedEntity = computed(() =>
     : null,
 );
 
+/** The selected dimension row when it is the whole selection, else `null`. */
+const selectedDimension = computed(() =>
+  selectedEntityIds.value.length === 0 && selectedDimensionIds.value.length === 1
+    ? (dimensionRows(pattern.value).find((row) => row.id === selectedDimensionIds.value[0]) ?? null)
+    : null,
+);
+
 const defaultAllowance = computed(() => defaultAllowanceSummary(pattern.value));
 /** The entity selection as a set, for row highlighting and `aria-current`. */
 const selectedIds = computed(() => new Set(selectedEntityIds.value));
@@ -1264,6 +1271,7 @@ onBeforeUnmount(() => {
           :measure-disabled="measuredSelection.chain === null"
           :measure-hint="measuredSelection.problem"
           :selected-entity="selectedEntity ?? null"
+          :selected-dimension="selectedDimension"
           :pattern="pattern"
           :active-piece="activePiece"
           :active-piece-summary="activePieceSummary"
